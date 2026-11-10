@@ -1,12 +1,14 @@
-import { isCronExpression } from "../../../../shared/domain.ts"
+import { cn } from "cn"
+import { startTransition } from "react"
+import { isCronExpression, type RoutineSchedule } from "../../../../shared/domain.ts"
 import { useNow } from "../../../lib/useNow.ts"
 import { m } from "../../../paraglide/messages.js"
 import { getLocale } from "../../../paraglide/runtime.js"
-import { Field, FieldError, FieldLabel } from "../../ui/field.tsx"
+import { FieldError } from "../../ui/field.tsx"
 import { Input } from "../../ui/input.tsx"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select.tsx"
-import { type Repeat, repeats, type ScheduleDraft, toCron, weekdayName, weekdays, nextRuns } from "./schedule.ts"
-import { formatTime } from "./shared.tsx"
+import { Label } from "../../ui/label.tsx"
+import { Tabs, TabsList, TabsTrigger } from "../../ui/tabs.tsx"
+import { type DaySlot, type Repeat, repeats, type ScheduleDraft, toCron, weekAhead, weekdayName } from "./schedule.ts"
 
 const repeatLabel = {
   none: m.routines_repeat_none,
@@ -17,9 +19,14 @@ const repeatLabel = {
   custom: m.routines_repeat_custom,
 } satisfies Record<Repeat, () => string>
 
+const presetOrder: ReadonlyArray<Repeat> = ["hourly", "daily", "weekdays", "weekly", "custom", "none"]
+
 const isRepeat = (value: unknown): value is Repeat => repeats.some((repeat) => repeat === value)
 
 const pad = (value: number) => String(value).padStart(2, "0")
+
+const clockIn = (date: Date, timeZone: string, locale: string) =>
+  new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(date)
 
 interface SchedulePickerProps {
   readonly value: ScheduleDraft
@@ -28,125 +35,176 @@ interface SchedulePickerProps {
 }
 
 export function SchedulePicker({ value, timezone, onChange }: SchedulePickerProps) {
-  const locale = getLocale()
-  const items = repeats.map((repeat) => ({ value: repeat, label: repeatLabel[repeat]() }))
   const patch = (next: Partial<ScheduleDraft>) => onChange({ ...value, ...next })
   const changeRepeat = (repeat: Repeat) =>
     patch(repeat === "custom" ? { repeat, cron: toCron(value) ?? value.cron } : { repeat })
+  const toggleDay = (day: number) =>
+    startTransition(() =>
+      patch({ days: value.days.includes(day) ? value.days.filter((other) => other !== day) : [...value.days, day] }),
+    )
   const cron = toCron(value)
   const invalid = cron !== null && !isCronExpression(cron, timezone)
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <Field className="w-44">
-          <FieldLabel htmlFor="routine-repeat">{m.routines_repeat_label()}</FieldLabel>
-          <Select items={items} value={value.repeat} onValueChange={(next) => isRepeat(next) && changeRepeat(next)}>
-            <SelectTrigger id="routine-repeat" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {items.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        {value.repeat === "hourly" && (
-          <Field className="w-24">
-            <FieldLabel htmlFor="routine-minute">{m.routines_minute_label()}</FieldLabel>
-            <Input
-              id="routine-minute"
-              type="number"
-              min={0}
-              max={59}
-              required
-              value={value.minute}
-              onChange={(event) =>
-                patch({ minute: Math.min(59, Math.max(0, Math.trunc(event.target.valueAsNumber || 0))) })
-              }
-              className="font-mono tabular-nums"
-            />
-          </Field>
-        )}
-        {(value.repeat === "daily" || value.repeat === "weekdays" || value.repeat === "weekly") && (
-          <Field className="w-32">
-            <FieldLabel htmlFor="routine-time">{m.routines_time_label()}</FieldLabel>
-            <Input
-              id="routine-time"
-              type="time"
-              required
-              value={`${pad(value.hour)}:${pad(value.minute)}`}
-              onChange={(event) => {
-                const [hour, minute] = event.target.value.split(":").map(Number)
-                if (hour !== undefined && minute !== undefined && !Number.isNaN(hour + minute)) patch({ hour, minute })
-              }}
-              className="tabular-nums"
-            />
-          </Field>
-        )}
-        {value.repeat === "custom" && (
-          <Field className="min-w-48 flex-1">
-            <FieldLabel htmlFor="routine-cron">{m.routines_cron_label()}</FieldLabel>
-            <Input
-              id="routine-cron"
-              required
-              value={value.cron}
-              onChange={(event) => patch({ cron: event.target.value })}
-              placeholder="0 9 * * 1-5"
-              spellCheck={false}
-              autoComplete="off"
-              aria-invalid={invalid || undefined}
-              className="font-mono"
-            />
-          </Field>
-        )}
-      </div>
-      {value.repeat === "weekly" && (
-        <fieldset className="flex flex-wrap gap-1">
-          <legend className="sr-only">{m.routines_days_label()}</legend>
-          {weekdays.map((day) => {
-            const on = value.days.includes(day)
-            return (
-              <button
-                key={day}
-                type="button"
-                aria-pressed={on}
-                aria-label={weekdayName(day, locale, "long")}
-                disabled={on && value.days.length === 1}
-                onClick={() => patch({ days: on ? value.days.filter((other) => other !== day) : [...value.days, day] })}
-                className="h-7 min-w-11 rounded-lg border border-input px-2 text-xs font-medium transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed aria-pressed:border-transparent aria-pressed:bg-primary aria-pressed:text-primary-foreground"
-              >
-                {weekdayName(day, locale)}
-              </button>
-            )
-          })}
-        </fieldset>
+    <div className="flex flex-col gap-2.5">
+      <Tabs value={value.repeat} onValueChange={(next) => isRepeat(next) && changeRepeat(next)}>
+        <TabsList aria-label={m.routines_repeat_label()} className="w-full">
+          {presetOrder.map((repeat) => (
+            <TabsTrigger key={repeat} value={repeat} className="text-xs">
+              {repeatLabel[repeat]()}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+      {cron !== null && !invalid && (
+        <WeekStrip
+          schedule={{ cron, timezone }}
+          days={value.repeat === "weekly" ? value.days : null}
+          onToggleDay={toggleDay}
+        />
       )}
-      {invalid ? (
-        <FieldError>{m.routines_cron_invalid()}</FieldError>
-      ) : (
-        cron !== null && <NextRuns cron={cron} timezone={timezone} />
+      {value.repeat !== "none" && (
+        <div className="flex items-center gap-2">
+          {value.repeat === "hourly" && (
+            <>
+              <Label htmlFor="routine-minute" className="font-normal text-muted-foreground">
+                {m.routines_minute_label()}
+              </Label>
+              <Input
+                id="routine-minute"
+                type="number"
+                min={0}
+                max={59}
+                required
+                value={value.minute}
+                onChange={(event) =>
+                  patch({ minute: Math.min(59, Math.max(0, Math.trunc(event.target.valueAsNumber || 0))) })
+                }
+                className="h-8 w-16 font-mono tabular-nums"
+              />
+            </>
+          )}
+          {(value.repeat === "daily" || value.repeat === "weekdays" || value.repeat === "weekly") && (
+            <>
+              <Label htmlFor="routine-time" className="font-normal text-muted-foreground">
+                {m.routines_time_label()}
+              </Label>
+              <Input
+                id="routine-time"
+                type="time"
+                required
+                value={`${pad(value.hour)}:${pad(value.minute)}`}
+                onChange={(event) => {
+                  const [hour, minute] = event.target.value.split(":").map(Number)
+                  if (hour !== undefined && minute !== undefined && !Number.isNaN(hour + minute))
+                    patch({ hour, minute })
+                }}
+                className="h-8 w-32 tabular-nums"
+              />
+            </>
+          )}
+          {value.repeat === "custom" && (
+            <>
+              <Label htmlFor="routine-cron" className="shrink-0 font-normal text-muted-foreground">
+                {m.routines_cron_label()}
+              </Label>
+              <Input
+                id="routine-cron"
+                required
+                value={value.cron}
+                onChange={(event) => patch({ cron: event.target.value })}
+                placeholder="0 9 * * 1-5"
+                spellCheck={false}
+                autoComplete="off"
+                aria-invalid={invalid || undefined}
+                className="h-8 min-w-0 flex-1 font-mono"
+              />
+            </>
+          )}
+          <span className="ms-auto shrink-0 text-xs text-muted-foreground">{timezone}</span>
+        </div>
       )}
+      {invalid && <FieldError>{m.routines_cron_invalid()}</FieldError>}
     </div>
   )
 }
 
-function NextRuns({ cron, timezone }: { cron: string; timezone: string }) {
+interface WeekStripProps {
+  readonly schedule: RoutineSchedule
+  readonly days: ReadonlyArray<number> | null
+  readonly onToggleDay: (day: number) => void
+}
+
+function WeekStrip({ schedule, days, onToggleDay }: WeekStripProps) {
+  const locale = getLocale()
   const now = useNow()
-  const runs = nextRuns({ cron, timezone }, new Date(now), 3)
+  const slots = weekAhead(schedule, new Date(now))
+  const next = slots.find((slot) => slot.runs.length > 0)
+
   return (
-    <section aria-label={m.routines_next_runs({ timezone })} className="flex flex-col gap-1 text-xs">
-      <h4 className="text-muted-foreground">{m.routines_next_runs({ timezone })}</h4>
-      <ul className="flex flex-col gap-0.5 tabular-nums">
-        {runs.map((run) => (
-          <li key={run.toISOString()}>
-            <time dateTime={run.toISOString()}>{formatTime(run, timezone)}</time>
+    <ol
+      aria-label={days === null ? m.routines_next_runs({ timezone: schedule.timezone }) : m.routines_days_label()}
+      className="grid grid-cols-7 gap-1.5"
+    >
+      {slots.map((slot) => {
+        const className = cn(
+          "flex w-full flex-col items-center gap-0.5 rounded-lg border py-2 tabular-nums",
+          slot.runs.length === 0 ? "border-dashed border-input text-muted-foreground" : "border-input bg-background",
+          slot === next && "border-primary bg-primary/10",
+        )
+        const content = <DayCell slot={slot} next={slot === next} timezone={schedule.timezone} locale={locale} />
+        if (days === null)
+          return (
+            <li key={slot.key} className={className}>
+              {content}
+            </li>
+          )
+        const on = days.includes(slot.weekday)
+        return (
+          <li key={slot.key}>
+            <button
+              type="button"
+              aria-pressed={on}
+              aria-label={weekdayName(slot.weekday, locale, "long")}
+              disabled={on && days.length === 1}
+              onClick={() => onToggleDay(slot.weekday)}
+              className={cn(
+                className,
+                "transition-colors outline-none hover:border-ring focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed",
+              )}
+            >
+              {content}
+            </button>
           </li>
-        ))}
-      </ul>
-    </section>
+        )
+      })}
+    </ol>
+  )
+}
+
+interface DayCellProps {
+  readonly slot: DaySlot
+  readonly next: boolean
+  readonly timezone: string
+  readonly locale: string
+}
+
+function DayCell({ slot, next, timezone, locale }: DayCellProps) {
+  const [first] = slot.runs
+  return (
+    <>
+      <span className="text-xs text-muted-foreground">{weekdayName(slot.weekday, locale)}</span>
+      <span className="text-sm font-semibold">{slot.day}</span>
+      {first === undefined ? (
+        <span aria-hidden className="font-mono text-xs">
+          –
+        </span>
+      ) : (
+        <span className={cn("font-mono text-xs", next ? "text-primary" : "text-muted-foreground")}>
+          <time dateTime={first.toISOString()}>{clockIn(first, timezone, locale)}</time>
+          {slot.runs.length > 1 && ` +${slot.runs.length - 1}`}
+        </span>
+      )}
+    </>
   )
 }

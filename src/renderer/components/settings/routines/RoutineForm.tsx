@@ -1,4 +1,6 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { BranchIcon } from "@hinacode/icons"
+import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, lazy, startTransition, Suspense, useActionState, useState } from "react"
 import { type AgentCommand, ProviderId } from "../../../../shared/agent.ts"
@@ -16,11 +18,13 @@ import { type EnvironmentId, modelsAtom, projectCommandsAtom, routinesAtom, call
 import { useInstalledProviders, useSettings } from "../../../lib/settings.ts"
 import { m } from "../../../paraglide/messages.js"
 import { effortLabel } from "../../ComposerControls.tsx"
+import { ProjectIcon } from "../../ProjectIcon.tsx"
 import { ProviderIcon, providerLabel } from "../../ProviderIcon.tsx"
 import { Button } from "../../ui/button.tsx"
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog.tsx"
-import { Field, FieldError, FieldGroup, FieldLabel } from "../../ui/field.tsx"
+import { FieldError } from "../../ui/field.tsx"
 import { Input } from "../../ui/input.tsx"
+import { Label } from "../../ui/label.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select.tsx"
 import { Switch } from "../../ui/switch.tsx"
 import { defaultScheduleDraft, fromCron, type ScheduleDraft, toCron } from "./schedule.ts"
@@ -34,6 +38,8 @@ const ComposerInput = lazy(() =>
 const DEFAULT_EFFORT = "default"
 const noCommands: ReadonlyArray<AgentCommand> = []
 const noThreads = { sameMachine: [], otherMachines: [] }
+const pillClass =
+  "h-7 border-0 bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground dark:bg-transparent dark:hover:bg-accent"
 const isProviderId = (value: unknown): value is ProviderId => ProviderId.literals.some((id) => id === value)
 
 interface Draft {
@@ -169,84 +175,82 @@ function RoutineForm({ state, projects, onDone }: RoutineFormProps) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="@container flex flex-col gap-4">
-      <FieldGroup>
-        <div className="grid gap-3 @md:grid-cols-2">
-          <Field>
-            <FieldLabel htmlFor="routine-name">{m.routines_name_label()}</FieldLabel>
-            <Input
-              id="routine-name"
-              required
-              value={draft.name}
-              onChange={(event) => patch({ name: event.target.value })}
-              placeholder={m.routines_name_placeholder()}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="routine-project">{m.routines_project_label()}</FieldLabel>
-            <Select
-              items={projectItems}
-              value={draft.projectId}
-              disabled={editing}
-              onValueChange={(next) => typeof next === "string" && changeProject(next)}
-            >
-              <SelectTrigger id="routine-project" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {projectItems.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
-        <SchedulePicker value={draft.schedule} timezone={timezone} onChange={(schedule) => patch({ schedule })} />
-        <Field>
-          <FieldLabel>{m.routines_prompt_label()}</FieldLabel>
-          <div className="relative rounded-lg border border-input bg-transparent focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30 [&_.cm-content]:min-h-24">
-            <Suspense fallback={<div className="min-h-24" />}>
-              <ComposerInput
-                aria-label={m.routines_prompt_label()}
-                placeholder={m.routines_prompt_placeholder()}
-                value={draft.prompt}
-                onValueChange={(prompt) => patch({ prompt })}
-                commands={commands}
-                files={[]}
-                onMentionStart={() => {}}
-                threads={noThreads}
-                terminals={[]}
-                artifacts={[]}
-                projectId={draft.projectId}
-              />
-            </Suspense>
-          </div>
-        </Field>
-        <AgentFields
-          environment={environment}
-          providers={enabledProviders(settings, installed)}
-          provider={provider}
-          model={model}
-          effort={draft.effort}
-          onChange={patch}
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <Input
+          aria-label={m.routines_name_label()}
+          required
+          value={draft.name}
+          onChange={(event) => patch({ name: event.target.value })}
+          placeholder={m.routines_name_placeholder()}
+          className="min-w-0 flex-1"
         />
-        <Field orientation="horizontal">
-          <FieldLabel htmlFor="routine-worktree">{m.thread_worktree_label()}</FieldLabel>
-          <Switch
-            id="routine-worktree"
-            checked={draft.workspace === "worktree"}
-            onCheckedChange={(worktree) => patch({ workspace: worktree ? "worktree" : "local" })}
+        <Select
+          items={projectItems}
+          value={draft.projectId}
+          disabled={editing}
+          onValueChange={(next) => typeof next === "string" && changeProject(next)}
+        >
+          <SelectTrigger aria-label={m.routines_project_label()} className="max-w-56 shrink-0">
+            <ProjectIcon projectId={draft.projectId} letterOf={project?.name} className="size-4" />
+            <SelectValue className="truncate" />
+          </SelectTrigger>
+          <SelectContent>
+            {projectItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <SchedulePicker value={draft.schedule} timezone={timezone} onChange={(schedule) => patch({ schedule })} />
+      <div className="flex flex-col rounded-lg border border-input bg-transparent focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30 [&_.cm-content]:min-h-32!">
+        <Suspense fallback={<div className="min-h-32" />}>
+          <ComposerInput
+            aria-label={m.routines_prompt_label()}
+            placeholder={m.routines_prompt_placeholder()}
+            value={draft.prompt}
+            onValueChange={(prompt) => patch({ prompt })}
+            commands={commands}
+            files={[]}
+            onMentionStart={() => {}}
+            threads={noThreads}
+            terminals={[]}
+            artifacts={[]}
+            projectId={draft.projectId}
           />
-        </Field>
-        <Field orientation="horizontal">
-          <FieldLabel htmlFor="routine-enabled">{m.routines_enabled_label()}</FieldLabel>
-          <Switch id="routine-enabled" checked={draft.enabled} onCheckedChange={(enabled) => patch({ enabled })} />
-        </Field>
-      </FieldGroup>
+        </Suspense>
+        <div className="flex flex-wrap items-center gap-1 p-1.5">
+          <AgentFields
+            environment={environment}
+            providers={enabledProviders(settings, installed)}
+            provider={provider}
+            model={model}
+            effort={draft.effort}
+            onChange={patch}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            aria-pressed={draft.workspace === "worktree"}
+            onClick={() =>
+              startTransition(() => patch({ workspace: draft.workspace === "worktree" ? "local" : "worktree" }))
+            }
+            className="text-muted-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
+          >
+            <BranchIcon aria-hidden />
+            {m.thread_worktree_toggle()}
+          </Button>
+        </div>
+      </div>
       {error && <FieldError>{error}</FieldError>}
-      <DialogFooter>
+      <DialogFooter className="sm:items-center">
+        <Label className="me-auto font-normal">
+          <Switch checked={draft.enabled} onCheckedChange={(enabled) => patch({ enabled })} />
+          {m.routines_enabled_label()}
+        </Label>
         <DialogClose render={<Button type="button" variant="outline" />}>{m.common_cancel()}</DialogClose>
         <Button type="submit" disabled={isPending || invalidSchedule || project === undefined}>
           {editing ? m.settings_save() : m.routines_create()}
@@ -291,81 +295,69 @@ function AgentFields({ environment, providers, provider, model, effort, onChange
   }
 
   return (
-    <div className="grid gap-3 @md:grid-cols-3">
-      <Field>
-        <FieldLabel htmlFor="routine-provider">{m.thread_provider_label()}</FieldLabel>
-        <Select
-          items={providerItems}
-          value={provider}
-          onValueChange={(next) => isProviderId(next) && onChange({ provider: next, model: "", effort: null })}
-        >
-          <SelectTrigger id="routine-provider" className="w-full">
-            <SelectValue />
+    <>
+      <Select
+        items={providerItems}
+        value={provider}
+        onValueChange={(next) => isProviderId(next) && onChange({ provider: next, model: "", effort: null })}
+      >
+        <SelectTrigger size="sm" aria-label={m.thread_provider_label()} className={pillClass}>
+          <ProviderIcon provider={provider} />
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {providerItems.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              <ProviderIcon provider={item.value} />
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {listed.length > 0 ? (
+        <Select items={modelItems} value={model} onValueChange={(next) => typeof next === "string" && pickModel(next)}>
+          <SelectTrigger size="sm" aria-label={m.thread_model_label()} className={cn(pillClass, "max-w-48")}>
+            <SelectValue placeholder={m.settings_models_pick()} className="truncate" />
           </SelectTrigger>
           <SelectContent>
-            {providerItems.map((item) => (
+            {modelItems.map((item) => (
               <SelectItem key={item.value} value={item.value}>
-                <ProviderIcon provider={item.value} />
                 {item.label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="routine-model">{m.thread_model_label()}</FieldLabel>
-        {listed.length > 0 ? (
-          <Select
-            items={modelItems}
-            value={model}
-            onValueChange={(next) => typeof next === "string" && pickModel(next)}
-          >
-            <SelectTrigger id="routine-model" className="w-full">
-              <SelectValue placeholder={m.settings_models_pick()} />
-            </SelectTrigger>
-            <SelectContent>
-              {modelItems.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <Input
-            id="routine-model"
-            required
-            value={model}
-            onChange={(event) => onChange({ model: event.target.value })}
-            placeholder={AsyncResult.isInitial(models) ? m.settings_models_loading() : m.thread_model_placeholder()}
-            spellCheck={false}
-            className="font-mono"
-          />
-        )}
-      </Field>
-      {efforts.length > 0 && (
-        <Field>
-          <FieldLabel htmlFor="routine-effort">{m.thread_effort_picker()}</FieldLabel>
-          <Select
-            items={effortItems}
-            value={effort ?? DEFAULT_EFFORT}
-            onValueChange={(next) =>
-              typeof next === "string" && onChange({ effort: next === DEFAULT_EFFORT ? null : next })
-            }
-          >
-            <SelectTrigger id="routine-effort" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {effortItems.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
+      ) : (
+        <Input
+          aria-label={m.thread_model_label()}
+          required
+          value={model}
+          onChange={(event) => onChange({ model: event.target.value })}
+          placeholder={AsyncResult.isInitial(models) ? m.settings_models_loading() : m.thread_model_placeholder()}
+          spellCheck={false}
+          className="h-7 w-44 font-mono text-xs"
+        />
       )}
-    </div>
+      {efforts.length > 0 && (
+        <Select
+          items={effortItems}
+          value={effort ?? DEFAULT_EFFORT}
+          onValueChange={(next) =>
+            typeof next === "string" && onChange({ effort: next === DEFAULT_EFFORT ? null : next })
+          }
+        >
+          <SelectTrigger size="sm" aria-label={m.thread_effort_picker()} className={pillClass}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {effortItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+    </>
   )
 }

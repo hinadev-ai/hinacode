@@ -1,5 +1,13 @@
 import { describe, expect, test } from "@effect/vitest"
-import { defaultScheduleDraft, describeCron, fromCron, nextRuns, type ScheduleDraft, toCron } from "./schedule.ts"
+import {
+  defaultScheduleDraft,
+  describeCron,
+  fromCron,
+  nextRuns,
+  type ScheduleDraft,
+  toCron,
+  weekAhead,
+} from "./schedule.ts"
 
 const draft = (patch: Partial<ScheduleDraft>): ScheduleDraft => ({ ...defaultScheduleDraft, ...patch })
 
@@ -76,5 +84,38 @@ describe("nextRuns", () => {
   test("is empty for an invalid expression", () => {
     expect(nextRuns({ cron: "not cron", timezone: "UTC" }, from, 3)).toEqual([])
     expect(nextRuns({ cron: "0 9 30 2 *", timezone: "UTC" }, from, 3)).toEqual([])
+  })
+})
+
+describe("weekAhead", () => {
+  const tuesdayNoonTokyo = new Date("2026-11-10T03:00:00Z")
+  const summary = (cron: string, timezone = "Asia/Tokyo") =>
+    weekAhead({ cron, timezone }, tuesdayNoonTokyo).map((slot) => `${slot.day}:${slot.runs.length}`)
+
+  test("starts today in the schedule's time zone and spans seven days", () => {
+    const slots = weekAhead({ cron: "0 9 * * *", timezone: "Asia/Tokyo" }, tuesdayNoonTokyo)
+    expect(slots.map((slot) => slot.weekday)).toEqual([2, 3, 4, 5, 6, 0, 1])
+    expect(slots.map((slot) => slot.day)).toEqual([10, 11, 12, 13, 14, 15, 16])
+  })
+
+  test("leaves today empty once its run has passed", () => {
+    expect(summary("0 9 * * *")).toEqual(["10:0", "11:1", "12:1", "13:1", "14:1", "15:1", "16:1"])
+  })
+
+  test("leaves the weekend empty for weekdays", () => {
+    expect(summary("0 18 * * 1-5")).toEqual(["10:1", "11:1", "12:1", "13:1", "14:0", "15:0", "16:1"])
+  })
+
+  test("counts every run of an hourly schedule", () => {
+    expect(summary("0 * * * *")).toEqual(["10:11", "11:24", "12:24", "13:24", "14:24", "15:24", "16:24"])
+  })
+
+  test("uses the calendar day of the time zone, not UTC", () => {
+    const slots = weekAhead({ cron: "0 9 * * *", timezone: "America/Los_Angeles" }, tuesdayNoonTokyo)
+    expect(slots[0]).toMatchObject({ weekday: 1, day: 9 })
+  })
+
+  test("has no runs for an invalid expression", () => {
+    expect(summary("0 9 30 2 *").every((slot) => slot.endsWith(":0"))).toBe(true)
   })
 })

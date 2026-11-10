@@ -109,3 +109,31 @@ export function nextRuns(schedule: RoutineSchedule, from: Date, count: number): 
   }
   return runs
 }
+
+export interface DaySlot {
+  readonly key: string
+  readonly weekday: number
+  readonly day: number
+  readonly runs: ReadonlyArray<Date>
+}
+
+const dayKey = (date: Date, timeZone: string) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date)
+
+export function weekAhead(schedule: RoutineSchedule, from: Date): ReadonlyArray<DaySlot> {
+  const [year, month, day] = dayKey(from, schedule.timezone).split("-").map(Number) as [number, number, number]
+  const dates = Array.from({ length: 7 }, (_, offset) => new Date(Date.UTC(year, month - 1, day + offset)))
+  const runs = new Map(dates.map((date) => [dayKey(date, "UTC"), [] as Array<Date>]))
+  const lastKey = dayKey(dates[6]!, "UTC")
+  if (isCronExpression(schedule.cron, schedule.timezone)) {
+    for (const run of Cron.sequence(Cron.parseUnsafe(schedule.cron, schedule.timezone), from)) {
+      const key = dayKey(run, schedule.timezone)
+      if (key > lastKey) break
+      runs.get(key)?.push(run)
+    }
+  }
+  return dates.map((date) => {
+    const key = dayKey(date, "UTC")
+    return { key, weekday: date.getUTCDay(), day: date.getUTCDate(), runs: runs.get(key) ?? [] }
+  })
+}
