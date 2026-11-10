@@ -21,6 +21,7 @@ const SECOND_DEVICE: DeviceId = "ios:33333333-3333-3333-3333-333333333333"
 const SPARE_DEVICE: DeviceId = "ios:44444444-4444-4444-4444-444444444444"
 const RACE_DEVICE: DeviceId = "ios:55555555-5555-5555-5555-555555555555"
 const REMEMBERED_DEVICE: DeviceId = "ios:66666666-6666-6666-6666-666666666666"
+const LANDSCAPE_DEVICE: DeviceId = "ios:77777777-7777-7777-7777-777777777777"
 const CREATED_DEVICE: DeviceId = "ios:22222222-2222-2222-2222-222222222222"
 
 const removed: Array<DeviceId> = []
@@ -50,7 +51,10 @@ devices.set(SECOND_DEVICE, { ...devices.get(USERS_DEVICE)!, id: SECOND_DEVICE, n
 devices.set(REMEMBERED_DEVICE, { ...devices.get(USERS_DEVICE)!, id: REMEMBERED_DEVICE, name: "Remembered iPhone" })
 devices.set(SPARE_DEVICE, { ...devices.get(USERS_DEVICE)!, id: SPARE_DEVICE, name: "Someone's spare iPhone" })
 
+devices.set(LANDSCAPE_DEVICE, { ...devices.get(USERS_DEVICE)!, id: LANDSCAPE_DEVICE, name: "Sideways iPhone" })
 devices.set(RACE_DEVICE, { ...devices.get(USERS_DEVICE)!, id: RACE_DEVICE, name: "Race fixture" })
+
+const RIGHT_EDGE = { x: 1.5, y: 0.25, width: 0.5, height: 0.5 }
 
 const ios: DevicePlatformDriver = {
   ...unavailableDriver({ kind: "ready" }),
@@ -77,8 +81,14 @@ const ios: DevicePlatformDriver = {
     return Promise.resolve()
   },
   launch: (id) => Promise.resolve(void launched.push(id)),
+  describe: () =>
+    Promise.resolve([{ role: "button", label: "Right edge", identifier: "", value: "", frame: RIGHT_EDGE }]),
   connect: (id, onFrame) => {
-    onFrame({ mime: "image/jpeg", data: Buffer.from("frame"), width: 2, height: 4, orientation: "portrait" })
+    onFrame(
+      id === LANDSCAPE_DEVICE
+        ? { mime: "image/jpeg", data: Buffer.from("frame"), width: 4, height: 2, orientation: "landscape" }
+        : { mime: "image/jpeg", data: Buffer.from("frame"), width: 2, height: 4, orientation: "portrait" },
+    )
     return Promise.resolve({
       screen: { width: 1, height: 2, scale: 2 },
       send: (commands) => Promise.resolve(void sent.push(...commands.map((command) => ({ deviceId: id, command })))),
@@ -345,6 +355,18 @@ describe("Devices", () => {
         expect(yield* service.act(threadId, undefined, tap, tapping)).toBe("done")
         expect(sent).toEqual([{ deviceId: REMEMBERED_DEVICE, command: touch }])
         expect(devices.has(CREATED_DEVICE)).toBe(created)
+      }),
+    )
+
+    it.effect("measures taps and picks on a rotated device in the size it shows", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const { threadId } = yield* seedThread({ rootPath: "/tmp/kk-devices-landscape" })
+        yield* service.attach(threadId, LANDSCAPE_DEVICE)
+
+        expect((yield* service.screenshot(threadId, undefined)).screen).toEqual({ width: 2, height: 1 })
+        const picked = yield* service.pick({ threadId, deviceId: LANDSCAPE_DEVICE, x: 0.9, y: 0.5 })
+        expect(picked?.element.frame).toEqual(RIGHT_EDGE)
       }),
     )
 

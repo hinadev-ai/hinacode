@@ -107,9 +107,9 @@ export const deviceToolsLayer = DeviceTools.toLayer(
 
     const screen = (threadId: string, device: string | undefined, caption: string, save = false) =>
       Effect.gen(function* () {
-        const { frame, state } = yield* devices.screenshot(threadId, device)
+        const { frame, state, screen } = yield* devices.screenshot(threadId, device)
         const data = Buffer.from(frame.data, "base64")
-        const size = `${Math.round(state.screen.width)}×${Math.round(state.screen.height)} points`
+        const size = `${Math.round(screen.width)}×${Math.round(screen.height)} points`
         const about = `${caption} ${state.device.name} (${state.device.id}), ${state.device.osVersion}, screen ${size}${frame.orientation === "landscape" ? " (landscape)" : ""}.`
         const blocks: Array<McpSchema.ContentBlock> = [{ type: "text", text: about }]
         if (save) {
@@ -124,9 +124,9 @@ export const deviceToolsLayer = DeviceTools.toLayer(
       })
 
     const at = (threadId: string, device: string | undefined, x: number, y: number) =>
-      Effect.map(devices.screenshot(threadId, device), ({ state }) => ({
-        x: Math.min(1, Math.max(0, x / state.screen.width)),
-        y: Math.min(1, Math.max(0, y / state.screen.height)),
+      Effect.map(devices.screenshot(threadId, device), ({ state, screen }) => ({
+        x: Math.min(1, Math.max(0, x / screen.width)),
+        y: Math.min(1, Math.max(0, y / screen.height)),
         deviceId: state.device.id,
       }))
 
