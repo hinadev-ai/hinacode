@@ -7,12 +7,20 @@ const tileOf = (appName: string, redirectHost: string) =>
   waitingPage({ appName, redirectHost, approver: SIGNED_OUT }).html.match(/<span class="tile ([^"]+)"/)?.[1]
 
 describe("waiting page", () => {
-  test("shows the mark of a known app, found by its name or its callback host", () => {
-    expect(tileOf("Grok Bot", "grok.example")).toBe("glyph grok")
+  test("shows the mark of a known app, by its own domain or, on loopback, by its name", () => {
+    expect(tileOf("Grok Bot", "grok.com")).toBe("glyph grok")
     expect(tileOf("Connector", "x.ai")).toBe("glyph grok")
+    expect(tileOf("Connector", "connectors.claude.ai")).toBe("glyph claude")
     expect(tileOf("Claude Code", "localhost:4567")).toBe("glyph claude")
     expect(tileOf("MCP client", "chatgpt.com")).toBe("glyph chatgpt")
     expect(tileOf("hermes-agent", "127.0.0.1:9000")).toBe("hermes")
+  })
+
+  test("does not lend a brand's mark to an app that only borrows its name", () => {
+    expect(tileOf("Claude", "claude.evil.example")).toBe("letter")
+    expect(tileOf("Claude", "evil.example")).toBe("letter")
+    expect(tileOf("Connector", "evilclaude.ai")).toBe("letter")
+    expect(tileOf("Grok Bot", "grok.com.evil.example:8443")).toBe("letter")
   })
 
   test("falls back to the first letter of any other app", () => {

@@ -331,6 +331,19 @@ describe("approving on the web", () => {
       expect((await status(app)).requests).toHaveLength(2)
     }))
 
+  test("a request keeps only its latest sign-in", () =>
+    withApp(async (app) => {
+      await start(app)
+      const clientId = await registered(app)
+      const { request } = await askToConnect(app, clientId)
+      const first = cookieFrom(await get(app, "/oauth/sign-in", { request }), "hinacode_sign_in")
+      const latest = await get(app, "/oauth/sign-in", { request })
+      fakeRelay.challenges.push(new URL(latest.headers.get("location")!).searchParams.get("code_challenge")!)
+      expect((await withCookie(app, `/oauth/signed-in?code=${OWNER_CODE}`, first.pair)).status).toBe(400)
+      const kept = cookieFrom(latest, "hinacode_sign_in")
+      expect((await withCookie(app, `/oauth/signed-in?code=${OWNER_CODE}`, kept.pair)).status).toBe(303)
+    }))
+
   test("a sign-in the relay refuses, or one this page did not start, grants nothing", () =>
     withApp(async (app) => {
       await start(app)
