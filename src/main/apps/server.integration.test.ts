@@ -309,6 +309,18 @@ describe("app server", () => {
       expect((await status(app)).connections[0]?.lastUsedAt).not.toBeNull()
     }))
 
+  test("refuses an MCP request larger than a megabyte", () =>
+    withApp(async (app) => {
+      const token = await connect(app)
+      const request = initialize(token)
+      const oversized = await fetch(`${app.origin}/mcp`, {
+        ...request,
+        body: request.body.replace('"test"', JSON.stringify("x".repeat(1024 * 1024))),
+      })
+      expect(oversized.status).not.toBe(200)
+      expect(oversized.headers.get("mcp-session-id")).toBeNull()
+    }))
+
   test("create_thread falls back to the developer's default agent and model", () =>
     withApp(async (app) => {
       const token = await connect(app)

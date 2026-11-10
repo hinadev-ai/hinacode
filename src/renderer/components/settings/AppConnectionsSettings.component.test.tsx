@@ -84,3 +84,10 @@ test("lists an app once it connects and removes it", async () => {
   await expect.poll(() => removed).toEqual(["connection-1"])
   await expect.poll(() => page.getByText("Claude", { exact: true }).query()).toBeNull()
 })
+
+test("an app stays removable after the relay is gone", async () => {
+  status = { url: null, approvalCode: null, connections: [claude] }
+  await renderSettings()
+  await page.getByRole("button", { name: "Remove Claude" }).click()
+  await expect.poll(() => removed).toEqual(["connection-1"])
+})
