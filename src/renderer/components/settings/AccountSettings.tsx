@@ -149,13 +149,12 @@ function RenameItem({ onClick }: { onClick: () => void }) {
 function DefaultAccountRow({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
   const name = useDefaultAccountName(environment, provider)
-  const { defaultAccountName } = useSettings(environment)
   const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const { dialog, queue, onMenuOpenChangeComplete, onDialogOpenChange } = useRowDialog()
 
   const rename = async (next: string) => {
     const stored = next === m.account_default() ? null : next
-    await updateSettings({ defaultAccountName: { ...defaultAccountName, [provider]: stored } })
+    await updateSettings({ defaultAccountName: { [provider]: stored } })
   }
 
   return (
@@ -594,7 +593,7 @@ function DefaultAccountField({ provider }: { provider: ProviderId }) {
     if (value === null) return
     setError(null)
     try {
-      await updateSettings({ defaultAccount: { ...defaultAccount, [provider]: value === CLI_LOGIN ? null : value } })
+      await updateSettings({ defaultAccount: { [provider]: value === CLI_LOGIN ? null : value } })
     } catch (cause) {
       setError(errorMessage(cause))
     }

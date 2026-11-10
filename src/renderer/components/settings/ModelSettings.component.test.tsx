@@ -3,13 +3,13 @@ import { RouterProvider, createMemoryHistory, createRootRoute, createRouter } fr
 import { beforeEach, expect, test } from "vitest"
 import { page } from "vitest/browser"
 import { render } from "vitest-browser-react"
-import type { HinacodeBridge } from "../../../shared/contract.ts"
+import type { HinacodeBridge, SettingsPatch } from "../../../shared/contract.ts"
 import { defaultSettings, type Settings } from "../../../shared/domain.ts"
 import "../../index.css"
 import { ModelSettings } from "./ModelSettings.tsx"
 
 let stored: Settings = defaultSettings
-let sent: Array<Settings["providerEnabled"]> = []
+let sent: Array<Partial<Settings["providerEnabled"]>> = []
 let releaseFirstSave: () => void = () => {}
 let codexAt: string | null = null
 
@@ -26,12 +26,21 @@ const bridge: HinacodeBridge = {
     if (method === "settings.get") return { result: stored }
     if (method === "agents.binaries") return { result: binaries() }
     if (method === "settings.set") {
-      const patch = payload as Partial<Settings>
+      const patch = payload as SettingsPatch<Settings>
       if (patch.providerEnabled !== undefined) sent.push(patch.providerEnabled)
-      if (patch.providerBinary !== undefined) codexAt = patch.providerBinary.codex
+      if (patch.providerBinary?.codex !== undefined) codexAt = patch.providerBinary.codex
       if (patch.providerEnabled !== undefined && sent.length === 1)
         await new Promise<void>((resolve) => (releaseFirstSave = resolve))
-      stored = { ...stored, ...patch }
+      const groups = Object.entries(patch).map(([key, value]) => {
+        const group = stored[key as keyof Settings]
+        return [
+          key,
+          group === null || Array.isArray(group) || typeof group !== "object"
+            ? value
+            : { ...group, ...(value as object) },
+        ]
+      })
+      stored = { ...stored, ...Object.fromEntries(groups) }
       return { result: stored }
     }
     return { error: { tag: "NotStubbed", message: method } }
@@ -68,7 +77,7 @@ test("keeps an earlier agent switch when a second one flips before the first sav
   releaseFirstSave()
 
   await expect.poll(() => sent.length).toBe(2)
-  expect(sent[1]).toMatchObject({ codex: false, muse: false })
+  expect(sent).toEqual([{ codex: false }, { muse: false }])
   await expect.poll(() => stored.providerEnabled).toMatchObject({ codex: false, muse: false })
 })
 

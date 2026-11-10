@@ -81,7 +81,7 @@ function ListenerSettings() {
     startTransition(async () => {
       setError(null)
       try {
-        await updateSettings({ automations: { ...listener, ...patch } })
+        await updateSettings({ automations: patch })
       } catch (cause) {
         setError(errorText(cause))
       }

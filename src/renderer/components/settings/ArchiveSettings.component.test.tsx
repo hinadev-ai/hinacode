@@ -7,15 +7,15 @@ import { type ArchiveSettings as Archive, defaultSettings } from "../../../share
 import "../../index.css"
 import { ArchiveSettings } from "./ArchiveSettings.tsx"
 
-let saved: Array<Archive> = []
+let saved: Array<Partial<Archive>> = []
 
 const bridge: HinacodeBridge = {
   rpc: async (method, payload) => {
     if (method === "settings.get") return { result: defaultSettings }
     if (method === "settings.set") {
-      const { archive } = payload as { archive: Archive }
+      const { archive } = payload as { archive: Partial<Archive> }
       saved.push(archive)
-      return { result: { ...defaultSettings, archive } }
+      return { result: { ...defaultSettings, archive: { ...defaultSettings.archive, ...archive } } }
     }
     return { error: { tag: "NotStubbed", message: method } }
   },
