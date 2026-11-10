@@ -1,4 +1,7 @@
 import type { ModelInfo, Options, PermissionResult, SDKUserMessage, SlashCommand } from "@anthropic-ai/claude-agent-sdk"
+import { existsSync, mkdtempSync, readFileSync, statSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { vi } from "vitest"
 import { Effect, Fiber, Layer, Option, Stream } from "effect"
@@ -173,12 +176,23 @@ const textDelta = (text: string, answering?: string) => ({
   ...(answering === undefined ? {} : { user_message_uuid: answering }),
 })
 
+const threadTmp = mkdtempSync(join(tmpdir(), "hc-thread-"))
+
+const settingsFileOf = (cli: InstanceType<typeof sdk.FakeQuery>) => {
+  const { settings } = cli.options
+  if (typeof settings !== "string") throw new Error("Claude Code got its settings inline, in its argv")
+  return settings
+}
+
+const flagSettings = (cli: InstanceType<typeof sdk.FakeQuery>): Record<string, unknown> & { env?: unknown } =>
+  JSON.parse(readFileSync(settingsFileOf(cli), "utf8"))
+
 const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   threadId: "thread-1",
   prompt: "Hello",
   attachments: [],
   cwd: "/repo",
-  tmpDirectory: "/tmp/hc-thread-1",
+  tmpDirectory: threadTmp,
   model: "claude-sonnet-5-5",
   effort: null,
   fastMode: false,
@@ -275,10 +289,26 @@ describe("Claude idle sessions", () => {
       Effect.gen(function* () {
         yield* runTurn()
         expect(latestCli().options.env).toMatchObject({
-          TMPDIR: "/tmp/hc-thread-1",
-          TMP: "/tmp/hc-thread-1",
-          TEMP: "/tmp/hc-thread-1",
+          TMPDIR: threadTmp,
+          TMP: threadTmp,
+          TEMP: threadTmp,
         })
+      }),
+    ),
+  )
+
+  it.effect("hands the CLI its settings in a file only the user can read, and removes it with the session", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* runTurn()
+        const first = latestCli()
+        const file = settingsFileOf(first)
+        expect(file.startsWith(threadTmp)).toBe(true)
+        expect(statSync(file).mode & 0o777).toBe(0o600)
+
+        yield* runTurn(turnInput({ autoCompactTokens: 300_000 }))
+        expect(first.close).toHaveBeenCalled()
+        expect(existsSync(file)).toBe(false)
       }),
     ),
   )
@@ -288,12 +318,12 @@ describe("Claude idle sessions", () => {
       Effect.gen(function* () {
         yield* runTurn()
         const first = latestCli()
-        expect(first.options.settings).toStrictEqual({ fastMode: false })
+        expect(flagSettings(first)).toStrictEqual({ fastMode: false })
 
         yield* runTurn(turnInput({ autoCompactTokens: 300_000 }))
         expect(first.close).toHaveBeenCalled()
         expect(latestCli().options.resume).toBe("session-1")
-        expect(latestCli().options.settings).toStrictEqual({ fastMode: false, autoCompactWindow: 300_000 })
+        expect(flagSettings(latestCli())).toStrictEqual({ fastMode: false, autoCompactWindow: 300_000 })
       }),
     ),
   )
@@ -1270,8 +1300,7 @@ const onMagpie = <A, E>(effect: Effect.Effect<A, E, MagpieProvider>) =>
     return effect
   }).pipe(Effect.provide(MagpieProvider.layer.pipe(Layer.provide(magpieDependencies()))))
 
-const flagEnv = (cli: InstanceType<typeof sdk.FakeQuery>) =>
-  typeof cli.options.settings === "object" ? cli.options.settings.env : undefined
+const flagEnv = (cli: InstanceType<typeof sdk.FakeQuery>) => flagSettings(cli).env
 
 const magpieTurn = (model: string, fastMode = false) =>
   Effect.gen(function* () {

@@ -22,6 +22,7 @@ interface MessagesRequest {
   readonly model: string
   readonly speed: string | null
   readonly key: string | undefined
+  readonly keyInArgv: boolean
 }
 
 const requests: Array<MessagesRequest> = []
@@ -97,6 +98,8 @@ const sse = (response: ServerResponse, model: string, block: ContentBlock = { ty
   response.end()
 }
 
+const commandLines = () => spawnSync("ps", ["-A", "-ww", "-o", "args="], { encoding: "utf8" }).stdout
+
 const answerMessages = (gateway: string, request: IncomingMessage, response: ServerResponse, text: string) => {
   const body = JSON.parse(text) as {
     model: string
@@ -109,11 +112,13 @@ const answerMessages = (gateway: string, request: IncomingMessage, response: Ser
   )
   const answered = blocks.find((block) => block.type === "tool_result" && block.tool_use_id === askColor.id)
   if (answered !== undefined) toolResults.push(JSON.stringify(answered.content))
+  const key = request.headers.authorization?.replace(/^Bearer /, "") ?? request.headers["x-api-key"]?.toString()
   requests.push({
     gateway,
     model: body.model,
     speed: body.speed ?? null,
-    key: request.headers.authorization?.replace(/^Bearer /, "") ?? request.headers["x-api-key"]?.toString(),
+    key,
+    keyInArgv: key !== undefined && commandLines().includes(key),
   })
   if (body.stream)
     return sse(response, body.model, answered === undefined && text.includes(ASK_PROMPT) ? askColor : undefined)
@@ -293,6 +298,16 @@ describe("magpie provider against a gateway", () => {
         expect(yield* speedsOf(turn({ threadId: "thread-3" }), { gateway: "remote", key: REMOTE_KEY })).toStrictEqual(
           new Set([null]),
         )
+      }).pipe(Effect.provide(onMagpie())),
+    90_000,
+  )
+
+  it.effect.skipIf(!claudeInstalled)(
+    "keeps the saved key out of Claude Code's command line, where any local account could read it",
+    () =>
+      Effect.gen(function* () {
+        yield* speedsOf(turn({ threadId: "thread-6", tmpDirectory: mkdtempSync(join(root, "tmp-")) }))
+        expect(requests.map((request) => request.keyInArgv)).not.toContain(true)
       }).pipe(Effect.provide(onMagpie())),
     90_000,
   )
