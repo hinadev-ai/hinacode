@@ -207,15 +207,7 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
   )
 }
 
-function ToolCallDetails({
-  call: shipped,
-  summary,
-  inGroup = false,
-}: {
-  call: ToolCall
-  summary: string
-  inGroup?: boolean
-}) {
+function ToolCallDetails({ call: shipped, summary }: { call: ToolCall; summary: string }) {
   const [call, showFullOutput] = useFullOutput(shipped)
   const todos = todosInCall(call)
   if (todos !== null) {
@@ -233,23 +225,14 @@ function ToolCallDetails({
     </Button>
   )
   if (call.name === "Bash") {
-    return (
-      <CommandView
-        call={call}
-        command={summary}
-        scroll={inGroup ? "" : "max-h-80 overflow-auto"}
-        fullOutputButton={fullOutputButton}
-      />
-    )
+    return <CommandView call={call} command={summary} fullOutputButton={fullOutputButton} />
   }
-  const scroll = inGroup ? "" : "max-h-64 overflow-auto"
   return (
     <div className="flex flex-col gap-2">
-      <ToolSection label={m.tool_input()} text={JSON.stringify(call.input, null, 2)} scroll={scroll} />
+      <ToolSection label={m.tool_input()} text={JSON.stringify(call.input, null, 2)} />
       <ToolSection
         label={m.tool_output()}
         text={call.output === undefined ? m.tool_no_output() : formatOutput(call.output)}
-        scroll={scroll}
         fullOutputButton={fullOutputButton}
       />
     </div>
@@ -486,7 +469,7 @@ function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest |
         </ul>
       )}
       <CollapsibleContent className="mt-1 mb-2 text-xs">
-        <ToolCallDetails call={call} summary={summary} inGroup />
+        <ToolCallDetails call={call} summary={summary} />
       </CollapsibleContent>
     </Collapsible>
   )
@@ -561,17 +544,15 @@ function ToolLabel({ call, truncate }: { call: ToolCall; truncate: string }) {
 function CommandView({
   call,
   command,
-  scroll,
   fullOutputButton,
 }: {
   call: ToolCall
   command: string
-  scroll: string
   fullOutputButton: ReactNode
 }) {
   const output = call.output === undefined ? "" : formatOutput(call.output).replace(/\n$/, "")
   return (
-    <div className={cn("rounded-md bg-muted/50 p-2 font-mono", scroll)}>
+    <div className="rounded-md bg-muted/50 p-2 font-mono">
       <section>
         <h4 className="sr-only">{m.tool_command()}</h4>
         <pre className="wrap-anywhere whitespace-pre-wrap">
@@ -607,22 +588,12 @@ function ShellCode({ code }: { code: string }) {
   )
 }
 
-function ToolSection({
-  label,
-  text,
-  scroll,
-  fullOutputButton,
-}: {
-  label: string
-  text: string
-  scroll: string
-  fullOutputButton?: ReactNode
-}) {
+function ToolSection({ label, text, fullOutputButton }: { label: string; text: string; fullOutputButton?: ReactNode }) {
   return (
     <section>
       <h4 className="mb-1 font-medium text-muted-foreground">{label}</h4>
       {fullOutputButton}
-      <pre className={cn("rounded-md bg-muted/50 p-2 font-mono wrap-anywhere whitespace-pre-wrap", scroll)}>{text}</pre>
+      <pre className="rounded-md bg-muted/50 p-2 font-mono wrap-anywhere whitespace-pre-wrap">{text}</pre>
     </section>
   )
 }

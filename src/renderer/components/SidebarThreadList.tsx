@@ -159,8 +159,6 @@ interface SidebarThreadListProps {
   readonly threads: ReadonlyArray<Thread>
   readonly reorderable: boolean
   readonly showProject?: boolean
-  readonly showActivity?: boolean
-  readonly flat?: boolean
   readonly showEmptyHint?: boolean
   readonly newThreadButtonRef?: RefObject<HTMLButtonElement | null>
   readonly className?: string
@@ -172,8 +170,6 @@ export function SidebarThreadList({
   threads,
   reorderable,
   showProject = false,
-  showActivity = false,
-  flat = false,
   showEmptyHint = false,
   newThreadButtonRef,
   className = "",
@@ -185,7 +181,7 @@ export function SidebarThreadList({
   const [dragging, setDragging] = useState(false)
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
-  const entries = flat ? threads.map((thread) => ({ thread, nested: false })) : nestChildren(threads)
+  const entries = nestChildren(threads)
   const [shownCount, setShownCount] = useState(pageSize)
   const shownEntries = entries.slice(0, shownCount)
 
@@ -239,7 +235,7 @@ export function SidebarThreadList({
                 group={group}
                 reorderable={reorderable && !nested}
                 showProject={showProject}
-                showActivity={showActivity}
+                showActivity={false}
                 linkRef={index === 0 ? firstRowRef : undefined}
                 focusAfterRemoval={focusAfterRemoval}
               />
@@ -372,15 +368,14 @@ const rowActionsClassName =
 
 interface DraftRowsProps {
   readonly drafts: ReadonlyArray<{ readonly thread: Thread; readonly title: string }>
-  readonly projectNames?: ReadonlyMap<string, string>
   readonly className: string
 }
 
-export function DraftRows({ drafts, projectNames, className }: DraftRowsProps) {
+export function DraftRows({ drafts, className }: DraftRowsProps) {
   return (
     <ul className={`flex flex-col gap-1 ${className}`}>
       {drafts.map(({ thread, title }) => (
-        <DraftRow key={thread.id} thread={thread} title={title} project={projectNames?.get(thread.projectId) ?? null} />
+        <DraftRow key={thread.id} thread={thread} title={title} project={null} />
       ))}
     </ul>
   )
@@ -650,7 +645,7 @@ const ThreadRow = memo(function ThreadRow({
             <StatusIndicator state={state} />
             {meta.project === null && (
               <span aria-hidden className="flex shrink-0 items-center gap-2 text-xs text-sidebar-meta">
-                <span className="min-w-8 text-end cjk:min-w-10 [&:lang(zh-CN)]:min-w-10">{when}</span>
+                <span className="min-w-8 text-end cjk:min-w-10">{when}</span>
                 <ThreadProviderIcon provider={meta.provider} model={meta.model} className="size-3" />
               </span>
             )}
@@ -1067,7 +1062,6 @@ function useThreadMeta(thread: Thread, showProject: boolean) {
   return {
     project: showProject ? (projects.find((project) => project.id === thread.projectId)?.name ?? null) : null,
     links,
-    threadId: thread.id,
     provider: thread.provider,
     model: thread.model,
     updatedAt: lastActivity(thread),

@@ -1,8 +1,7 @@
 import type { CSSProperties } from "react"
-import { RiCloseLine } from "react-icons/ri"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { m } from "@/paraglide/messages.js"
-import { AlertIcon, CheckCircleIcon, InfoIcon, SpinnerIcon, XCircleIcon } from "@hinacode/icons"
+import { AlertIcon, CheckCircleIcon, CloseIcon, InfoIcon, SpinnerIcon, XCircleIcon } from "@hinacode/icons"
 
 const Toaster = (props: ToasterProps) => (
   <Sonner
@@ -15,7 +14,7 @@ const Toaster = (props: ToasterProps) => (
       warning: <AlertIcon className="size-4 text-attention" />,
       error: <XCircleIcon className="size-4 text-destructive" />,
       loading: <SpinnerIcon className="size-4 animate-spin motion-reduce:animate-none" />,
-      close: <RiCloseLine className="size-3" />,
+      close: <CloseIcon className="size-3" />,
     }}
     style={
       {
