@@ -276,6 +276,7 @@ const handlers: Handlers = {
           onSome: (sidechat) => AgentRunner.use((runner) => runner.interrupt(sidechat.id)),
         }),
       ),
+      Effect.andThen(AgentRunner.use((runner) => runner.interrupt(id))),
       Effect.andThen(closeTerminals(id)),
       Effect.andThen(Threads.use((threads) => threads.remove(id, { removeWorktree }))),
       Effect.andThen(Events.use((events) => events.publish({ type: "thread.removed", id }))),
