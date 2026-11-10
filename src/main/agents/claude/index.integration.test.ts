@@ -192,6 +192,20 @@ describe("Claude Code CLI failures", () => {
     ),
   )
 
+  it.live("keeps a turn switched to full access while the CLI reports the mode it started in", () =>
+    withClis((lifeline) =>
+      Effect.gen(function* () {
+        const { home } = fakeHome({ lifeline })
+        const provider = yield* harness
+        const turn = yield* startTurn(provider, input(home, { prompt: "init after a mode switch" }))
+        yield* turn.until((event) => event.type === "text_delta")
+        yield* provider.setAccessMode("t1", "full")
+        yield* Fiber.join(turn.fiber)
+        expect(ended(turn.events)).toMatchObject({ type: "turn_completed" })
+      }).pipe(Effect.scoped),
+    ),
+  )
+
   it.live("skips stdout lines that are not JSON and message types it does not know", () =>
     withClis((lifeline) =>
       Effect.gen(function* () {

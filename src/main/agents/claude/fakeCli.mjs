@@ -139,7 +139,17 @@ const reply = (text) => {
 const pendingTools = new Map()
 let interrupted = null
 
+let initAfterModeSwitch = null
+
 const prompt = (text) => {
+  if (text === "init after a mode switch") {
+    textDelta("waiting for a mode switch")
+    initAfterModeSwitch = () => {
+      init()
+      reply("started in the launch mode")
+    }
+    return
+  }
   init()
   if (text === "exit") return process.exit(0)
   if (text === "crash") {
@@ -218,7 +228,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       interrupted = null
       return
     }
-    return answer(message.request_id)
+    answer(message.request_id)
+    if (message.request.subtype === "set_permission_mode") initAfterModeSwitch?.()
+    initAfterModeSwitch = null
+    return
   }
   if (message.type === "control_response") {
     if (!pendingTools.delete(message.response.request_id)) return
