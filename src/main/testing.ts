@@ -7,6 +7,7 @@ import type { MuseProvider } from "./agents/muse/index.ts"
 import type { MagpieProvider } from "./agents/magpie/index.ts"
 import type { OpencodeProvider } from "./agents/opencode/index.ts"
 import * as AppConnections from "./apps/AppConnections.ts"
+import * as AppServer from "./apps/server.ts"
 import * as Db from "./db/client.ts"
 import { sendToWindows } from "./ipc.ts"
 import { answerAsksLayer } from "./environments/route.ts"
@@ -131,7 +132,11 @@ export const makeTestAppLayer = (
     Settle.layer.pipe(Layer.provide(agents)),
     ArtifactFeedback.layer.pipe(Layer.provide(agents)),
   )
-  const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
+  const app = Layer.mergeAll(
+    base,
+    Mcp.serverLayer.pipe(Layer.provide(base)),
+    AppServer.layer.pipe(Layer.provide(Layer.mergeAll(base, Secrets.layer))),
+  )
   return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
     Layer.provideMerge(app),
     Layer.provideMerge(SourceControl.layer),
