@@ -380,10 +380,7 @@ function SidebarTabTrigger({
   count?: number
 }) {
   return (
-    <TabsTrigger
-      value={value}
-      className={sidebarTabClass}
-    >
+    <TabsTrigger value={value} className={sidebarTabClass}>
       <Icon aria-hidden />
       {label}
       {count > 0 && (

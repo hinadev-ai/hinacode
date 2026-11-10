@@ -34,12 +34,7 @@ import { SkeletonList } from "../../ui/skeleton.tsx"
 import { Switch } from "../../ui/switch.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip.tsx"
 import { BindHostSelect } from "../BindHostSelect.tsx"
-import {
-  settingsGroupClass,
-  SettingsPageAction,
-  SettingsSection,
-  settingsSurfaceClass,
-} from "../SettingsSection.tsx"
+import { settingsGroupClass, SettingsPageAction, SettingsSection, settingsSurfaceClass } from "../SettingsSection.tsx"
 import { RoutineDetails } from "./RoutineDetails.tsx"
 import { RoutineDialog, type RoutineDialogState } from "./RoutineForm.tsx"
 import { describeCron } from "./schedule.ts"
