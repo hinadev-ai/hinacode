@@ -13,6 +13,7 @@ const known = {
   files: new Set(["src/login.ts"]),
   threads: new Set<string>(),
   terminals: new Set<string>(),
+  artifacts: new Set<string>(),
 }
 
 describe("composerSpans", () => {
@@ -69,6 +70,7 @@ describe("artifact skills", () => {
       files: new Set<string>(),
       threads: new Set<string>(),
       terminals: new Set<string>(),
+      artifacts: new Set<string>(),
     }
     expect(composerSpans("/artifact:doc Release plan", artifactSkillCommands, noTokens)[0]).toEqual({
       kind: "skill",

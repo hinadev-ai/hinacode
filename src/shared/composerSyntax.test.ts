@@ -21,6 +21,7 @@ const known = {
   files: new Set(["src/main/ipc.ts"]),
   threads: new Set(["t-1"]),
   terminals: new Set(["term-1"]),
+  artifacts: new Set(["k3x9q2m7a1bz"]),
 }
 
 const typeShiftEnter = (text: string, caret = text.length) => {
@@ -200,6 +201,14 @@ describe("highlight", () => {
     ).toStrictEqual([{ kind: "mention", text: "@terminal:term-1" }])
   })
 
+  test("marks mentions of known artifacts only", () => {
+    expect(
+      highlight("fix @artifact:k3x9q2m7a1bz. and @artifact:deleted", known).filter(
+        (segment) => segment.kind !== "text",
+      ),
+    ).toStrictEqual([{ kind: "mention", text: "@artifact:k3x9q2m7a1bz" }])
+  })
+
   test("leaves an unclosed backtick as text", () => {
     expect(highlight("a `b", known)).toStrictEqual([{ kind: "text", text: "a `b" }])
   })
@@ -319,7 +328,7 @@ describe("suggestionsFor", () => {
     const commands = [command("$", "animate"), command("$", "animation-vocabulary"), command("$", "animate")]
     const completion = { trigger: "$" as const, query: "anim", start: 0, end: 5 }
     expect(
-      suggestionsFor(completion, commands, [], { sameMachine: [], otherMachines: [] }, [], []).map(
+      suggestionsFor(completion, commands, [], { sameMachine: [], otherMachines: [] }, [], [], []).map(
         (suggestion) => suggestion.insert,
       ),
     ).toStrictEqual(["$animate", "$animation-vocabulary"])
@@ -337,6 +346,7 @@ describe("suggestionsFor", () => {
         ["src/terminal.ts"],
         { sameMachine: [], otherMachines: [] },
         terminals,
+        [],
         [],
       ).map((suggestion) => suggestion.insert)
     expect(suggest("@term")).toStrictEqual(["@terminal:term-1", "@src/terminal.ts"])

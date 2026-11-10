@@ -15,6 +15,7 @@ const known = {
   files: new Set<string>(),
   threads: new Set<string>(),
   terminals: new Set<string>(),
+  artifacts: new Set<string>(),
 }
 
 const chips = (text: string, caret: number | null = null) =>

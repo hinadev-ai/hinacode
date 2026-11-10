@@ -1,7 +1,16 @@
 import { describe, expect, test } from "@effect/vitest"
 import { completionAt, suggestionsFor } from "./composerSyntax.ts"
 import type { Project, Thread } from "./domain.ts"
-import { MENTION, mentionableThreads, parseMention, terminalMention, threadMention } from "./mentions.ts"
+import type { Artifact } from "./artifact.ts"
+import {
+  artifactMention,
+  MENTION,
+  mentionableArtifacts,
+  mentionableThreads,
+  parseMention,
+  terminalMention,
+  threadMention,
+} from "./mentions.ts"
 
 const thread = (id: string, patch: Partial<Thread>): Thread => ({
   id,
@@ -85,6 +94,7 @@ test("suggests same-machine threads before other machines' threads, even when a 
     mentionableThreads(threads[0]!, threads, projects),
     [],
     [],
+    [],
   )
   expect(suggestions.map((suggestion) => suggestion.insert)).toStrictEqual([
     "@thread:desktop-login",
@@ -99,10 +109,59 @@ describe("parseMention", () => {
     expect(parseMention(terminalMention(terminalId))).toStrictEqual({ kind: "terminal", id: terminalId })
     expect(parseMention("@src/main.ts")).toBeNull()
     expect(parseMention("@terminal:t-1.")).toBeNull()
+    expect(parseMention(artifactMention("k3x9q2m7a1bz"))).toStrictEqual({ kind: "artifact", id: "k3x9q2m7a1bz" })
   })
 
   test("MENTION finds both kinds in running text", () => {
-    const text = "compare @thread:t-1 with @terminal:abc-2."
-    expect([...text.matchAll(MENTION)].map((match) => match[0])).toStrictEqual(["@thread:t-1", "@terminal:abc-2"])
+    const text = "compare @thread:t-1 with @terminal:abc-2, then fix @artifact:k3x9q2m7a1bz."
+    expect([...text.matchAll(MENTION)].map((match) => match[0])).toStrictEqual([
+      "@thread:t-1",
+      "@terminal:abc-2",
+      "@artifact:k3x9q2m7a1bz",
+    ])
   })
+})
+
+const artifact = (id: string, patch: Partial<Artifact>): Artifact => ({
+  id,
+  title: id,
+  entry: "index.html",
+  version: 1,
+  files: [],
+  createdAt: "2026-10-14T00:00:00.000Z",
+  updatedAt: "2026-10-14T00:00:00.000Z",
+  ...patch,
+})
+
+const artifacts = [
+  artifact("other-thread-report", { threadId: "desktop-docs", title: "Bundle report" }),
+  artifact("own-plan", { threadId: "composing", kind: "document", title: "Login plan" }),
+  artifact("cloud-chart", { threadId: "cloud-login", environmentId: "cloud", title: "Login chart" }),
+]
+
+describe("mentionableArtifacts", () => {
+  test("offers the artifacts on the thread's machine, its own first, because read_artifact reads only that store", () => {
+    expect(mentionableArtifacts(threads[0]!, artifacts, projects).map((each) => each.id)).toStrictEqual([
+      "own-plan",
+      "other-thread-report",
+    ])
+    expect(mentionableArtifacts(threads[1]!, artifacts, projects).map((each) => each.id)).toStrictEqual(["cloud-chart"])
+  })
+
+  test("offers none before projects load, when the thread's machine is unknown", () => {
+    expect(mentionableArtifacts(threads[0]!, artifacts, [])).toStrictEqual([])
+  })
+})
+
+test("suggests artifacts by title after terminals and before files", () => {
+  const suggestions = suggestionsFor(
+    completionAt("@login", 6)!,
+    [],
+    ["src/login.ts"],
+    { sameMachine: [], otherMachines: [] },
+    [],
+    mentionableArtifacts(threads[0]!, artifacts, projects),
+    [],
+  )
+  expect(suggestions.map((suggestion) => suggestion.insert)).toStrictEqual(["@artifact:own-plan", "@src/login.ts"])
 })

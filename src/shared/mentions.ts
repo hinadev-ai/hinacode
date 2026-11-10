@@ -1,6 +1,7 @@
+import type { Artifact } from "./artifact.ts"
 import type { Project, Thread } from "./domain.ts"
 
-export type MentionKind = "thread" | "terminal"
+export type MentionKind = "thread" | "terminal" | "artifact"
 
 export interface Mention {
   readonly kind: MentionKind
@@ -11,9 +12,11 @@ export const threadMention = (threadId: string) => `@thread:${threadId}`
 
 export const terminalMention = (terminalId: string) => `@terminal:${terminalId}`
 
-export const MENTION = /@(thread|terminal):([\w-]+)/g
+export const artifactMention = (artifactId: string) => `@artifact:${artifactId}`
 
-const WHOLE_MENTION = /^@(thread|terminal):([\w-]+)$/
+export const MENTION = /@(thread|terminal|artifact):([\w-]+)/g
+
+const WHOLE_MENTION = /^@(thread|terminal|artifact):([\w-]+)$/
 
 export const parseMention = (token: string): Mention | null => {
   const match = WHOLE_MENTION.exec(token)
@@ -56,4 +59,18 @@ export function mentionableThreads<T extends MentionThread>(
     sameMachine: candidates.filter(isSameProject),
     otherMachines: candidates.filter((other) => !isSameProject(other)),
   }
+}
+
+export function mentionableArtifacts<T extends Pick<Artifact, "threadId" | "environmentId">>(
+  thread: Pick<Thread, "id" | "projectId">,
+  artifacts: ReadonlyArray<T>,
+  projects: ReadonlyArray<Pick<Project, "id" | "environmentId">>,
+): ReadonlyArray<T> {
+  const home = projects.find((project) => project.id === thread.projectId)
+  if (home === undefined) return []
+  const readable = artifacts.filter((artifact) => artifact.environmentId === home.environmentId)
+  return [
+    ...readable.filter((artifact) => artifact.threadId === thread.id),
+    ...readable.filter((artifact) => artifact.threadId !== thread.id),
+  ]
 }
