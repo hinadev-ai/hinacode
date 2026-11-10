@@ -193,9 +193,9 @@ export const makeAppLayer = ({
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
   )
   const boat = Boat.layer(process.env).pipe(Layer.provide(Secrets.layer))
-  const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"), {
-    desktopRedirect: serve === undefined,
-  }).pipe(Layer.provide(boat))
+  const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm")).pipe(
+    Layer.provide(boat),
+  )
   const peers = Peers.layer.pipe(
     Layer.provideMerge(Environments.layer),
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),

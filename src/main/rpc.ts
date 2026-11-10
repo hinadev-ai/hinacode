@@ -543,7 +543,8 @@ const handlers: Handlers = {
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),
   "vm.control": ({ threadId, control }) => TinyVm.use((vm) => vm.setControl(threadId, control)),
   "vm.host": () => TinyVm.use((vm) => vm.host),
-  "vm.desktop.url": ({ threadId }) => TinyVm.use((vm) => vm.desktopUrl(threadId)).pipe(Effect.map((url) => ({ url }))),
+  "vm.desktop.url": ({ threadId }, desktop) =>
+    TinyVm.use((vm) => vm.desktopUrl(threadId, { sameMachine: desktop !== null })).pipe(Effect.map((url) => ({ url }))),
   "vm.screen.open": ({ threadId, streamId }, desktop) => {
     const owner = desktop?.screenOwner
     return owner
