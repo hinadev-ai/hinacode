@@ -72,6 +72,8 @@ export const sha256 = async (value: string) => toHex(await digest(value))
 
 const s256Challenge = async (verifier: string) => toBase64Url(await digest(verifier))
 
+const APP_APPROVAL_PATH = "/oauth/signed-in"
+
 const appRedirect = (redirectUri: string) => {
   if (!URL.canParse(redirectUri)) return null
   const url = new URL(redirectUri)
@@ -228,6 +230,16 @@ export const makeApp = (deps: Deps) => {
 
   app.get("/signed-in", (c) => page(c, signedInPage()))
 
+  const ownMachineRedirect = async (env: Env, userId: string, redirectUri: string) => {
+    if (!URL.canParse(redirectUri)) return null
+    const url = new URL(redirectUri)
+    if (url.protocol !== "https:" || url.port || url.search || url.hash || url.pathname !== APP_APPROVAL_PATH)
+      return null
+    const hosts = await runStore(env.DB, (store) => store.hostsOfUser(userId))
+    const host = hosts.find((candidate) => hostnameOf(env, candidate) === url.hostname)
+    return host === undefined ? null : { url, hostId: host.id }
+  }
+
   app.post("/v1/sign-in-codes", async (c) => {
     const userId = await deps.verifySession(c.req.raw, c.env)
     if (!userId) return fail(c, 401, "Sign in first.")
@@ -235,14 +247,18 @@ export const makeApp = (deps: Deps) => {
     if (Option.isNone(input)) {
       return fail(c, 400, "Send redirectUri, codeChallenge (43 base64url characters) and name (1 to 64 characters).")
     }
-    const redirectUrl = appRedirect(input.value.redirectUri)
-    if (!redirectUrl) {
+    const appUrl = appRedirect(input.value.redirectUri)
+    const target = appUrl
+      ? { url: appUrl, hostId: null }
+      : await ownMachineRedirect(c.env, userId, input.value.redirectUri)
+    if (!target) {
       return fail(
         c,
         400,
-        "Send redirectUri as http://127.0.0.1:<port>/<path> or hinacode://<path>, with no query or fragment.",
+        `Send redirectUri as http://127.0.0.1:<port>/<path>, hinacode://<path> or https://<one of your machines>${APP_APPROVAL_PATH}, with no query or fragment.`,
       )
     }
+    const redirectUrl = target.url
     const now = deps.now()
     const code = toBase64Url(deps.random(32))
     const signInCode = {
@@ -251,25 +267,39 @@ export const makeApp = (deps: Deps) => {
       userId,
       name: input.value.name,
       expiresAt: now + SIGN_IN_CODE_TTL_MS,
+      hostId: target.hostId,
     }
     await runStore(c.env.DB, (store) => store.createSignInCode(signInCode, now))
     redirectUrl.searchParams.set("code", code)
     return c.json({ redirectUrl: redirectUrl.href })
   })
 
+  const takeSignInCode = async (c: Context<App>, input: typeof SignInCodeExchange.Type) => {
+    const codeHash = await sha256(input.code)
+    const taken = await runStore(c.env.DB, (store) => store.takeSignInCode(codeHash))
+    if (Option.isNone(taken) || taken.value.expiresAt <= deps.now()) return null
+    return (await s256Challenge(input.codeVerifier)) === taken.value.codeChallenge ? taken.value : null
+  }
+
   app.post("/v1/sign-in-codes/exchange", async (c) => {
     const input = await body(c, SignInCodeExchange)
     if (Option.isNone(input)) return fail(c, 400, "Send code and codeVerifier (43 to 128 characters).")
-    const codeHash = await sha256(input.value.code)
-    const taken = await runStore(c.env.DB, (store) => store.takeSignInCode(codeHash))
-    if (
-      Option.isNone(taken) ||
-      taken.value.expiresAt <= deps.now() ||
-      (await s256Challenge(input.value.codeVerifier)) !== taken.value.codeChallenge
-    ) {
+    const taken = await takeSignInCode(c, input.value)
+    if (taken === null || taken.hostId !== null) return fail(c, 410, SIGN_IN_CODE_GONE)
+    return signInDevice(c, taken.userId, taken.name)
+  })
+
+  app.post("/v1/host/sign-in-codes/verify", async (c) => {
+    const host = await machine(c)
+    if (Option.isNone(host)) return fail(c, 401, "This machine is not linked.")
+    const input = await body(c, SignInCodeExchange)
+    if (Option.isNone(input)) return fail(c, 400, "Send code and codeVerifier (43 to 128 characters).")
+    const taken = await takeSignInCode(c, input.value)
+    if (taken === null || taken.hostId !== host.value.id || taken.userId !== host.value.userId) {
       return fail(c, 410, SIGN_IN_CODE_GONE)
     }
-    return signInDevice(c, taken.value.userId, taken.value.name)
+    const { name, email } = await deps.accountProfile(taken.userId, c.env)
+    return c.json({ name, email })
   })
 
   app.get("/v1/links/:userCode", async (c) => {

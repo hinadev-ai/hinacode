@@ -33,6 +33,7 @@ const SignInCode = Schema.Struct({
   userId: Schema.String,
   name: Schema.String,
   expiresAt: Schema.Number,
+  hostId: Schema.NullOr(Schema.String),
 })
 export type SignInCode = typeof SignInCode.Type
 
