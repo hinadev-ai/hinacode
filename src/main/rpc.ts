@@ -1,14 +1,12 @@
 import { homedir } from "node:os"
 import { Cause, Effect, Option, Schema } from "effect"
-import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
-import { binaryStatuses, installedProviders } from "./agents/binary.ts"
+import { binaryStatuses } from "./agents/binary.ts"
 import { bindKey, keyFor, probe } from "./agents/magpie/gateway.ts"
 import { MAGPIE_KEY_SECRET } from "../shared/providers.ts"
 import { AgentError } from "./agents/provider.ts"
 import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
 import { compactSubagentWork } from "../shared/subagents.ts"
-import { startingProvider } from "../shared/domain.ts"
 import type {
   NotificationPermission,
   Opener,
@@ -43,6 +41,7 @@ import { Automations } from "./services/automations/Automations.ts"
 import { Linear } from "./services/Linear.ts"
 import { AppConnections } from "./apps/AppConnections.ts"
 import { McpCredentials } from "./mcp/index.ts"
+import { newThreadOptions, newThreadProvider } from "./services/newThread.ts"
 import { Ports } from "./services/Ports.ts"
 import { networkAddresses } from "./network.ts"
 import { RemoteAccess } from "./remote/access.ts"
@@ -137,14 +136,6 @@ type Handlers = {
   ) => Effect.Effect<RpcResponse<M>, HandlerError, AppServices>
 }
 
-const newThreadOptions = (provider: ProviderId) =>
-  Effect.gen(function* () {
-    const settings = yield* Settings.use((service) => service.get)
-    const model =
-      settings.defaultModel[provider] ?? (yield* AgentRunner.use((runner) => runner.listModels(provider)))[0]?.id ?? ""
-    return { model, effort: settings.defaultEffort[provider], fastMode: settings.defaultFastMode[provider] }
-  })
-
 const rememberNewThreadOptions = (thread: Thread) =>
   Effect.gen(function* () {
     if (yield* Threads.use((threads) => threads.started(thread.id))) return
@@ -221,8 +212,7 @@ const handlers: Handlers = {
   "threads.list": () => Threads.use((threads) => threads.list),
   "threads.create": ({ projectId, title, provider: chosenProvider, model, effort, worktree, createdBy }) =>
     Effect.gen(function* () {
-      const settings = yield* Settings.use((service) => service.get)
-      const provider = chosenProvider ?? startingProvider(settings, yield* installedProviders)
+      const provider = chosenProvider ?? (yield* newThreadProvider)
       const defaults =
         model === undefined ? yield* newThreadOptions(provider) : { model, effort: undefined, fastMode: undefined }
       const thread = yield* Threads.use((threads) =>
@@ -241,7 +231,7 @@ const handlers: Handlers = {
     }),
   "threads.draft": ({ projectId }) =>
     Effect.gen(function* () {
-      const provider = startingProvider(yield* Settings.use((service) => service.get), yield* installedProviders)
+      const provider = yield* newThreadProvider
       const options = yield* newThreadOptions(provider)
       const thread = yield* Threads.use((threads) =>
         threads.draft({ projectId, title: randomName(), provider, ...options }),
