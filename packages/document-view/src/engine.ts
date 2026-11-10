@@ -36,7 +36,15 @@ const keyEvent = (key: StructuralKey, shiftKey: boolean) => ({
   stopPropagation: () => {},
 })
 
+// FIXME: @tiptap/core's isiOS calls navigator.userAgent.includes, and React Native's navigator has no userAgent.
+const giveNavigatorAUserAgent = () => {
+  const host = globalThis as { navigator?: { userAgent?: unknown } }
+  host.navigator ??= {}
+  if (typeof host.navigator.userAgent !== "string") host.navigator.userAgent = ""
+}
+
 export function createDocumentEngine() {
+  giveNavigatorAUserAgent()
   const editor = new Editor({
     element: null,
     extensions: [...documentExtensions(), documentMarkdown()],
