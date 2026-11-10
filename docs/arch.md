@@ -678,6 +678,7 @@ flowchart LR
 ```
 
 - Pollers keep a `cursor` per automation. The first poll starts from now and doesn't replay history.
+- A webhook's event key is its `x-github-delivery` header. A delivery without one has no key and always starts a run, so a cron job that posts the same body every time is not skipped.
 - A repeated poll error is recorded once, not once per poll.
 
 ## Event bus

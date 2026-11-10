@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto"
+import { createHmac, timingSafeEqual } from "node:crypto"
 import { createServer } from "node:http"
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer"
 import { Effect, Layer } from "effect"
@@ -31,7 +31,7 @@ export interface WebhookTarget {
 
 export interface WebhookHandlers {
   readonly target: (automationId: string) => Effect.Effect<WebhookTarget | undefined>
-  readonly deliver: (automationId: string, eventKey: string, payload: unknown) => Effect.Effect<AutomationRun>
+  readonly deliver: (automationId: string, eventKey: string | null, payload: unknown) => Effect.Effect<AutomationRun>
 }
 
 const json = (body: unknown, status: number) => HttpServerResponse.jsonUnsafe(body, { status })
@@ -48,7 +48,7 @@ const handleHook = (handlers: WebhookHandlers) =>
     if (!signatureMatches(target.secret, raw, signature)) return json({ error: "invalid_signature" }, 401)
     if (!target.enabled) return json({ error: "automation_disabled" }, 409)
 
-    const eventKey = request.headers["x-github-delivery"] ?? createHash("sha256").update(raw).digest("hex")
+    const eventKey = request.headers["x-github-delivery"] ?? null
     const headers = Object.fromEntries(
       Object.entries(request.headers).filter(([name]) => !SIGNATURE_HEADERS.includes(name)),
     )

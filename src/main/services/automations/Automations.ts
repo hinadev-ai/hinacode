@@ -269,7 +269,7 @@ const make = Effect.gen(function* () {
       yield* runner.send(thread.id, prompt, [])
     })
 
-  const startRun = (automation: AutomationRow, eventKey: string, payload: unknown) =>
+  const startRun = (automation: AutomationRow, eventKey: string | null, payload: unknown) =>
     Effect.gen(function* () {
       const claimed = yield* insertRun({ automationId: automation.id, eventKey, payload, status: "started" }).pipe(
         Effect.map(Option.some),

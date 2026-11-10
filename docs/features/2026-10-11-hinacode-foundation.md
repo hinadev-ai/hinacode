@@ -41,7 +41,7 @@ The system map is in [`../arch.md`](../arch.md), and decisions that are costly t
 - **Automations.**
   - The webhook server listens on 127.0.0.1:48080 by default, separate from the MCP server. It accepts an HMAC in `x-hinacode-signature` or GitHub's `x-hub-signature-256`.
   - Pollers run every 60 s from a cursor established when an enabled automation is saved, or when a disabled automation is first enabled. The first poll fetches new events. Re-enabling keeps the saved cursor.
-  - Runs are deduplicated by event key.
+  - Runs are deduplicated by event key. A webhook's key is its `x-github-delivery` header, and a delivery without one always starts a run.
   - Saving a Linear API key enables agent tools. Starting threads automatically requires an enabled Linear issue automation under Settings > Automations.
 - **UI.**
   - Stack: shadcn on Base UI, Remix icons, `@legendapp/list` for the transcript, `@pierre/diffs`, dnd-kit for the sidebar, TanStack Router (memory history), zustand stores fed by pushes.
