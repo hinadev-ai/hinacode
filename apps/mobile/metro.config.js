@@ -10,7 +10,11 @@ const composerEditor = path.resolve(__dirname, "../../packages/composer-editor")
 const perfFrames = path.resolve(__dirname, "../../packages/perf-frames")
 const documentView = path.resolve(__dirname, "../../packages/document-view")
 
-config.watchFolders = [shared, messages, icons, composerEditor, perfFrames, documentView]
+// The document model is the desktop's own Tiptap and ProseMirror, imported by src/shared/document from the repo's
+// node_modules, where its pnpm patches live. Metro only resolves files inside a watched folder.
+const rootModules = path.resolve(__dirname, "../../node_modules")
+
+config.watchFolders = [shared, messages, icons, composerEditor, perfFrames, documentView, rootModules]
 config.resolver.nodeModulesPaths = [path.resolve(__dirname, "node_modules"), path.resolve(__dirname, "../../node_modules")]
 
 // src/shared would otherwise resolve `effect` from the repo root, giving the bundle two copies whose
