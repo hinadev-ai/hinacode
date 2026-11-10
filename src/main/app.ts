@@ -9,6 +9,7 @@ import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
 import { MagpieProvider } from "./agents/magpie/index.ts"
 import { OpencodeProvider } from "./agents/opencode/index.ts"
+import * as AppConnections from "./apps/AppConnections.ts"
 import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
 import * as Mcp from "./mcp/index.ts"
@@ -215,6 +216,7 @@ export const makeAppLayer = ({
     naming,
     remoteAccess,
     relay,
+    AppConnections.layer.pipe(Layer.provide(remoteAccess)),
     tinyVm,
     peers,
     devices,
@@ -233,6 +235,7 @@ export const makeAppLayer = ({
     AgentLogins.layer(join(userData, "cache")),
     SessionImports.layer,
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
+    AppConnections.followRelayLayer,
   ).pipe(Layer.provideMerge(agents))
   return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer, Conductor.layer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),

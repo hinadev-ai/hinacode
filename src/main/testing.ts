@@ -6,6 +6,7 @@ import type { CodexProvider } from "./agents/codex/index.ts"
 import type { MuseProvider } from "./agents/muse/index.ts"
 import type { MagpieProvider } from "./agents/magpie/index.ts"
 import type { OpencodeProvider } from "./agents/opencode/index.ts"
+import * as AppConnections from "./apps/AppConnections.ts"
 import * as Db from "./db/client.ts"
 import { sendToWindows } from "./ipc.ts"
 import { answerAsksLayer } from "./environments/route.ts"
@@ -99,6 +100,7 @@ export const makeTestAppLayer = (
     SystemResources.layer,
     remoteAccess,
     relay,
+    AppConnections.layer.pipe(Layer.provide(remoteAccess)),
     tinyVm,
     linear,
     peers,

@@ -41,6 +41,7 @@ import { SourceControl } from "./services/SourceControl.ts"
 import { codeHostOfUrl } from "../shared/codeHost.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import { Linear } from "./services/Linear.ts"
+import { AppConnections } from "./apps/AppConnections.ts"
 import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
 import { networkAddresses } from "./network.ts"
@@ -66,6 +67,7 @@ import { Worktrees } from "./services/Worktrees.ts"
 
 export type AppServices =
   | AgentAccounts
+  | AppConnections
   | AgentLogins
   | SessionImports
   | Projects
@@ -374,6 +376,9 @@ const handlers: Handlers = {
   "relayAccount.machines": () => RelayAccount.use((account) => account.machines),
   "relayAccount.setShown": (input) => RelayAccount.use((account) => account.setShown(input)),
   "relayAccount.removeMachine": (input) => RelayAccount.use((account) => account.removeMachine(input)),
+  "appConnections.status": () => AppConnections.use((connections) => connections.status),
+  "appConnections.newApprovalCode": () => AppConnections.use((connections) => connections.newApprovalCode),
+  "appConnections.remove": ({ id }) => AppConnections.use((connections) => connections.remove(id)),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),
