@@ -3,6 +3,7 @@ import type { AgentEvent, ApprovalRequest, QuestionRequest, SecretRequest } from
 import { type TranscriptPush, transcriptThreadId } from "../../shared/contract.ts"
 import type { Message } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
+import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 
 const STREAM_PUBLICATION_INTERVAL_MS = 100
@@ -102,7 +103,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
       setHistory(threadId, () => settled.ready)
     } catch (cause) {
       if (stillLoading() === undefined) return
-      setHistory(threadId, () => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
+      setHistory(threadId, () => ({ status: "error", message: errorMessage(cause) }))
     }
   }
 

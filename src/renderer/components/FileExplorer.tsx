@@ -97,7 +97,7 @@ const iconsByExtension: Readonly<Record<string, IconComponent>> = {
   yml: FileTextIcon,
   toml: FileTextIcon,
 }
-const CODE = /^(ts|tsx|js|jsx|mjs|cjs|css|html|py|rs|go|rb|java|kt|swift|c|h|cpp|sh|sql)$/
+const CODE = /^(ts|tsx|js|jsx|mjs|cjs|css|py|rs|go|rb|java|kt|swift|c|h|cpp|sh|sql)$/
 
 const fileIcon = (entry: FsEntry, expanded: boolean): IconComponent => {
   if (entry.kind === "dir") return expanded ? FolderOpenIcon : FolderIcon
@@ -519,7 +519,9 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
                     {m.explorer_show_changes()}
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(selectedEntry.path)}>
+                <DropdownMenuItem
+                  onClick={() => void navigator.clipboard.writeText(selectedEntry.path).catch(toastError)}
+                >
                   <CopyIcon aria-hidden />
                   {m.explorer_copy_path()}
                 </DropdownMenuItem>

@@ -30,6 +30,7 @@ export function GeneralSettings() {
 
   const changeLocale = async (next: unknown) => {
     if (!isLocale(next) || next === locale) return
+    setError(null)
     try {
       const saved = await updateClientSettings({ locale: next })
       await applyLocale(saved.locale)
