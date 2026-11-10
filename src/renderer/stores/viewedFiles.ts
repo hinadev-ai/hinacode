@@ -1,6 +1,7 @@
 import { create } from "zustand"
 
 const VIEWED_FILES_KEY = "hinacode.viewedPullRequestFiles"
+const VIEWED_PULL_REQUESTS_KEPT = 200
 
 type ViewedFiles = Readonly<Record<string, { readonly head: string; readonly paths: ReadonlyArray<string> }>>
 
@@ -15,12 +16,15 @@ const loadViewedFiles = (): ViewedFiles => {
 export const useViewedFiles = create<{
   readonly byUrl: ViewedFiles
   readonly setViewed: (url: string, head: string, path: string, viewed: boolean) => void
-}>()((set, get) => ({
+}>()((set) => ({
   byUrl: loadViewedFiles(),
   setViewed: (url, head, path, viewed) => {
-    const current = get().byUrl[url]
+    const { [url]: current, ...others } = loadViewedFiles()
     const paths = (current?.head === head ? current.paths : []).filter((other) => other !== path)
-    const byUrl = { ...get().byUrl, [url]: { head, paths: viewed ? [...paths, path] : paths } }
+    const byUrl = Object.fromEntries([
+      ...Object.entries(others).slice(1 - VIEWED_PULL_REQUESTS_KEPT),
+      [url, { head, paths: viewed ? [...paths, path] : paths }],
+    ])
     localStorage.setItem(VIEWED_FILES_KEY, JSON.stringify(byUrl))
     set({ byUrl })
   },
