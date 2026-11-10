@@ -358,7 +358,7 @@ const make = Effect.gen(function* () {
       yield* refreshTerminals(threadId, terminals)
     })
 
-  const listModels = Effect.gen(function* () {
+  const fetchModels = Effect.gen(function* () {
     const client = yield* getClient(null)
     const models: Array<ModelInfo> = []
     let cursor: string | null = null
@@ -380,6 +380,10 @@ const make = Effect.gen(function* () {
     } while (cursor)
     return models
   })
+
+  const listModels = yield* Effect.cachedWithTTL(fetchModels, (exit) =>
+    Exit.isSuccess(exit) ? Duration.minutes(10) : Duration.zero,
+  )
 
   const planLimits = (home: AccountHome | null) =>
     Effect.gen(function* () {
