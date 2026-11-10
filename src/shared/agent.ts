@@ -400,12 +400,17 @@ const textOfBlock = (block: unknown) =>
     ? String(Reflect.get(block, "text"))
     : ""
 
-export const outputText = (output: unknown): string =>
-  typeof output === "string"
-    ? output
-    : Array.isArray(output)
-      ? output.map(textOfBlock).filter(Boolean).join("\n")
-      : JSON.stringify(output)
+export const outputBlocks = (output: unknown): unknown =>
+  Predicate.isObject(output) && Array.isArray(Reflect.get(output, "content")) ? Reflect.get(output, "content") : output
+
+export const outputText = (output: unknown): string => {
+  const blocks = outputBlocks(output)
+  return typeof blocks === "string"
+    ? blocks
+    : Array.isArray(blocks)
+      ? blocks.map(textOfBlock).filter(Boolean).join("\n")
+      : JSON.stringify(blocks)
+}
 
 export const CREATE_THREAD_TOOL = "create_thread"
 

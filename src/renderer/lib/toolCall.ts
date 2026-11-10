@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import type { AgentCommand } from "../../shared/agent.ts"
+import { type AgentCommand, outputBlocks } from "../../shared/agent.ts"
 import { Attachment, type MessagePart, createsThread, publishesArtifact, spawnsSubagent } from "../../shared/domain.ts"
 import { type Todo, todosInCall } from "../../shared/todos.ts"
 import { ownToolName, unwrapShell } from "../../shared/toolNames.ts"
@@ -118,8 +118,7 @@ export function describeToolCall(part: { readonly name: string; readonly input: 
 const isAttachment = Schema.is(Attachment)
 
 export function toolOutputImages(output: unknown): Array<Attachment> {
-  const content =
-    typeof output === "object" && output !== null && !Array.isArray(output) ? Reflect.get(output, "content") : output
+  const content = outputBlocks(output)
   if (!Array.isArray(content)) return []
   return content.flatMap((block: unknown) => {
     const attachment: unknown = typeof block === "object" && block !== null ? Reflect.get(block, "attachment") : null
