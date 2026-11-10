@@ -7,7 +7,7 @@ const COPY = {
   returnsTo: "Sends you back to",
   warning: "A connected app can read your threads and start agents that run code on this machine.",
   notStartedTitle: "Start in HinaCode",
-  notStarted: "Open HinaCode, go to Settings > Connections > Apps, choose this app, then connect again.",
+  notStarted: "Open HinaCode, go to Settings > Connections > Apps, choose Copy URL, then connect again.",
   brokenLinkTitle: "This link does not work",
   brokenLink: "The app that sent you here has not registered with this HinaCode, or its link is incomplete.",
 }

@@ -13,7 +13,7 @@ One server with two kinds of credential would keep one listener, but every tool 
 
 ## Decision
 
-Outside apps get their own MCP server with its own tool list and its own OAuth authorization server, in `src/main/apps/`. The thread server stays on loopback, unchanged. The remote listener forwards plain HTTP on the relay hostname to the app server, and the app server answers 404 until the developer chooses an app to connect or has a connected app.
+Outside apps get their own MCP server with its own tool list and its own OAuth authorization server, in `src/main/apps/`. The thread server stays on loopback, unchanged. The remote listener forwards plain HTTP on the relay hostname to the app server, and the app server answers 404 until the developer copies the URL from Settings or has a connected app.
 
 The developer starts a connection by choosing the app in Settings and approves the request in HinaCode itself. The page the other app opens only waits for that answer, so nothing typed into a browser can approve a connection. Access tokens are stored hashed, do not expire, and end when the developer removes the connection.
 
@@ -21,7 +21,7 @@ The developer starts a connection by choosing the app in Settings and approves t
 
 - The loopback rule still holds for the thread server. The boundary to hold for the app server is its tool list: nothing that returns a secret, runs a shell, or drives a VM or device goes on it.
 - A connected app can start an agent in any project on the machine, and that agent runs code. Connecting an app is as strong as pairing a phone, and the approval page says so.
-- Anyone who reaches the hostname in the ten minutes after the developer chooses an app can put a request in front of them. Approve shows the app's name and the host it returns to, at most five requests wait, and nothing is exposed while HinaCode is not waiting.
+- Anyone who reaches the hostname in the ten minutes after the developer copies the URL can put a request in front of them. Approve shows the app's name and the host it returns to, at most five requests wait, and nothing is exposed while HinaCode is not waiting.
 - A leaked token works until removed. Expiry with refresh tokens is the next step if connections turn out to be long-lived and forgotten.
 - The MCP transport keeps a session until the client ends it or HinaCode restarts. Only a connected app can open one, and a request body is capped at 1 MB, so a client that reconnects without closing costs a little memory per session. Expiry belongs in the transport.
 - A machine without a relay cannot use this. A second ingress path or another tunnel provider would need the issuer to stop being the relay hostname.

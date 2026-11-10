@@ -11,13 +11,8 @@ Running something inside the other app's sandbox does not work either. Those san
 
 ## User flow
 
-1. The machine is linked to the relay (`2026-10-24-relay.md`). Settings > Connections > **Apps** shows a button per app (Grok Bot, Claude, ChatGPT, Hermes Agent) and the URL `https://<hostname>/mcp`.
-2. The developer clicks an app. HinaCode hands the URL over the way that app takes it and starts waiting for ten minutes:
-   - Grok Bot: copies the URL and opens `x.ai/bot`, where the developer adds a custom connector with a name and the URL.
-   - Claude: opens its Add custom connector form with the URL filled in.
-   - ChatGPT: copies the URL and opens `chatgpt.com/plugins`.
-   - Hermes Agent: copies `hermes mcp add hinacode --url <url> --auth oauth --connect-timeout 315`.
-   - Any other app: the developer copies the URL from the field below the buttons.
+1. The machine is linked to the relay (`2026-10-24-relay.md`). Settings > Connections > **Apps** shows the URL `https://<hostname>/mcp`, a **Copy URL** button and one line: copy the URL, add it to your app as a custom MCP connector, then approve the request here.
+2. **Copy URL** copies it and makes HinaCode wait ten minutes for an app to sign in. The developer adds it in Grok Bot, Claude, ChatGPT or any app that takes a remote MCP server with OAuth.
 3. The app registers and sends the developer's browser to the authorize page, which the developer's own machine serves through the tunnel. The page says to approve in HinaCode and refreshes every two seconds.
 4. Settings shows `<app> wants to connect` with the host it returns to, and **Approve** and **Deny**.
 5. After Approve, the page redirects to the app's callback with an authorization code. The app exchanges it, and appears in the list with when it was last used. Remove ends its access at once.
@@ -116,7 +111,7 @@ They share the rendering of the thread server's tools and not their scoping: the
 - Threads on the developer's other machines. Each machine has its own URL.
 - Read-only connections, per-project access and token expiry.
 - Approving from the phone app.
-- A catalog of apps with one-click setup. Settings shows the URL.
+- Per-app buttons that open each app's connector form. Settings shows one instruction for every app.
 
 ## Verify
 

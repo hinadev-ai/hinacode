@@ -703,7 +703,7 @@ flowchart LR
 ```
 
 - The issuer is `https://<relay hostname>`, read from `RemoteAccess`. No URL is built from `Host` or a forwarded header, and without a relay hostname every path answers 404.
-- Registration stores nothing. The developer chooses the app in Settings first. `GET /oauth/authorize` then records a request, which Settings shows with the app's name and the host it redirects to, and sends the browser to `/oauth/wait`, which refreshes until the developer presses Approve or Deny. The page is one HTML document with no script and no outside asset, under a `default-src 'none'` policy.
+- Registration stores nothing. The developer presses Copy URL in Settings first. `GET /oauth/authorize` then records a request, which Settings shows with the app's name and the host it redirects to, and sends the browser to `/oauth/wait`, which refreshes until the developer presses Approve or Deny. The page is one HTML document with no script and no outside asset, under a `default-src 'none'` policy.
 - PKCE with `S256` is required. An authorization code lives 60 seconds and works once. An access token does not expire; removing the connection in Settings ends it.
 - The tools reuse the thread server's rendering (`mcp/tools/threadViews.ts`) and registration (`toolsFor` in `mcp/tools/tool.ts`), with `CallingApp` as the caller where the thread server has `CallingThread`. None of the thread server's other tools are registered here.
 

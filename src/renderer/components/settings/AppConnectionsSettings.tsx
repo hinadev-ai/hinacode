@@ -1,9 +1,8 @@
 import { useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
-import { type ComponentType, useId, useState } from "react"
-import { RiClaudeFill, RiGrokAiFill, RiOpenaiFill } from "react-icons/ri"
-import { toast } from "sonner"
+import { CopyIcon } from "@hinacode/icons"
+import { useId, useState } from "react"
 import type { AppConnection, AppConnectionsStatus } from "../../../shared/domain.ts"
 import type { RpcMethod, RpcRequest } from "../../../shared/contract.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
@@ -13,8 +12,7 @@ import { useNow } from "../../lib/useNow.ts"
 import { m } from "../../paraglide/messages.js"
 import { getLocale } from "../../paraglide/runtime.js"
 import { Button } from "../ui/button.tsx"
-import { Field, FieldError, FieldLabel } from "../ui/field.tsx"
-import { CopyField } from "./automations/shared.tsx"
+import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { settingsSurfaceClass } from "./SettingsSection.tsx"
 
 export function AppConnectionsSettings() {
@@ -71,85 +69,33 @@ function useAppConnectionsAction() {
   return { error, run }
 }
 
-interface Handoff {
-  readonly copy?: { readonly text: string; readonly toast: string }
-  readonly open?: string
-}
-
-interface ConnectableApp {
-  readonly name: string
-  readonly icon?: ComponentType<{ className?: string }>
-  readonly handoff: (url: string) => Handoff
-}
-
-const APPS: ReadonlyArray<ConnectableApp> = [
-  {
-    name: "Grok Bot",
-    icon: RiGrokAiFill,
-    handoff: (url) => ({
-      copy: { text: url, toast: m.apps_copied_connector_url({ app: "Grok Bot" }) },
-      open: "https://x.ai/bot",
-    }),
-  },
-  {
-    name: "Claude",
-    icon: RiClaudeFill,
-    handoff: (url) => ({
-      open: `https://claude.ai/customize/connectors?${new URLSearchParams({
-        modal: "add-custom-connector",
-        connectorName: "HinaCode",
-        connectorUrl: url,
-      })}`,
-    }),
-  },
-  {
-    name: "ChatGPT",
-    icon: RiOpenaiFill,
-    handoff: (url) => ({
-      copy: { text: url, toast: m.apps_copied_url({ app: "ChatGPT" }) },
-      open: "https://chatgpt.com/plugins",
-    }),
-  },
-  {
-    name: "Hermes Agent",
-    handoff: (url) => ({
-      copy: {
-        text: `hermes mcp add hinacode --url ${url} --auth oauth --connect-timeout 315`,
-        toast: m.apps_copied_command({ app: "Hermes Agent" }),
-      },
-    }),
-  },
-]
-
 function Endpoint({ url, waiting }: { url: string; waiting: boolean }) {
   const { error, run } = useAppConnectionsAction()
 
-  const connect = (handoff: Handoff) => async () => {
-    if (handoff.copy !== undefined) {
-      await navigator.clipboard.writeText(handoff.copy.text)
-      toast.success(handoff.copy.toast)
-    }
-    if (handoff.open !== undefined) window.open(handoff.open, "_blank", "noopener")
+  const copyAndWait = async () => {
+    await navigator.clipboard.writeText(url)
     await run("appConnections.start", undefined)()
   }
 
   return (
-    <>
-      <div className="flex flex-wrap gap-2">
-        {APPS.map(({ name, icon: Icon, handoff }) => (
-          <Button key={name} variant="outline" action={connect(handoff(url))}>
-            {Icon !== undefined && <Icon aria-hidden />}
-            {name}
-          </Button>
-        ))}
+    <Field className="min-w-0">
+      <FieldLabel htmlFor="apps-url">{m.apps_url_label()}</FieldLabel>
+      <div className="flex items-center gap-2">
+        <output
+          id="apps-url"
+          className="min-w-0 flex-1 rounded-lg border border-input bg-muted/40 px-2.5 py-1.5 font-mono text-xs break-all"
+          title={url}
+        >
+          {url}
+        </output>
+        <Button variant="outline" action={copyAndWait}>
+          <CopyIcon aria-hidden />
+          {m.apps_url_copy()}
+        </Button>
       </div>
-      <Field className="min-w-0">
-        <FieldLabel htmlFor="apps-url">{m.apps_url_label()}</FieldLabel>
-        <CopyField id="apps-url" value={url} copyLabel={m.apps_url_copy()} />
-      </Field>
-      {waiting && <p className="text-sm text-muted-foreground">{m.apps_waiting()}</p>}
+      <FieldDescription>{waiting ? m.apps_waiting() : m.apps_instruction()}</FieldDescription>
       {error && <FieldError>{error}</FieldError>}
-    </>
+    </Field>
   )
 }
 

@@ -20,7 +20,6 @@ let status: AppConnectionsStatus = linked
 let removed: Array<string> = []
 let answers: Array<{ id: string; approve: boolean }> = []
 let copied: Array<string> = []
-let opened: Array<string> = []
 let pushListeners: Array<Parameters<HinacodeBridge["onEvent"]>[0]> = []
 
 const change = (next: AppConnectionsStatus) => {
@@ -58,17 +57,12 @@ Object.defineProperty(window, "hinacode", { value: bridge })
 Object.defineProperty(navigator, "clipboard", {
   value: { writeText: async (text: string) => void copied.push(text) },
 })
-window.open = (url) => {
-  opened.push(String(url))
-  return null
-}
 
 beforeEach(() => {
   status = linked
   removed = []
   answers = []
   copied = []
-  opened = []
 })
 
 const renderSettings = () =>
@@ -82,24 +76,15 @@ test("asks for the relay when this machine has no address", async () => {
   status = { ...linked, url: null }
   await renderSettings()
   await expect.element(page.getByText("Sign in to the relay to connect apps.")).toBeVisible()
-  expect(page.getByRole("button", { name: "Grok Bot" }).query()).toBeNull()
+  expect(page.getByRole("button", { name: "Copy URL" }).query()).toBeNull()
 })
 
-test("choosing Grok Bot copies the URL, opens Grok and waits for its sign-in", async () => {
+test("copying the URL starts waiting for an app", async () => {
   await renderSettings()
-  await page.getByRole("button", { name: "Grok Bot" }).click()
-  await expect.element(page.getByText("Waiting for the app to sign in.")).toBeVisible()
+  await expect.element(page.getByText(/add it to your app as a custom MCP connector/)).toBeVisible()
+  await page.getByRole("button", { name: "Copy URL" }).click()
+  await expect.element(page.getByText(/Waiting for your app to sign in/)).toBeVisible()
   expect(copied).toEqual([linked.url])
-  expect(opened).toEqual(["https://x.ai/bot"])
-})
-
-test("choosing Claude opens its connector form with the URL filled in", async () => {
-  await renderSettings()
-  await page.getByRole("button", { name: "Claude" }).click()
-  await expect.poll(() => opened).toHaveLength(1)
-  const form = new URL(opened[0]!)
-  expect(form.searchParams.get("connectorUrl")).toBe(linked.url)
-  expect(copied).toEqual([])
 })
 
 test("approves an app that asks to connect", async () => {
@@ -107,7 +92,7 @@ test("approves an app that asks to connect", async () => {
   await renderSettings()
   await expect.element(page.getByText("Grok Bot wants to connect")).toBeVisible()
   await expect.element(page.getByText("Returns to grok.example")).toBeVisible()
-  expect(page.getByText("Waiting for the app to sign in.").query()).toBeNull()
+  expect(page.getByText(/Waiting for your app to sign in/).query()).toBeNull()
   await page.getByRole("button", { name: "Approve" }).click()
   await expect.poll(() => answers).toEqual([{ id: "request-1", approve: true }])
   await expect.poll(() => page.getByText("Grok Bot wants to connect").query()).toBeNull()
@@ -115,7 +100,7 @@ test("approves an app that asks to connect", async () => {
 
 test("lists an app once it connects and removes it", async () => {
   await renderSettings()
-  await expect.element(page.getByRole("button", { name: "Grok Bot" })).toBeVisible()
+  await expect.element(page.getByRole("button", { name: "Copy URL" })).toBeVisible()
   change({ ...linked, connections: [claude] })
   await expect.element(page.getByTitle("Claude", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Remove Claude" }).click()
