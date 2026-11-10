@@ -16,6 +16,7 @@ The real renderer runs in plain Chromium with a stand-in `window.hinacode`:
 
 ```sh
 scripts/break-ui/launch.sh 9241 /tmp/kk-breakui      # once; leave it running
+export AXE_PATH=/path/to/axe-core/axe.min.js         # capture.sh runs axe on every shot
 scripts/ui-states/capture.sh it8-surfaces             # every scenario, Hina Light and Hina Dark
 scripts/ui-states/capture.sh it8-surfaces '^pr-'      # only scenarios matching a regex
 ```
