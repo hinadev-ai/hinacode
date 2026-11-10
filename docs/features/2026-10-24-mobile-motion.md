@@ -32,7 +32,7 @@ On the phone, the changes a developer waits for happen without motion. A sent pr
 - A transition is a tween (`duration`, `ease`, `delay`), defaulting to `duration.base` and `ease.out` from `constants/motion.ts`, or a spring with `visualDuration`, using Motion's formula for stiffness and damping with no bounce. Times are in milliseconds, like the rest of the app. A target may carry its own `transition`, as the banner's faster exit does.
 - Reduce motion follows Motion's `reducedMotion="user"`: `y`, `scale` and `rotate` jump to their `animate` value, so `initial`, `exit`, `whileTap` and `layout` move nothing, while opacity and color still animate.
 - Press feedback is a spring (`pressSpring`), so a tap that lifts mid-shrink turns back without a jolt.
-- `PressableScale`, `Reveal`, `FadeIn`, `RiseIn`, `IconSwap` and `Rotate` in `components/motion.tsx` keep their names and props and are built on it. `Spinner` and `StatusDot` loop forever, which the API does not do, so they stay CSS animations.
+- `PressableScale`, `Reveal`, `FadeIn`, `IconSwap` and `Rotate` in `components/motion.tsx` keep their names and props and are built on it. `Spinner` and `StatusDot` loop forever, which the API does not do, so they stay CSS animations.
 
 Where it is used: the transcript's new messages, approval and question cards, the composer's send and stop button, the banner and `Notice`.
 

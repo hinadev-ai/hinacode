@@ -126,11 +126,11 @@ export function trackRunningSince(
   return next
 }
 
-/** A project's threads in the order the developer arranged them in the desktop sidebar. */
 /** Every thread but the drafts New thread opens, which the server lists only after their first message. */
 export const listedThreads = (byId: Readonly<Record<string, Thread>>) =>
   Object.values(byId).filter((thread) => thread.status !== "draft")
 
+/** A project's threads in the order the developer arranged them in the desktop sidebar. */
 export const sortThreads = (threads: readonly Thread[]) => [...threads].sort((a, b) => a.sortIndex - b.sortIndex)
 
 const newestFirst = (a: Thread, b: Thread) => b.updatedAt.localeCompare(a.updatedAt)
@@ -141,13 +141,13 @@ export const pinnedThreads = (threads: readonly Thread[]) =>
     .filter((thread) => thread.pinnedAt !== null && thread.status !== "archived")
     .sort((a, b) => (a.pinnedAt ?? "").localeCompare(b.pinnedAt ?? ""))
 
+/** The desktop's inbox rule: a settled thread leaves the inbox, unless it is working again. */
+const inboxGroupOf = (thread: Thread) => inboxGroup(rowState(thread.status, false, undefined, undefined), thread.settledAt)
+
 /**
  * Every active thread that is not pinned, newest activity first, as on the desktop. A thread that starts waiting
  * for the developer is updated then, so it rises to the top on its own.
  */
-/** The desktop's inbox rule: a settled thread leaves the inbox, unless it is working again. */
-const inboxGroupOf = (thread: Thread) => inboxGroup(rowState(thread.status, false, undefined, undefined), thread.settledAt)
-
 export const inboxThreads = (threads: readonly Thread[]) =>
   threads.filter((thread) => thread.pinnedAt === null && inboxGroupOf(thread) === "ready").sort(newestFirst)
 

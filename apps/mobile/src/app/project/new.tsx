@@ -174,7 +174,6 @@ export default function AddProjectScreen() {
   )
 }
 
-/** The server the project is added on, as a field that opens the list of paired servers. */
 function Field({
   id,
   label,

@@ -2,7 +2,7 @@ import type { ReactNode } from "react"
 import { type PressableProps, type StyleProp, StyleSheet, type TextStyle, View, type ViewStyle } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Icon } from "@/components/icon"
-import { cssEase, duration, ease, PRESSED_SCALE, pressSpring, rise } from "@/constants/motion"
+import { cssEase, duration, ease, PRESSED_SCALE, pressSpring } from "@/constants/motion"
 import { Colors } from "@/constants/theme"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { motion } from "@/lib/motion"
@@ -125,15 +125,6 @@ export function FadeIn({
       transition={{ duration: duration.fast }}
       style={style}
     >
-      {children}
-    </motion.View>
-  )
-}
-
-/** A card that appears while on screen rises 4 px as it fades in. Reduce motion keeps the fade. */
-export function RiseIn({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  return (
-    <motion.View {...rise} style={style}>
       {children}
     </motion.View>
   )

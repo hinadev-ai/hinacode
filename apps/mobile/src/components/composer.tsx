@@ -476,7 +476,6 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
   }
 }
 
-/** While the agent runs, a draft steers the turn, or queues behind it if the agent can't steer. */
 /**
  * Send, as the desktop's: a turn running with nothing typed turns it into Stop, and typing turns it back into Queue or
  * Steer. The halo shows whenever it has something to do.
