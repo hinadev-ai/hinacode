@@ -25,9 +25,12 @@ const answer = async (event) => {
   if (page === undefined) return new Response(null, { status: 503 })
   const channel = new MessageChannel()
   const reply = new Promise((resolve) => {
-    channel.port1.addEventListener("message", (message) => resolve(message.data))
+    const timeout = setTimeout(() => resolve({ status: 504, headers: {}, body: null }), PAGE_TIMEOUT_MS)
+    channel.port1.addEventListener("message", (message) => {
+      clearTimeout(timeout)
+      resolve(message.data)
+    })
     channel.port1.start()
-    setTimeout(() => resolve({ status: 504, headers: {}, body: null }), PAGE_TIMEOUT_MS)
   })
   page.postMessage({ type: "hinacode.resource", url: event.request.url, destination: event.request.destination }, [
     channel.port2,
