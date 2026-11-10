@@ -43,6 +43,9 @@ class FakeSocket {
   answer(method: string, result: unknown) {
     for (const call of this.calls(method)) this.receive({ type: "result", id: call.id, envelope: { result } })
   }
+  fail(method: string, error: { tag: string; message: string }) {
+    for (const call of this.calls(method)) this.receive({ type: "result", id: call.id, envelope: { error } })
+  }
 }
 
 vi.stubGlobal("WebSocket", FakeSocket)
@@ -158,6 +161,30 @@ describe("call", () => {
     const second = call("projects.list", undefined)
     socketOf(1001).answer("projects.list", [project("web"), project("docs")])
     expect((await second).map((entry) => entry.name)).toEqual(["web", "docs", "api"])
+  })
+
+  it("rejects a list when every server failed and none has a saved answer", async () => {
+    const listing = call("linear.issues", undefined)
+    socketOf(1001).fail("linear.issues", { tag: "LinearError", message: "bad key" })
+    socketOf(1002).fail("linear.issues", { tag: "LinearError", message: "bad key" })
+    await expect(listing).rejects.toMatchObject({ tag: "LinearError", message: "bad key" })
+  })
+
+  it("lists the servers that answered when another one failed", async () => {
+    const listing = call("projects.list", undefined)
+    socketOf(1001).fail("projects.list", { tag: "SqlError", message: "locked" })
+    socketOf(1002).answer("projects.list", [project("api")])
+    expect((await listing).map((entry) => entry.name)).toEqual(["api"])
+  })
+
+  it("lists a failing server's saved answer instead of its error", async () => {
+    setServers([])
+    setServers([server("a", 1001)])
+    restoreAnswers("a", { "threads.list": { payload: "null", result: [thread("t-saved", "web")] } })
+    socketOf(1001).ready({ id: "env-a", name: "studio" })
+    const listing = call("threads.list", undefined)
+    socketOf(1001).fail("threads.list", { tag: "SqlError", message: "locked" })
+    expect((await listing).map((entry) => entry.id)).toEqual(["t-saved"])
   })
 
   it("lists the answers saved at the last launch while the server is still connecting", async () => {
