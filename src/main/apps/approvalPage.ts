@@ -1,11 +1,17 @@
 import { createHash } from "node:crypto"
+import { APP_ICONS, HERMES_PNG } from "./appIcons.ts"
 
 const COPY = {
-  waitingTitle: "Approve in HinaCode",
-  waiting: "HinaCode is asking you to approve this app. This page continues once you do.",
-  app: "App",
-  returnsTo: "Sends you back to",
-  warning: "A connected app can read your threads and start agents that run code on this machine.",
+  wantsToConnect: (app: string) => `${app} wants to connect to HinaCode`,
+  returnsTo: (host: string) => `Sends you back to ${host}`,
+  lead: "Approving lets it:",
+  grants: [
+    "Read your projects and threads",
+    "Start agents that run code on this machine",
+    "Send messages to threads and stop them",
+    "Stay connected until you remove it in HinaCode",
+  ],
+  approveInApp: "Approve or deny in HinaCode, under Settings > Connections > Apps. This page continues on its own.",
   notStartedTitle: "Start in HinaCode",
   notStarted: "Open HinaCode, go to Settings > Connections > Apps, choose Copy URL, then connect again.",
   brokenLinkTitle: "This link does not work",
@@ -15,18 +21,69 @@ const COPY = {
 const REFRESH_SECONDS = 2
 
 const STYLE = `
-:root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
-body { margin: 0; display: grid; min-height: 100dvh; place-items: center; }
-main { box-sizing: border-box; width: 100%; max-width: 26rem; padding: 1.5rem; }
-h1 { margin: 0 0 1rem; font-size: 1.25rem; }
-dl { margin: 0 0 1rem; display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; }
-dt { opacity: 0.7; }
-dd { margin: 0; overflow-wrap: anywhere; font-weight: 600; }
-p { margin: 0 0 1rem; }
+:root {
+  color-scheme: light dark;
+  --paper: oklch(0.975 0.007 106.521);
+  --surface: oklch(0.99 0.004 106.5);
+  --ink: oklch(0.32 0.026 195.945);
+  --muted: oklch(0.48 0.022 196);
+  --border: oklch(0.905 0.012 106.5);
+  --coral: oklch(0.56 0.16 34.263);
+  --teal: oklch(0.527 0.085 193.827);
+  font-family: "DM Sans", system-ui, sans-serif;
+  line-height: 1.5;
+  background: var(--paper);
+  color: var(--ink);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: oklch(0.285 0.024 196);
+    --surface: oklch(0.32 0.026 195.945);
+    --ink: oklch(0.975 0.007 106.521);
+    --muted: oklch(0.78 0.014 106.5);
+    --border: oklch(0.385 0.028 196);
+    --coral: oklch(0.669 0.158 34.263);
+    --teal: oklch(0.7 0.09 193.8);
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100dvh; display: grid; justify-items: center; align-content: start; padding: 64px 16px 32px; }
+main { width: 100%; max-width: 460px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 48px 32px 32px; box-shadow: 0 1px 2px oklch(0 0 0 / 0.04), 0 8px 24px oklch(0 0 0 / 0.06); text-align: center; }
+.mark { display: flex; align-items: center; justify-content: center; margin-bottom: 32px; }
+.tile { width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; flex: none; overflow: hidden; }
+.tile svg { width: 100%; height: 100%; }
+.brand { border-radius: 12px; box-shadow: 0 0 0 1px var(--border); }
+.letter { background: var(--ink); color: var(--paper); font-size: 1.5rem; font-weight: 600; text-transform: uppercase; }
+.glyph svg { width: 30px; height: 30px; }
+.grok, .chatgpt { background: #000; color: #fff; }
+.claude { background: #d97757; color: #fff; }
+.hermes { background: #fff url("data:image/png;base64,${HERMES_PNG}") center / cover; }
+.wire { width: 56px; height: 2px; margin: 0 8px; position: relative; background-image: linear-gradient(to right, var(--muted) 50%, transparent 0); background-size: 8px 2px; }
+.wire::before, .wire::after { content: ""; position: absolute; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.wire::before { left: -4px; }
+.wire::after { right: -4px; }
+h1 { font-size: 1.375rem; font-weight: 600; line-height: 1.3; margin: 0; text-wrap: balance; overflow-wrap: anywhere; }
+.detail { margin: 12px 0 0; color: var(--muted); text-wrap: pretty; overflow-wrap: anywhere; }
+.request { margin-top: 32px; text-align: start; }
+.lead { margin: 0 0 12px; color: var(--muted); font-size: 0.875rem; }
+.grants { list-style: none; margin: 0; padding: 4px 0; border-block: 1px solid var(--border); }
+.grants li { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; }
+.grants svg { width: 20px; height: 20px; flex: none; margin-top: 2px; color: var(--coral); }
+.status { display: flex; gap: 12px; align-items: flex-start; margin: 24px 0 0; padding: 12px 16px; border-radius: 10px; background: color-mix(in oklab, var(--ink) 6%, transparent); font-size: 0.9375rem; text-wrap: pretty; }
+.pulse { width: 8px; height: 8px; margin-top: 8px; border-radius: 50%; flex: none; background: var(--teal); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.3; } }
+@media (width < 480px) {
+  body { padding-top: 24px; }
+  .card { padding: 32px 20px 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse { animation: none; }
+}
 `
 
 const HEADERS = {
-  "content-security-policy": `default-src 'none'; style-src 'sha256-${createHash("sha256").update(STYLE).digest("base64")}'; base-uri 'none'; frame-ancestors 'none'`,
+  "content-security-policy": `default-src 'none'; style-src 'sha256-${createHash("sha256").update(STYLE).digest("base64")}'; img-src data:; base-uri 'none'; frame-ancestors 'none'`,
   "x-frame-options": "DENY",
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
@@ -58,6 +115,28 @@ const markup = (strings: TemplateStringsArray, ...values: ReadonlyArray<string |
 
 const NOTHING = new Markup("")
 
+const HINACODE_MARK = new Markup(
+  `<svg viewBox="0 0 256 256" aria-hidden="true"><rect width="256" height="256" rx="56" fill="#F7F7F2"/><g transform="translate(36 36) scale(0.71875)"><path fill="#233737" d="M38 90A32 32 0 0 1 70 58A32 32 0 0 1 97.13 73.04A5 5 0 0 1 95.68 79.84A58 58 0 0 0 99.46 178.49A5 5 0 0 1 102 182.85L102 194A32 32 0 0 1 70 226A32 32 0 0 1 38 194ZM218 166A32 32 0 0 1 186 198A32 32 0 0 1 158.87 182.96A5 5 0 0 1 160.32 176.16A58 58 0 0 0 156.54 77.51A5 5 0 0 1 154 73.15L154 62A32 32 0 0 1 186 30A32 32 0 0 1 218 62Z"/><circle fill="#E56B4F" cx="128" cy="128" r="46"/></g></svg>`,
+)
+
+const CHECK = new Markup(
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`,
+)
+
+const brandTile = markup`<span class="tile brand">${HINACODE_MARK}</span>`
+
+const appTile = (appName: string, redirectHost: string) => {
+  const icon = APP_ICONS.find(({ matches }) => matches.test(appName) || matches.test(redirectHost))
+  if (icon === undefined)
+    return markup`<span class="tile letter" aria-hidden="true">${Array.from(appName.trim())[0] ?? "?"}</span>`
+  if (icon.paths === undefined) return new Markup(`<span class="tile ${icon.id}" aria-hidden="true"></span>`)
+  return new Markup(
+    `<span class="tile glyph ${icon.id}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor">${icon.paths
+      .map((path) => `<path d="${path}"/>`)
+      .join("")}</svg></span>`,
+  )
+}
+
 const document = (title: string, body: Markup, head = NOTHING) => ({
   headers: HEADERS,
   html: markup`<!doctype html>
@@ -69,22 +148,27 @@ const document = (title: string, body: Markup, head = NOTHING) => ({
 ${head}
 <style>${new Markup(STYLE)}</style>
 </head>
-<body><main>${body}</main></body>
+<body><main><article class="card">${body}</article></main></body>
 </html>`.html,
 })
 
 export const waitingPage = (input: { readonly appName: string; readonly redirectHost: string }) =>
   document(
-    COPY.waitingTitle,
-    markup`<h1>${COPY.waitingTitle}</h1>
-<p>${COPY.waiting}</p>
-<dl><dt>${COPY.app}</dt><dd>${input.appName}</dd><dt>${COPY.returnsTo}</dt><dd>${input.redirectHost}</dd></dl>
-<p>${COPY.warning}</p>`,
+    COPY.wantsToConnect(input.appName),
+    markup`<div class="mark">${appTile(input.appName, input.redirectHost)}<span class="wire"></span>${brandTile}</div>
+<h1>${COPY.wantsToConnect(input.appName)}</h1>
+<p class="detail">${COPY.returnsTo(input.redirectHost)}</p>
+<section class="request">
+<p class="lead">${COPY.lead}</p>
+<ul class="grants">${COPY.grants.map((grant) => markup`<li>${CHECK}${grant}</li>`)}</ul>
+<p class="status" role="status"><span class="pulse" aria-hidden="true"></span>${COPY.approveInApp}</p>
+</section>`,
     markup`<meta http-equiv="refresh" content="${String(REFRESH_SECONDS)}">`,
   )
 
-export const notStartedPage = () =>
-  document(COPY.notStartedTitle, markup`<h1>${COPY.notStartedTitle}</h1><p>${COPY.notStarted}</p>`)
+const notice = (title: string, detail: string) =>
+  document(title, markup`<div class="mark">${brandTile}</div><h1>${title}</h1><p class="detail">${detail}</p>`)
 
-export const brokenLinkPage = () =>
-  document(COPY.brokenLinkTitle, markup`<h1>${COPY.brokenLinkTitle}</h1><p>${COPY.brokenLink}</p>`)
+export const notStartedPage = () => notice(COPY.notStartedTitle, COPY.notStarted)
+
+export const brokenLinkPage = () => notice(COPY.brokenLinkTitle, COPY.brokenLink)
