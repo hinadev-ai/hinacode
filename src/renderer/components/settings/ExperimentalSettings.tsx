@@ -40,7 +40,7 @@ export function ExperimentalSettings() {
   const setExperimental: SetExperimental = async (patch) => {
     setError(null)
     try {
-      await updateSettings({ experimental: { ...experimental, ...patch } })
+      await updateSettings({ experimental: patch })
     } catch (cause) {
       setError(errorMessage(cause))
     }

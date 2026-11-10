@@ -63,7 +63,7 @@ export function ArchiveSettings() {
   const save = async (patch: Partial<Archive>) => {
     setError(null)
     try {
-      await updateSettings({ archive: { ...archive, ...patch } })
+      await updateSettings({ archive: patch })
     } catch (cause) {
       setError(errorMessage(cause))
     }

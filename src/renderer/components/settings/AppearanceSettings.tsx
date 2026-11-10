@@ -25,7 +25,7 @@ export function AppearanceSettings() {
   const save = async (patch: Partial<Appearance>) => {
     setError(null)
     try {
-      await updateClientSettings({ appearance: { ...appearance, ...patch } })
+      await updateClientSettings({ appearance: patch })
       return true
     } catch (cause) {
       setError(errorMessage(cause))

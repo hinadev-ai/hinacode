@@ -41,7 +41,7 @@ export function NotificationSettings() {
   const save = async (patch: Partial<Notifications>) => {
     setError(null)
     try {
-      await updateClientSettings({ notifications: { ...notifications, ...patch } })
+      await updateClientSettings({ notifications: patch })
     } catch (cause) {
       setError(errorMessage(cause))
     }

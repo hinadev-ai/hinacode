@@ -12,7 +12,7 @@ import {
   useTransition,
 } from "react"
 import { CLAUDE_EFFORT_LEVELS, type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
-import { AccessMode, AUTO_COMPACT_RANGE, type Settings } from "../../../shared/domain.ts"
+import { AccessMode, AUTO_COMPACT_RANGE } from "../../../shared/domain.ts"
 import { providerInfo } from "../../../shared/providers.ts"
 import { binariesAtom, modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useAgentBinaries, useSettings } from "../../lib/settings.ts"
@@ -107,26 +107,12 @@ function NewThreadsGroup() {
   )
 }
 
-type ProviderSwitches = Settings["providerEnabled"]
-
 function AgentList({ selected, onSelect }: { selected: ProviderId; onSelect: (provider: ProviderId) => void }) {
   const environment = useSettingsEnvironment()
-  const { providerEnabled } = useSettings(environment)
   const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
-  const pendingSave = useRef<Promise<ProviderSwitches | null>>(null)
 
-  const setEnabled = (provider: ProviderId, enabled: boolean) => {
-    const save = (pendingSave.current ?? Promise.resolve(null))
-      .then((saved) => updateSettings({ providerEnabled: { ...(saved ?? providerEnabled), [provider]: enabled } }))
-      .then(
-        (settings) => settings.providerEnabled,
-        () => null,
-      )
-    pendingSave.current = save
-    void save.finally(() => {
-      if (pendingSave.current === save) pendingSave.current = null
-    })
-  }
+  const setEnabled = (provider: ProviderId, enabled: boolean) =>
+    void updateSettings({ providerEnabled: { [provider]: enabled } }).catch(() => undefined)
 
   return (
     <Panel title={m.settings_agents()}>
@@ -272,7 +258,7 @@ function BinaryPathField({ provider }: { provider: ProviderId }) {
     startSaving(async () => {
       setError(null)
       try {
-        await updateSettings({ providerBinary: { ...providerBinary, [provider]: next === "" ? null : next } })
+        await updateSettings({ providerBinary: { [provider]: next === "" ? null : next } })
         refreshBinaries()
       } catch (cause) {
         setError(errorMessage(cause))
@@ -321,7 +307,7 @@ function ModelsSection({ provider }: { provider: ProviderId }) {
   const saveDefault = async (model: string | null) => {
     setError(null)
     try {
-      await updateSettings({ defaultModel: { ...defaultModel, [provider]: model } })
+      await updateSettings({ defaultModel: { [provider]: model } })
     } catch (cause) {
       setError(errorMessage(cause))
     }
@@ -414,7 +400,7 @@ function ModelList({ provider, models, current }: ModelListProps) {
     setError(null)
     try {
       await updateSettings({
-        modelPresets: { ...modelPresets, [provider]: next.length === listed.length ? [] : next },
+        modelPresets: { [provider]: next.length === listed.length ? [] : next },
       })
     } catch (cause) {
       setError(errorMessage(cause))
@@ -528,7 +514,7 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
     startSaving(async () => {
       setError(null)
       try {
-        await updateSettings({ autoCompactTokens: { ...autoCompactTokens, [provider]: tokens } })
+        await updateSettings({ autoCompactTokens: { [provider]: tokens } })
         setDraft(tokens === null ? "" : String(tokens / 1000))
       } catch (cause) {
         setError(errorMessage(cause))
@@ -687,10 +673,10 @@ function PullRequestGuideField() {
     label: effortLabel(value),
   }))
 
-  const save = async (next: typeof pullRequestGuide) => {
+  const save = async (patch: Partial<typeof pullRequestGuide>) => {
     setError(null)
     try {
-      await updateSettings({ pullRequestGuide: next })
+      await updateSettings({ pullRequestGuide: patch })
     } catch (cause) {
       setError(errorMessage(cause))
     }
@@ -706,7 +692,7 @@ function PullRequestGuideField() {
 
   const saveModel = async (model: string | null) => {
     if (model === null) return
-    await save({ ...pullRequestGuide, model, effort: effortKeptOrDefaultFor(model) })
+    await save({ model, effort: effortKeptOrDefaultFor(model) })
   }
 
   return (
@@ -716,7 +702,7 @@ function PullRequestGuideField() {
         <Switch
           id="pull-request-guide-enabled"
           checked={pullRequestGuide.enabled}
-          onCheckedChange={(enabled) => void save({ ...pullRequestGuide, enabled })}
+          onCheckedChange={(enabled) => void save({ enabled })}
         />
       </Field>
       {pullRequestGuide.enabled && (
@@ -731,7 +717,7 @@ function PullRequestGuideField() {
             <Select
               items={effortItems}
               value={pullRequestGuide.effort}
-              onValueChange={(effort) => effort !== null && void save({ ...pullRequestGuide, effort })}
+              onValueChange={(effort) => effort !== null && void save({ effort })}
             >
               <SelectTrigger aria-label={m.thread_effort_picker()} className="min-w-0 flex-1 basis-28">
                 <SelectValue />

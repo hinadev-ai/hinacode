@@ -1,6 +1,6 @@
 import type { ModelInfo, ProviderId } from "@shared/agent.ts"
 import type { RpcRequest } from "@shared/contract.ts"
-import { AccessMode, type Settings } from "@shared/domain.ts"
+import { AccessMode, applySettingsPatch, type Settings } from "@shared/domain.ts"
 import Constants from "expo-constants"
 import { useEffect, useState } from "react"
 import { router } from "expo-router"
@@ -236,7 +236,7 @@ function useDesktopSettings(server: string | undefined) {
   }
 
   const write = (previous: Settings, patch: SettingsPatch) => {
-    setSettings({ ...previous, ...patch })
+    setSettings(applySettingsPatch(previous, patch))
     setWriteError(null)
     call("settings.set", patch, { server }).then(setSettings, (cause) => {
       setSettings(previous)
@@ -297,7 +297,7 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
   const pickModel = (provider: ProviderId, id: string | null) => {
     setPicking(null)
     if (settings.defaultModel[provider] === id) return
-    write(settings, { defaultModel: { ...settings.defaultModel, [provider]: id } })
+    write(settings, { defaultModel: { [provider]: id } })
   }
 
   return (
@@ -349,14 +349,14 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
           label={copy("mobile_settings_archive_when_merged")}
           value={settings.archive.whenMerged}
           disabled={offline}
-          onChange={(whenMerged) => write(settings, { archive: { ...settings.archive, whenMerged } })}
+          onChange={(whenMerged) => write(settings, { archive: { whenMerged } })}
         />
         <SwitchRow
           icon="Archive"
           label={copy("mobile_settings_archive_remove_worktree")}
           value={settings.archive.removeWorktree}
           disabled={offline}
-          onChange={(removeWorktree) => write(settings, { archive: { ...settings.archive, removeWorktree } })}
+          onChange={(removeWorktree) => write(settings, { archive: { removeWorktree } })}
         />
       </SettingsGroup>
       {picking !== null && (

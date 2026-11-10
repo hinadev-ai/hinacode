@@ -26,11 +26,11 @@ export function RemoteSettings() {
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
-  const save = (next: RemoteSettingsValue) =>
+  const save = (patch: Partial<RemoteSettingsValue>) =>
     startTransition(async () => {
       setError(null)
       try {
-        await updateSettings({ remote: next })
+        await updateSettings({ remote: patch })
       } catch (cause) {
         setError(errorMessage(cause))
       }
@@ -49,7 +49,7 @@ export function RemoteSettings() {
               id="remote-enabled"
               checked={remote.enabled}
               disabled={pending}
-              onCheckedChange={(enabled) => save({ ...remote, enabled })}
+              onCheckedChange={(enabled) => save({ enabled })}
             />
           </Field>
           <RemoteStatusLine remote={remote} />
@@ -119,7 +119,7 @@ function ListenerStatus({ remote }: { remote: RemoteSettingsValue }) {
 interface ListenerSettingsProps {
   readonly remote: RemoteSettingsValue
   readonly pending: boolean
-  readonly onSave: (next: RemoteSettingsValue) => void
+  readonly onSave: (patch: Partial<RemoteSettingsValue>) => void
 }
 
 function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
@@ -127,7 +127,7 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    onSave({ ...remote, port: Number(port) })
+    onSave({ port: Number(port) })
   }
 
   return (
@@ -139,7 +139,7 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
             id="remote-bind-host"
             environment={null}
             value={remote.bindHost}
-            onChange={(bindHost) => onSave({ ...remote, bindHost })}
+            onChange={(bindHost) => onSave({ bindHost })}
             privateNetworks
           />
         </Field>
