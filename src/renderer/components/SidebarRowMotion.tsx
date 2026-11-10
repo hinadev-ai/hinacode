@@ -37,7 +37,7 @@ const fadeVariants: Variants = {
   shown: (still: boolean) => ({ opacity: 1, transition: still ? instant : resize, transitionEnd: { opacity: "" } }),
 }
 
-export interface RowPlacement {
+interface RowPlacement {
   readonly id: string
   readonly section: string
 }

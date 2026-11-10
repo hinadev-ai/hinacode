@@ -26,7 +26,7 @@ const onShown = (servers: ReadonlySet<string> | null, project: Project | undefin
   servers === null || (project?.environmentId !== undefined && servers.has(project.environmentId))
 
 /** The projects on the shown servers, narrowed to the picked ones among them when any is picked. */
-export const shownProjects = (filter: ThreadFilter, projects: readonly Project[]): readonly Project[] =>
+const shownProjects = (filter: ThreadFilter, projects: readonly Project[]): readonly Project[] =>
   filterPickedProjects(
     projects.filter((project) => onShown(filter.servers, project)),
     filter.projectIds,

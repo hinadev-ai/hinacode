@@ -152,8 +152,8 @@ export type ApprovalRequest = typeof ApprovalRequest.Type
 export const ApprovalDecision = Schema.Literals(["allow", "allow_for_session", "deny"])
 export type ApprovalDecision = typeof ApprovalDecision.Type
 
-export const QuestionOption = Schema.Struct({ label: Schema.String, description: Schema.String })
-export type QuestionOption = typeof QuestionOption.Type
+const QuestionOption = Schema.Struct({ label: Schema.String, description: Schema.String })
+type QuestionOption = typeof QuestionOption.Type
 
 export const Question = Schema.Struct({
   id: Schema.String,
@@ -406,7 +406,7 @@ export const outputText = (output: unknown): string => {
       : JSON.stringify(blocks)
 }
 
-export const CREATE_THREAD_TOOL = "create_thread"
+const CREATE_THREAD_TOOL = "create_thread"
 
 export const isCreateThreadTool = (name: string) => ownToolName(name) === CREATE_THREAD_TOOL
 

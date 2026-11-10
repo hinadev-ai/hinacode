@@ -205,8 +205,8 @@ export type CheckRun = typeof CheckRun.Type
 export const DiffSide = Schema.Literals(["LEFT", "RIGHT"])
 export type DiffSide = typeof DiffSide.Type
 
-export const CommentAuthorKind = Schema.Literals(["you", "human", "bot"])
-export type CommentAuthorKind = typeof CommentAuthorKind.Type
+const CommentAuthorKind = Schema.Literals(["you", "human", "bot"])
+type CommentAuthorKind = typeof CommentAuthorKind.Type
 
 export const PullRequestComment = Schema.Struct({
   id: Schema.String,
@@ -526,8 +526,8 @@ export const publishesArtifact = (call: { readonly name: string; readonly status
 export const createsThread = (call: { readonly name: string; readonly status: ToolCallStatus }) =>
   isCreateThreadTool(call.name) && call.status !== "error"
 
-export const MessageRole = Schema.Literals(["user", "assistant"])
-export type MessageRole = typeof MessageRole.Type
+const MessageRole = Schema.Literals(["user", "assistant"])
+type MessageRole = typeof MessageRole.Type
 
 export const Message = Schema.Struct({
   id: Schema.String,

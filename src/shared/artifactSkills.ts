@@ -2,7 +2,7 @@ export const ARTIFACT_SKILLS = ["artifact:doc", "artifact:writing"] as const
 
 export type ArtifactSkill = (typeof ARTIFACT_SKILLS)[number]
 
-export interface ArtifactSkillInvocation {
+interface ArtifactSkillInvocation {
   readonly skill: ArtifactSkill
   readonly request: string
 }

@@ -24,14 +24,14 @@ export class BoatSnapshotExpiredError extends Schema.TaggedError<BoatSnapshotExp
 
 export { SandboxGoneError }
 
-export interface BoatSandbox {
+interface BoatSandbox {
   readonly id: string
   readonly name: string
   readonly state: string
   readonly labels: Readonly<Record<string, string>>
 }
 
-export const BOAT_READY_STATES = ["ready", "idle", "running"] as const
+const BOAT_READY_STATES = ["ready", "idle", "running"] as const
 
 const REQUEST_TIMEOUT_SECONDS = 15
 const FILES_TIMEOUT_SECONDS = 300

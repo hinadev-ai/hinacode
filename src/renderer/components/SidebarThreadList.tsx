@@ -277,7 +277,7 @@ function NextPageSentinel({ onReached }: { readonly onReached: () => void }) {
   return <div ref={ref} aria-hidden className="h-px" />
 }
 
-export interface TurnSection {
+interface TurnSection {
   readonly key: string
   readonly group: string
   readonly heading: ReactNode

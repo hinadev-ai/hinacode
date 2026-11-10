@@ -15,7 +15,7 @@ export const useDeviceTabs = create<DeviceTabsState>()((set) => ({
   select: (threadId, tab) => set((state) => ({ selected: { ...state.selected, [threadId]: tab } })),
 }))
 
-export const shownDeviceTab = (devices: ThreadDevices, chosen: string | undefined) => {
+const shownDeviceTab = (devices: ThreadDevices, chosen: string | undefined) => {
   if (chosen !== undefined && (chosen === DEVICE_LIST_TAB || devices.some((entry) => deviceTabKey(entry) === chosen)))
     return chosen
   const created = chosen === "new" ? devices.findLast(threadDeviceOwned) : undefined

@@ -86,12 +86,12 @@ declare global {
   }
 }
 
-export interface InstalledFonts {
+interface InstalledFonts {
   readonly all: ReadonlyArray<string>
   readonly monospace: ReadonlyArray<string>
 }
 
-export async function listInstalledFonts(): Promise<InstalledFonts> {
+async function listInstalledFonts(): Promise<InstalledFonts> {
   const faces = await window.queryLocalFonts()
   const all = [...new Set(faces.map((face) => face.family))].toSorted((a, b) => a.localeCompare(b))
   const context = new OffscreenCanvas(1, 1).getContext("2d")

@@ -47,7 +47,7 @@ import { Projects } from "./Projects.ts"
 import { Settings } from "./Settings.ts"
 import { diffWorkingTree } from "./workingTree.ts"
 
-export interface CreateWorktree {
+interface CreateWorktree {
   readonly projectId: string
   readonly branch: string
   readonly baseRef: string
@@ -55,7 +55,7 @@ export interface CreateWorktree {
   readonly workingTree?: string
 }
 
-export type DeleteBranch = "keep" | "ifMerged" | "force"
+type DeleteBranch = "keep" | "ifMerged" | "force"
 
 export const SETUP_TIMEOUT: Duration.Input = "60 seconds"
 export const FETCH_INTERVAL: Duration.Input = "5 minutes"

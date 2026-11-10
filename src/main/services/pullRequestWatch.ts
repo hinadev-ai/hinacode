@@ -29,7 +29,7 @@ const neutral = (next: PullRequestWatchSnapshot): PullRequestWatchSnapshot => ({
 const toldFailing = (previous: PullRequestWatchSnapshot, next: PullRequestWatchSnapshot) =>
   previous.head === next.head ? previous.failingChecks : []
 
-export const newFailingChecks = (
+const newFailingChecks = (
   previous: PullRequestWatchSnapshot | null,
   next: PullRequestWatchSnapshot,
 ): ReadonlyArray<string> => {
@@ -37,7 +37,7 @@ export const newFailingChecks = (
   return next.failingChecks.filter((name) => !told.has(name))
 }
 
-export const newComments = (
+const newComments = (
   previous: PullRequestWatchSnapshot | null,
   next: PullRequestWatchSnapshot,
 ): ReadonlyArray<string> => {

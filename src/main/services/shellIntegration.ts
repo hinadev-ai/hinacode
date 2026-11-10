@@ -11,7 +11,7 @@ export interface Shell {
   readonly args: ReadonlyArray<string>
 }
 
-export interface ShellLaunch extends Shell {
+interface ShellLaunch extends Shell {
   readonly env: Readonly<Record<string, string>>
 }
 

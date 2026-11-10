@@ -1,7 +1,7 @@
 import type { ModelInfo, ProviderId } from "../../../shared/agent.ts"
 import type { ConfigOption, SessionSetup } from "./protocol.ts"
 
-export type ModelSelector =
+type ModelSelector =
   | { readonly via: "config"; readonly configId: string; readonly current: string | null }
   | { readonly via: "legacy"; readonly current: string }
 
@@ -20,7 +20,7 @@ const modelConfig = (setup: SessionSetup) => selectConfig(setup, "model")
 const optionValues = (config: ConfigOption) =>
   (config.options ?? []).flatMap((entry) => ("group" in entry ? entry.options : [entry])).map((choice) => choice.value)
 
-export interface EffortSelector {
+interface EffortSelector {
   readonly configId: string
   readonly current: string | null
   readonly levels: ReadonlyArray<string>

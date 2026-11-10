@@ -2,7 +2,7 @@ import type { ProviderId } from "./agent.ts"
 
 export const MAGPIE_KEY_SECRET = "magpie.key"
 
-export interface ProviderInfo {
+interface ProviderInfo {
   readonly name: string
   readonly binary: string
   readonly installUrl: string

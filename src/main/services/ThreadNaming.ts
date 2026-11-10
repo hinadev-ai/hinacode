@@ -30,7 +30,7 @@ const HALF_LIMIT = Math.floor((PROMPT_LIMIT - ELISION.length) / 2)
 const firstAndLatest = (text: string) =>
   text.length <= PROMPT_LIMIT ? text : `${text.slice(0, HALF_LIMIT)}${ELISION}${text.slice(-HALF_LIMIT)}`
 
-export type NamingScope = "title" | "titleAndBranch"
+type NamingScope = "title" | "titleAndBranch"
 
 export class ThreadNaming extends Context.Service<
   ThreadNaming,

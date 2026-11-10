@@ -26,7 +26,7 @@ const launchers: Record<OpenerId, Launcher> = {
   warp: { name: "Warp", bundle: "Warp.app", cli: null, opensFiles: false },
 }
 
-export class OpenerError extends Schema.TaggedError<OpenerError>()("OpenerError", { message: Schema.String }) {}
+class OpenerError extends Schema.TaggedError<OpenerError>()("OpenerError", { message: Schema.String }) {}
 
 const exists = (path: string) =>
   access(path).then(

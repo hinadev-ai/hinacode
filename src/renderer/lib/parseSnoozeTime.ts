@@ -2,9 +2,7 @@ import { en, ja, zh } from "chrono-node"
 import type { Locale } from "../../shared/domain.ts"
 import { MORNING } from "./snooze.ts"
 
-export type ParsedSnooze =
-  | { readonly status: "empty" | "unreadable" }
-  | { readonly status: "ok" | "past"; readonly at: Date }
+type ParsedSnooze = { readonly status: "empty" | "unreadable" } | { readonly status: "ok" | "past"; readonly at: Date }
 
 const parsers: Record<Locale, ReadonlyArray<typeof en.casual>> = {
   en: [en.casual],

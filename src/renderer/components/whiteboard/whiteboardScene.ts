@@ -16,7 +16,7 @@ export const EMPTY_SNAPSHOT: Snapshot = { remote: new Map(), versions: new Map()
 
 export const isSkeleton = (element: WhiteboardElement) => typeof element["version"] !== "number"
 
-export type RemotePlan = { readonly replaced: ReadonlySet<string>; readonly removed: ReadonlySet<string> }
+type RemotePlan = { readonly replaced: ReadonlySet<string>; readonly removed: ReadonlySet<string> }
 
 export const planRemote = (snapshot: Snapshot, remote: ReadonlyArray<WhiteboardElement>): RemotePlan => {
   const present = new Set(remote.map((element) => element.id))

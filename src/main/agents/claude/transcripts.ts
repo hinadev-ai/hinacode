@@ -30,7 +30,7 @@ interface Spent {
   readonly tokens: Tokens
 }
 
-export type TranscriptUsage = ReadonlyMap<string, Spent>
+type TranscriptUsage = ReadonlyMap<string, Spent>
 
 // FIXME: the CLI writes one line per content block, each repeating the message's still-growing usage
 const keepLatest = (into: Map<string, Spent>, key: string, spent: Spent) => {
@@ -38,7 +38,7 @@ const keepLatest = (into: Map<string, Spent>, key: string, spent: Spent) => {
   if (seen === undefined || spent.tokens.outputTokens > seen.tokens.outputTokens) into.set(key, spent)
 }
 
-export const parseTranscript = async (lines: AsyncIterable<string> | Iterable<string>): Promise<TranscriptUsage> => {
+const parseTranscript = async (lines: AsyncIterable<string> | Iterable<string>): Promise<TranscriptUsage> => {
   const requests = new Map<string, Spent>()
   for await (const line of lines) {
     if (!line.includes('"assistant"')) continue

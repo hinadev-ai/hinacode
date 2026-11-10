@@ -21,22 +21,22 @@ import { type CommandError, Git, LONG_TIMEOUT } from "./Git.ts"
 import { Events } from "./Events.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
 
-export interface CreateProject {
+interface CreateProject {
   readonly name: string
   readonly rootPath: string
   readonly setupScript: string | null
 }
 
-export interface CreateFolderProject extends CreateProject {
+interface CreateFolderProject extends CreateProject {
   readonly createRepository?: RepositoryVisibility | undefined
 }
 
-export interface CloneProject extends CreateProject {
+interface CloneProject extends CreateProject {
   readonly cloneId: string
   readonly repository: GitHubRepository
 }
 
-export interface UpdateProject {
+interface UpdateProject {
   readonly id: string
   readonly name?: string | undefined
   readonly rootPath?: string | undefined

@@ -30,7 +30,7 @@ export function assistantPresentation(message: Message, showElapsedTime = true):
   return { kind: "completed", durationMs, parts }
 }
 
-export const INLINE_TAIL_PARTS = 50
+const INLINE_TAIL_PARTS = 50
 
 export function foldedParts(presentation: AssistantPresentation): ReadonlyArray<IndexedMessagePart> {
   return presentation.kind === "completed"

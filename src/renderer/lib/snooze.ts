@@ -1,6 +1,6 @@
 export type SnoozePresetId = "inAnHour" | "thisEvening" | "tomorrow" | "nextWeek"
 
-export interface SnoozePreset {
+interface SnoozePreset {
   readonly id: SnoozePresetId
   readonly at: Date
 }

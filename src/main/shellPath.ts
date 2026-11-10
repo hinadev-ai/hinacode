@@ -34,7 +34,7 @@ const readCache = (cacheFile: string) => {
   }
 }
 
-export interface PathHydration {
+interface PathHydration {
   readonly ready: Promise<void>
   readonly refreshed: Promise<void>
 }

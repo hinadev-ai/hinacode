@@ -45,7 +45,7 @@ const ASSETS: Partial<Record<`${NodeJS.Platform}-${NodeJS.Architecture}`, Cloudf
 
 export const platformAsset = (): CloudflaredAsset | undefined => ASSETS[`${process.platform}-${process.arch}`]
 
-export class CloudflaredInstallError extends Data.TaggedError("CloudflaredInstallError")<{
+class CloudflaredInstallError extends Data.TaggedError("CloudflaredInstallError")<{
   readonly message: string
 }> {}
 

@@ -27,9 +27,7 @@ export type Chart = {
   readonly peak: { readonly x: string; readonly total: number } | null
 }
 
-export type ParsedChart =
-  | { readonly ok: true; readonly chart: Chart }
-  | { readonly ok: false; readonly message: string }
+type ParsedChart = { readonly ok: true; readonly chart: Chart } | { readonly ok: false; readonly message: string }
 
 const decodeSpec = Schema.decodeUnknownResult(Schema.fromJsonString(ChartSpec))
 

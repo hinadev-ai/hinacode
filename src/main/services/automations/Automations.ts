@@ -39,13 +39,13 @@ import { hookPath, webhookServer } from "./webhook.ts"
 // FIXME: the Linear SDK's enum is a runtime value, so it is spelled out to keep the SDK lazy
 const CREATED_AT = "createdAt" as LinearDocument.PaginationOrderBy
 
-export const SLACK_TOKEN_SECRET = "slack.token"
+const SLACK_TOKEN_SECRET = "slack.token"
 const webhookSecretName = (automationId: string) => `automation.${automationId}.webhookSecret`
 
 const POLL_INTERVAL_MS = 60_000
 const POLL_JITTER_MS = 10_000
 
-export class AutomationError extends Schema.TaggedError<AutomationError>()("AutomationError", {
+class AutomationError extends Schema.TaggedError<AutomationError>()("AutomationError", {
   reason: Schema.String,
 }) {
   override get message(): string {
@@ -53,7 +53,7 @@ export class AutomationError extends Schema.TaggedError<AutomationError>()("Auto
   }
 }
 
-export interface UpdateAutomation extends Partial<Omit<AutomationInput, "projectId">> {
+interface UpdateAutomation extends Partial<Omit<AutomationInput, "projectId">> {
   readonly id: string
 }
 

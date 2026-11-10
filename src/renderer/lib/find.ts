@@ -20,7 +20,7 @@ const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&
 export const findPattern = (query: string): RegExp | null =>
   query.trim() === "" ? null : new RegExp(escapeRegExp(query), "giu")
 
-export function searchableText(part: MessagePart, skillLabels: SkillLabels): string {
+function searchableText(part: MessagePart, skillLabels: SkillLabels): string {
   switch (part.type) {
     case "text":
     case "questions":
@@ -45,7 +45,7 @@ export function searchableText(part: MessagePart, skillLabels: SkillLabels): str
   }
 }
 
-export interface CommandFindText {
+interface CommandFindText {
   readonly distinctLabel: string | null
   readonly command: string
 }
@@ -56,7 +56,7 @@ export function commandFindText(call: ToolCall): CommandFindText {
   return { distinctLabel: label === command ? null : label, command }
 }
 
-export const commandSearchText = ({ distinctLabel, command }: CommandFindText) =>
+const commandSearchText = ({ distinctLabel, command }: CommandFindText) =>
   distinctLabel === null ? command : `${distinctLabel}\n${command}`
 
 export function findMatches(

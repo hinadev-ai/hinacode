@@ -24,9 +24,9 @@ import { Events } from "../Events.ts"
 import { Settings } from "../Settings.ts"
 import type { DeviceLink, DevicePlatformDriver, Frame } from "./platform.ts"
 
-export class DevicesError extends Schema.TaggedError<DevicesError>()("DevicesError", { message: Schema.String }) {}
+class DevicesError extends Schema.TaggedError<DevicesError>()("DevicesError", { message: Schema.String }) {}
 
-export type AgentInput = "done" | "handedBack"
+type AgentInput = "done" | "handedBack"
 
 export type ReadyDevice = Extract<ThreadDevice, { phase: "ready" }>
 
@@ -80,7 +80,7 @@ export class Devices extends Context.Service<
   }
 >()("hinacode/Devices") {}
 
-export interface DevicesOptions {
+interface DevicesOptions {
   readonly drivers: Record<DevicePlatform, DevicePlatformDriver>
   readonly simslimAvailable: () => Promise<boolean>
   readonly leaseMs?: number

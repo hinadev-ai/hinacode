@@ -9,7 +9,7 @@ export const toCommand = (skill: SkillCatalogEntry): AgentCommand => ({
   ...((skill.source === "user" || skill.source === "project") && { scope: skill.source }),
 })
 
-export interface SkillInvocation {
+interface SkillInvocation {
   readonly selector: string
   readonly arguments: string
 }

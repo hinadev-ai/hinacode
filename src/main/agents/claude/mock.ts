@@ -60,7 +60,7 @@ export const mockScenarioDescriptions = {
   comments: "Publish a document and ask about a quote in it. Answer each comment on the document.",
   whiteboard: "Draw a whiteboard. Answer a question about a selection with a note beside it.",
 } as const satisfies Record<string, string>
-export type MockScenario = keyof typeof mockScenarioDescriptions
+type MockScenario = keyof typeof mockScenarioDescriptions
 export const mockScenarios = Object.keys(mockScenarioDescriptions) as ReadonlyArray<MockScenario>
 
 const isMockScenario = (name: string): name is MockScenario => Object.hasOwn(mockScenarioDescriptions, name)

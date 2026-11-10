@@ -31,7 +31,7 @@ const failWith = (cause: unknown) =>
 const latestIso = (cursor: string, timestamps: ReadonlyArray<string>) =>
   timestamps.reduce((latest, next) => (Date.parse(next) > Date.parse(latest) ? next : latest), cursor)
 
-export interface IssuePayload {
+interface IssuePayload {
   readonly id: string
   readonly number: number
   readonly identifier: string
@@ -62,7 +62,7 @@ const decodeGithubIssues = Schema.decodeUnknownEffect(GithubIssues)
 
 const REPO = /^[\w.-]+\/[\w.-]+$/
 
-export type RunGh = (args: ReadonlyArray<string>) => Effect.Effect<string, { readonly message: string }>
+type RunGh = (args: ReadonlyArray<string>) => Effect.Effect<string, { readonly message: string }>
 
 // FIXME: GitHub's `since` filters on updated time, and the issues endpoint also returns pull requests
 export const pollGithubIssues = (gh: RunGh, trigger: Trigger<"github.issue">, cursor: string) =>
@@ -116,9 +116,9 @@ export interface LinearIssueFilter {
   readonly labels?: { readonly some: { readonly name: { readonly eqIgnoreCase: string } } }
 }
 
-export type ListLinearIssues = (filter: LinearIssueFilter) => Promise<ReadonlyArray<LinearIssueNode>>
+type ListLinearIssues = (filter: LinearIssueFilter) => Promise<ReadonlyArray<LinearIssueNode>>
 
-export const linearFilter = (trigger: Trigger<"linear.issue">, cursor: string): LinearIssueFilter => ({
+const linearFilter = (trigger: Trigger<"linear.issue">, cursor: string): LinearIssueFilter => ({
   team: { key: { eq: trigger.teamKey } },
   createdAt: { gt: new Date(cursor) },
   ...(trigger.stateName ? { state: { name: { eqIgnoreCase: trigger.stateName } } } : {}),

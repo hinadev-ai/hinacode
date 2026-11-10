@@ -48,7 +48,7 @@ const usages: ReadonlyMap<string, number> = new Map(
 
 export const hidUsage = (code: string): number | undefined => usages.get(code)
 
-export interface Keystroke {
+interface Keystroke {
   readonly usage: number
   readonly shift: boolean
 }

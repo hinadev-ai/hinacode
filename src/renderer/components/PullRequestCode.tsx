@@ -114,7 +114,7 @@ const shortCommit = (head: string) => head.slice(0, 7)
 const noteKey = (note: GuideFileNote | GuideLineNote) =>
   "line" in note ? `${note.side}:${note.line}:${note.text}` : note.text
 
-export type PullRequestCodeView = "files" | "guide"
+type PullRequestCodeView = "files" | "guide"
 
 export function PullRequestCode({ url, view }: { url: string; view: PullRequestCodeView }) {
   const environment = useOpenThreadEnvironment()
@@ -351,7 +351,7 @@ function DiffSummary({ files }: { files: ReadonlyArray<PullRequestFile> }) {
   )
 }
 
-export interface FileReview {
+interface FileReview {
   readonly open: boolean
   readonly onToggle: () => void
   readonly viewed: boolean

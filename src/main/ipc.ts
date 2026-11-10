@@ -20,7 +20,7 @@ export const bringToFront = (window: BrowserWindow) => {
 const showOpenDialog = (window: BrowserWindow | null, options: Electron.OpenDialogOptions) =>
   Effect.promise(() => (window ? dialog.showOpenDialog(window, options) : dialog.showOpenDialog(options)))
 
-export type OpenPullRequestWindow = (threadId: string, url: string) => void
+type OpenPullRequestWindow = (threadId: string, url: string) => void
 
 const desktopCalls = (window: BrowserWindow | null, openPullRequestWindow: OpenPullRequestWindow): DesktopCalls => ({
   show: Effect.sync(() => window?.show()),

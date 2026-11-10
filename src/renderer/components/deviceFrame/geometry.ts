@@ -122,7 +122,7 @@ export interface FrameLayout {
   readonly screenRadius: number
 }
 
-export function fitScale({ body }: DeviceSpec, container: Size, angle: number) {
+function fitScale({ body }: DeviceSpec, container: Size, angle: number) {
   const cos = Math.abs(Math.cos(angle))
   const sin = Math.abs(Math.sin(angle))
   const width = body.width * cos + body.height * sin

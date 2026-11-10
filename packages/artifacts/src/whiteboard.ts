@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-export const WhiteboardElementSchema = z.looseObject({ id: z.string().min(1) })
+const WhiteboardElementSchema = z.looseObject({ id: z.string().min(1) })
 
 export const WhiteboardSceneSchema = z.object({
   elements: z.array(WhiteboardElementSchema),

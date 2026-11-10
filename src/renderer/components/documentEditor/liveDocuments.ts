@@ -1,4 +1,4 @@
-export type LiveDocument = { readonly html: () => Promise<string>; readonly markdown: () => string }
+type LiveDocument = { readonly html: () => Promise<string>; readonly markdown: () => string }
 
 const live = new Map<string, LiveDocument>()
 

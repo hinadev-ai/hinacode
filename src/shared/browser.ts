@@ -48,12 +48,12 @@ export const BrowserCommand = Schema.Union([
 ])
 export type BrowserCommand = typeof BrowserCommand.Type
 
-export const BrowserPick = Schema.Union([
+const BrowserPick = Schema.Union([
   Schema.Struct({ kind: Schema.Literals(["idle", "selecting"]) }),
   Schema.Struct({ kind: Schema.Literal("picked"), attachment: Attachment }),
   Schema.Struct({ kind: Schema.Literal("failed"), message: Schema.String }),
 ])
-export type BrowserPick = typeof BrowserPick.Type
+type BrowserPick = typeof BrowserPick.Type
 
 export const BrowserState = Schema.Struct({
   url: Schema.String,
