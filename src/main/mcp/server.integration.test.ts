@@ -837,6 +837,26 @@ layer(testLayer)("create_thread", (it) => {
     }),
   )
 
+  it.effect("starts nested and top-level threads in the caller's access mode, not the default", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const threads = yield* Threads
+      const settings = yield* Settings.Settings
+      const { a } = yield* Seeded
+      expect((yield* settings.get).defaultAccessMode).toBe("full")
+      yield* threads.update({ id: a, accessMode: "supervised" })
+
+      for (const nested of [true, false]) {
+        const result = yield* callFrom(a, "create_thread", { title: "Child", prompt: "p", nested })
+        const id = createdThreadId(result.text)
+        if (id === null) throw new Error(`no thread id in ${result.text}`)
+        expect((yield* threads.get(id)).accessMode).toBe("supervised")
+        yield* runner.interrupt(id)
+      }
+      yield* threads.update({ id: a, accessMode: "full" })
+    }),
+  )
+
   it.effect("another provider needs an explicit model", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials
