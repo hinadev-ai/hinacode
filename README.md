@@ -57,7 +57,7 @@ HinaCode is a **delightful workstation for coding agents**. It handles the work 
 - **Browser, terminal, and ports.** Open the dev server, a shell, and the ports an agent left open beside the thread. Mention a terminal with `@` or send its selected output to the thread, and the agent reads it.
 - **Linked pull requests.** See checks and review state next to the thread. HinaCode tells the agent when checks fail or a review lands.
 - **Merge and clean up.** Squash and merge from the thread, and HinaCode removes the worktree.
-- **Automations.** Start a thread from a webhook, a GitHub issue, a Linear ticket, or a Slack mention.
+- **Routines.** Run a prompt on a schedule, from a webhook, or from the CLI, in the project folder or a new worktree.
 - **Built-in MCP server.** Agents can ask you for secrets, hand work to other threads, drive a disposable VM or mobile simulators, and use Linear.
 - **Remote machines and your phone.** Run `npx hinacode serve` on another machine, then approve, steer, and merge from the phone app.
 - **Other apps.** Add your machine's URL to a chat app or agent harness that speaks remote MCP, approve it with a one-time code, then start, read, and steer threads from there.
@@ -260,7 +260,7 @@ Several designs in HinaCode follow [T3 Code](https://github.com/pingdotgg/t3code
 - Effect services as `Context.Service` classes with a `make` effect and a `layer` export, and migrations registered through `Migrator.fromRecord`.
 - The MCP server design: Effect's `McpServer.layerHttp` behind a bearer credential, one random credential per thread, injected into the agent's MCP config. The pull request tools (`link_pull_request`, `unlink_pull_request`, `list_thread_pull_requests`) and `request_secret` share T3 Code's names.
 - The pull request checks rollup: `null` when a PR has no checks, failing before pending before passing, and `workflow / name` as the check label.
-- Webhook automations verified with a `sha256=` HMAC in `x-hub-signature-256`, with `{{path}}` placeholders filled into the prompt.
+- Routine webhooks verified with a `sha256=` HMAC in `x-hub-signature-256`.
 - Remote browser tabs run headless Chromium on the thread's host and send screencasts to the client. We compared Orca's local network proxy and server streaming before choosing this design for the Node daemon. See [the remote browser design](docs/features/2026-10-26-remote-browser.md).
 
 ---

@@ -1,4 +1,4 @@
-import { Effect, Predicate, Schema } from "effect"
+import { Cron, Effect, Predicate, Result, Schema } from "effect"
 import {
   AccountProviderId,
   AgentBinary,
@@ -723,7 +723,9 @@ export const Settings = Schema.Struct({
   providerBinary: perProvider(Schema.NullOr(AgentBinary), null).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(eachProvider(null))),
   ),
-  automations: Schema.Struct({ bindHost: BindHost, port: ListenPort }),
+  routines: Schema.Struct({ bindHost: BindHost, port: ListenPort }).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed({ bindHost: "127.0.0.1", port: 48080 })),
+  ),
   remote: Schema.Struct({ enabled: Schema.Boolean, bindHost: BindHost, port: ListenPort }),
   textGenerationModel: Schema.String,
   pullRequestGuide: Schema.Struct({
@@ -769,7 +771,7 @@ export const defaultSettings: Settings = {
   defaultAccountName: eachProvider(null),
   autoCompactTokens: eachProvider(null),
   providerBinary: eachProvider(null),
-  automations: { bindHost: "127.0.0.1", port: 48080 },
+  routines: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: PRIVATE_NETWORKS, port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",
   pullRequestGuide: { enabled: false, model: "claude-sonnet-5-5", effort: "high" },
@@ -982,66 +984,61 @@ export const TerminalAttachment = Schema.Struct({
 })
 export type TerminalAttachment = typeof TerminalAttachment.Type
 
-export const PullRequestTopic = Schema.Literals(["pullRequest.opened", "pullRequest.merged", "pullRequest.closed"])
-export type PullRequestTopic = typeof PullRequestTopic.Type
+const everMatches = (cron: Cron.Cron) => {
+  try {
+    Cron.next(cron)
+    return true
+  } catch {
+    return false
+  }
+}
 
-export const AutomationTrigger = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("webhook") }),
-  Schema.Struct({ type: Schema.Literal("github.pullRequest"), topics: Schema.Array(PullRequestTopic) }),
-  Schema.Struct({
-    type: Schema.Literal("github.issue"),
-    repo: Schema.String,
-    labels: Schema.optionalKey(Schema.Array(Schema.String)),
-  }),
-  Schema.Struct({
-    type: Schema.Literal("linear.issue"),
-    teamKey: Schema.String,
-    stateName: Schema.optionalKey(Schema.String),
-    label: Schema.optionalKey(Schema.String),
-  }),
-  Schema.Struct({
-    type: Schema.Literal("slack.mention"),
-    channel: Schema.optionalKey(Schema.String),
-    botUserId: Schema.String,
-  }),
-])
-export type AutomationTrigger = typeof AutomationTrigger.Type
-export type AutomationTriggerType = AutomationTrigger["type"]
+export const isCronExpression = (cron: string, timezone: string) =>
+  Result.match(Cron.parse(cron, timezone), { onFailure: () => false, onSuccess: everMatches })
 
-export const isPolledTrigger = ({ type }: AutomationTrigger) => type !== "webhook" && type !== "github.pullRequest"
+export const RoutineSchedule = Schema.Struct({
+  cron: Schema.String,
+  timezone: Schema.String,
+}).check(Schema.makeFilter(({ cron, timezone }) => isCronExpression(cron, timezone) || `Invalid schedule "${cron}"`))
+export type RoutineSchedule = typeof RoutineSchedule.Type
 
-export const AutomationRunStatus = Schema.Literals(["started", "skipped", "failed"])
-export type AutomationRunStatus = typeof AutomationRunStatus.Type
+export const RoutineWorkspace = Schema.Literals(["local", "worktree"])
+export type RoutineWorkspace = typeof RoutineWorkspace.Type
 
-export const AutomationRun = Schema.Struct({
+export const RoutineRunSource = Schema.Literals(["schedule", "webhook", "manual"])
+export type RoutineRunSource = typeof RoutineRunSource.Type
+
+export const RoutineRunStatus = Schema.Literals(["started", "skipped", "failed"])
+export type RoutineRunStatus = typeof RoutineRunStatus.Type
+
+export const RoutineRun = Schema.Struct({
   id: Schema.String,
-  automationId: Schema.String,
+  routineId: Schema.String,
   threadId: Schema.NullOr(Schema.String),
-  eventKey: Schema.NullOr(Schema.String),
-  status: AutomationRunStatus,
+  source: RoutineRunSource,
+  status: RoutineRunStatus,
   error: Schema.NullOr(Schema.String),
   createdAt: Timestamp,
 })
-export type AutomationRun = typeof AutomationRun.Type
+export type RoutineRun = typeof RoutineRun.Type
 
-export const Automation = Schema.Struct({
+export const Routine = Schema.Struct({
   id: Schema.String,
   projectId: Schema.String,
   name: Schema.String,
   enabled: Schema.Boolean,
-  trigger: AutomationTrigger,
-  promptTemplate: Schema.String,
+  prompt: Schema.String,
   provider: ProviderId,
   model: Schema.String,
-  runInWorktree: Schema.Boolean,
-  branchTemplate: Schema.NullOr(Schema.String),
-  cursor: Schema.NullOr(Schema.String),
-  polledAt: Schema.NullOr(Timestamp),
-  lastRun: Schema.NullOr(AutomationRun),
+  effort: Schema.NullOr(Schema.String),
+  workspace: RoutineWorkspace,
+  schedule: Schema.NullOr(RoutineSchedule),
+  nextRunAt: Schema.NullOr(Timestamp),
+  lastRun: Schema.NullOr(RoutineRun),
   createdAt: Timestamp,
   updatedAt: Timestamp,
 })
-export type Automation = typeof Automation.Type
+export type Routine = typeof Routine.Type
 
 export const NativeSessionId = Schema.String.check(
   Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),

@@ -148,7 +148,7 @@ const make = Effect.gen(function* () {
       `.pipe(Effect.mapError(persistence("pullRequests.link")))
       yield* broadcast(threadId)
       if (inserted.length > 0) {
-        yield* PubSub.publish(bus, { topic: "pullRequest.linked", threadId, linkId: row.id, url })
+        yield* PubSub.publish(bus, { topic: "pullRequest.linked" as const, threadId, linkId: row.id, url })
       }
       return url
     })

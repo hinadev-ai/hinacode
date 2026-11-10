@@ -43,7 +43,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Worktrees](./worktrees.md): setup services and panels automated; composer creation works under the usage-limit mock, branch naming needs a real first turn, and PR checkouts and the `PR <state>` badge need a GitHub remote.
 - [Steering and attachments](./steering-and-attachments.md): paste and the queue restore automated; steering, held steers and queueing need real turns, drop and remove need none.
 - [MCP tools and pull request links](./mcp-and-pull-requests.md): contract and panel automated; eighteen tools; watching PRs, the PR detail panel and review window, `link_pull_request` from inside a turn, `gh` status, the `gh` sign-in states, `request_secret` cards and `create_thread` during actual agent turns by hand; the thread controls are automated.
-- [Settings](./settings.md): ten pages; automated except the Codex default model, the Slack token and the theme read-back, which share code with the automated cases.
+- [Settings](./settings.md): ten pages; automated except the Codex default model and the theme read-back, which share code with the automated cases.
 - [Ports](./ports.md): automated except listeners spawned from the thread's terminal or its Claude Code CLI.
-- [Automations](./automations.md): creation and rejects automated; signed deliveries, dedup, run now, worktree runs, pollers, the listener port and delete by hand.
+- [Routines](./routines.md): creation, disable, Run now and webhook auth automated; scheduled runs, the `/` skill list, HMAC, idempotency, worktree runs, the CLI and the listener port by hand.
 - [Remote mode](./remote.md): integration tests only; the remote listener and pairing on Settings > Connections, a paired `hinacode serve` cloud, its projects in the sidebar and the settings picker by hand, with no agent turn.

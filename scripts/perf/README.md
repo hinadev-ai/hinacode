@@ -153,7 +153,7 @@ per hour. Pass thread ids after the data dir to pick other threads. Results land
 The profile must live under `/tmp/kk-`. The instance runs with `HINACODE_MOCK_AGENTS=stream`, which serves Claude,
 Codex and Muse from the simulation and turns off pull request guides, so a due auto-resume or queued message in the
 copy streams a simulated reply instead of starting a real agent in the original checkout. Before each benchmark the
-script clears every PR watch and disables every automation in the copy, so no automation creates a worktree there.
+script clears every PR watch and disables every routine in the copy, so no routine creates a worktree there.
 Each launch reopens the last route, so after the first run startup includes opening a thread. `PORT` picks the CDP
 port (default 9290) and `DISPLAY_FOR_PERF` the X display (default `:99`).
 
@@ -172,7 +172,7 @@ node scripts/perf/fanout.ts after /tmp/kk-perf-real/hinacode.sqlite   # after re
 node scripts/perf/fanout.ts compare base after
 ```
 
-Each of `RUNS` (default 3) launches gets a fresh copy, with PR watches cleared and automations disabled. CPU comes
+Each of `RUNS` (default 3) launches gets a fresh copy, with PR watches cleared and routines disabled. CPU comes
 from `ps`, which Linux reports in whole seconds, so raise `WINDOW_SECONDS` there. The copies go under `DATA_ROOT`
 (default `/tmp`). Bytes written come from `/proc/<pid>/io`, which counts nothing on tmpfs, so point `DATA_ROOT` at a
 real disk to measure them.

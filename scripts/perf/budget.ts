@@ -120,7 +120,7 @@ const seedProfile = async (checkout: string) => {
   await withApp(checkout, data, async (page) => {
     await page.waitFor(`window.hinacode.rpc("settings.get").then(() => true)`, Date.now() + 60_000)
     await page.evaluate(
-      `window.hinacode.rpc("settings.set", { automations: { bindHost: "127.0.0.1", port: ${webhookPort} } })`,
+      `window.hinacode.rpc("settings.set", { routines: { bindHost: "127.0.0.1", port: ${webhookPort} } })`,
     )
   })
   const seeded = JSON.parse(execFileSync(process.execPath, [seedScript, data, repo], { encoding: "utf8" })) as {

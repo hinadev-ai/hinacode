@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import type { ReactNode } from "react"
-import { RiGithubFill, RiSlackFill } from "react-icons/ri"
+import { RiGithubFill } from "react-icons/ri"
 import { type AgentAccount, ProviderId } from "../../../shared/agent.ts"
 import type { EnvironmentStatus, GitHubAuth } from "../../../shared/domain.ts"
 import { type Cloud, statusLabel, useCloudStateText, useClouds } from "../../lib/environments.ts"
@@ -136,13 +136,6 @@ const rows: ReadonlyArray<Row> = [
     icon: <LinearIcon className="size-4 shrink-0" />,
     page: "integrations",
     cell: (props) => <SecretCell name="linear.apiKey" {...props} />,
-  },
-  {
-    id: "slack",
-    label: () => "Slack",
-    icon: <RiSlackFill aria-hidden className="size-4 shrink-0" />,
-    page: "integrations",
-    cell: (props) => <SecretCell name="slack.token" {...props} />,
   },
 ]
 

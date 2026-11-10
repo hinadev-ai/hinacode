@@ -49,9 +49,9 @@ fi
 
 for _ in $(seq 1 60); do
   if node "$here/rpc.ts" "$port" settings.get >/dev/null 2>&1; then
-    # A fresh profile listens for automation webhooks on 48080, which another instance may hold.
+    # A fresh profile listens for routine webhooks on 48080, which another instance may hold.
     # Moving it to 40000 + cdp port keeps instances apart.
-    node "$here/rpc.ts" "$port" settings.set "{\"automations\":{\"bindHost\":\"127.0.0.1\",\"port\":$((40000 + port))}}" >/dev/null
+    node "$here/rpc.ts" "$port" settings.set "{\"routines\":{\"bindHost\":\"127.0.0.1\",\"port\":$((40000 + port))}}" >/dev/null
     echo "hinacode ready: cdp=$port data=$data session=$(cat "$data/kk-verify.sid") webhook-port=$((40000 + port)) log=$data/electron.log"
     exit 0
   fi

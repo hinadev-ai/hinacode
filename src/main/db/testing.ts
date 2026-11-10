@@ -44,3 +44,39 @@ export const seedThread = ({ rootPath, projectId: existingProjectId, kind, workt
     })}`
     return { projectId, worktreeId, threadId }
   })
+
+export const restoreAutomationTables = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient
+  yield* sql`DROP TABLE routine_run`
+  yield* sql`DROP TABLE routine`
+  yield* sql`
+    CREATE TABLE automation (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      enabled INTEGER NOT NULL,
+      trigger TEXT NOT NULL,
+      prompt_template TEXT NOT NULL,
+      model TEXT NOT NULL,
+      run_in_worktree INTEGER NOT NULL,
+      branch_template TEXT,
+      cursor TEXT,
+      polled_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      provider TEXT NOT NULL
+    )
+  `
+  yield* sql`
+    CREATE TABLE automation_run (
+      id TEXT PRIMARY KEY,
+      automation_id TEXT NOT NULL REFERENCES automation(id) ON DELETE CASCADE,
+      thread_id TEXT REFERENCES thread(id) ON DELETE SET NULL,
+      event_key TEXT,
+      payload TEXT NOT NULL,
+      status TEXT NOT NULL,
+      error TEXT,
+      created_at TEXT NOT NULL
+    )
+  `
+})

@@ -17,7 +17,7 @@ flowchart LR
     runner["AgentRunner"]
     mcp["Thread MCP server<br/>127.0.0.1:random/mcp"]
     apps["App MCP server<br/>127.0.0.1:random, OAuth + /mcp"]
-    autos["Automations<br/>webhook + pollers"]
+    autos["Routines<br/>scheduler + webhook"]
     remote["Remote listener<br/>ws://bindHost:port/remote"]
     relay["Relay<br/>cloudflared child"]
   end
@@ -30,7 +30,7 @@ flowchart LR
   codex["codex app-server<br/>JSON-RPC over stdio"]
   muse["muse serve<br/>MSP over stdio"]
   git["git / gh CLIs"]
-  ext["GitHub, Linear, Slack"]
+  ext["GitHub, Linear"]
 
   ui <--> stores
   stores -- "rpc (request/response)" --> preload --> ipc
@@ -51,14 +51,13 @@ flowchart LR
   services --> git
   services <--> ext
   autos --> runner
-  autos <--> ext
 ```
 
 - **The renderer is a view.** It never touches the file system, git, or the agents. Everything goes through `rpc`.
 - **Agents call back over MCP.** Both agents get the built-in MCP server, and the bearer credential alone decides which thread a call acts as.
 - **Outside apps get a second MCP server.** A chat app or agent harness the developer connected reaches the app server through the relay hostname, with an OAuth token and a tool list of its own. See [App MCP server](#app-mcp-server).
 - **Git and GitHub go through the CLIs** (`git`, `gh`), so hinacode uses the user's existing auth and config.
-- **Linear goes through one service.** `services/Linear.ts` reads the machine's `linear.apiKey` from `Secrets` and loads the SDK on first use. The MCP tools, the `linear.issue` poller and the `linear.issues` rpc all use it, and the key never leaves the main process. `HINACODE_MOCK_LINEAR=1` answers demo tickets.
+- **Linear goes through one service.** `services/Linear.ts` reads the machine's `linear.apiKey` from `Secrets` and loads the SDK on first use. The MCP tools and the `linear.issues` rpc both use it, and the key never leaves the main process. `HINACODE_MOCK_LINEAR=1` answers demo tickets.
 
 ## IPC contract
 
@@ -73,10 +72,10 @@ flowchart LR
   mainHandle -- "channel: event" --> rendererCall
 ```
 
-| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rpc`   | renderer → main | `app.focus`, `app.setBadgeCount`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `agents.account`, `accounts.*`, `limits.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.write`, `fs.watch`, `fs.completeDirectory`, `attachments.stage`, dialogs |
-| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `pullRequest.guide`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`, `terminal.updated`                                                                                                                         |
+| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rpc`   | renderer → main | `app.focus`, `app.setBadgeCount`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `routines.*`, `commands.forProject`, `models.list`, `agents.account`, `accounts.*`, `limits.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.write`, `fs.watch`, `fs.completeDirectory`, `attachments.stage`, dialogs |
+| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `pullRequest.guide`, `thread.subagents`, `routine.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`, `terminal.updated`                                                                                                                                                |
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
@@ -109,7 +108,7 @@ flowchart LR
   cloud -- "event: teaches owners" --> windows["WindowPush: windows only, never phone sinks"]
 ```
 
-- `src/shared/owners.ts` is an in-memory index of cloud-owned ids (thread, project, worktree, terminal, automation, request, root path, VM stream), taught from every cloud answer and push. An unknown id belongs to this desktop.
+- `src/shared/owners.ts` is an in-memory index of cloud-owned ids (thread, project, worktree, terminal, routine, request, root path, VM stream), taught from every cloud answer and push. An unknown id belongs to this desktop.
 - A cloud that is not connected answers `EnvironmentOffline`; for `all` routes it contributes its last answer to the same call. Close code 4001 (`unauthorized`) stops reconnecting. A `ready` with another `REMOTE_PROTOCOL_VERSION` (`incompatible`) fails waiting calls and keeps retrying, like anything else, with jittered backoff from 0.5 s to 60 s. `environments.reconnect` and waking from sleep skip the wait. A ping every 10 s drops a socket silent for 25 s.
 - Remote Browser tabs use `browser.*` RPCs routed by thread ownership. The cloud's `Browser` service owns sandboxed headless Chromium and a context per thread. The desktop forwards typed input and draws the latest JPEG frame. Hidden tabs pause image streaming, and expired session leases release abandoned pages. Local threads keep their Electron webview. See [ADR 0023](adr/0023-host-browser-for-remote-threads.md).
 - A cloud reaches the user's other machines through a connected desktop. A cloud lists `asks` in `ready`, the desktop answers with a `hub` frame, and from then on the cloud can send it `ask` frames for the calls the MCP thread tools make (`AskableMethod` in `src/shared/remote.ts`). The desktop runs each one through `route` (`src/main/environments/route.ts`) like a window call and replies with `answer`. `Peers` (`src/main/remote/peers.ts`) gives the MCP thread tools one `ask` for both directions. See `features/2026-10-26-cross-machine-threads.md`.
@@ -139,7 +138,7 @@ flowchart BT
   domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
   features["McpCredentials, Ports, RemoteAccess,<br/>AppConnections"]
   runner["AgentRunner"]
-  autos["Automations, Settle, ArtifactFeedback,<br/>PullRequestWatcher, PullRequestGuides,<br/>Updates"]
+  autos["Routines, Scheduler, Settle, ArtifactFeedback,<br/>PullRequestWatcher, PullRequestGuides,<br/>Updates"]
   mcp["Thread MCP server"]
   apps["App MCP server"]
   remote["Remote listener"]
@@ -156,7 +155,7 @@ flowchart BT
 
 On the desktop, `Updates` only runs in a packaged app. It checks this repository's GitHub releases at launch and every 4 hours, downloads in the background, and pushes `update.changed` when readiness changes. An updater error clears readiness. Squirrel.Mac validates the bundle before installation. See [ADR 0018](adr/0018-releases-next-to-the-source.md). On a cloud it checks npm, installs into the cloud's own global prefix, and restarts in place with `process.execve` (`features/2026-10-20-update-clouds.md`).
 
-The remote listener sits above everything because it dispatches every rpc method, including the automation ones.
+The remote listener sits above everything because it dispatches every rpc method, including the routine ones.
 
 The MCP server sits above the runner because its tools start turns (`create_thread`) and ask the user for secrets (`request_secret`). The runner only needs a thread's credential, which `McpCredentials` issues; the server tells it the URL once it listens.
 
@@ -227,7 +226,7 @@ Adding a backend touches, besides its `AgentProvider` in `src/main/agents/`:
 
 - `ProviderId`, and `AccountProviderId` if it can have added accounts.
 - The `providers` records in `AgentRunner.ts`, `AgentLogins.ts` and, for an agent with a home, `SessionImports.ts`, the layer in `src/main/app.ts`, and the fake providers of the integration tests that build those layers.
-- A migration widening the `provider` CHECK on `thread` and `automation`, as `0011_muse_provider` does.
+- A migration widening the `provider` CHECK on `thread`, as `0045_magpie_provider` does.
 - The per-agent keys of `Settings.defaultModel` and `defaultAccount`.
 - `ProviderIcon.tsx` for the icon and `providerLabel`, the access hints in `ComposerControls.tsx`, `signedOutHint` in `AccountSettings.tsx`, and their messages in both catalogs.
 - The capability checklist in [`agent-providers.md`](agent-providers.md), so no harness feature is silently missing.
@@ -421,13 +420,13 @@ flowchart LR
 erDiagram
   project ||--o{ worktree : has
   project ||--o{ thread : has
-  project ||--o{ automation : has
+  project ||--o{ routine : has
   worktree |o--o{ thread : "runs in"
   thread ||--o{ message : has
   message ||--o{ message_part : "open turn"
   thread ||--o{ pull_request_link : links
-  automation ||--o{ automation_run : records
-  thread |o--o{ automation_run : "started by"
+  routine ||--o{ routine_run : records
+  thread |o--o{ routine_run : "started by"
   agent_account |o--o{ thread : "bills"
 
   app_connection {
@@ -480,12 +479,13 @@ erDiagram
     int idx
     text part "JSON"
   }
-  automation {
+  routine {
     text id PK
-    text trigger "JSON"
-    text prompt_template
-    int run_in_worktree
-    text cursor
+    int enabled
+    text prompt
+    text workspace "local|worktree"
+    text schedule "JSON {cron, timezone}, null = webhook and manual only"
+    text next_run_at "null when disabled or unscheduled"
   }
   pull_request_link {
     text id PK
@@ -496,9 +496,10 @@ erDiagram
     text url PK "shared by every thread linking it"
     text guide "JSON, the newest finished guide"
   }
-  automation_run {
+  routine_run {
     text id PK
-    text event_key
+    text source "schedule|webhook|manual"
+    text event_key "unique per routine among started runs"
     text status "started|skipped|failed"
   }
   setting {
@@ -536,7 +537,7 @@ stateDiagram-v2
   direction LR
   state "Thread" as T {
     [*] --> draft: New thread
-    [*] --> idle: agent, automation or import
+    [*] --> idle: agent, routine or import
     draft --> idle: first send
     idle --> running: send
     running --> awaiting_approval: approval_requested / secret_requested
@@ -707,42 +708,30 @@ flowchart LR
 - PKCE with `S256` is required. An authorization code lives 60 seconds and works once. An access token does not expire; removing the connection in Settings ends it.
 - The tools reuse the thread server's rendering (`mcp/tools/threadViews.ts`) and registration (`toolsFor` in `mcp/tools/tool.ts`), with `CallingApp` as the caller where the thread server has `CallingThread`. None of the thread server's other tools are registered here.
 
-## Automations
+## Routines
 
 ```mermaid
 flowchart LR
-  wh["Webhook server<br/>default :48080"] -- "HMAC x-hinacode-signature<br/>or x-hub-signature-256" --> dedup
-  gh["GitHub issues poller (gh)"] --> dedup
-  lin["Linear issues poller"] --> dedup
-  sl["Slack mentions poller"] --> dedup
-  dedup{"event_key seen?"} -- yes --> skipped["automation_run: skipped"]
-  dedup -- no --> tpl["render prompt_template<br/>{{issue.title}}"]
-  tpl --> wt{"run_in_worktree?"}
-  wt -- yes --> create["Worktrees.create"] --> thread
-  wt -- no --> thread["Threads.create"]
-  thread --> send["AgentRunner.send"] --> started["automation_run: started"]
+  sched["Scheduler<br/>one fiber per enabled routine"] -- "due: claim next_run_at" --> busy{"previous thread busy?"}
+  busy -- yes --> skipped["routine_run: skipped"]
+  busy -- no --> start
+  wh["Webhook server<br/>POST /hooks/routines/:id, default :48080"] -- "Bearer secret or<br/>x-hub-signature-256 HMAC" --> dedup{"event key seen?"}
+  dedup -- yes --> skipped
+  dedup -- no --> start
+  manual["routines.run"] --> start
+  start["Threads.create<br/>createdBy routine:id"] --> send["AgentRunner.send<br/>local or worktree"] --> started["routine_run: started"]
 ```
 
-- Pollers keep a `cursor` per automation. The first poll starts from now and doesn't replay history.
-- A repeated poll error is recorded once, not once per poll.
+- `next_run_at` is stored. A slot missed while the app was closed fires once on launch, then the scheduler skips to the next future slot.
+- The claim is `UPDATE routine SET next_run_at = :next WHERE next_run_at = :due`, so only one caller starts a thread for a slot.
+- Three failed scheduled runs in a row disable the routine.
+- One webhook secret per machine lives in `Secrets` under `routines.webhookSecret`.
 
 ## Event bus
 
-`EventBus` is a typed `PubSub.sliding(256)` for reactions inside the main process, separate from `Events`, which pushes to windows and remote clients. `Conductor` is its one subscriber, and its `switch` lists what happens for each topic. Design in `docs/features/2026-11-04-event-bus.md`.
+`EventBus` is a typed `PubSub.sliding(256)` for reactions inside the main process, separate from `Events`, which pushes to windows and remote clients. `Conductor` is its one subscriber. Its only topic is `pullRequest.linked`, which `PullRequestLifecycle.announce` turns into a first `observed_status`. Every 3 minutes `PullRequestLifecycle.sweep` refreshes the status of unsettled links.
 
-```mermaid
-flowchart LR
-  link["PullRequests.link<br/>row inserted"] -- "pullRequest.linked" --> bus["EventBus"]
-  sweep["PullRequestLifecycle.sweep<br/>every 3 minutes"] -- "pullRequest.merged, closed" --> bus
-  bus --> conductor["Conductor"]
-  conductor -- "linked" --> announce["PullRequestLifecycle.announce"]
-  announce -- "pullRequest.opened" --> bus
-  conductor -- "opened, merged, closed" --> fire["Automations.firePullRequest"]
-  fire --> thread["new automation thread"]
-```
-
-- `pull_request_link.observed_status` is what makes a transition a fact. Its first value is recorded silently, and only `merged` is never read again, because a closed pull request can reopen.
-- Threads started by an automation never fire automations, so a prompt that opens a pull request cannot loop.
+- `pull_request_link.observed_status` records the last status seen. Only `merged` is never read again, because a closed pull request can reopen.
 
 ## Security boundaries
 
@@ -785,7 +774,7 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | Providers                                 | `src/main/agents/claude/`, `src/main/agents/codex/`        |
 | MCP server and tools                      | `src/main/mcp/`                                            |
 | App connections, OAuth, app MCP server    | `src/main/apps/`                                           |
-| Automations                               | `src/main/services/automations/`                           |
+| Routines and their scheduler              | `src/main/services/routines/`, `Scheduler.ts`              |
 | Contracts                                 | `src/shared/contract.ts`, `domain.ts`, `agent.ts`          |
 | Renderer state                            | `src/renderer/stores/`                                     |
 | Side panel views and activity bar         | `src/renderer/components/sidePanel/`                       |

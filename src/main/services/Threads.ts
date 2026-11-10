@@ -45,7 +45,7 @@ import {
 } from "./errors.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import { Events } from "./Events.ts"
-import { slugifyBranch } from "./automations/template.ts"
+import { slugifyBranch } from "./branchName.ts"
 import { type CommandError, Git } from "./Git.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"

@@ -112,7 +112,7 @@ const launch = async (
 export const spawnApp = async (options: SpawnAppOptions = {}): Promise<HinacodeApp> => {
   const userData = mkdtempSync(join(tmpdir(), "kk-e2e-"))
   let current = await launch(userData, options)
-  await rpc(current.page, "settings.set", { automations: { bindHost: "127.0.0.1", port: await freePort() } })
+  await rpc(current.page, "settings.set", { routines: { bindHost: "127.0.0.1", port: await freePort() } })
   return {
     userData,
     dbPath: join(userData, "hinacode.sqlite"),

@@ -88,7 +88,7 @@ const workBetween = (spans: ReadonlyArray<Span>, from: number, to: number): Work
 
 const stopBackgroundDeliveries = (data: string) => {
   const db = new DatabaseSync(join(data, "hinacode.sqlite"))
-  db.exec("UPDATE pull_request_link SET watch = NULL; UPDATE automation SET enabled = 0")
+  db.exec("UPDATE pull_request_link SET watch = NULL; UPDATE routine SET enabled = 0, next_run_at = NULL")
   db.close()
 }
 
@@ -144,7 +144,7 @@ const measure = async (label: string, data: string, requested: ReadonlyArray<str
 
       if (run === runs) {
         await page.evaluate(
-          `window.hinacode.rpc("settings.set", { automations: { bindHost: "127.0.0.1", port: ${40000 + port} } })`,
+          `window.hinacode.rpc("settings.set", { routines: { bindHost: "127.0.0.1", port: ${40000 + port} } })`,
         )
         for (let switchRound = 0; switchRound < switchRounds; switchRound++) {
           for (const thread of threads) {

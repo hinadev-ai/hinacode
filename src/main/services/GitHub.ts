@@ -721,9 +721,6 @@ export class GitHub extends Context.Service<
     readonly pullRequest: (
       url: string,
     ) => Effect.Effect<PullRequest, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
-    readonly pullRequestOpenedAt: (
-      url: string,
-    ) => Effect.Effect<string, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
     readonly pullRequestDetail: (
       url: string,
       options?: { readonly fresh?: boolean | undefined },
@@ -1122,7 +1119,6 @@ const make = Effect.gen(function* () {
     ),
     run: gh,
     pullRequest: (raw) => Effect.map(read(raw), toPullRequest),
-    pullRequestOpenedAt: (raw) => Effect.map(read(raw), (json) => json.createdAt),
     pullRequestDetail: (raw, options) => Effect.map(read(raw, options?.fresh), toPullRequestDetail),
     pullRequestDiff: (raw) =>
       ghByUrl(raw, (url) => ["pr", "diff", url, "--color=never"]).pipe(

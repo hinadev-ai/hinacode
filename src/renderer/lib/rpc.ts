@@ -660,15 +660,22 @@ export const installUpdatesAtom = Atom.fn((environments: ReadonlyArray<Environme
   }),
 )
 
-const onAutomationRun = (listener: (automationId: string) => void) =>
-  onPushEvent((event) => event.type === "automation.run" && listener(event.run.automationId))
+const onRoutineRun = (listener: (routineId: string) => void) =>
+  onPushEvent((event) => event.type === "routine.run" && listener(event.run.routineId))
 
-export const automationsAtom = Atom.family((environment: EnvironmentId) =>
-  Atom.make((get) => {
-    get.addFinalizer(onAutomationRun(() => get.refreshSelf()))
-    return call("automations.list", undefined, { environment })
-  }).pipe(refreshInStepWhileVisible(Duration.seconds(15))),
-)
+export const routinesAtom = Atom.make((get) => {
+  get.addFinalizer(
+    onPushEvent(
+      (event) =>
+        (event.type === "routine.run" ||
+          event.type === "routines.changed" ||
+          event.type === "environment.status" ||
+          event.type === "environments.changed") &&
+        get.refreshSelf(),
+    ),
+  )
+  return call("routines.list", undefined)
+})
 
 export const artifactsAtom = Atom.make((get) => {
   get.addFinalizer(
@@ -690,16 +697,23 @@ export const documentAtom = familyOf((environment: EnvironmentId, id: string) =>
   Atom.make(call("artifacts.readDocument", { id }, { environment })),
 )
 
-export const automationRunsAtom = Atom.family((automationId: string) =>
+export const ROUTINE_RUN_HISTORY = 200
+
+export const routineRunsAtom = Atom.family((routineId: string) =>
   Atom.make((get) => {
-    get.addFinalizer(onAutomationRun((id) => id === automationId && get.refreshSelf()))
-    return call("automations.runs", { id: automationId, limit: 20 })
+    get.addFinalizer(onRoutineRun((id) => id === routineId && get.refreshSelf()))
+    return call("routines.runs", { id: routineId, limit: ROUTINE_RUN_HISTORY })
   }),
 )
 
-export const webhookUrlAtom = familyOf((environment: EnvironmentId, automationId: string) =>
+export const routineWebhookAtom = familyOf((environment: EnvironmentId, routineId: string) =>
   Atom.make((get) => {
     get(settingsAtom(environment))
-    return call("automations.webhookUrl", { id: automationId })
+    get.addFinalizer(onPushEvent((event) => event.type === "routines.changed" && get.refreshSelf()))
+    return call("routines.webhook", { id: routineId })
   }),
+)
+
+export const projectCommandsAtom = familyOf((projectId: string, provider: ProviderId) =>
+  Atom.make(call("commands.forProject", { projectId, provider })),
 )

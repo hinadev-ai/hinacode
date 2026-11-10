@@ -60,9 +60,6 @@ export class GitLab extends Context.Service<
     readonly pullRequest: (
       url: string,
     ) => Effect.Effect<PullRequest, GitLabError | PullRequestUrlInvalidError | Schema.SchemaError>
-    readonly pullRequestOpenedAt: (
-      url: string,
-    ) => Effect.Effect<string, GitLabError | PullRequestUrlInvalidError | Schema.SchemaError>
     readonly pullRequestDetail: (
       url: string,
     ) => Effect.Effect<PullRequestDetail, GitLabError | PullRequestUrlInvalidError | Schema.SchemaError>
@@ -416,11 +413,6 @@ const make = Effect.gen(function* () {
     installed: Effect.promise(() => findBinary("glab")).pipe(Effect.map((path) => path !== undefined)),
     isGitLabHost,
     pullRequest: (url) => Effect.flatMap(requireMergeRequest(url), pullRequestOf),
-    pullRequestOpenedAt: (url) =>
-      requireMergeRequest(url).pipe(
-        Effect.flatMap(readMergeRequest),
-        Effect.map((mergeRequest) => mergeRequest.created_at),
-      ),
     pullRequestDetail,
     merge: (url, method) =>
       method === "rebase"

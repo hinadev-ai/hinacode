@@ -20,7 +20,7 @@ export interface AgentState {
 }
 
 export interface WebhookState {
-  readonly automations: Map<string, { id: string; secret: string; url: string }>
+  readonly secrets: Map<string, string>
   response: { status: number; body: string } | null
 }
 
@@ -163,7 +163,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     }
   },
   agent: async ({}, provide) => provide({ connection: null, result: null }),
-  webhook: async ({}, provide) => provide({ automations: new Map(), response: null }),
+  webhook: async ({}, provide) => provide({ secrets: new Map(), response: null }),
   chosenModel: async ({}, provide) => provide({ label: null }),
 })
 /* oxlint-enable react/rules-of-hooks, no-empty-pattern */

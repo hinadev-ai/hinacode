@@ -1,17 +1,16 @@
 import { mkdtempSync } from "node:fs"
 import * as SourceControl from "./SourceControl.ts"
 import { tmpdir } from "node:os"
-import { describe, expect, layer } from "@effect/vitest"
+import { describe, layer } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
-import { Effect, Fiber, Layer, Queue } from "effect"
+import { Effect, Layer } from "effect"
+import { SqlClient } from "effect/sql"
 import { TestClock } from "effect/testing"
 import type { PullRequest, PullRequestStatus } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
-import { Automations } from "./automations/Automations.ts"
 import * as Conductor from "./Conductor.ts"
-import type { PullRequestEvent } from "./EventBus.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import { GitHub } from "./GitHub.ts"
@@ -26,16 +25,10 @@ import * as Worktrees from "./Worktrees.ts"
 
 const url = "https://github.com/o/r/pull/1"
 let status: PullRequestStatus = "open"
-const fired = Effect.runSync(Queue.unbounded<PullRequestEvent>())
 
 const gitHub = Layer.mock(GitHub, {
   installed: Effect.succeed(true),
   pullRequest: () => Effect.succeed({ url, status } as PullRequest),
-  pullRequestOpenedAt: () => Effect.succeed("2999-01-01T00:00:00.000Z"),
-})
-
-const automations = Layer.mock(Automations, {
-  firePullRequest: (event) => Queue.offer(fired, event).pipe(Effect.asVoid),
 })
 
 const domain = threadsLayer.pipe(
@@ -51,7 +44,7 @@ const testLayer = Conductor.layer.pipe(
   Layer.provideMerge(pullRequestsLayer),
   Layer.provideMerge(domain),
   Layer.provideMerge(SourceControl.layer),
-  Layer.provideMerge(Layer.mergeAll(Git.layer, gitHub, automations)),
+  Layer.provideMerge(Layer.mergeAll(Git.layer, gitHub)),
   Layer.provide(Layer.succeed(Events, { publish: () => Effect.void })),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),
@@ -59,17 +52,17 @@ const testLayer = Conductor.layer.pipe(
 
 describe("Conductor", () => {
   layer(testLayer)((it) => {
-    it.effect("carries a pull request from link to opened, then to merged on the next sweep", () =>
+    it.effect("records a linked pull request at once, then its merge on the next sweep", () =>
       Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const observed = sql<{ readonly observedStatus: string | null }>`SELECT observed_status FROM pull_request_link`
         const { threadId } = yield* seedThread({ rootPath: mkdtempSync(`${tmpdir()}/kk-conductor-repo-`) })
         yield* PullRequests.use((pullRequests) => pullRequests.link(threadId, url))
-        expect((yield* Queue.take(fired)).topic).toBe("pullRequest.opened")
+        yield* observed.pipe(Effect.repeat({ until: ([row]) => row?.observedStatus === "open" }))
 
         status = "merged"
-        const merged = yield* Queue.take(fired).pipe(Effect.forkChild)
         yield* TestClock.adjust("3 minutes")
-        const event = yield* Fiber.join(merged)
-        expect(event).toMatchObject({ topic: "pullRequest.merged", threadId, pullRequest: { url } })
+        yield* observed.pipe(Effect.repeat({ until: ([row]) => row?.observedStatus === "merged" }))
       }),
     )
   })

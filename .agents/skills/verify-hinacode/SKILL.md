@@ -1,17 +1,17 @@
 ---
 name: verify-hinacode
-description: Launch, drive and screenshot the hinacode Electron desktop app (Claude Code, Codex and Muse Code threads, worktrees, MCP, settings, ports, automations) in an isolated instance over CDP (headless on Linux, a real window on macOS). Use when you need to prove a hinacode change works in the real app, reproduce a UI bug, or capture before/after screenshots for a PR.
+description: Launch, drive and screenshot the hinacode Electron desktop app (Claude Code, Codex and Muse Code threads, worktrees, MCP, settings, ports, routines) in an isolated instance over CDP (headless on Linux, a real window on macOS). Use when you need to prove a hinacode change works in the real app, reproduce a UI bug, or capture before/after screenshots for a PR.
 ---
 
 # Verify hinacode
 
-hinacode is an Electron 44 app built with electron-vite. The surface a user touches is one window: a sidebar of projects and threads, a chat view per thread with a composer, a thread details side panel, and a settings page. Agents also touch it through the built-in MCP server, and other programs reach it through the automations webhook. This skill starts an isolated instance (on the headless X server on Linux, as a real window on macOS), drives it with `agent-browser` over Chrome DevTools Protocol, and stores evidence in `.context/shots/`.
+hinacode is an Electron 44 app built with electron-vite. The surface a user touches is one window: a sidebar of projects and threads, a chat view per thread with a composer, a thread details side panel, and a settings page. Agents also touch it through the built-in MCP server, and other programs reach it through the routines webhook. This skill starts an isolated instance (on the headless X server on Linux, as a real window on macOS), drives it with `agent-browser` over Chrome DevTools Protocol, and stores evidence in `.context/shots/`.
 
 ## What the e2e suite already proves
 
-Run `pnpm test:e2e` first. Playwright drives the built app through the Gherkin scenarios in `e2e/features`, one isolated instance per worker, and covers everything a user can do without an agent turn, a GitHub account or a native dialog: projects and threads (add, errors, collapse, keyboard reorder, rename, archive and unarchive, filters, delete, restart), worktrees (setup script and its variables, setup log, failure, changes and diffs, archive cleanup), ports (listing, scope, the two-click stop), the MCP server contract (tool list, credential checks, `review_changes`, linking and unlinking pull requests, Linear without a key), webhook automations (creation, the one-time secret, unsigned, unknown and disabled deliveries), and settings (language, default model, shortcut recording, conflicts, reset, encrypted secrets). A green run is the proof for those; do not redo them by hand.
+Run `pnpm test:e2e` first. Playwright drives the built app through the Gherkin scenarios in `e2e/features`, one isolated instance per worker, and covers everything a user can do without an agent turn, a GitHub account or a native dialog: projects and threads (add, errors, collapse, keyboard reorder, rename, archive and unarchive, filters, delete, restart), worktrees (setup script and its variables, setup log, failure, changes and diffs, archive cleanup), ports (listing, scope, the two-click stop), the MCP server contract (tool list, credential checks, `review_changes`, linking and unlinking pull requests, Linear without a key), routines (creation, disable, Run now, the webhook's bearer and wrong-secret answers), and settings (language, default model, shortcut recording, conflicts, reset, encrypted secrets). A green run is the proof for those; do not redo them by hand.
 
-This skill is for what a test cannot own: real Claude Code, Codex and Muse Code turns, remote mode against a `hinacode serve` cloud, tools called from inside a turn, GitHub through a real `gh`, deliveries and automations that start threads, native file pickers, and screenshots or videos for a pull request. `features/README.md` lists, per feature, which sub-features are automated and which are left to a verification run.
+This skill is for what a test cannot own: real Claude Code, Codex and Muse Code turns, remote mode against a `hinacode serve` cloud, tools called from inside a turn, GitHub through a real `gh`, scheduled runs and deliveries that start threads, native file pickers, and screenshots or videos for a pull request. `features/README.md` lists, per feature, which sub-features are automated and which are left to a verification run.
 
 All helpers live in `scripts/` next to this file. Run from the repo root and set these once per run:
 
@@ -36,7 +36,7 @@ What it does:
 1. Refuses if `$PORT` already answers CDP or `$DATA` belongs to a live instance.
 2. On Linux, starts the user-local Xvfb (`~/.local/xvfb/usr/bin/Xvfb :99 -screen 0 1600x1000x24`) if `/tmp/.X11-unix/X99` is missing. Xvfb is shared and is never stopped by cleanup. macOS has no Xvfb: the instance opens a real window on the user's screen.
 3. Runs `pnpm build`, then starts Electron with `HINACODE_USER_DATA=$DATA --remote-debugging-port=$PORT out/main/index.js` in a new session (Linux: `DISPLAY=:99 pnpm exec electron --no-sandbox --disable-gpu`; macOS: the Electron binary directly). The session id goes to `$DATA/kk-verify.sid`, the log to `$DATA/electron.log`.
-4. Waits until `window.hinacode.rpc("settings.get")` answers, then moves the automations webhook listener to port `40000 + $PORT` (a fresh profile binds 48080, which another instance usually holds).
+4. Waits until `window.hinacode.rpc("settings.get")` answers, then moves the routines webhook listener to port `40000 + $PORT` (a fresh profile binds 48080, which another instance usually holds).
 
 Ready means it printed `hinacode ready: cdp=... data=... session=... webhook-port=...`. Teardown is [Cleanup](#cleanup). To restart the same profile, for example to prove history restore or resume, run `$S/stop.sh $DATA` and then `$S/launch.sh $PORT $DATA --no-build`.
 
@@ -130,7 +130,7 @@ Proof standards:
 
 - Exercise the real user path: clicks, typing and keyboard in the window, or the MCP and webhook endpoints that agents and senders use. rpc is for seeding and reading back, not for doing the thing under test.
 - Capture the action and the resulting state, not only the final screen: one shot before or during the action, one after.
-- Verify side effects next to what is visible: rows via `rpc.ts` (`threads.list`, `threads.transcript`, `pullRequests.list`, `automations.runs`), files and branches with `git -C` and `ls`, listening processes with `ss -ltnp` (Linux) or `lsof -nP -iTCP:<port> -sTCP:LISTEN` (macOS).
+- Verify side effects next to what is visible: rows via `rpc.ts` (`threads.list`, `threads.transcript`, `pullRequests.list`, `routines.runs`), files and branches with `git -C` and `ls`, listening processes with `ss -ltnp` (Linux) or `lsof -nP -iTCP:<port> -sTCP:LISTEN` (macOS).
 - Persistence claims need a second view: `stop.sh` plus `launch.sh --no-build`, then look again.
 - No mocks except where a boundary already isolates the outside world, such as a `gh` shim on `PATH` for GitHub.
 - Report every sub-feature you skipped and why. Do not count a different entry point as the one you skipped.

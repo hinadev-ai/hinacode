@@ -74,7 +74,7 @@ A cell says yes when the provider maps the capability today. A cell says no when
 - Add the id to `ProviderId` (`src/shared/agent.ts`). Add it to `AccountProviderId` only when the agent reads its login from a home directory (`src/shared/agent.ts`).
 - Register it in the `providers` record in `src/main/services/AgentRunner.ts` and in `src/main/services/AgentLogins.ts`.
 - Add its layer to the graph in `src/main/app.ts`. Fix the fake providers of integration tests that build those layers.
-- Add a migration that widens the `provider` CHECK on `thread` and `automation`. Never edit a shipped migration.
+- Add a migration that widens the `provider` CHECK on `thread`. Never edit a shipped migration.
 - Add the id to `perProvider` and `eachProvider` in `src/shared/domain.ts`, and its name, CLI and capabilities to `providerInfo` in `src/shared/providers.ts`. An agent that speaks ACP needs only a config for `makeAcpProvider`, like `src/main/agents/opencode/index.ts`.
 - Add the icon and label in `ProviderIcon.tsx`, the access hints in `ComposerControls.tsx`, the signed-out hint in account settings, and every new string in `messages/en.json`, `messages/zh-TW.json`, `messages/zh-CN.json` and `messages/ja.json`.
 - Add a mock for e2e. Claude has `src/main/agents/claude/mock.ts`. Codex tests run a fake server (`src/main/agents/codex/fakeAppServer.mjs`, used at `src/main/agents/codex/index.integration.test.ts`). Muse tests run a fake endpoint (`src/main/agents/muse/fakeEndpoint.ts`, used at `src/main/agents/muse/index.integration.test.ts`).

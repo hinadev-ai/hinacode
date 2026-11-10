@@ -58,7 +58,7 @@ const run = async (label: string, clean: string, attempt: number): Promise<Sampl
   mkdirSync(data)
   copyFileSync(clean, join(data, "hinacode.sqlite"))
   const db = new DatabaseSync(join(data, "hinacode.sqlite"))
-  db.exec("UPDATE pull_request_link SET watch = NULL; UPDATE automation SET enabled = 0")
+  db.exec("UPDATE pull_request_link SET watch = NULL; UPDATE routine SET enabled = 0, next_run_at = NULL")
   const threads = db
     .prepare(
       `SELECT id FROM thread WHERE status = 'idle' AND side_of IS NULL AND provider_session_id IS NOT NULL

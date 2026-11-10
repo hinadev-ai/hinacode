@@ -9,7 +9,7 @@ import { layer } from "./client.ts"
 import init from "./migrations/0001_init.ts"
 import automations from "./migrations/0002_automations.ts"
 import { runMigrations } from "./migrator.ts"
-import { seedThread } from "./testing.ts"
+import { restoreAutomationTables, seedThread } from "./testing.ts"
 
 const databasePath = () => join(mkdtempSync(join(tmpdir(), "hinacode-migrator-")), "hinacode.sqlite")
 
@@ -65,6 +65,7 @@ describe("runMigrations", () => {
       yield* sql`ALTER TABLE thread ADD COLUMN user_skills INTEGER NOT NULL DEFAULT 1 CHECK (user_skills IN (0, 1))`
       yield* sql`ALTER TABLE pull_request_link DROP COLUMN observed_status`
       yield* sql`DROP TABLE app_connection`
+      yield* restoreAutomationTables
       yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id >= 43`
 
       const ran = yield* runMigrations
@@ -74,6 +75,7 @@ describe("runMigrations", () => {
         [44, "drop_thread_user_skills"],
         [45, "magpie_provider"],
         [46, "app_connection"],
+        [47, "routines"],
       ])
       expect(yield* hasObservedStatus).toBe(true)
       expect(yield* sql`SELECT name FROM effect_sql_migrations WHERE migration_id = 40`).toStrictEqual([
@@ -103,7 +105,7 @@ describe("runMigrations", () => {
 
       expect(upgraded.thread).toStrictEqual({ title: "t", provider: "claude" })
       expect(upgraded.ids.slice(0, 4)).toStrictEqual([1, 2, 3, 4])
-      expect(upgraded.ids.at(-1)).toBe(46)
+      expect(upgraded.ids.at(-1)).toBe(47)
       expect(upgraded.projectColumns).toContain("trusted")
     }),
   )
@@ -117,6 +119,7 @@ describe("runMigrations", () => {
           const sql = yield* SqlClient.SqlClient
           const seeded = yield* seedThread({ rootPath: "/repo" })
           yield* sql`UPDATE thread SET provider = 'codex' WHERE id = ${seeded.threadId}`
+          yield* restoreAutomationTables
           yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id >= 45`
           yield* sql`ALTER TABLE automation ADD COLUMN next_provider TEXT`
           return seeded
@@ -148,7 +151,7 @@ describe("runMigrations", () => {
           const sql = yield* SqlClient.SqlClient
           const seeded = yield* seedThread({ rootPath: "/repo" })
           yield* sql`ALTER TABLE thread ADD COLUMN from_the_future TEXT NOT NULL DEFAULT 'kept'`
-          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (47, 'from_the_future')`
+          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (48, 'from_the_future')`
           return seeded
         }),
       )
@@ -168,7 +171,7 @@ describe("runMigrations", () => {
         ran: [],
         thread: { title: "t", provider: "claude" },
         future: { fromTheFuture: "kept" },
-        ids: expect.arrayContaining([46, 47]),
+        ids: expect.arrayContaining([47, 48]),
       })
     }),
   )
