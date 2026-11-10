@@ -168,6 +168,7 @@ const make = Effect.gen(function* () {
       const found = yield* touch({ tokenHash: sha256(authorization.slice(BEARER.length)), usedAt: yield* nowIso }).pipe(
         Effect.mapError(persistence("appConnections.authenticate")),
       )
+      if (Option.isSome(found)) yield* announce
       return Option.map(found, ({ id }) => id)
     })
 
