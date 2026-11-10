@@ -21,6 +21,7 @@ import {
 } from "react"
 import { flushSync } from "react-dom"
 import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../shared/agent.ts"
+import { type AccessBehavior, accessBehavior } from "../../shared/access.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { AccessMode, enabledProviders, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
 import { parsePullRequestSelector } from "../../shared/github.ts"
@@ -153,42 +154,21 @@ export const accessModes: Record<AccessMode, { readonly icon: IconComponent; rea
   full: { icon: UnlockIcon, label: m.access_full },
 }
 
-const museAccessLabels: Record<AccessMode, () => string> = {
-  supervised: m.access_supervised_muse,
-  auto: m.access_auto_muse,
-  full: m.access_full_muse,
+const behaviorCopy: Record<AccessBehavior, { readonly label: () => string; readonly hint: () => string }> = {
+  askEditsAndCommands: { label: m.access_supervised, hint: m.access_hint_askEditsAndCommands },
+  askUnlessReadOnly: { label: m.access_supervised, hint: m.access_hint_askUnlessReadOnly },
+  askProtectedWrites: { label: m.access_supervised_muse, hint: m.access_hint_askProtectedWrites },
+  askEveryTool: { label: m.access_supervised, hint: m.access_hint_askEveryTool },
+  autoApprovesSafeActions: { label: m.access_auto, hint: m.access_hint_autoApprovesSafeActions },
+  acceptEdits: { label: m.access_accept_edits, hint: m.access_hint_acceptEdits },
+  sandboxed: { label: m.access_auto, hint: m.access_hint_sandboxed },
+  aiReview: { label: m.access_auto_muse, hint: m.access_hint_aiReview },
+  bypass: { label: m.access_full, hint: m.access_hint_bypass },
+  unrestricted: { label: m.access_full_muse, hint: m.access_hint_unrestricted },
 }
 
-const accessLabel = (accessMode: AccessMode, provider: ProviderId) =>
-  provider === "muse" ? museAccessLabels[accessMode]() : accessModes[accessMode].label()
-
-const supervisedHint = {
-  claude: m.access_supervised_hint_claude,
-  codex: m.access_supervised_hint_codex,
-  muse: m.access_supervised_hint_muse,
-  opencode: m.access_supervised_hint_opencode,
-  magpie: m.access_supervised_hint_claude,
-} satisfies Record<ProviderId, () => string>
-
-const autoHint = {
-  claude: (model: ModelInfo | undefined) =>
-    model?.autoMode ? m.access_auto_hint_claude() : m.access_auto_hint_claude_edits(),
-  codex: m.access_auto_hint_codex,
-  muse: m.access_auto_hint_muse,
-  opencode: m.access_auto_hint_opencode,
-  magpie: m.access_auto_hint_claude_edits,
-} satisfies Record<ProviderId, (model: ModelInfo | undefined) => string>
-
-const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
-  switch (accessMode) {
-    case "supervised":
-      return supervisedHint[thread.provider]()
-    case "auto":
-      return autoHint[thread.provider](model)
-    case "full":
-      return thread.provider === "muse" ? m.access_full_hint_muse() : m.access_full_hint()
-  }
-}
+const accessCopy = (thread: Thread, accessMode: AccessMode, model: ModelInfo | undefined) =>
+  behaviorCopy[accessBehavior(thread.provider, accessMode, model)]
 
 interface AgentTab {
   readonly value: string
@@ -401,7 +381,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     selected.label,
     effort === null ? null : effortLabel(effort),
     thread.fastMode ? m.thread_fast_mode() : null,
-    thread.accessMode === "full" ? accessLabel("full", thread.provider) : null,
+    thread.accessMode === "full" ? accessCopy(thread, "full", current).label() : null,
   ].filter((part) => part !== null)
   const AccessIcon = accessModes[thread.accessMode].icon
 
@@ -675,14 +655,14 @@ function AccessSwitch({
               className="flex min-w-0 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-pressed:bg-background data-pressed:text-foreground data-pressed:shadow-sm data-destructive:data-pressed:text-destructive"
             >
               <Icon aria-hidden className="size-3.5 shrink-0" />
-              <span className="truncate">{accessLabel(value, thread.provider)}</span>
+              <span className="truncate">{accessCopy(thread, value, model).label()}</span>
             </Toggle>
           )
         })}
       </ToggleGroup>
       <div className="flex items-start gap-2 px-0.5">
         <p className="flex-1 text-xs text-pretty text-muted-foreground">
-          {accessHint(thread.accessMode, thread, model)}
+          {accessCopy(thread, thread.accessMode, model).hint()}
         </p>
         <AltKey>M</AltKey>
       </div>

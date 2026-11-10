@@ -5,8 +5,8 @@ import zhTW from "../../../../messages/zh-TW.json"
 import { deviceLanguageTags } from "./device-locale"
 import { type CatalogLocale, resolveCatalogLocale } from "./locale"
 
-/** The phone reads its own keys, plus the desktop's labels for HinaCode's MCP tools. */
-type Key = Extract<keyof typeof en, `mobile_${string}` | `tool_own_${string}`>
+/** The phone reads its own keys, plus the desktop's labels for HinaCode's MCP tools and its access mode copy. */
+type Key = Extract<keyof typeof en, `mobile_${string}` | `tool_own_${string}` | `access_${string}`>
 
 const catalogs: Record<CatalogLocale, Record<Key, string>> = { en, ja, "zh-TW": zhTW, "zh-CN": zhCN }
 
