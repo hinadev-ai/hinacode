@@ -30,6 +30,7 @@ import { hookPath, webhookServer } from "./webhook.ts"
 
 export const WEBHOOK_SECRET = "routines.webhookSecret"
 export const AUTO_PAUSE_FAILURES = 3
+export const MAX_ROUTINES = 100
 
 export class RoutineError extends Schema.TaggedError<RoutineError>()("RoutineError", {
   reason: Schema.String,
@@ -468,6 +469,14 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       yield* validate(input)
       yield* projects.get(input.projectId)
+      const [existing] = yield* sql<{ readonly count: number }>`SELECT COUNT(*) AS count FROM routine`.pipe(
+        Effect.mapError(persistence("routines.create")),
+      )
+      if ((existing?.count ?? 0) >= MAX_ROUTINES) {
+        return yield* new RoutineError({
+          reason: `This machine already has ${MAX_ROUTINES} routines. Delete one to add another.`,
+        })
+      }
       const now = yield* Clock.currentTimeMillis
       const createdAt = new Date(now).toISOString()
       const row: RoutineRow = {

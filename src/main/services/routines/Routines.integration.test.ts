@@ -37,7 +37,7 @@ import * as Terminals from "../Terminals.ts"
 import * as ThreadNaming from "../ThreadNaming.ts"
 import * as Threads from "../Threads.ts"
 import * as Worktrees from "../Worktrees.ts"
-import { Routines, layer as routinesLayer, WEBHOOK_SECRET } from "./Routines.ts"
+import { MAX_ROUTINES, Routines, layer as routinesLayer, WEBHOOK_SECRET } from "./Routines.ts"
 
 const provider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
@@ -246,6 +246,18 @@ describe("routine scheduling", () => {
         expect(empty.message).toBe("Prompt is required")
         const missing = yield* Effect.flip(createRoutine("nope"))
         expect(missing._tag).toBe("NotFoundError")
+      }),
+    ),
+  )
+
+  it.effect("refuses a routine past the per-machine limit", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        yield* Effect.forEach(Array.from({ length: MAX_ROUTINES }), () => createRoutine(projectId, { schedule: null }))
+        const full = yield* Effect.flip(createRoutine(projectId, { schedule: null }))
+        expect(full.message).toContain(`${MAX_ROUTINES} routines`)
+        const routines = yield* Routines.use((routines) => routines.list)
+        expect(routines).toHaveLength(MAX_ROUTINES)
       }),
     ),
   )
