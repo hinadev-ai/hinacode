@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import * as SourceControl from "../SourceControl.ts"
 import { createServer } from "node:net"
@@ -283,6 +284,63 @@ describe("pull request automations", () => {
         expect(failure.message).toBe("Pick at least one pull request event")
         const automation = yield* createPullRequestAutomation(projectId, ["pullRequest.merged"])
         expect(automation.cursor).toBeNull()
+      }),
+    ),
+  )
+})
+
+const createWebhookAutomation = (projectId: string) =>
+  Effect.gen(function* () {
+    const automations = yield* Automations
+    const { automation, secret } = yield* automations.create({
+      projectId,
+      name: "Heartbeat",
+      enabled: true,
+      trigger: { type: "webhook" },
+      promptTemplate: "Check the heartbeat",
+      provider: "claude",
+      model: "test-model",
+      runInWorktree: false,
+      branchTemplate: null,
+    })
+    const { url } = yield* automations.webhookUrl(automation.id)
+    return { automation, url, secret: secret ?? "" }
+  })
+
+const postHook = (hook: { readonly url: string; readonly secret: string }, headers: Record<string, string> = {}) =>
+  Effect.promise(async () => {
+    const body = "{}"
+    const signature = `sha256=${createHmac("sha256", hook.secret).update(body).digest("hex")}`
+    const response = await fetch(hook.url, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-hinacode-signature": signature, ...headers },
+      body,
+    })
+    return { status: response.status, body: await response.json() }
+  })
+
+describe("webhook automations", () => {
+  it.effect("starts a run for every delivery of an identical body without a delivery id", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const hook = yield* createWebhookAutomation(projectId)
+        const first = yield* postHook(hook)
+        const second = yield* postHook(hook)
+        expect([first.status, second.status]).toStrictEqual([202, 202])
+        const runs = yield* runsOf(hook.automation.id)
+        expect(runs.map((run) => run.status)).toStrictEqual(["started", "started"])
+      }),
+    ),
+  )
+
+  it.effect("skips a repeated GitHub delivery id", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const hook = yield* createWebhookAutomation(projectId)
+        const first = yield* postHook(hook, { "x-github-delivery": "delivery-1" })
+        const second = yield* postHook(hook, { "x-github-delivery": "delivery-1" })
+        expect([first.status, second.status]).toStrictEqual([202, 200])
+        expect(second.body).toMatchObject({ skipped: true })
       }),
     ),
   )
