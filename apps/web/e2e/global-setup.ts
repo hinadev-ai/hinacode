@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process"
 import { existsSync, readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
-import { repoRoot, webBuildDir } from "./support/stack.ts"
+import { CLERK_HOST, repoRoot, webBuildDir } from "./support/stack.ts"
 
 const SKIPPED_DIRS = new Set(["paraglide", "node_modules", "dist", "e2e"])
 
@@ -34,6 +34,6 @@ export default function globalSetup() {
     join(webBuildDir, "index.html"),
     ["apps/web", "src/renderer", "src/shared", "messages"],
     `pnpm exec vite build --config apps/web/vite.config.ts --outDir ${webBuildDir}`,
-    { VITE_RELAY_URL: "https://relay.hinacode.app" },
+    { VITE_RELAY_URL: "https://relay.hinacode.app", CLERK_SCRIPT_SOURCES: `https://${CLERK_HOST}` },
   )
 }

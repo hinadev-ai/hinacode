@@ -23,7 +23,7 @@ export const relayEndpoint = (serviceUrl: string, path: string) => `${serviceUrl
 
 const RELAY_KEY = "hinacode.relayUrl"
 
-export const chosenRelay = () => sessionStorage.getItem(RELAY_KEY) ?? DEFAULT_RELAY_URL
+export const chosenRelay = () => sessionStorage.getItem(RELAY_KEY) ?? storedAccount()?.serviceUrl ?? DEFAULT_RELAY_URL
 
 export const chooseRelay = (serviceUrl: string) => sessionStorage.setItem(RELAY_KEY, serviceUrl)
 

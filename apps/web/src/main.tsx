@@ -6,6 +6,7 @@ import { useLocale } from "@/stores/locale.ts"
 import type { RelayMachine } from "../../../src/shared/relayMachines.ts"
 import type { TransportMessages } from "../../../src/shared/transport.ts"
 import {
+  chooseRelay,
   chosenRelay,
   describeFailure,
   fetchMachines,
@@ -45,7 +46,10 @@ const resume = async (): Promise<Resumed> => {
   const account = storedAccount()
   if (account === null) return { _tag: "signIn", error: null }
   const answer = await fetchMachines(account)
-  if (answer._tag === "unauthorized") forgetAccount()
+  if (answer._tag === "unauthorized") {
+    chooseRelay(account.serviceUrl)
+    forgetAccount()
+  }
   if (answer._tag !== "machines") return { _tag: "signIn", error: describeFailure(answer) }
   if (answer.machines.length === 0) return { _tag: "signIn", error: m.web_no_machines() }
   await start(account, answer.machines)

@@ -39,7 +39,8 @@ sequenceDiagram
 - `hinacode serve` keeps the device-code flow. It runs on machines without a browser, often over SSH, where the person opens the printed URL in any browser. Nothing has to reach the machine, so it needs no callback and no pasted token.
 - **Sign out all devices** ends device credentials, not Clerk sessions. A web app whose Clerk session is still alive signs in again on the next visit.
 - Choosing another relay saves it for the tab and reloads the page, because clerk-js runs one Clerk instance per page.
-- The web app's CSP allows Clerk scripts only from `clerk.hinacode.app` and Clerk development hosts. Another relay whose Clerk production instance lives elsewhere needs its own build of the web app.
+- The web app's CSP allows Clerk scripts from `clerk.hinacode.app` and Clerk development hosts. A self-hosted relay whose Clerk production instance lives elsewhere needs its own build of the web app with `CLERK_SCRIPT_SOURCES` set to that Clerk frontend host, for example `CLERK_SCRIPT_SOURCES="https://clerk.example.com https://challenges.cloudflare.com" pnpm --filter hinacode-web build`.
+- A tab with no relay of its own signs in on the relay the stored account lives on, so a new tab never creates a device on the default relay for an account that lives elsewhere.
 
 ## Verify
 
