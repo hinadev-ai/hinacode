@@ -173,7 +173,19 @@ const blockId = (node: Node, body: Body, containers: ReadonlyArray<Container>) =
   return containers.length === 0 ? own : `${own}:${containers.map(signature).join(".")}`
 }
 
-export type BlockSource = { readonly node: Node; readonly pos: number; readonly owners: ReadonlyArray<number> }
+export type BlockSource = {
+  readonly node: Node
+  pos: number
+  top: number
+  readonly owners: number[]
+}
+
+export type RenderOptions = {
+  readonly start?: number
+  readonly top?: number
+  readonly decorate?: Decorate
+  readonly taken?: ReadonlySet<string>
+}
 
 export type RenderedDocument = {
   readonly blocks: ReadonlyArray<RenderBlock>
@@ -192,11 +204,14 @@ const quoteContainer = (node: Node): Container =>
     ? { kind: "callout", tone: calloutTone(node.attrs["tone"]), first: true, last: false }
     : { kind: "quote" }
 
-export function renderNodes(nodes: ReadonlyArray<Node>, start = 0, decorate: Decorate = PLAIN): RenderedDocument {
+export function renderNodes(
+  nodes: ReadonlyArray<Node>,
+  { start = 0, top = 0, decorate = PLAIN, taken = new Set<string>() }: RenderOptions = {},
+): RenderedDocument {
   const blocks: RenderBlock[] = []
   const sources: BlockSource[] = []
   const frames: Frame[] = []
-  const seen = new Set<string>()
+  let topIndex = top
 
   const emit = (node: Node, pos: number) => {
     const containers = frames.map(({ container, emitted }): Container => {
@@ -204,16 +219,13 @@ export function renderNodes(nodes: ReadonlyArray<Node>, start = 0, decorate: Dec
       return { ...container, first: emitted === 0 }
     })
     const body = bodyOf(node, decorate)
-    const base = blockId(node, body, containers)
-    let id = base
-    for (let copy = 2; seen.has(id); copy++) id = `${base}#${copy}`
-    seen.add(id)
+    const id = blockId(node, body, containers)
     for (const frame of frames) {
       frame.emitted++
       frame.lastIndex = blocks.length
     }
     blocks.push({ ...body, id, containers } as RenderBlock)
-    sources.push({ node, pos, owners: frames.map((frame) => frame.owner) })
+    sources.push({ node, pos, top: topIndex, owners: frames.map((frame) => frame.owner) })
   }
 
   const markCalloutEnd = (frame: Frame, depth: number) => {
@@ -245,8 +257,16 @@ export function renderNodes(nodes: ReadonlyArray<Node>, start = 0, decorate: Dec
   for (const node of nodes) {
     walk(node, pos)
     pos += node.nodeSize
+    topIndex++
   }
-  return { blocks, sources }
+  const seen = new Set(taken)
+  const unique = blocks.map((block) => {
+    let id = block.id
+    for (let copy = 2; seen.has(id); copy++) id = `${block.id}#${copy}`
+    seen.add(id)
+    return id === block.id ? block : ({ ...block, id } as RenderBlock)
+  })
+  return { blocks: unique, sources }
 }
 
 export const topLevelNodes = (doc: Node | null) => {
@@ -255,4 +275,4 @@ export const topLevelNodes = (doc: Node | null) => {
   return nodes
 }
 
-export const renderBlocks = (doc: Node, decorate: Decorate = PLAIN) => renderNodes(topLevelNodes(doc), 0, decorate)
+export const renderBlocks = (doc: Node, decorate: Decorate = PLAIN) => renderNodes(topLevelNodes(doc), { decorate })

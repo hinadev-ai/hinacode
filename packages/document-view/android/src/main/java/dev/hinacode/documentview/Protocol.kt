@@ -3,7 +3,7 @@ package dev.hinacode.documentview
 
 object DocumentProtocol {
   const val NATIVE_VIEW = "DocumentView"
-  val VIEW_FUNCTIONS = listOf("applyPatch", "scrollToBlock", "provideImage")
+  val VIEW_FUNCTIONS = listOf("applyPatch", "scrollToBlock", "provideImage", "focus", "blur")
 }
 
 enum class BlockKind(val wire: String) {
@@ -40,7 +40,12 @@ enum class NativeEventType(val wire: String) {
   LINK_PRESS("linkPress"),
   TASK_TOGGLE("taskToggle"),
   IMAGE_REQUEST("imageRequest"),
-  ERROR("error");
+  ERROR("error"),
+  EDIT("edit"),
+  SELECT("select"),
+  KEY("key"),
+  FOCUS("focus"),
+  BLUR("blur");
 
   companion object {
     fun of(wire: String): NativeEventType? = entries.firstOrNull { it.wire == wire }

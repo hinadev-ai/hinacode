@@ -172,3 +172,76 @@ test("code blocks carry the highlighter's color ranges", () => {
   clock.drain()
   expect(shown()).toMatchObject([{ kind: "code", language: "ts", tokens: [[0, 5, "#ff0000"]] }])
 })
+
+const editable = (markdown: string) => {
+  const opened = open(markdown)
+  opened.clock.drain()
+  opened.patches.length = 0
+  const indexOf = (text: string) =>
+    opened.shown().findIndex((block) => "runs" in block && block.runs.some((run) => run.text.includes(text)))
+  return { ...opened, indexOf }
+}
+
+test("typing in the middle of a large document patches only that block and echoes the event count", () => {
+  const { session, patches, shown, indexOf } = editable(largeDocument())
+  const count = shown().length
+  const block = indexOf("Paragraph 40 explains")
+  session.edit({ eventCount: 7, block, cell: null, from: "Paragraph 40".length, to: "Paragraph 40".length, text: "0" })
+  session.edit({ eventCount: 8, block, cell: null, from: 0, to: "Paragraph".length, text: "段落" })
+  const edits = patches.filter((patch) => patch.start === block)
+  expect(edits.map(({ deleteCount, insert, eventCount }) => [deleteCount, insert.length, eventCount])).toEqual([
+    [1, 1, 7],
+    [1, 1, 8],
+  ])
+  expect(patches.every((patch) => patch.deleteCount <= 1 && patch.insert.length <= 1)).toBe(true)
+  expect(shown().length - count).toBeLessThanOrEqual(1)
+  const edited = shown()[block]
+  expect(edited?.kind === "paragraph" && edited.runs[0]?.text).toMatch(/^段落 400 explains/)
+  expect(session.markdown()).toContain("段落 400 explains the **plan**")
+})
+
+test("Enter in a list item makes a new item and places the caret in it", () => {
+  const { session, patches, shown, indexOf } = editable("- one two\n- three")
+  const block = indexOf("one two")
+  session.select({ anchor: { block, cell: null, offset: 3 }, head: { block, cell: null, offset: 3 } })
+  session.press("Enter", false, 1)
+  expect(
+    shown()
+      .map((b) => ("runs" in b ? b.runs.map((run) => run.text).join("") : b.kind))
+      .slice(0, 3),
+  ).toEqual(["one", " two", "three"])
+  const selection = patches.at(-1)?.selection
+  expect(selection).toEqual({ anchor: { block: 1, cell: null, offset: 0 }, head: { block: 1, cell: null, offset: 0 } })
+  expect(session.markdown().trimEnd()).toBe("- one\n-  two\n- three")
+})
+
+test("tapping a task checks only that task", () => {
+  const { session, patches, shown, indexOf } = editable("- [ ] one\n- [ ] two")
+  session.toggleTask(indexOf("two"))
+  expect(patches[0]).toMatchObject({ start: 1, deleteCount: 1 })
+  expect(
+    shown()
+      .map((block) => block.containers)
+      .slice(0, 2),
+  ).toEqual([[{ kind: "task", checked: false, first: true }], [{ kind: "task", checked: true, first: true }]])
+  expect(session.markdown().trimEnd()).toBe("- [ ] one\n- [x] two")
+})
+
+test("a selection across blocks maps to the document and back", () => {
+  const { session, indexOf } = editable("First paragraph.\n\n## Heading\n\nLast one.")
+  const anchor = { block: indexOf("First"), cell: null, offset: 6 }
+  const head = { block: indexOf("Last"), cell: null, offset: 4 }
+  session.select({ anchor, head })
+  const { from, to } = session.editor.state.selection
+  expect(session.editor.state.doc.textBetween(from, to, "|")).toBe("paragraph.|Heading|Last")
+  session.run(() => session.editor.commands.toggleBold())
+  expect(session.markdown().trimEnd()).toBe("First **paragraph.**\n\n## **Heading**\n\n**Last** one.")
+})
+
+test("typing inside a table cell edits that cell", () => {
+  const { session, indexOf, shown } = editable("Intro\n\n| a | b |\n| --- | --- |\n| one | two |")
+  const table = shown().findIndex((block) => block.kind === "table")
+  expect(indexOf("Intro")).toBe(0)
+  session.edit({ eventCount: 1, block: table, cell: [1, 1], from: 3, to: 3, text: "!" })
+  expect(session.markdown()).toContain("| one | two! |")
+})

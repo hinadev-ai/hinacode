@@ -1,5 +1,6 @@
 import type { StyleProp, ViewStyle } from "react-native"
 import type { CAPABILITIES } from "./protocol.ts"
+import type { DocumentAction, SelectionState } from "./actions.ts"
 import type { CodeToken, DocumentTheme } from "./blocks.ts"
 
 export type Capability = (typeof CAPABILITIES)[number]
@@ -7,32 +8,6 @@ export type Capability = (typeof CAPABILITIES)[number]
 export type Result<Reason extends string = string> =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: Reason }
-
-export const DOCUMENT_COMMANDS = [
-  "toggleBold",
-  "toggleItalic",
-  "toggleStrike",
-  "toggleCode",
-  "setLink",
-  "setParagraph",
-  "setHeading",
-  "toggleBulletList",
-  "toggleOrderedList",
-  "toggleTaskList",
-  "toggleBlockquote",
-  "setCallout",
-  "setCodeBlock",
-  "sinkListItem",
-  "liftListItem",
-  "insertTable",
-  "addRowAfter",
-  "addColumnAfter",
-  "deleteRow",
-  "deleteColumn",
-  "insertImage",
-] as const
-
-export type DocumentCommand = (typeof DOCUMENT_COMMANDS)[number]
 
 export type DocumentError = {
   readonly kind: "unsupported" | "image" | "lossy"
@@ -42,7 +17,9 @@ export type DocumentError = {
 export type DocumentEditorHandle = {
   readonly getMarkdown: () => string
   readonly scrollTo: (position: number) => Promise<Result<"not-loaded">>
-  readonly run: (command: DocumentCommand, argument?: unknown) => Promise<Result<"not-applicable" | "unsupported">>
+  readonly run: (action: DocumentAction) => Promise<Result<"not-applicable" | "not-loaded">>
+  readonly focus: () => Promise<Result<"not-loaded">>
+  readonly blur: () => Promise<Result<"not-loaded">>
 }
 
 export type DocumentEditorProps = {
@@ -57,6 +34,10 @@ export type DocumentEditorProps = {
   readonly onError?: (error: DocumentError) => void
   readonly onReady?: (ready: { readonly capabilities: ReadonlyArray<Capability> }) => void
   readonly onLoaded?: (loaded: { readonly blocks: number }) => void
+  readonly onChange?: () => void
+  readonly onSelectionChange?: (selection: SelectionState) => void
+  readonly onFocus?: () => void
+  readonly onBlur?: () => void
   readonly style?: StyleProp<ViewStyle>
   readonly testID?: string
 }

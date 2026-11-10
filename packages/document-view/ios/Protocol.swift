@@ -2,7 +2,7 @@
 
 enum DocumentProtocol {
   static let nativeView = "DocumentView"
-  static let viewFunctions = ["applyPatch", "scrollToBlock", "provideImage"]
+  static let viewFunctions = ["applyPatch", "scrollToBlock", "provideImage", "focus", "blur"]
 }
 
 enum BlockKind: String, CaseIterable {
@@ -32,6 +32,11 @@ enum NativeEventType: String, CaseIterable {
   case taskToggle
   case imageRequest
   case error
+  case edit
+  case select
+  case key
+  case focus
+  case blur
 }
 
 enum Capability: String, CaseIterable {

@@ -4,6 +4,7 @@ export function diffBlocks(
   before: ReadonlyArray<RenderBlock>,
   after: ReadonlyArray<RenderBlock>,
   revision: number,
+  eventCount = 0,
 ): BlockPatch | null {
   let start = 0
   const shorter = Math.min(before.length, after.length)
@@ -13,7 +14,7 @@ export function diffBlocks(
   const deleteCount = before.length - start - tail
   const insert = after.slice(start, after.length - tail)
   if (deleteCount === 0 && insert.length === 0) return null
-  return { revision, start, deleteCount, insert }
+  return { revision, eventCount, start, deleteCount, insert }
 }
 
 export function applyPatch(blocks: ReadonlyArray<RenderBlock>, patch: BlockPatch): RenderBlock[] {
@@ -24,6 +25,7 @@ export function applyPatch(blocks: ReadonlyArray<RenderBlock>, patch: BlockPatch
 
 export const appendPatch = (count: number, insert: ReadonlyArray<RenderBlock>, revision: number): BlockPatch => ({
   revision,
+  eventCount: 0,
   start: count,
   deleteCount: 0,
   insert,

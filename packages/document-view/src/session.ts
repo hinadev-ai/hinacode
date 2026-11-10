@@ -1,8 +1,12 @@
 import type { Node } from "@tiptap/pm/model"
-import { chunkNodes, documentChunks, documentMarkdownManager } from "../../../src/shared/document/parse.ts"
-import type { BlockPatch, CodeToken, DiagramDrawing, RenderBlock } from "./blocks.ts"
+import { TextSelection } from "@tiptap/pm/state"
+import { chunkNodes, documentChunks, serializeDocument } from "../../../src/shared/document/parse.ts"
+import { type SelectionState, selectionState } from "./actions.ts"
+import type { BlockPatch, CodeToken, DiagramDrawing, RenderBlock, TextPoint, TextRange } from "./blocks.ts"
+import { createDocumentEngine, type DocumentEngine, type StructuralKey } from "./engine.ts"
 import { appendPatch, diffBlocks } from "./patch.ts"
 import { type BlockSource, type Decorate, renderNodes, topLevelNodes } from "./renderBlocks.ts"
+import { pointOf, positionOf } from "./textPoints.ts"
 
 export type SessionOptions = {
   readonly send: (patch: BlockPatch) => void
@@ -11,14 +15,18 @@ export type SessionOptions = {
   readonly sliceMs?: number
   readonly highlight?: (text: string, language: string) => ReadonlyArray<CodeToken>
   readonly drawDiagram?: (source: string) => Promise<DiagramDrawing | null>
+  readonly onEdited?: () => void
+  readonly onSelection?: (selection: SelectionState) => void
+  readonly engine?: DocumentEngine
 }
 
-type Loaded = {
-  readonly doc: Node | null
-  readonly lossy: boolean
-  readonly blocks: ReadonlyArray<RenderBlock>
-  readonly sources: ReadonlyArray<BlockSource>
-  readonly chunks: ReadonlyMap<string, ReadonlyArray<Node>>
+export type TextEdit = {
+  readonly eventCount: number
+  readonly block: number
+  readonly cell: readonly [number, number] | null
+  readonly from: number
+  readonly to: number
+  readonly text: string
 }
 
 const keepUnchanged = (before: ReadonlyArray<Node>, after: Node[]) => {
@@ -33,33 +41,119 @@ const keepUnchanged = (before: ReadonlyArray<Node>, after: Node[]) => {
   return after
 }
 
-export function createDocumentSession({ send, schedule, now, sliceMs = 8, highlight, drawDiagram }: SessionOptions) {
-  const manager = documentMarkdownManager()
-  let current: Loaded = { doc: null, lossy: false, blocks: [], sources: [], chunks: new Map() }
-  let revision = 0
-  let shown: RenderBlock[] = []
-  const drawings = new Map<string, DiagramDrawing | null>()
-  const decorate: Decorate = {
-    code: highlight,
-    drawing: (source) => drawings.get(source) ?? undefined,
+type Hunk = { readonly before: number; readonly beforeEnd: number; readonly after: number; readonly afterEnd: number }
+
+const sizeOf = (nodes: ReadonlyArray<Node>, from: number, to: number) => {
+  let size = 0
+  for (let index = from; index < to; index++) size += nodes[index]!.nodeSize
+  return size
+}
+
+const changedHunks = (before: ReadonlyArray<Node>, after: ReadonlyArray<Node>): Hunk[] => {
+  const oldIndex = new Map<Node, number>()
+  before.forEach((node, index) => oldIndex.set(node, index))
+  const hunks: Hunk[] = []
+  let oldCursor = 0
+  let newCursor = 0
+  for (let index = 0; index < after.length; index++) {
+    const match = oldIndex.get(after[index]!)
+    if (match === undefined || match < oldCursor) continue
+    if (match > oldCursor || index > newCursor)
+      hunks.push({ before: oldCursor, beforeEnd: match, after: newCursor, afterEnd: index })
+    oldCursor = match + 1
+    newCursor = index + 1
   }
+  if (oldCursor < before.length || newCursor < after.length)
+    hunks.push({ before: oldCursor, beforeEnd: before.length, after: newCursor, afterEnd: after.length })
+  return hunks
+}
+
+export function createDocumentSession({
+  send,
+  schedule,
+  now,
+  sliceMs = 8,
+  highlight,
+  drawDiagram,
+  onEdited,
+  onSelection,
+  engine = createDocumentEngine(),
+}: SessionOptions) {
+  const { manager, editor } = engine
+  let blocks: RenderBlock[] = []
+  let sources: BlockSource[] = []
+  let chunks: ReadonlyMap<string, ReadonlyArray<Node>> = new Map()
+  let loaded = false
+  let lossy = false
+  let revision = 0
+  let eventCount = 0
+  const drawings = new Map<string, DiagramDrawing | null>()
+  const decorate: Decorate = { code: highlight, drawing: (source) => drawings.get(source) ?? undefined }
 
   const show = (patch: BlockPatch) => {
-    shown.splice(patch.start, patch.deleteCount, ...patch.insert)
+    blocks.splice(patch.start, patch.deleteCount, ...patch.insert)
     send(patch)
   }
 
-  const refresh = () => {
-    if (current.doc === null) return
-    const rendered = renderNodes(topLevelNodes(current.doc), 0, decorate)
-    const patch = diffBlocks(shown, rendered.blocks, revision)
-    current = { ...current, blocks: rendered.blocks, sources: rendered.sources }
+  const takenOutside = (start: number, end: number) => {
+    const taken = new Set<string>()
+    for (let index = 0; index < blocks.length; index++) if (index < start || index >= end) taken.add(blocks[index]!.id)
+    return taken
+  }
+
+  const blockRangeOf = (topStart: number, topEnd: number) => {
+    let start = sources.findIndex((source) => source.top >= topStart)
+    if (start === -1) start = sources.length
+    let end = start
+    while (end < sources.length && sources[end]!.top < topEnd) end++
+    return { start, end }
+  }
+
+  const rerenderHunk = (newTop: ReadonlyArray<Node>, hunk: Hunk, sizeDelta: number) => {
+    const { start, end } = blockRangeOf(hunk.after, hunk.after + hunk.beforeEnd - hunk.before)
+    let position = 0
+    for (let index = 0; index < hunk.after; index++) position += newTop[index]!.nodeSize
+    const rendered = renderNodes(newTop.slice(hunk.after, hunk.afterEnd), {
+      start: position,
+      top: hunk.after,
+      decorate,
+      taken: takenOutside(start, end),
+    })
+    const topDelta = hunk.afterEnd - hunk.after - (hunk.beforeEnd - hunk.before)
+    for (let index = end; index < sources.length; index++) {
+      const source = sources[index]!
+      source.pos += sizeDelta
+      source.top += topDelta
+      for (let owner = 0; owner < source.owners.length; owner++) source.owners[owner]! += sizeDelta
+    }
+    sources.splice(start, end - start, ...rendered.sources)
+    const patch = diffBlocks(blocks.slice(start, end), rendered.blocks, revision, eventCount)
+    if (patch !== null) show({ ...patch, start: patch.start + start })
+  }
+
+  const rerender = (before: Node, after: Node, selection?: () => TextRange | undefined) => {
+    const oldTop = topLevelNodes(before)
+    const newTop = topLevelNodes(after)
+    for (const hunk of changedHunks(oldTop, newTop))
+      rerenderHunk(
+        newTop,
+        hunk,
+        sizeOf(newTop, hunk.after, hunk.afterEnd) - sizeOf(oldTop, hunk.before, hunk.beforeEnd),
+      )
+    const placed = selection?.()
+    if (placed !== undefined) show({ revision, eventCount, start: 0, deleteCount: 0, insert: [], selection: placed })
+  }
+
+  const replaceAll = (doc: Node) => {
+    const rendered = renderNodes(topLevelNodes(doc), { decorate })
+    sources = [...rendered.sources]
+    const patch = diffBlocks(blocks, rendered.blocks, revision, eventCount)
     if (patch !== null) show(patch)
   }
 
   const drawMissingDiagrams = () => {
     if (drawDiagram === undefined) return
-    for (const block of current.blocks) {
+    for (const block of blocks) {
       if (block.kind !== "diagram" || drawings.has(block.source)) continue
       const { source } = block
       drawings.set(source, null)
@@ -68,52 +162,49 @@ export function createDocumentSession({ send, schedule, now, sliceMs = 8, highli
         .then((drawing) => {
           if (drawing === null) return
           drawings.set(source, drawing)
-          refresh()
+          replaceAll(editor.state.doc)
         })
     }
   }
 
   const load = (markdown: string, onLoaded?: () => void) => {
     const loadRevision = ++revision
-    const reused = current.chunks
-    const progressive = shown.length === 0
-    const chunks = new Map<string, ReadonlyArray<Node>>()
+    const reused = chunks
+    const progressive = blocks.length === 0
+    const nextChunks = new Map<string, ReadonlyArray<Node>>()
     const nodes: Node[] = []
-    const blocks: RenderBlock[] = []
-    const sources: BlockSource[] = []
     const iterator = documentChunks(manager, markdown)
     let offset = 0
-    let lossy = false
+    let top = 0
+    let nextLossy = false
+    if (progressive) sources = []
 
     const take = (chunk: Parameters<typeof chunkNodes>[1]) => {
       let parsed = reused.get(chunk.source)
       if (parsed === undefined) {
         const result = chunkNodes(manager, chunk)
         parsed = result.nodes
-        lossy ||= result.lossy
+        nextLossy ||= result.lossy
       }
-      chunks.set(chunk.source, parsed)
+      nextChunks.set(chunk.source, parsed)
       nodes.push(...parsed)
       if (!progressive) return
-      const rendered = renderNodes(parsed, offset, decorate)
+      const rendered = renderNodes(parsed, { start: offset, top, decorate, taken: new Set(blocks.map((b) => b.id)) })
       for (const node of parsed) offset += node.nodeSize
-      if (rendered.blocks.length > 0) show(appendPatch(blocks.length, rendered.blocks, loadRevision))
-      blocks.push(...rendered.blocks)
+      top += parsed.length
       sources.push(...rendered.sources)
+      if (rendered.blocks.length > 0) show(appendPatch(blocks.length, rendered.blocks, loadRevision))
     }
 
     const finish = () => {
       const { topNodeType } = manager.schema
-      const kept = progressive ? nodes : keepUnchanged(topLevelNodes(current.doc), nodes)
+      const kept = progressive ? nodes : keepUnchanged(loaded ? topLevelNodes(editor.state.doc) : [], nodes)
       const doc = kept.length === 0 ? topNodeType.createAndFill()! : topNodeType.create(null, kept)
-      if (!progressive || kept.length === 0) {
-        const rendered = renderNodes(topLevelNodes(doc), 0, decorate)
-        blocks.splice(0, blocks.length, ...rendered.blocks)
-        sources.splice(0, sources.length, ...rendered.sources)
-        const patch = diffBlocks(shown, blocks, loadRevision)
-        if (patch !== null) show(patch)
-      }
-      current = { doc, lossy, blocks, sources, chunks }
+      engine.load(doc)
+      if (!progressive || kept.length === 0) replaceAll(doc)
+      chunks = nextChunks
+      lossy = nextLossy
+      loaded = true
       drawMissingDiagrams()
       onLoaded?.()
     }
@@ -131,19 +222,90 @@ export function createDocumentSession({ send, schedule, now, sliceMs = 8, highli
     step()
   }
 
+  const selectionRange = (): TextRange | undefined => {
+    const { anchor, head } = editor.state.selection
+    const anchorPoint = pointOf(sources, anchor)
+    const headPoint = pointOf(sources, head)
+    return anchorPoint === null || headPoint === null ? undefined : { anchor: anchorPoint, head: headPoint }
+  }
+
+  const change = (run: () => unknown, placeSelection: boolean) => {
+    if (!loaded) return false
+    const before = editor.state.doc
+    const result = run()
+    const after = editor.state.doc
+    if (after !== before) {
+      rerender(before, after, placeSelection ? selectionRange : undefined)
+      onEdited?.()
+    } else if (placeSelection) {
+      const selection = selectionRange()
+      if (selection !== undefined) show({ revision, eventCount, start: 0, deleteCount: 0, insert: [], selection })
+    }
+    onSelection?.(selectionState(editor))
+    return result !== false
+  }
+
+  const positionAt = (point: TextPoint) => {
+    const source = sources[point.block]
+    return source === undefined ? null : positionOf(source, point.cell, point.offset)
+  }
+
   return {
     load,
-    get doc() {
-      return current.doc
+    edit: ({ eventCount: count, block, cell, from, to, text }: TextEdit) => {
+      eventCount = Math.max(eventCount, count)
+      const start = positionAt({ block, cell, offset: from })
+      const end = positionAt({ block, cell, offset: to })
+      if (start === null || end === null) return false
+      return change(() => {
+        const tr = editor.state.tr
+        if (text === "") tr.delete(start, end)
+        else tr.insertText(text, start, end)
+        engine.dispatch(tr)
+      }, false)
+    },
+    select: ({ anchor, head }: TextRange) => {
+      const from = positionAt(anchor)
+      const to = positionAt(head)
+      if (!loaded || from === null || to === null) return
+      engine.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)))
+      onSelection?.(selectionState(editor))
+    },
+    press: (key: StructuralKey, shift: boolean, count: number) => {
+      eventCount = Math.max(eventCount, count)
+      return change(() => engine.press(key, shift), true)
+    },
+    toggleTask: (block: number) => {
+      const source = sources[block]
+      const doc = editor.state.doc
+      const owner = source?.owners.findLast((pos) => doc.nodeAt(pos)?.type.name === "taskItem")
+      if (owner === undefined) return false
+      return change(() => {
+        const item = doc.nodeAt(owner)!
+        engine.dispatch(
+          editor.state.tr.setNodeMarkup(owner, undefined, { ...item.attrs, checked: !item.attrs["checked"] }),
+        )
+      }, false)
+    },
+    run: (command: () => boolean) => change(command, true),
+    markdown: () => serializeDocument(editor.state.doc, manager),
+    get editor() {
+      return editor
+    },
+    get loaded() {
+      return loaded
     },
     get lossy() {
-      return current.lossy
+      return lossy
     },
     get blocks() {
-      return current.blocks
+      return blocks
     },
     get sources() {
-      return current.sources
+      return sources
+    },
+    get doc() {
+      return loaded ? editor.state.doc : null
     },
   }
 }

@@ -91,11 +91,21 @@ export type RenderBlock = BlockBody & {
   readonly containers: ReadonlyArray<Container>
 }
 
+export type TextPoint = {
+  readonly block: number
+  readonly cell: readonly [row: number, column: number] | null
+  readonly offset: number
+}
+
+export type TextRange = { readonly anchor: TextPoint; readonly head: TextPoint }
+
 export type BlockPatch = {
   readonly revision: number
+  readonly eventCount: number
   readonly start: number
   readonly deleteCount: number
   readonly insert: ReadonlyArray<RenderBlock>
+  readonly selection?: TextRange
 }
 
 export type DocumentTheme = {
