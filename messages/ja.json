@@ -635,7 +635,6 @@
   "routines_name_label": "名前",
   "routines_name_placeholder": "朝の依存関係チェック",
   "routines_project_label": "プロジェクト",
-  "routines_project_on_machine": "{machine} の {project}",
   "routines_repeat_label": "繰り返し",
   "routines_repeat_none": "スケジュールなし",
   "routines_repeat_hourly": "毎時",

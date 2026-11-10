@@ -12,7 +12,7 @@ import {
   type RoutineWorkspace,
   startingProvider,
 } from "../../../../shared/domain.ts"
-import { type Cloud, environmentName, environmentOf, useClouds } from "../../../lib/environments.ts"
+import { environmentOf } from "../../../lib/environments.ts"
 import { errorMessage } from "../../../lib/errorMessage.ts"
 import { type EnvironmentId, modelsAtom, projectCommandsAtom, routinesAtom, callPromise } from "../../../lib/rpc.ts"
 import { useInstalledProviders, useSettings } from "../../../lib/settings.ts"
@@ -101,14 +101,6 @@ export function RoutineDialog({ state, projects, onClose }: RoutineDialogProps) 
   )
 }
 
-const projectLabel = (project: Project, clouds: ReadonlyArray<Cloud>, manyMachines: boolean) =>
-  manyMachines
-    ? m.routines_project_on_machine({
-        project: project.name,
-        machine: environmentName(environmentOf(project), clouds),
-      })
-    : project.name
-
 interface RoutineFormProps {
   readonly state: RoutineDialogState
   readonly projects: ReadonlyArray<Project>
@@ -117,7 +109,6 @@ interface RoutineFormProps {
 
 function RoutineForm({ state, projects, onDone }: RoutineFormProps) {
   const editing = state.mode === "edit"
-  const clouds = useClouds()
   const refreshList = useAtomRefresh(routinesAtom)
   const [draft, setDraft] = useState<Draft>(() =>
     editing ? draftFrom(state.routine) : emptyDraft(projects[0]?.id ?? ""),
@@ -164,15 +155,7 @@ function RoutineForm({ state, projects, onDone }: RoutineFormProps) {
     startTransition(() => submit(draft))
   }
 
-  const manyMachines = new Set(projects.map(environmentOf)).size > 1
-  const projectItems = projects.map((candidate) => ({
-    value: candidate.id,
-    label: projectLabel(candidate, clouds, manyMachines),
-  }))
-  const changeProject = (projectId: string) => {
-    const next = projects.find((candidate) => candidate.id === projectId)
-    patch(environmentOf(next) === environment ? { projectId } : { projectId, provider: null, model: "", effort: null })
-  }
+  const projectItems = projects.map((candidate) => ({ value: candidate.id, label: candidate.name }))
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
@@ -189,7 +172,7 @@ function RoutineForm({ state, projects, onDone }: RoutineFormProps) {
           items={projectItems}
           value={draft.projectId}
           disabled={editing}
-          onValueChange={(next) => typeof next === "string" && changeProject(next)}
+          onValueChange={(next) => typeof next === "string" && patch({ projectId: next })}
         >
           <SelectTrigger aria-label={m.routines_project_label()} className="max-w-56 shrink-0">
             <ProjectIcon projectId={draft.projectId} letterOf={project?.name} className="size-4" />

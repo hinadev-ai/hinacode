@@ -635,7 +635,6 @@
   "routines_name_label": "名稱",
   "routines_name_placeholder": "每日早晨相依套件檢查",
   "routines_project_label": "專案",
-  "routines_project_on_machine": "{machine} 上的 {project}",
   "routines_repeat_label": "重複",
   "routines_repeat_none": "不排程",
   "routines_repeat_hourly": "每小時",

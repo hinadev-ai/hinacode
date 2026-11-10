@@ -635,7 +635,6 @@
   "routines_name_label": "Name",
   "routines_name_placeholder": "Morning dependency check",
   "routines_project_label": "Project",
-  "routines_project_on_machine": "{project} on {machine}",
   "routines_repeat_label": "Repeat",
   "routines_repeat_none": "No schedule",
   "routines_repeat_hourly": "Hourly",

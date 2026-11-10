@@ -52,6 +52,8 @@ const noProjects: ReadonlyArray<Project> = []
 
 export function RoutineSettings() {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => noProjects)
+  const environment = useSettingsEnvironment()
+  const machineProjects = projects.filter((project) => environmentOf(project) === environment)
   const [dialog, setDialog] = useState<RoutineDialogState | null>(null)
 
   return (
@@ -60,7 +62,7 @@ export function RoutineSettings() {
         <Button
           size="sm"
           onClick={() => startTransition(() => setDialog({ mode: "create" }))}
-          disabled={projects.length === 0}
+          disabled={machineProjects.length === 0}
         >
           <PlusIcon aria-hidden />
           {m.routines_new()}
@@ -72,7 +74,11 @@ export function RoutineSettings() {
       />
       <ListenerSettings />
       {dialog && (
-        <RoutineDialog state={dialog} projects={projects} onClose={() => startTransition(() => setDialog(null))} />
+        <RoutineDialog
+          state={dialog}
+          projects={dialog.mode === "create" ? machineProjects : projects}
+          onClose={() => startTransition(() => setDialog(null))}
+        />
       )}
     </SettingsSection>
   )
