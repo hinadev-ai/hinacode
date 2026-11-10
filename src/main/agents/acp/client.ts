@@ -45,6 +45,7 @@ const errorDetail = (data: unknown) => {
 }
 
 export interface AcpClient {
+  readonly pid: () => number | undefined
   readonly isAlive: () => boolean
   readonly request: (
     method: string,
@@ -157,6 +158,7 @@ export const makeAcpClient = (options: {
       })
 
     const client: AcpClient = {
+      pid: () => child.pid,
       isAlive: () => exitError === undefined,
       request,
       notify: (method, params) => Effect.sync(() => write({ method, params })),

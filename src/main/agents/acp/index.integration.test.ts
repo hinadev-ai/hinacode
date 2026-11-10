@@ -7,6 +7,7 @@ import { Effect, Fiber, PubSub, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode } from "../../../shared/domain.ts"
+import { agentPidsOf } from "../../services/Ports.ts"
 import { makeAcpProvider } from "./index.ts"
 
 const FAKE_AGENT = join(import.meta.dirname, "fakeAgent.ts")
@@ -473,6 +474,21 @@ describe("an ACP agent that fails", () => {
       yield* provider.interrupt("t1")
       yield* Fiber.join(held.fiber)
       yield* agents.allExited
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("registers the turn's agent process with its thread, so the ports it opens show there", () =>
+    Effect.gen(function* () {
+      const { provider: make } = setup()
+      const provider = yield* make
+      const held = yield* startTurn(provider, input({ threadId: "ports", prompt: "hold" }))
+      yield* held.until((event) => event.type === "tool_call_started")
+      const agentPids = [...agentPidsOf("ports")]
+      expect(agentPids).toHaveLength(1)
+      expect(agentPids[0]).not.toBe(process.pid)
+      yield* provider.interrupt("ports")
+      yield* Fiber.join(held.fiber)
+      expect([...agentPidsOf("ports")]).toStrictEqual([])
     }).pipe(Effect.scoped),
   )
 
