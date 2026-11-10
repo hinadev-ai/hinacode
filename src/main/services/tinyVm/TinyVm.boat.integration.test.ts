@@ -395,7 +395,7 @@ it.effect("a boat VM starts, runs, clicks, stops into a snapshot and resumes on 
       yield* run(TinyVm.use((vm) => vm.act("thread-1", [{ type: "click", x: 10, y: 20, button: "left", clicks: 1 }])))
       expect(fake.commands.some((command) => command.includes("xdotool mousemove 10 20"))).toBe(true)
 
-      const url = yield* run(TinyVm.use((vm) => vm.desktopUrl("thread-1")))
+      const url = yield* run(TinyVm.use((vm) => vm.desktopUrl("thread-1", { sameMachine: true })))
       expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/desktop\/[0-9a-f-]{36}$/)
       expect(url).not.toContain("sekret")
       const redirect = yield* Effect.promise(() => fetch(url, { redirect: "manual" }))
@@ -404,6 +404,10 @@ it.effect("a boat VM starts, runs, clicks, stops into a snapshot and resumes on 
       expect(redirect.headers.get("location")?.endsWith("#token=sekret")).toBe(true)
       const replay = yield* Effect.promise(() => fetch(url, { redirect: "manual" }))
       expect(replay.status).toBe(404)
+
+      const direct = yield* run(TinyVm.use((vm) => vm.desktopUrl("thread-1", { sameMachine: false })))
+      expect(direct).toContain("overlay=0")
+      expect(direct.endsWith("#token=sekret")).toBe(true)
 
       yield* run(TinyVm.use((vm) => vm.stop("thread-1")))
       expect(fake.stops()).toBe(1)
