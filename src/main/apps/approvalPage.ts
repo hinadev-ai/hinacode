@@ -138,8 +138,19 @@ const CHECK = new Markup(
 
 const brandTile = markup`<span class="tile brand">${HINACODE_MARK}</span>`
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"])
+
+const ownsHost = (hostname: string, domains: ReadonlyArray<string>) =>
+  domains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))
+
+const iconOf = (appName: string, redirectHost: string) => {
+  const hostname = URL.parse(`http://${redirectHost}`)?.hostname ?? ""
+  if (LOOPBACK_HOSTS.has(hostname)) return APP_ICONS.find(({ name }) => name.test(appName))
+  return APP_ICONS.find(({ domains }) => ownsHost(hostname, domains))
+}
+
 const appTile = (appName: string, redirectHost: string) => {
-  const icon = APP_ICONS.find(({ matches }) => matches.test(appName) || matches.test(redirectHost))
+  const icon = iconOf(appName, redirectHost)
   if (icon === undefined)
     return markup`<span class="tile letter" aria-hidden="true">${Array.from(appName.trim())[0] ?? "?"}</span>`
   if (icon.paths === undefined) return new Markup(`<span class="tile ${icon.id}" aria-hidden="true"></span>`)
