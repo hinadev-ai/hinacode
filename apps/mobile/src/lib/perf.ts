@@ -401,7 +401,8 @@ async function openDocument(command: Command) {
   const parseStart = performance.now()
   const blocks = parse(markdown).doc.childCount
   const parseMs = performance.now() - parseStart
-  return { start, firstContent, settled, heap, parseMs, blocks, bytes: markdown.length, ...recorded }
+  const patches = appliedPatches.slice()
+  return { start, firstContent, settled, patches, heap, parseMs, blocks, bytes: markdown.length, ...recorded }
 }
 
 /** Samples native frames while the driver injects swipes. The driver answers `/ready` once the last one is done. */

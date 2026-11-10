@@ -436,6 +436,8 @@ function documentOpenEntry(size: DocumentSize, opened: Result) {
     blocks: Number(opened.blocks ?? opened.segments),
     firstContentMs: round1(Number(opened.firstContent) - start),
     interactiveMs: round1(Number(opened.settled) - start),
+    loadedMs:
+      Array.isArray(opened.patches) && opened.patches.length > 0 ? round1(Number(opened.patches.at(-1)) - start) : null,
     parseMs: round1(Number(opened.parseMs ?? opened.segmentMs)),
     heapMB: heap === null ? null : round1(heap.heapSize / 1048576),
     allocatedMB: heap === null ? null : round1(heap.allocatedBytes / 1048576),
@@ -454,6 +456,9 @@ function documentOpenHeadline(entry: DocumentOpen) {
   return {
     [`${name}: first content ms`]: entry.firstContentMs,
     [`${name}: interactive ms`]: entry.interactiveMs,
+    ...(entry.loadedMs === null || entry.loadedMs === undefined
+      ? {}
+      : { [`${name}: last patch drawn ms`]: entry.loadedMs }),
     [`${name}: JS parse ms`]: entry.parseMs ?? (entry as { segmentMs?: number }).segmentMs ?? 0,
     [`${name}: Hermes heap MB`]: entry.heapMB,
     [`${name}: render ms`]: entry.renderMs,
