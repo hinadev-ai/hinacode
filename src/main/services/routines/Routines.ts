@@ -505,12 +505,13 @@ const make = Effect.gen(function* () {
       const timingChanged = merged.enabled !== current.enabled || !sameSchedule(merged.schedule, current.schedule)
       const next: RoutineRow = timingChanged ? { ...merged, nextRunAt: nextRunAfter(merged, now) } : merged
       const encoded = yield* write(next, "routines.update")
+      const timing = timingChanged
+        ? sql`, enabled = ${encoded.enabled}, schedule = ${encoded.schedule}, next_run_at = ${encoded.nextRunAt}`
+        : sql.literal("")
       yield* sql`
         UPDATE routine
-        SET name = ${encoded.name}, enabled = ${encoded.enabled}, prompt = ${encoded.prompt},
-            provider = ${encoded.provider}, model = ${encoded.model}, effort = ${encoded.effort},
-            workspace = ${encoded.workspace}, schedule = ${encoded.schedule}, next_run_at = ${encoded.nextRunAt},
-            updated_at = ${encoded.updatedAt}
+        SET name = ${encoded.name}, prompt = ${encoded.prompt}, provider = ${encoded.provider}, model = ${encoded.model},
+            effort = ${encoded.effort}, workspace = ${encoded.workspace}, updated_at = ${encoded.updatedAt} ${timing}
         WHERE id = ${id}
       `.pipe(Effect.mapError(persistence("routines.update")))
       if (timingChanged) yield* sync(next)
@@ -540,6 +541,7 @@ const make = Effect.gen(function* () {
   const rotateWebhookSecret = Effect.gen(function* () {
     const secret = randomBytes(32).toString("hex")
     yield* secrets.set(WEBHOOK_SECRET, secret)
+    yield* events.publish({ type: "routines.changed" })
     return { secret }
   })
 
