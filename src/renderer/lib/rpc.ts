@@ -192,6 +192,11 @@ export const signOutRelayAtom = Atom.fn(() => relayAccountAction(call("relayAcco
 
 export const syncRelayAtom = Atom.fn(() => relayAccountAction(call("relayAccount.sync", undefined)))
 
+export const appConnectionsAtom = Atom.make((get) => {
+  get.addFinalizer(onPushEvent((event) => event.type === "appConnections.changed" && get.refreshSelf()))
+  return call("appConnections.status", undefined)
+})
+
 export const relayMachinesAtom = Atom.make(call("relayAccount.machines", undefined))
 
 const relayMachinesAction = <A>(effect: Effect.Effect<A, RpcError>) =>

@@ -77,6 +77,11 @@ export class Relay extends Context.Service<
     readonly remove: Effect.Effect<void, RelayError | PersistenceError>
     readonly status: Effect.Effect<RelayStatus>
     readonly changes: Stream.Stream<RelayStatus>
+    readonly serviceUrl: string
+    readonly verifyOwnerSignIn: (input: {
+      readonly code: string
+      readonly codeVerifier: string
+    }) => Effect.Effect<{ readonly name: string | null; readonly email: string | null }, RelayError>
   }
 >()("hinacode/Relay") {}
 
@@ -327,6 +332,15 @@ const make = ({
       remove,
       status: SubscriptionRef.get(status),
       changes: SubscriptionRef.changes(status),
+      serviceUrl,
+      verifyOwnerSignIn: ({ code, codeVerifier }) =>
+        Effect.flatMap(requireSecret(CREDENTIAL_SECRET, "This machine is not linked to the relay."), (credential) =>
+          service.verifyOwnerSignIn(credential, code, codeVerifier),
+        ).pipe(
+          Effect.mapError((error) =>
+            error instanceof RelayError ? error : new RelayError({ message: error.message }),
+          ),
+        ),
     })
   })
 

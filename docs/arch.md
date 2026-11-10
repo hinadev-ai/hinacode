@@ -15,13 +15,15 @@ flowchart LR
     ipc["ipc.ts + rpc.ts<br/>rpc handlers"]
     services["Services<br/>Threads, Worktrees, Projects,<br/>Messages, Settings, Secrets, Linear"]
     runner["AgentRunner"]
-    mcp["MCP server<br/>127.0.0.1:random/mcp"]
+    mcp["Thread MCP server<br/>127.0.0.1:random/mcp"]
+    apps["App MCP server<br/>127.0.0.1:random, OAuth + /mcp"]
     autos["Automations<br/>webhook + pollers"]
     remote["Remote listener<br/>ws://bindHost:port/remote"]
     relay["Relay<br/>cloudflared child"]
   end
   phone["Phone app<br/>apps/mobile (Expo)"]
   web["Web app<br/>apps/web at code.hinacode.app"]
+  outside["Apps the developer connected<br/>remote MCP clients"]
   edge["Cloudflare edge<br/>wss://relay hostname/remote"]
   db[("hinacode.sqlite")]
   claude["Claude Code CLI<br/>via Agent SDK query()"]
@@ -38,6 +40,9 @@ flowchart LR
   web -- "the renderer over the phone's transport, wss only" --> edge
   relay -- "dials out" --> edge
   relay --> remote
+  outside -- "https://relay hostname/mcp, OAuth token" --> edge
+  remote -- "plain HTTP for the relay hostname" --> apps
+  apps --> services & runner
   ipc --> services & runner
   runner --> claude & codex & muse
   claude & codex & muse -- "Bearer threadId.secret" --> mcp
@@ -51,6 +56,7 @@ flowchart LR
 
 - **The renderer is a view.** It never touches the file system, git, or the agents. Everything goes through `rpc`.
 - **Agents call back over MCP.** Both agents get the built-in MCP server, and the bearer credential alone decides which thread a call acts as.
+- **Outside apps get a second MCP server.** A chat app or agent harness the developer connected reaches the app server through the relay hostname, with an OAuth token and a tool list of its own. See [App MCP server](#app-mcp-server).
 - **Git and GitHub go through the CLIs** (`git`, `gh`), so hinacode uses the user's existing auth and config.
 - **Linear goes through one service.** `services/Linear.ts` reads the machine's `linear.apiKey` from `Secrets` and loads the SDK on first use. The MCP tools, the `linear.issue` poller and the `linear.issues` rpc all use it, and the key never leaves the main process. `HINACODE_MOCK_LINEAR=1` answers demo tickets.
 
@@ -111,6 +117,8 @@ flowchart LR
 
 Any machine with remote control on can also run a relay (`src/main/remote/relay.ts`): a Cloudflare named tunnel that the relay service creates in HinaCode's account, served by a `cloudflared` child that points at the remote listener. Its hostname travels as `relay` in the pairing URL and the `ready` frame, so clients paired before it existed learn it. Both clients dial with `dialPlan`: every direct address at once and the relay half a second later, and the first socket to open wins. Over the relay they check the direct addresses every minute and move over when one answers. The protocol over the tunnel is the same one. See `features/2026-10-24-relay.md` and [ADR 0020](adr/0020-cloudflare-tunnel-as-the-relay.md).
 
+The remote listener answers 404 to plain HTTP, with one exception: a request that is not an upgrade and whose `Host` is the relay hostname is piped to the app server's loopback port (`forwardToApps` in `src/main/remote/server.ts`). The proxy passes the method, path, headers and both bodies as they are and adds no forwarded headers. See [App MCP server](#app-mcp-server).
+
 The renderer keeps the histories of the 8 most recently viewed threads, so reopening one renders from memory instead of fetching a snapshot. A cached history keeps folding pushes while its thread is off screen; the main process owns ongoing turns and pending approvals. That only stays correct because every change main makes to a transcript or its requests goes out as a push: `finish` publishes the message it closes and withdraws the requests it drops, and deleting a project sends `thread.removed` for each thread. The history viewed longest ago is evicted past the limit, a removed thread is evicted at once, and a cloud reconnect refetches the cached histories of that cloud. Each load has an identity so a response from an earlier load cannot replace a newer snapshot.
 
 Ready renderer histories apply the first text or reasoning delta of a burst at once and open a 100 ms window. Adjacent deltas of the same kind wait for the window's end, which publishes them in one store update and opens the next window; a window that ends with nothing held closes. That keeps one store update per 100 ms while text streams, without making the first delta after a tool call wait. A different event flushes the held deltas and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Evicting cancels the pending timer and lets the next snapshot restore persisted content. Before that, the main process joins adjacent deltas of one kind into a single `thread.event` (`coalesceDeltas.ts`), described under [A turn, end to end](#a-turn-end-to-end).
@@ -129,10 +137,11 @@ flowchart BT
   db["Db.layer<br/>SQLite + migrations"]
   infra["ClaudeProvider, CodexProvider,<br/>MuseProvider, OpencodeProvider,<br/>Git, Events"]
   domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
-  features["McpCredentials, Ports, RemoteAccess"]
+  features["McpCredentials, Ports, RemoteAccess,<br/>AppConnections"]
   runner["AgentRunner"]
   autos["Automations, Settle, ArtifactFeedback,<br/>PullRequestWatcher, PullRequestGuides,<br/>Updates"]
-  mcp["MCP server"]
+  mcp["Thread MCP server"]
+  apps["App MCP server"]
   remote["Remote listener"]
 
   node --> db --> domain
@@ -141,7 +150,8 @@ flowchart BT
   domain --> runner
   runner --> autos
   runner --> mcp
-  autos & mcp --> remote
+  runner --> apps
+  autos & mcp & apps --> remote
 ```
 
 On the desktop, `Updates` only runs in a packaged app. It checks this repository's GitHub releases at launch and every 4 hours, downloads in the background, and pushes `update.changed` when readiness changes. An updater error clears readiness. Squirrel.Mac validates the bundle before installation. See [ADR 0018](adr/0018-releases-next-to-the-source.md). On a cloud it checks npm, installs into the cloud's own global prefix, and restarts in place with `process.execve` (`features/2026-10-20-update-clouds.md`).
@@ -149,6 +159,8 @@ On the desktop, `Updates` only runs in a packaged app. It checks this repository
 The remote listener sits above everything because it dispatches every rpc method, including the automation ones.
 
 The MCP server sits above the runner because its tools start turns (`create_thread`) and ask the user for secrets (`request_secret`). The runner only needs a thread's credential, which `McpCredentials` issues; the server tells it the URL once it listens.
+
+The app server sits above the runner for the same reason. `AppConnections` sits below it, so the rpc handlers and the remote listener can use it: it holds the connections, the requests waiting for Approve and the port the app server listens on, which the server reports once it is up.
 
 Every service is a `Context.Service` with an id like `"hinacode/Threads"` and an exported `layer`. On quit, `runtime.dispose()` gets up to 5 s, so running turns can persist their messages and status.
 
@@ -418,6 +430,13 @@ erDiagram
   thread |o--o{ automation_run : "started by"
   agent_account |o--o{ thread : "bills"
 
+  app_connection {
+    text id PK "thread.created_by = app:id"
+    text name "client_name from registration"
+    text token_hash UK "sha256 of the access token"
+    text created_at
+    text last_used_at "null = never used"
+  }
   project {
     text id PK
     text root_path UK
@@ -504,6 +523,7 @@ erDiagram
 
 - `setting` holds secrets and a few internal rows (`environment.id`, `relay.tunnel`). Secrets live under `secret.<name>` and are sealed by the `Keyring` the entry point provides: Electron `safeStorage` on the desktop (the real login Keychain in the packaged app, Chromium's mock keychain in unpackaged runs), and none in `hinacode serve`, which stores them as plaintext. A secret that won't decrypt under the current key reads as unset.
 - Settings are JSON files in the data dir, not rows: `settings.json` holds `Settings` (the environment: models, archive, worktree root, ...), `client-settings.json` holds `ClientSettings` (this desktop: locale, appearance, notifications), and `keybindings.json` holds its keybindings as a bare `{ commandId: chord }` record. Each file holds only the keys that were set, laid over the defaults on every read, so a hand edit applies on the next read. A cloud only reads `Settings`. Migration 0027 moved the old rows into the files.
+- `app_connection` (migration `0046_app_connection`) lists the outside apps that hold an access token for the app MCP server. Only the token's hash is stored. The waiting window, the requests waiting for an answer and the authorization codes waiting to be exchanged live in memory, so a restart drops them. Registered OAuth clients have no table: a `client_id` is the client's name and redirect URIs signed with the secret `apps.clientKey`.
 - `environment` (migration `0015_environments`) lists the clouds this desktop paired with. It is unrelated to the other tables: a cloud's projects and threads stay in the cloud's database.
 - `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
 - `project.kind` is `chats` for exactly one row per machine (a partial unique index), made at startup in `<dataDir>/chats` by `Projects.ensureChats`. Each of its threads works in `<rootPath>/<threadId>`, which `makeActiveWorkspace` derives rather than stores. `Threads` makes that folder on create and unarchive, and deletes it on archive and delete. Chats start in conversation mode, and their composer shows only the machine picker.
@@ -661,6 +681,32 @@ How each agent gets its credential ([ADR 0007](adr/0007-per-thread-mcp-credentia
 - **Muse Code** receives it as a header in the session's `config.mcpServers` over stdin, which needs the `sessionMcp` capability. Muse treats the server as required and fails the turn if it cannot reach it.
 - **opencode** receives it as a header of the `http` entry in ACP `session/new` and `session/load`.
 
+## App MCP server
+
+A second MCP server, in `src/main/apps/`, serves apps the developer connected: a chat app or an agent harness that calls remote MCP servers from its vendor's servers. It is its own OAuth authorization server. See [the feature doc](features/2026-11-10-app-connections.md) and [ADR 0025](adr/0025-a-second-mcp-server-for-outside-apps.md).
+
+```mermaid
+flowchart LR
+  app["Other app's servers"] -- "https://relay hostname" --> edge["Cloudflare edge"] --> cfd["cloudflared"] --> listener["Remote listener"]
+  listener -- "Host is the relay hostname,<br/>not an upgrade" --> gate{"waiting for an app<br/>or an app connected?"}
+  gate -- no --> hidden["404 on every path"]
+  gate -- yes --> oauth["/.well-known/*, /oauth/register,<br/>/oauth/authorize, /oauth/token"]
+  gate -- yes --> bearer{"/mcp: sha256 of the bearer<br/>in app_connection?"}
+  bearer -- no --> deny["401 + WWW-Authenticate"]
+  bearer -- "yes → connection id" --> tools
+  subgraph tools["Tools, every project on this machine"]
+    read["list_projects, list_threads,<br/>search_threads, read_thread"]
+    write["create_thread, send_to_thread,<br/>stop_thread"]
+  end
+  oauth -- "Approve in Settings" --> connections[("app_connection")]
+  write --> threads["Threads.create (created_by = app:connection)<br/>AgentRunner.send / steer / interrupt"]
+```
+
+- The issuer is `https://<relay hostname>`, read from `RemoteAccess`. No URL is built from `Host` or a forwarded header, and without a relay hostname every path answers 404.
+- Registration stores nothing. The developer presses Copy URL in Settings first. `GET /oauth/authorize` then records a request, which Settings shows with the app's name and the host it redirects to, and sends the browser to `/oauth/wait`, which refreshes until the developer presses Approve or Deny, in Settings or on the page after signing in to the relay as the machine's owner (`/oauth/sign-in`, `/oauth/signed-in`, `/oauth/answer`). The page is one HTML document with no script and no outside asset, under a `default-src 'none'` policy.
+- PKCE with `S256` is required. An authorization code lives 60 seconds and works once. An access token does not expire; removing the connection in Settings ends it.
+- The tools reuse the thread server's rendering (`mcp/tools/threadViews.ts`) and registration (`toolsFor` in `mcp/tools/tool.ts`), with `CallingApp` as the caller where the thread server has `CallingThread`. None of the thread server's other tools are registered here.
+
 ## Automations
 
 ```mermaid
@@ -708,6 +754,7 @@ flowchart TB
   renderer["Renderer<br/>sandbox, contextIsolation"] -- "rpc from top frame only,<br/>schema-decoded" --> main
   agents["Agent processes<br/>run user-approved code"] -- "MCP: loopback,<br/>per-thread bearer" --> main
   net["Internet"] -- "webhook: HMAC + dedup" --> main
+  outside["Connected apps<br/>through the relay hostname"] -- "app MCP server: OAuth token,<br/>project and thread tools only" --> main
   main -- "openExternal: http(s) only" --> browser["System browser"]
   page["In-app browser page<br/>webview: sandbox, no preload,<br/>persist:browser session"] -- "picked element,<br/>schema-decoded" --> renderer
   repo["Project repo config<br/>.claude settings, hooks, CLAUDE.md"] -- "loaded like the CLI: importing trusts it" --> agents
@@ -718,7 +765,7 @@ flowchart TB
   main -- "hinacode-github-asset: gh token stays in main" --> renderer
 ```
 
-Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md) for MCP credentials, [0008](adr/0008-import-trusts-the-project.md) for why importing a project trusts it, [0009](adr/0009-scoped-session-approvals.md) for session approvals, and [0014](adr/0014-webview-for-the-in-app-browser.md) for the in-app browser. The threat model is a single user on their own machine. We defend against untrusted web content and unauthenticated network callers. A project the user imports is trusted, the same as opening it in the CLI. An attacker who already has the user's shell is out of scope.
+Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md) for MCP credentials, [0008](adr/0008-import-trusts-the-project.md) for why importing a project trusts it, [0009](adr/0009-scoped-session-approvals.md) for session approvals, [0014](adr/0014-webview-for-the-in-app-browser.md) for the in-app browser, and [0025](adr/0025-a-second-mcp-server-for-outside-apps.md) for the app MCP server. The threat model is a single user on their own machine. We defend against untrusted web content and unauthenticated network callers. A project the user imports is trusted, the same as opening it in the CLI. An attacker who already has the user's shell is out of scope.
 
 ## Where things live
 
@@ -737,6 +784,7 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | Commit graph (log, show, lane layout)     | `src/main/services/Git.ts`, `src/renderer/lib/gitGraph.ts` |
 | Providers                                 | `src/main/agents/claude/`, `src/main/agents/codex/`        |
 | MCP server and tools                      | `src/main/mcp/`                                            |
+| App connections, OAuth, app MCP server    | `src/main/apps/`                                           |
 | Automations                               | `src/main/services/automations/`                           |
 | Contracts                                 | `src/shared/contract.ts`, `domain.ts`, `agent.ts`          |
 | Renderer state                            | `src/renderer/stores/`                                     |

@@ -14,6 +14,7 @@ import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
+import { AppConnectionsSettings } from "./AppConnectionsSettings.tsx"
 import { BindHostSelect, LOOPBACK } from "./BindHostSelect.tsx"
 import { CopyField } from "./automations/shared.tsx"
 import { SettingsGroup, SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
@@ -59,6 +60,7 @@ export function RemoteSettings() {
       </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
       {remote.enabled && <PairPhone />}
+      <AppConnectionsSettings />
     </SettingsSection>
   )
 }
