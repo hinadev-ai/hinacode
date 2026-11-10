@@ -36,6 +36,7 @@ import * as Tools from "./tools.ts"
 
 const CLIENT_KEY_SECRET = "apps.clientKey"
 const MAX_OAUTH_BODY = ByteSize.kilobytes(64)
+const MAX_MCP_BYTES = 1024 * 1024
 const PUBLIC_PATHS = new Set([
   PROTECTED_RESOURCE_PATH,
   `${PROTECTED_RESOURCE_PATH}${MCP_PATH}`,
@@ -77,7 +78,12 @@ const gate = HttpRouter.middleware(
         }
         if (path !== MCP_PATH) return notFound
         const app = yield* connections.authenticate(request.headers["authorization"])
-        if (Option.isSome(app)) return yield* Effect.provideService(httpEffect, Tools.CallingApp, app.value)
+        if (Option.isSome(app)) {
+          if (request.method === "POST" && !(Number(request.headers["content-length"]) <= MAX_MCP_BYTES)) {
+            return HttpServerResponse.empty({ status: 413 })
+          }
+          return yield* Effect.provideService(httpEffect, Tools.CallingApp, app.value)
+        }
         return HttpServerResponse.jsonUnsafe(
           { error: "invalid_token" },
           {

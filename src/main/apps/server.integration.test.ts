@@ -317,8 +317,14 @@ describe("app server", () => {
         ...request,
         body: request.body.replace('"test"', JSON.stringify("x".repeat(1024 * 1024))),
       })
-      expect(oversized.status).not.toBe(200)
-      expect(oversized.headers.get("mcp-session-id")).toBeNull()
+      expect(oversized.status).toBe(413)
+
+      const chunked = await fetch(`${app.origin}/mcp`, {
+        ...request,
+        body: new Blob([request.body]).stream(),
+        duplex: "half",
+      } as RequestInit)
+      expect(chunked.status).toBe(413)
     }))
 
   test("create_thread falls back to the developer's default agent and model", () =>
