@@ -238,6 +238,16 @@ describe("magpie provider against a gateway", () => {
     }).pipe(Effect.provide(onMagpie())),
   )
 
+  it.effect("signs out of a saved endpoint where nothing answers", () =>
+    Effect.gen(function* () {
+      const provider = yield* MagpieProvider
+      const endpoint = "http://127.0.0.1:1/v1"
+      yield* Secrets.use((secrets) => secrets.set(MAGPIE_KEY_SECRET, bindKey(endpoint, REMOTE_KEY)))
+      yield* Settings.use((settings) => settings.set({ magpieEndpoint: endpoint }))
+      expect(yield* provider.account(null)).toStrictEqual({ type: "signedOut" })
+    }).pipe(Effect.provide(onMagpie())),
+  )
+
   it.effect.skipIf(!claudeInstalled)(
     "makes Claude Code ask for the fast speed on every request while the thread is fast, and stop when it is not",
     () =>
