@@ -35,7 +35,11 @@ function BackgroundTaskRow({ threadId, task }: { threadId: string; task: Backgro
   const label = task.label || kindLabel()
   return (
     <ActivityRow
-      actions={task.kind === "wakeup" ? undefined : <StopBackgroundTaskButton threadId={threadId} task={task} />}
+      actions={
+        task.kind === "wakeup" ? undefined : (
+          <StopBackgroundTaskButton threadId={threadId} taskId={task.id} taskLabel={label} />
+        )
+      }
     >
       <Icon aria-hidden className="size-3.5 shrink-0" />
       <span className="sr-only">{kindLabel()}</span>
@@ -53,15 +57,23 @@ function BackgroundTaskRow({ threadId, task }: { threadId: string; task: Backgro
   )
 }
 
-function StopBackgroundTaskButton({ threadId, task }: { threadId: string; task: BackgroundTask }) {
+function StopBackgroundTaskButton({
+  threadId,
+  taskId,
+  taskLabel,
+}: {
+  threadId: string
+  taskId: string
+  taskLabel: string
+}) {
   const stop = async () => {
     try {
-      await callPromise("backgroundTasks.stop", { threadId, taskId: task.id })
+      await callPromise("backgroundTasks.stop", { threadId, taskId })
     } catch (cause) {
       toast.error(m.activity_background_stop_failed({ message: errorMessage(cause) }))
     }
   }
-  const label = m.activity_background_stop({ label: task.label })
+  const label = m.activity_background_stop({ label: taskLabel })
   return (
     <Button
       variant="ghost"
