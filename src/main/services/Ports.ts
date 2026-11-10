@@ -305,7 +305,7 @@ export const registerAgentPid = (threadId: string, pidOf: PidOf): (() => void) =
   }
 }
 
-const agentPidsOf = (threadId: string) =>
+export const agentPidsOf = (threadId: string) =>
   new Set([...(agentPidsByThread.get(threadId) ?? [])].map((pidOf) => pidOf()).filter((pid) => pid !== undefined))
 
 const scanners: Partial<Record<NodeJS.Platform, ListeningScanner>> = {
