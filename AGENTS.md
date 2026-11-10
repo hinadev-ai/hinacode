@@ -84,7 +84,7 @@ HinaCode runs agents that execute code on the user's machine. Hold a few boundar
   - The renderer is sandboxed and only the top-level app frame may call `rpc`.
   - `shell.openExternal` only opens http(s) URLs.
   - The thread MCP server (`src/main/mcp/`) listens on loopback only, and its credential scopes each call to one thread.
-  - The app MCP server (`src/main/apps/`) is the only MCP surface the relay reaches. Its tools are project and thread tools: nothing that returns a secret, runs a shell, or drives a VM or device goes on it. It answers 404 until an approval code is live or an app is connected, and it builds URLs from the relay hostname, never from request headers.
+  - The app MCP server (`src/main/apps/`) is the only MCP surface the relay reaches. Its tools are project and thread tools: nothing that returns a secret, runs a shell, or drives a VM or device goes on it. It answers 404 until the developer chooses an app to connect or an app is connected, and only Approve in HinaCode grants a connection, and it builds URLs from the relay hostname, never from request headers.
   - Webhooks require an HMAC signature, checked with `timingSafeEqual`.
   - The attachment protocol refuses paths outside its root.
 - **Secrets** go through `services/Secrets.ts`, sealed by the `Keyring` the entry point provides. Never log them, put them in a URL, or send them to the renderer. Only the packaged desktop app uses the real login Keychain. Unpackaged runs switch themselves to Chromium's mock keychain (`src/main/index.ts`), and `hinacode serve` has no keyring, so never add a launch path that asks the user for their password.

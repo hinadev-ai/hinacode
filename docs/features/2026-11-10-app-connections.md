@@ -11,11 +11,16 @@ Running something inside the other app's sandbox does not work either. Those san
 
 ## User flow
 
-1. The machine is linked to the relay (`2026-10-24-relay.md`). Settings > Connections shows **Apps** with the URL `https://<hostname>/mcp` and a Copy button.
-2. The developer adds that URL as a remote MCP server in the other app and picks OAuth.
-3. The other app opens the sign-in page, served by the developer's own machine through the tunnel. It names the app and asks for an approval code.
-4. In Settings, **New code** shows a one-time code for ten minutes. The developer types it on the page and approves.
-5. The app appears in the list in Settings with when it was last used, or when it connected if it has not called yet. Remove ends its access at once.
+1. The machine is linked to the relay (`2026-10-24-relay.md`). Settings > Connections > **Apps** shows a button per app (Grok Bot, Claude, ChatGPT, Hermes Agent) and the URL `https://<hostname>/mcp`.
+2. The developer clicks an app. HinaCode hands the URL over the way that app takes it and starts waiting for ten minutes:
+   - Grok Bot: copies `Add the MCP server <url> and connect it.` and opens `x.ai/bot`.
+   - Claude: opens its Add custom connector form with the URL filled in.
+   - ChatGPT: copies the URL and opens `chatgpt.com/plugins`.
+   - Hermes Agent: copies `hermes mcp add hinacode --url <url> --auth oauth --connect-timeout 315`.
+   - Any other app: the developer copies the URL from the field below the buttons.
+3. The app registers and sends the developer's browser to the authorize page, which the developer's own machine serves through the tunnel. The page says to approve in HinaCode and refreshes every two seconds.
+4. Settings shows `<app> wants to connect` with the host it returns to, and **Approve** and **Deny**.
+5. After Approve, the page redirects to the app's callback with an authorization code. The app exchanges it, and appears in the list with when it was last used. Remove ends its access at once.
 6. The app can now list projects and threads, read a thread, start one, send to one and stop one.
 
 Without a relay the section says to sign in to the relay first. Apps connected earlier stay listed, so they can still be removed.
@@ -43,7 +48,7 @@ flowchart LR
 
 The tunnel's ingress already points at the remote listener, so the relay service does not change. The listener forwards plain HTTP requests whose `Host` is the relay hostname to the app server on loopback, and answers 404 to everything else as before. The issuer is always `https://<relay hostname>`, taken from the relay status and never from a forwarded header.
 
-The surface exists only while it is in use. With no live approval code and no connected app, every path answers 404, so a linked machine that never uses this exposes nothing new.
+The surface exists only while it is in use. While HinaCode is not waiting for an app and none is connected, every path answers 404, so a linked machine that never uses this exposes nothing new.
 
 ### Data shape
 
@@ -63,18 +68,20 @@ CREATE TABLE app_connection (
 AppConnection = { id, name, createdAt, lastUsedAt: string | null }
 AppConnectionsStatus = {
   url: string | null // null until the relay has a hostname
-  approvalCode: { code: string; expiresAt: string } | null
+  waitingUntil: string | null // set by choosing an app, cleared by an approval or after ten minutes
+  requests: { id: string; name: string; redirectHost: string }[] // apps waiting for Approve or Deny
   connections: AppConnection[]
 }
 
 // src/shared/contract.ts
 "appConnections.status": rpc(Void, AppConnectionsStatus)
-"appConnections.newApprovalCode": rpc(Void, AppConnectionsStatus)
+"appConnections.start": rpc(Void, AppConnectionsStatus)
+"appConnections.answer": rpc({ id, approve }, AppConnectionsStatus)
 "appConnections.remove": rpc({ id }, AppConnectionsStatus)
 // event: { type: "appConnections.changed", status }
 ```
 
-In memory only, so a restart drops them: the one live approval code with its remaining attempts, and authorization codes waiting to be exchanged.
+In memory only, so a restart drops them: the waiting window, requests waiting for an answer, and authorization codes waiting to be exchanged.
 
 ### OAuth
 
@@ -85,14 +92,14 @@ The app server is its own authorization server, as the MCP authorization spec ex
 | `GET /.well-known/oauth-protected-resource` (also `/mcp` suffixed) | Names the resource and the issuer                                                                                                                                            |
 | `GET /.well-known/oauth-authorization-server`                      | Endpoints, `S256`, `authorization_code`, public clients                                                                                                                      |
 | `POST /oauth/register`                                             | Dynamic client registration. The `client_id` is the client's name and redirect URIs, signed with a key from `Secrets`, so nothing is stored for a client that never finishes |
-| `GET /oauth/authorize`                                             | The approval page: the app's name, the host it redirects to, a code field                                                                                                    |
-| `POST /oauth/authorize`                                            | Checks the approval code, then redirects with an authorization code                                                                                                          |
+| `GET /oauth/authorize`                                             | While waiting, records the request, shows it in Settings and redirects to `/oauth/wait`. Otherwise says to start in HinaCode                                                |
+| `GET /oauth/wait?request=`                                         | Waits for Approve or Deny, refreshing every two seconds, then redirects to the app with a code or `access_denied`                                                           |
 | `POST /oauth/token`                                                | Checks PKCE and the redirect URI, inserts the `app_connection`, returns the token                                                                                            |
 | `/mcp`                                                             | 401 with `WWW-Authenticate: Bearer resource_metadata=...` without a valid token                                                                                              |
 
 - PKCE with `S256` is required. Redirect URIs must be https, or http on loopback.
 - An authorization code lives 60 seconds and works once.
-- An approval code is 8 characters from a 32 letter alphabet, lives ten minutes, works once, and is thrown away after 5 wrong tries.
+- Choosing an app waits ten minutes. At most five requests wait at once. Approving one ends the wait and turns the others away.
 - Access tokens do not expire. Remove in Settings is the way to end one. There are no refresh tokens.
 - A registered redirect URI must match exactly, except the port of a loopback one.
 - A `/mcp` request must declare its length and stay under 1 MB. OAuth bodies stay under 64 KB.
@@ -113,5 +120,5 @@ They share the rendering of the thread server's tools and not their scoping: the
 
 ## Verify
 
-- `src/main/apps/server.integration.test.ts` walks registration, approval, token exchange and a tool call over real HTTP, and covers a wrong code, a reused authorization code, a bad PKCE verifier, a removed connection and the 404 surface.
-- In the real app (`verify-hinacode`): the Apps section with a URL, a new code, and a connected app after driving the OAuth flow with `curl`.
+- `src/main/apps/server.integration.test.ts` walks registration, approval, token exchange and a tool call over real HTTP, and covers an authorize request before choosing an app, a denial, competing requests, a reused authorization code, a bad PKCE verifier, a removed connection and the 404 surface.
+- In the real app (`verify-hinacode`): choose an app, drive the OAuth flow with `curl`, approve in Settings, and see the connected app.

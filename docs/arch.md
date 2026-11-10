@@ -160,7 +160,7 @@ The remote listener sits above everything because it dispatches every rpc method
 
 The MCP server sits above the runner because its tools start turns (`create_thread`) and ask the user for secrets (`request_secret`). The runner only needs a thread's credential, which `McpCredentials` issues; the server tells it the URL once it listens.
 
-The app server sits above the runner for the same reason. `AppConnections` sits below it, so the rpc handlers and the remote listener can use it: it holds the connections, the approval code and the port the app server listens on, which the server reports once it is up.
+The app server sits above the runner for the same reason. `AppConnections` sits below it, so the rpc handlers and the remote listener can use it: it holds the connections, the requests waiting for Approve and the port the app server listens on, which the server reports once it is up.
 
 Every service is a `Context.Service` with an id like `"hinacode/Threads"` and an exported `layer`. On quit, `runtime.dispose()` gets up to 5 s, so running turns can persist their messages and status.
 
@@ -523,7 +523,7 @@ erDiagram
 
 - `setting` holds secrets and a few internal rows (`environment.id`, `relay.tunnel`). Secrets live under `secret.<name>` and are sealed by the `Keyring` the entry point provides: Electron `safeStorage` on the desktop (the real login Keychain in the packaged app, Chromium's mock keychain in unpackaged runs), and none in `hinacode serve`, which stores them as plaintext. A secret that won't decrypt under the current key reads as unset.
 - Settings are JSON files in the data dir, not rows: `settings.json` holds `Settings` (the environment: models, archive, worktree root, ...), `client-settings.json` holds `ClientSettings` (this desktop: locale, appearance, notifications), and `keybindings.json` holds its keybindings as a bare `{ commandId: chord }` record. Each file holds only the keys that were set, laid over the defaults on every read, so a hand edit applies on the next read. A cloud only reads `Settings`. Migration 0027 moved the old rows into the files.
-- `app_connection` (migration `0046_app_connection`) lists the outside apps that hold an access token for the app MCP server. Only the token's hash is stored. The approval code and the authorization codes waiting to be exchanged live in memory, so a restart drops them. Registered OAuth clients have no table: a `client_id` is the client's name and redirect URIs signed with the secret `apps.clientKey`.
+- `app_connection` (migration `0046_app_connection`) lists the outside apps that hold an access token for the app MCP server. Only the token's hash is stored. The waiting window, the requests waiting for an answer and the authorization codes waiting to be exchanged live in memory, so a restart drops them. Registered OAuth clients have no table: a `client_id` is the client's name and redirect URIs signed with the secret `apps.clientKey`.
 - `environment` (migration `0015_environments`) lists the clouds this desktop paired with. It is unrelated to the other tables: a cloud's projects and threads stay in the cloud's database.
 - `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
 - `project.kind` is `chats` for exactly one row per machine (a partial unique index), made at startup in `<dataDir>/chats` by `Projects.ensureChats`. Each of its threads works in `<rootPath>/<threadId>`, which `makeActiveWorkspace` derives rather than stores. `Threads` makes that folder on create and unarchive, and deletes it on archive and delete. Chats start in conversation mode, and their composer shows only the machine picker.
@@ -688,7 +688,7 @@ A second MCP server, in `src/main/apps/`, serves apps the developer connected: a
 ```mermaid
 flowchart LR
   app["Other app's servers"] -- "https://relay hostname" --> edge["Cloudflare edge"] --> cfd["cloudflared"] --> listener["Remote listener"]
-  listener -- "Host is the relay hostname,<br/>not an upgrade" --> gate{"approval code live<br/>or an app connected?"}
+  listener -- "Host is the relay hostname,<br/>not an upgrade" --> gate{"waiting for an app<br/>or an app connected?"}
   gate -- no --> hidden["404 on every path"]
   gate -- yes --> oauth["/.well-known/*, /oauth/register,<br/>/oauth/authorize, /oauth/token"]
   gate -- yes --> bearer{"/mcp: sha256 of the bearer<br/>in app_connection?"}
@@ -698,12 +698,12 @@ flowchart LR
     read["list_projects, list_threads,<br/>search_threads, read_thread"]
     write["create_thread, send_to_thread,<br/>stop_thread"]
   end
-  oauth -- "approval code typed into the page" --> connections[("app_connection")]
+  oauth -- "Approve in Settings" --> connections[("app_connection")]
   write --> threads["Threads.create (created_by = app:connection)<br/>AgentRunner.send / steer / interrupt"]
 ```
 
 - The issuer is `https://<relay hostname>`, read from `RemoteAccess`. No URL is built from `Host` or a forwarded header, and without a relay hostname every path answers 404.
-- Registration stores nothing. The developer approves a client by typing the approval code from Settings into the page `GET /oauth/authorize` serves, which names the app and the host it redirects to. The page is one HTML document with no script and no outside asset, under a `default-src 'none'` policy.
+- Registration stores nothing. The developer chooses the app in Settings first. `GET /oauth/authorize` then records a request, which Settings shows with the app's name and the host it redirects to, and sends the browser to `/oauth/wait`, which refreshes until the developer presses Approve or Deny. The page is one HTML document with no script and no outside asset, under a `default-src 'none'` policy.
 - PKCE with `S256` is required. An authorization code lives 60 seconds and works once. An access token does not expire; removing the connection in Settings ends it.
 - The tools reuse the thread server's rendering (`mcp/tools/threadViews.ts`) and registration (`toolsFor` in `mcp/tools/tool.ts`), with `CallingApp` as the caller where the thread server has `CallingThread`. None of the thread server's other tools are registered here.
 
