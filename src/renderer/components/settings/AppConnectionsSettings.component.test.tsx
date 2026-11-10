@@ -20,6 +20,7 @@ let status: AppConnectionsStatus = linked
 let removed: Array<string> = []
 let answers: Array<{ id: string; approve: boolean }> = []
 let copied: Array<string> = []
+let clipboardWorks = true
 let pushListeners: Array<Parameters<HinacodeBridge["onEvent"]>[0]> = []
 
 const change = (next: AppConnectionsStatus) => {
@@ -55,10 +56,16 @@ const bridge: HinacodeBridge = {
 }
 Object.defineProperty(window, "hinacode", { value: bridge })
 Object.defineProperty(navigator, "clipboard", {
-  value: { writeText: async (text: string) => void copied.push(text) },
+  value: {
+    writeText: async (text: string) => {
+      if (!clipboardWorks) throw new Error("Document is not focused.")
+      copied.push(text)
+    },
+  },
 })
 
 beforeEach(() => {
+  clipboardWorks = true
   status = linked
   removed = []
   answers = []
@@ -85,6 +92,14 @@ test("copying the URL starts waiting for an app", async () => {
   await page.getByRole("button", { name: "Copy URL" }).click()
   await expect.element(page.getByText(/Waiting for your app to sign in/)).toBeVisible()
   expect(copied).toEqual([linked.url])
+})
+
+test("still waits for an app when the clipboard refuses the URL", async () => {
+  clipboardWorks = false
+  await renderSettings()
+  await page.getByRole("button", { name: "Copy URL" }).click()
+  await expect.element(page.getByText(/Waiting for your app to sign in/)).toBeVisible()
+  await expect.element(page.getByText("https://0123456789abcdef.hinacode.app/mcp")).toBeVisible()
 })
 
 test("approves an app that asks to connect", async () => {
