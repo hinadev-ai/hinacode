@@ -16,7 +16,7 @@ The web app at `code.hinacode.app` calls the owner routes from the browser, as a
 4. Create an API token with two permissions: Account, Cloudflare Tunnel, Edit, and Zone, DNS, Edit on the tunnel zone. Store it with `pnpm exec wrangler secret put CLOUDFLARE_API_TOKEN`.
 5. Create a Clerk application with Google and GitHub sign-in. Store its keys with `pnpm exec wrangler secret put CLERK_PUBLISHABLE_KEY` and `pnpm exec wrangler secret put CLERK_SECRET_KEY`. A production instance needs its own Google and GitHub OAuth credentials and DNS records, both set in the Clerk dashboard.
 
-The link page signs in through Clerk. The desktop and phone apps open `GET /sign-in`, which redirects back to them with a code they exchange, with their PKCE verifier, for a credential of their own (`docs/features/2026-11-06-sign-in-redirect.md`). The web app still approves itself on the link page. D1 keeps only the credential's hash. **Sign out all devices** on the page ends every credential on the account.
+The link page signs in through Clerk. The desktop and phone apps open `GET /sign-in`, which redirects back to them with a code they exchange, with their PKCE verifier, for a credential of their own (`docs/features/2026-11-06-sign-in-redirect.md`). The web app signs in with Clerk on its own page and trades the session for a credential with `POST /v1/devices`. D1 keeps only the credential's hash. **Sign out all devices** on the page ends every credential on the account.
 
 The variables live in `vars` in `wrangler.jsonc`. The secrets never go in the config. `secrets.required` only names them, so `wrangler types` and `wrangler dev` know about them.
 

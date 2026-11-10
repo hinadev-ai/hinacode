@@ -19,7 +19,7 @@ Use the `pnpm` scripts rather than `npx expo run:*`, because they set the enviro
 
 `pnpm install` lets that library's postinstall run (`allowBuilds` in `pnpm-workspace.yaml`), because it downloads the tree-sitter grammars the native build compiles for code highlighting. If the download fails, `pnpm install` fails too (`patches/react-native-enriched-markdown@1.1.1.patch`). If the error says `fetch failed`, your Node has no CA bundle, which is common with a Nix Node. Run `NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem pnpm install`.
 
-The phone must reach the desktop directly. On the same Wi-Fi, the default **Local network and Tailscale** listener is enough. Away from home, use Tailscale on both devices and open the dev server through the desktop's Tailscale name.
+The phone dials the desktop's direct addresses and, when the machine has one, its relay hostname over `wss` (`docs/features/2026-10-24-relay.md`). On the same Wi-Fi, the default **Local network and Tailscale** listener is enough. Away from home, the relay answers, or Tailscale on both devices does. Metro is not relayed, so open the dev server through the desktop's Tailscale name.
 
 ### Run on an iOS simulator with Xcode 27
 
@@ -117,12 +117,13 @@ The servers are stored in the secure store (`localStorage` on web) under `hinaco
 
 - `pnpm build:terminal` regenerates `src/terminal/terminal-page.ts`, the page the native terminal WebView loads, from the installed `@xterm/xterm`. Run it after upgrading xterm and commit the result.
 - `pnpm build:icons` renders the app icons from the desktop's `assets/icon.svg` with `rsvg-convert`. Run it when the mark changes and commit the result.
+- `pnpm build:tab-icons` renders the tab bar's icons from `@hinacode/icons` into template PNGs with `rsvg-convert`. Run it after `pnpm install` at the repository root when a tab icon changes and commit the result.
+- `pnpm build:send-grain` renders the send button's grain to `assets/images/send-grain.png`. Run it when the grain changes and commit the result.
 - `npx tsc --noEmit`, `npx expo lint`, `npx expo export --platform web`.
 
 ## Out of scope
 
-- A relay or tunnel; the phone connects to the desktop directly.
 - Push notifications while the app is closed. Notifications come from the live socket, so they arrive while the app runs or recently went to the background. Remote push needs a development build, since Expo Go on Android dropped it in SDK 53.
 - `gpu-lexer` in the native app. Hermes has no WebGPU, so the native file viewer uses the small lexer in `src/lib/lexer.ts`; the web build's file viewer uses `gpu-lexer` when the browser offers WebGPU in a secure context. Code blocks in replies are highlighted by the Markdown library's tree-sitter grammars on iOS and Android, and not at all on the web.
 - Attaching files other than images, editing files, the git graph, automations and secret requests from the phone.
-- TLS. Use Tailscale for an encrypted path.
+- TLS on the direct path. A direct connection is a plain WebSocket, so use Tailscale for an encrypted path. The relay path uses `wss`.

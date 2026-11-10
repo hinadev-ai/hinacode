@@ -19,7 +19,7 @@ Muse Wonder is in preview. Setting `max` effort on Muse Wonder does not select M
 ```mermaid
 flowchart LR
   runner[AgentRunner] --> provider[MuseProvider]
-  provider --> host["muse serve<br/>one per agent home"]
+  provider --> host["muse serve<br/>one host"]
   host -- "MSP: JSON-RPC over stdio" --> provider
   host --> meta[Meta model endpoint]
   host -- "per-session MCP config" --> mcp[hinacode MCP server]
@@ -48,7 +48,7 @@ sequenceDiagram
   participant P as MuseProvider
   participant H as muse serve
   P->>H: initialize {experimentalApi, requestedCapabilities: [sessionMcp]}
-  P->>H: session/start {workspaceRoot, modelId, approvalMode, config.mcpServers}
+  P->>H: session/start {workspaceRoot, modelId, permissionProfile, config.mcpServers}
   Note over P,H: or session/resume {sessionId, excludeItems: true}
   P->>H: turn/start {input: [hinacode instructions, prompt], displayText, reasoningEffort}
   H-->>P: item/started, item/delta, item/completed
