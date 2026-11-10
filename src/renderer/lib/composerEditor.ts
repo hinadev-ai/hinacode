@@ -12,6 +12,7 @@ export interface ComposerConfig {
   readonly files: ReadonlyArray<string>
   readonly threadIds: ReadonlyArray<string>
   readonly terminalIds: ReadonlyArray<string>
+  readonly artifactIds: ReadonlyArray<string>
   readonly placeholder: string
   readonly codeTheme: string | undefined
   readonly scheme: "dark" | "light"
@@ -28,6 +29,7 @@ const withKnown = (config: ComposerConfig): Config => ({
     files: new Set(config.files),
     threads: new Set(config.threadIds),
     terminals: new Set(config.terminalIds),
+    artifacts: new Set(config.artifactIds),
   },
 })
 
@@ -38,6 +40,7 @@ const sameConfig = (a: ComposerConfig, b: ComposerConfig) =>
   a.scheme === b.scheme &&
   a.threadIds.join("\n") === b.threadIds.join("\n") &&
   a.terminalIds.join("\n") === b.terminalIds.join("\n") &&
+  a.artifactIds.join("\n") === b.artifactIds.join("\n") &&
   JSON.stringify(a.commands) === JSON.stringify(b.commands)
 
 const setConfig = StateEffect.define<ComposerConfig>()
@@ -50,6 +53,7 @@ const configField = StateField.define<Config>({
       files: [],
       threadIds: [],
       terminalIds: [],
+      artifactIds: [],
       placeholder: "",
       codeTheme: undefined,
       scheme: "dark",

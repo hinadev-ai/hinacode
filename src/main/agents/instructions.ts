@@ -1,7 +1,7 @@
 import type { ExperimentalSettings } from "../../shared/domain.ts"
 import type { ModelInfo } from "../../shared/agent.ts"
 import { providerInfo } from "../../shared/providers.ts"
-import { terminalMention, threadMention } from "../../shared/mentions.ts"
+import { artifactMention, terminalMention, threadMention } from "../../shared/mentions.ts"
 import type { SubagentChoice } from "./runAgent.ts"
 
 // FIXME: Claude Code defers MCP tools, so agents see only their names until they load one
@@ -37,6 +37,8 @@ Artifacts:
 - When you make something the user should look at, such as a report, chart, diagram or prototype, publish it with the hinacode \`publish_artifact\` tool instead of writing an HTML file into the repository. Pass \`auto_open: true\` when it is what the user asked for, so it opens beside the thread.
 - To change it, publish again with the id the tool returned.
 - For prose the user may want to edit, such as a plan, spec or checklist, publish a Markdown document with \`publish_document\` instead. The user edits it beside the thread, so pass the revision you last saw when you update it.
+- \`${artifactMention("<id>")}\` in a user message names an artifact. Call \`read_artifact\` with that id before you act on it.
+- To point the user at an artifact, write \`${artifactMention("<id>")}\` in your reply. HinaCode turns it into a link that opens it beside the thread.
 
 Scratch directory:
 - Put temporary files, experiments, downloads and throwaway scripts in the scratch directory that \`<environment>\` names, not in \`/tmp\`.

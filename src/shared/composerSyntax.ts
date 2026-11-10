@@ -1,6 +1,14 @@
 import type { AgentCommand } from "./agent.ts"
+import type { Artifact } from "./artifact.ts"
 import type { PullRequestMatch, TerminalSession, Thread } from "./domain.ts"
-import { type MentionableThreads, parseMention, terminalMention, threadMention } from "./mentions.ts"
+import {
+  artifactMention,
+  type MentionableThreads,
+  type MentionKind,
+  parseMention,
+  terminalMention,
+  threadMention,
+} from "./mentions.ts"
 
 export type SyntaxKind = "text" | "bullet" | "code" | "strong" | "rule" | "command" | "mention"
 
@@ -9,6 +17,7 @@ export interface KnownTokens {
   readonly files: ReadonlySet<string>
   readonly threads: ReadonlySet<string>
   readonly terminals: ReadonlySet<string>
+  readonly artifacts: ReadonlySet<string>
 }
 
 export interface Span {
@@ -49,16 +58,19 @@ export const isUnorderedBullet = (marker: string) => /^[-*+]$/.test(marker)
 export const isCommandName = (name: string) => WHOLE_NAME.test(name)
 const TRAILING_PUNCTUATION = /[,.;:!?)\]]+$/
 
+const knownIds = (known: KnownTokens) =>
+  ({ thread: known.threads, terminal: known.terminals, artifact: known.artifacts }) satisfies Record<
+    MentionKind,
+    ReadonlySet<string>
+  >
+
 const classify = (token: string, known: KnownTokens): { kind: SyntaxKind; text: string } | null => {
   if (token.startsWith("`")) return { kind: "code", text: token }
   if (token.startsWith("**")) return { kind: "strong", text: token }
   if (token.startsWith("@")) {
     const mention = token.replace(TRAILING_PUNCTUATION, "")
     const parsed = parseMention(mention)
-    const isKnown =
-      parsed === null
-        ? known.files.has(mention.slice(1))
-        : (parsed.kind === "thread" ? known.threads : known.terminals).has(parsed.id)
+    const isKnown = parsed === null ? known.files.has(mention.slice(1)) : knownIds(known)[parsed.kind].has(parsed.id)
     return isKnown ? { kind: "mention", text: mention } : null
   }
   return known.commands.has(token) ? { kind: "command", text: token } : null
@@ -421,6 +433,11 @@ export function matchTerminals(terminals: ReadonlyArray<MentionableTerminal>, qu
   return terminals.filter((terminal) => terminal.label.toLowerCase().includes(needle))
 }
 
+export function matchArtifacts(artifacts: ReadonlyArray<Artifact>, query: string) {
+  const needle = query.toLowerCase()
+  return artifacts.filter((artifact) => artifact.title.toLowerCase().includes(needle))
+}
+
 export function matchPullRequests<T extends Pick<PullRequestMatch, "number" | "title">>(
   pullRequests: ReadonlyArray<T>,
   query: string,
@@ -443,6 +460,7 @@ export type Suggestion =
       readonly session: TerminalSession
       readonly label: string
     }
+  | { readonly type: "artifact"; readonly insert: string; readonly artifact: Artifact }
   | { readonly type: "pullRequest"; readonly insert: string; readonly pullRequest: PullRequestMatch }
 
 export const suggestionsFor = (
@@ -451,6 +469,7 @@ export const suggestionsFor = (
   files: ReadonlyArray<string>,
   threads: MentionableThreads<Thread>,
   terminals: ReadonlyArray<MentionableTerminal>,
+  artifacts: ReadonlyArray<Artifact>,
   matchedPullRequests: ReadonlyArray<PullRequestMatch>,
 ): ReadonlyArray<Suggestion> => {
   const { trigger } = completion
@@ -474,6 +493,11 @@ export const suggestionsFor = (
             insert: terminalMention(session.id),
             session,
             label,
+          })),
+          ...matchArtifacts(artifacts, completion.query).map((artifact): Suggestion => ({
+            type: "artifact",
+            insert: artifactMention(artifact.id),
+            artifact,
           })),
           ...matchFiles(files, completion.query).map((path): Suggestion => ({
             type: "file",

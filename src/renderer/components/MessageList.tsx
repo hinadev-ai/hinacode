@@ -153,6 +153,7 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
     files: new Set(),
     threads: new Set(),
     terminals: new Set(),
+    artifacts: new Set(),
   }
   const segments = highlight(text, known)
   return segments.map((segment, index) => {

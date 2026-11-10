@@ -1,8 +1,12 @@
+import { useAtomValue } from "@effect/atom-react"
 import { Link } from "@tanstack/react-router"
+import { AsyncResult } from "effect/reactivity"
 import { type ReactElement, use } from "react"
 import { MENTION, parseMention } from "../../shared/mentions.ts"
+import { artifactsAtom } from "../lib/rpc.ts"
 import { terminalLabel } from "../lib/terminalLabel.ts"
 import { m } from "../paraglide/messages.js"
+import { openArtifact } from "../stores/artifacts.ts"
 import { useTerminals } from "../stores/terminals.ts"
 import { useThreads } from "../stores/threads.ts"
 import { Highlighted } from "./FindHighlight.tsx"
@@ -34,14 +38,24 @@ function TerminalMention({ id }: { id: string }) {
   )
 }
 
+function ArtifactMention({ id, token }: { id: string; token: string }) {
+  const threadId = use(MentionThread)
+  const artifacts = useAtomValue(artifactsAtom)
+  const artifact = AsyncResult.getOrElse(artifacts, () => []).find((each) => each.id === id)
+  if (threadId === null || artifact === undefined) return <Highlighted text={token} />
+  return (
+    <button type="button" onClick={() => openArtifact(threadId, id)} className={mentionClass}>
+      <Highlighted text={`@${artifact.title}`} />
+    </button>
+  )
+}
+
 export function Mention({ token }: { token: string }) {
   const mention = parseMention(token)
   if (mention === null) return <Highlighted text={token} />
-  return mention.kind === "thread" ? (
-    <ThreadMention id={mention.id} token={token} />
-  ) : (
-    <TerminalMention id={mention.id} />
-  )
+  if (mention.kind === "thread") return <ThreadMention id={mention.id} token={token} />
+  if (mention.kind === "artifact") return <ArtifactMention id={mention.id} token={token} />
+  return <TerminalMention id={mention.id} />
 }
 
 export function WithMentions({ text }: { text: string }) {
