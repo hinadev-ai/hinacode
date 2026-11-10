@@ -1,5 +1,13 @@
 import { expect, test } from "vitest"
-import { documentChunks, documentMarkdownManager, parseDocument, serializeDocument } from "./parse.ts"
+import { largeDocument } from "./fixtures/index.ts"
+import {
+  chunkNodes,
+  documentChunks,
+  documentMarkdownManager,
+  parseDocument,
+  type PreviousChunks,
+  serializeDocument,
+} from "./parse.ts"
 
 const FRAGMENTS = [
   "# ",
@@ -112,4 +120,46 @@ test("a document longer than one chunk parses as it would whole", () => {
     expect(chunked.lossy).toBe(false)
     expect(chunked.doc.toJSON()).toEqual(wholeParse(markdown).toJSON())
   }
+})
+
+const chunkedParse = (markdown: string, previous?: PreviousChunks) => {
+  const manager = documentMarkdownManager()
+  const steps = [...documentChunks(manager, markdown, previous)]
+  let at = 0
+  for (const { chunk } of steps) {
+    expect(chunk.start).toBe(at)
+    at = chunk.next
+  }
+  expect(at).toBe(markdown.length)
+  const nodes = steps.flatMap(({ chunk }) => chunkNodes(manager, chunk).nodes)
+  const { topNodeType } = manager.schema
+  const doc = nodes.length === 0 ? topNodeType.createAndFill()! : topNodeType.create(null, nodes)
+  return { doc, steps, previous: { source: markdown, chunks: steps.map(({ chunk }) => chunk) } }
+}
+
+const EDITS = ["x", "```", "\n", "\n\n", "- ", "> ", "| a |\n| --- |\n", "# ", "**", "\n\n- item\n", "~~~\n", ""]
+
+test("re-chunking after an edit, reusing unchanged chunks, parses as the edited document would whole", () => {
+  const next = random(23)
+  let reused = 0
+  for (let round = 0; round < 40; round++) {
+    const before = Array.from({ length: 120 }, () => blocks(next, 3)).join("\n\n")
+    const { previous } = chunkedParse(before)
+    const from = Math.floor(next() * before.length)
+    const to = Math.min(before.length, from + Math.floor(next() * 40))
+    const after = before.slice(0, from) + EDITS[Math.floor(next() * EDITS.length)]! + before.slice(to)
+    const edited = chunkedParse(after, previous)
+    reused += edited.steps.filter((step) => step.previous !== null).length
+    expect(edited.doc.toJSON()).toEqual(wholeParse(after).toJSON())
+  }
+  expect(reused).toBeGreaterThanOrEqual(40)
+})
+
+test("changing one paragraph of a large document lexes only the chunk around it", () => {
+  const before = largeDocument()
+  const { previous } = chunkedParse(before)
+  const after = before.replace("Paragraph 40 explains", "Paragraph 40 now explains")
+  const { steps } = chunkedParse(after, previous)
+  expect(steps.filter((step) => step.previous === null).length).toBeLessThanOrEqual(2)
+  expect(steps.length).toBeGreaterThan(20)
 })

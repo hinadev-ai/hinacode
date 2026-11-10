@@ -1,6 +1,11 @@
 import type { Node } from "@tiptap/pm/model"
 import { TextSelection } from "@tiptap/pm/state"
-import { chunkNodes, documentChunks, serializeDocument } from "../../../src/shared/document/parse.ts"
+import {
+  chunkNodes,
+  type DocumentChunk,
+  documentChunks,
+  serializeDocument,
+} from "../../../src/shared/document/parse.ts"
 import { type SelectionState, selectionState } from "./actions.ts"
 import type { BlockPatch, CodeToken, DiagramDrawing, RenderBlock, TextPoint, TextRange } from "./blocks.ts"
 import { createDocumentEngine, type DocumentEngine, type StructuralKey } from "./engine.ts"
@@ -82,7 +87,14 @@ export function createDocumentSession({
   const { manager, editor } = engine
   let blocks: RenderBlock[] = []
   let sources: BlockSource[] = []
-  let chunks: ReadonlyMap<string, ReadonlyArray<Node>> = new Map()
+  let parsed: {
+    readonly markdown: string
+    readonly chunks: ReadonlyArray<{
+      readonly chunk: DocumentChunk
+      readonly nodes: ReadonlyArray<Node>
+      readonly lossy: boolean
+    }>
+  } | null = null
   let loaded = false
   let lossy = false
   let revision = 0
@@ -169,30 +181,33 @@ export function createDocumentSession({
 
   const load = (markdown: string, onLoaded?: () => void) => {
     const loadRevision = ++revision
-    const reused = chunks
+    const previous = parsed
     const progressive = blocks.length === 0
-    const nextChunks = new Map<string, ReadonlyArray<Node>>()
+    const records: { chunk: DocumentChunk; nodes: ReadonlyArray<Node>; lossy: boolean }[] = []
     const nodes: Node[] = []
-    const iterator = documentChunks(manager, markdown)
+    const iterator = documentChunks(
+      manager,
+      markdown,
+      previous === null ? undefined : { source: previous.markdown, chunks: previous.chunks.map(({ chunk }) => chunk) },
+    )
+    const shownIds = new Set<string>()
     let offset = 0
     let top = 0
-    let nextLossy = false
     if (progressive) sources = []
 
-    const take = (chunk: Parameters<typeof chunkNodes>[1]) => {
-      let parsed = reused.get(chunk.source)
-      if (parsed === undefined) {
-        const result = chunkNodes(manager, chunk)
-        parsed = result.nodes
-        nextLossy ||= result.lossy
-      }
-      nextChunks.set(chunk.source, parsed)
-      nodes.push(...parsed)
+    const take = ({ chunk, previous: index }: { chunk: DocumentChunk; previous: number | null }) => {
+      const record =
+        index === null || previous === null
+          ? { chunk, ...chunkNodes(manager, chunk) }
+          : { ...previous.chunks[index]!, chunk }
+      records.push(record)
+      nodes.push(...record.nodes)
       if (!progressive) return
-      const rendered = renderNodes(parsed, { start: offset, top, decorate, taken: new Set(blocks.map((b) => b.id)) })
-      for (const node of parsed) offset += node.nodeSize
-      top += parsed.length
+      const rendered = renderNodes(record.nodes, { start: offset, top, decorate, taken: shownIds })
+      for (const node of record.nodes) offset += node.nodeSize
+      top += record.nodes.length
       sources.push(...rendered.sources)
+      for (const block of rendered.blocks) shownIds.add(block.id)
       if (rendered.blocks.length > 0) show(appendPatch(blocks.length, rendered.blocks, loadRevision))
     }
 
@@ -200,10 +215,12 @@ export function createDocumentSession({
       const { topNodeType } = manager.schema
       const kept = progressive ? nodes : keepUnchanged(loaded ? topLevelNodes(editor.state.doc) : [], nodes)
       const doc = kept.length === 0 ? topNodeType.createAndFill()! : topNodeType.create(null, kept)
+      const before = loaded ? editor.state.doc : null
       engine.load(doc)
-      if (!progressive || kept.length === 0) replaceAll(doc)
-      chunks = nextChunks
-      lossy = nextLossy
+      if (before !== null && !progressive) rerender(before, doc)
+      else if (!progressive || kept.length === 0) replaceAll(doc)
+      parsed = { markdown, chunks: records }
+      lossy = records.some((record) => record.lossy)
       loaded = true
       drawMissingDiagrams()
       onLoaded?.()
