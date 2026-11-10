@@ -220,6 +220,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
             provider: provider ?? caller.provider,
             model: model ?? caller.model,
             effort,
+            accessMode: caller.accessMode,
             worktree,
             createdBy: `thread:${threadId}`,
           }

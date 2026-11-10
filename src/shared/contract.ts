@@ -270,6 +270,7 @@ export const RpcMethods = {
       provider: Schema.optional(ProviderId),
       model: Schema.optional(Schema.String),
       effort: Schema.optional(Schema.String),
+      accessMode: Schema.optional(AccessMode),
       worktree: Schema.optional(Schema.Struct({ branch: Schema.String, baseRef: Schema.String })),
       createdBy: Schema.optional(Schema.String),
     }),

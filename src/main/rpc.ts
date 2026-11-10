@@ -210,7 +210,7 @@ const handlers: Handlers = {
     }),
 
   "threads.list": () => Threads.use((threads) => threads.list),
-  "threads.create": ({ projectId, title, provider: chosenProvider, model, effort, worktree, createdBy }) =>
+  "threads.create": ({ projectId, title, provider: chosenProvider, model, effort, accessMode, worktree, createdBy }) =>
     Effect.gen(function* () {
       const provider = chosenProvider ?? (yield* newThreadProvider)
       const defaults =
@@ -222,6 +222,7 @@ const handlers: Handlers = {
           provider,
           ...defaults,
           effort: effort ?? defaults.effort,
+          accessMode,
           worktree,
           createdBy,
         }),
