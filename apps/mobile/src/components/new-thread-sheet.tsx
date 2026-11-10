@@ -34,10 +34,12 @@ function useProjectDraft(project: Project | undefined, open: boolean, onError: (
   const [draftIds, setDraftIds] = useState<Record<string, string>>({})
   const projectId = project?.id
   const draftId = projectId === undefined ? undefined : draftIds[projectId]
-  const draft = useThreads((state) => (draftId === undefined ? undefined : state.byId[draftId]))
+  const cached = useThreads((state) => (draftId === undefined ? undefined : state.byId[draftId]))
+  const draft = cached?.status === "draft" ? cached : undefined
+  const hasDraft = draft !== undefined
 
   useEffect(() => {
-    if (!open || !connected || project === undefined || draftId !== undefined) return
+    if (!open || !connected || project === undefined || hasDraft) return
     let current = true
     createThread(project).then(
       (thread) => current && setDraftIds((ids) => ({ ...ids, [project.id]: thread.id })),
@@ -46,7 +48,7 @@ function useProjectDraft(project: Project | undefined, open: boolean, onError: (
     return () => {
       current = false
     }
-  }, [open, connected, project, draftId, onError])
+  }, [open, connected, project, hasDraft, onError])
 
   const server = project?.environmentId
   const provider = draft?.provider
