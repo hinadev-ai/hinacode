@@ -5,7 +5,7 @@ import { CopyIcon } from "@hinacode/icons"
 import { useId, useState } from "react"
 import type { AppConnection, AppConnectionsStatus } from "../../../shared/domain.ts"
 import type { RpcMethod, RpcRequest } from "../../../shared/contract.ts"
-import { errorMessage } from "../../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../../lib/errorMessage.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import { appConnectionsAtom, callPromise } from "../../lib/rpc.ts"
 import { useNow } from "../../lib/useNow.ts"
@@ -73,8 +73,8 @@ function Endpoint({ url, waiting }: { url: string; waiting: boolean }) {
   const { error, run } = useAppConnectionsAction()
 
   const copyAndWait = async () => {
-    await navigator.clipboard.writeText(url)
     await run("appConnections.start", undefined)()
+    await navigator.clipboard.writeText(url).catch(toastError)
   }
 
   return (
