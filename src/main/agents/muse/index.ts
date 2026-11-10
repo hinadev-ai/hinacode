@@ -394,7 +394,7 @@ const make = Effect.gen(function* () {
     })
   }
 
-  const listModels = Effect.gen(function* () {
+  const fetchModels = Effect.gen(function* () {
     const host = yield* getHost(null)
     const raw = yield* host.request("model/list", {}).pipe(Effect.mapError(toAgentError))
     const { models } = yield* Schema.decodeUnknownEffect(ModelList)(raw).pipe(
@@ -402,6 +402,10 @@ const make = Effect.gen(function* () {
     )
     return models.map(toModelInfo)
   })
+
+  const listModels = yield* Effect.cachedWithTTL(fetchModels, (exit) =>
+    Exit.isSuccess(exit) ? Duration.minutes(10) : Duration.zero,
+  )
 
   const account = (home: AccountHome | null) =>
     Effect.gen(function* () {

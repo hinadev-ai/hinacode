@@ -379,15 +379,13 @@ const make = Effect.gen(function* () {
 
   const subagentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment) =>
     Effect.gen(function* () {
-      const [listed, settingsValue] = yield* Effect.all(
-        [Effect.all(Record.map(providers, listedModels), { concurrency: "unbounded" }), settings.get],
+      const settingsValue = yield* settings.get
+      const enabled = enabledProviders(settingsValue)
+      const listed = yield* Effect.all(
+        Record.map(providers, (provider, id) => (enabled.includes(id) ? listedModels(provider) : Effect.succeed(null))),
         { concurrency: "unbounded" },
       )
-      return agentInstructions(
-        experimental,
-        environment,
-        subagentChoices(listed, settingsValue.modelPresets, enabledProviders(settingsValue)),
-      )
+      return agentInstructions(experimental, environment, subagentChoices(listed, settingsValue.modelPresets, enabled))
     })
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
