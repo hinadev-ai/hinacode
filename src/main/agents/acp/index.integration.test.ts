@@ -188,7 +188,6 @@ describe("makeAcpProvider", () => {
       expect(yield* provider.listCommands({ threadId: "t1", cwd: tmpdir(), home: null })).toStrictEqual([
         { trigger: "/", name: "review", description: "Review the diff", argumentHint: "branch" },
       ])
-      expect(yield* provider.listCommands({ threadId: "t2", cwd: tmpdir(), home: null })).toStrictEqual([])
     }).pipe(Effect.scoped),
   )
 
@@ -324,6 +323,20 @@ describe("makeAcpProvider", () => {
       ])
       yield* provider.listModels
       expect(received().filter((message) => message.method === "session/new")).toHaveLength(1)
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("lists a new thread's commands from a session opened in its cwd, once per cwd", () =>
+    Effect.gen(function* () {
+      const { provider: make, received } = setup()
+      const provider = yield* make
+      const cwd = mkdtempSync(join(tmpdir(), "kk-acp-project-"))
+      const review = { trigger: "/", name: "review", description: "Review the diff", argumentHint: "branch" }
+      expect(yield* provider.listCommands({ threadId: "t1", cwd, home: null })).toStrictEqual([review])
+      expect(yield* provider.listCommands({ threadId: "t2", cwd, home: null })).toStrictEqual([review])
+      expect(received().filter((message) => message.method === "session/new")).toMatchObject([
+        { params: { cwd, mcpServers: [] } },
+      ])
     }).pipe(Effect.scoped),
   )
 
