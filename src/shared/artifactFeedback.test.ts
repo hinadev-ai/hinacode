@@ -104,11 +104,9 @@ describe("artifactFeedbackPrompt", () => {
 })
 
 describe("feedbackTargets", () => {
-  test("delivers to the owner unless the body mentions threads", () => {
-    expect(feedbackTargets("Looks wrong", "owner")).toEqual(["owner"])
-    expect(feedbackTargets("Looks wrong", undefined)).toEqual([])
-    expect(feedbackTargets("@thread:a and @thread:b-2, again @thread:a", "owner")).toEqual(["a", "b-2"])
-    expect(feedbackTargets("@terminal:t1 only", "owner")).toEqual(["owner"])
-    expect(feedbackTargets("ask @thread:a", undefined)).toEqual(["a"])
+  test("lists each mentioned thread once", () => {
+    expect(feedbackTargets("Looks wrong")).toEqual([])
+    expect(feedbackTargets("@thread:a and @thread:b-2, again @thread:a")).toEqual(["a", "b-2"])
+    expect(feedbackTargets("@terminal:t1 only")).toEqual([])
   })
 })

@@ -9,7 +9,7 @@ import { useUi } from "../stores/ui.ts"
 import { MessageList } from "./MessageList.tsx"
 import { formatOutput } from "./MessagePart.tsx"
 import { SubagentProviderIcon } from "./ProviderIcon.tsx"
-import { StopSubagentButton, SubagentStatusIcon, SubagentStats, useNow } from "./ThreadAgents.tsx"
+import { StopSubagentButton, SubagentStatusIcon, SubagentStats, useSecondTick } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 import { ArrowLeftIcon } from "@hinacode/icons"
 
@@ -38,7 +38,7 @@ export function SubagentTranscript({
   const subagent = useSubagentByCallId(thread.id, callId)
   const { spawn, calls, startedAt } = findSubagentWork(messages, callId)
   const open = useOpenSubagent(thread.id)
-  const now = useNow(subagent?.status === "running")
+  const now = useSecondTick(subagent?.status === "running")
   const headingRef = useRef<HTMLHeadingElement>(null)
 
   const status = subagent?.status ?? (spawn && statusOfCall[spawn.status])

@@ -39,9 +39,6 @@ export function keepSkillWhole(before: string, after: string, commands: readonly
   return isDeletion ? before.slice(Math.max(end, skill.token.length)) : after
 }
 
-/** A chip's icon, as the desktop's `chipIcon`: built-in commands show a slash, everything else the skill glyph. */
-export type ChipIconName = "skill" | "slash"
-
 /**
  * `composerSpans` as ranges for the native editor: commands and skills become chips, mentions are tinted, code gets
  * a background, and list markers and rules are muted.

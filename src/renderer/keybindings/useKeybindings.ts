@@ -60,7 +60,7 @@ export function useKeybindings() {
     { preventDefault: false, stopPropagation: false },
   )
 
-  // FIXME: xterm stops the keydowns it handles, so bound chords are taken in the capture phase
+  // FIXME: wterm stops the keydowns it handles, so bound chords are taken in the capture phase
   const takeFromTerminal = useEffectEvent((event: KeyboardEvent) => {
     if (!(event.ctrlKey || event.metaKey) || !(isInTerminal(event.target) || isInDeviceKeyboard(event.target))) return
     const binding = bound.find(({ hotkey }) => matchesKeyboardEvent(event, hotkey))

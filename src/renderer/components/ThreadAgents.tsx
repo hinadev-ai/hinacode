@@ -59,7 +59,7 @@ export function SubagentStatusIcon({ status, className }: { status: SubagentStat
   )
 }
 
-export function useNow(ticking: boolean) {
+export function useSecondTick(ticking: boolean) {
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     if (!ticking) return
@@ -72,7 +72,7 @@ export function useNow(ticking: boolean) {
 const formatUnit = (value: number, unit: "minute" | "second") =>
   new Intl.NumberFormat(getLocale(), { style: "unit", unit, unitDisplay: "narrow" }).format(value)
 
-export const formatElapsed = (ms: number) => {
+export const formatDuration = (ms: number) => {
   const seconds = Math.max(0, Math.floor(ms / 1000))
   const minutes = Math.floor(seconds / 60)
   return minutes > 0
@@ -89,7 +89,7 @@ const firstLine = (text: string) =>
 export function ThreadAgents({ thread }: { thread: Thread }) {
   const { load, reload, subagents } = useThreadSubagents(thread.id)
   const open = useOpenSubagent(thread.id)
-  const now = useNow(subagents?.some((subagent) => subagent.status === "running") ?? false)
+  const now = useSecondTick(subagents?.some((subagent) => subagent.status === "running") ?? false)
   const [listRef] = useAutoAnimate<HTMLUListElement>(listMotion)
 
   if (!subagents) {
@@ -147,7 +147,7 @@ export function SubagentStats({ thread, subagent, now }: { thread: Thread; subag
 const subagentStats = (subagent: Subagent, now: number, model: string | null) =>
   [
     model,
-    formatElapsed((subagent.endedAt === null ? now : Date.parse(subagent.endedAt)) - Date.parse(subagent.startedAt)),
+    formatDuration((subagent.endedAt === null ? now : Date.parse(subagent.endedAt)) - Date.parse(subagent.startedAt)),
   ]
     .filter((stat) => stat !== null)
     .join(" · ")

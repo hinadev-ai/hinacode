@@ -22,10 +22,6 @@ export function translator(locale: Locale) {
   return (key: StringKey, values: Record<string, string | number> = {}) => fill(catalogs[locale][key], values)
 }
 
-export function pick<const K extends StringKey>(locale: Locale, keys: readonly K[]): Record<K, string> {
-  return Object.fromEntries(keys.map((key) => [key, catalogs[locale][key]])) as Record<K, string>
-}
-
 export function localizedPath(locale: Locale, page: Page): string {
   const prefix = locale === "en" ? "" : `/${localePaths[locale]}`
   return `${prefix}/${page === "pricing" ? "pricing/" : ""}`

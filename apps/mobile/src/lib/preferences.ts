@@ -5,7 +5,6 @@ export const PREFERENCES_KEY = "hinacode.preferences"
 
 const AppearanceSchema = Schema.Literals(["system", "light", "dark"])
 export type Appearance = typeof AppearanceSchema.Type
-export const appearances = AppearanceSchema.literals
 
 const HomeTabSchema = Schema.Literals(["inbox", "threads", "settled", "archived"])
 export type HomeTab = typeof HomeTabSchema.Type

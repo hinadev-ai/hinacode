@@ -11,6 +11,7 @@ import type {
   ProviderId,
   RunTurnInput,
 } from "../../../shared/agent.ts"
+import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { providerInfo } from "../../../shared/providers.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
@@ -47,8 +48,6 @@ const CLIENT_VERSION = "0.1.0"
 const INITIALIZE_TIMEOUT = Duration.seconds(30)
 const INTERRUPT_GRACE = Duration.seconds(5)
 const COMMANDS_WAIT = Duration.seconds(5)
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
 
 const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
 
@@ -244,8 +243,8 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
         const fitsImage =
           images &&
           attachment.kind === "image" &&
-          IMAGE_TYPES.has(attachment.mime) &&
-          attachment.bytes <= MAX_IMAGE_BYTES
+          AGENT_IMAGE_TYPES.includes(attachment.mime) &&
+          attachment.bytes <= AGENT_IMAGE_MAX_BYTES
         if (!fitsImage) return Effect.succeed([textBlock(`Attached file: ${attachment.path}`)])
         return Effect.tryPromise({
           try: () => readFile(attachment.path),

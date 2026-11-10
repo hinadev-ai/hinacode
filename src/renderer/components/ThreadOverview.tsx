@@ -49,7 +49,13 @@ import {
   StatusIcon,
   statusIndicator,
 } from "./ThreadPullRequests.tsx"
-import { StopSubagentButton, SubagentStatusIcon, SubagentStats, useNow, useThreadSubagents } from "./ThreadAgents.tsx"
+import {
+  StopSubagentButton,
+  SubagentStatusIcon,
+  SubagentStats,
+  useSecondTick,
+  useThreadSubagents,
+} from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 import {
   DropdownMenu,
@@ -605,7 +611,7 @@ function Actions({ thread, project, onRun }: { thread: Thread; project: Project;
 function Subagents({ thread }: { thread: Thread }) {
   const subagents = useThreadSubagents(thread.id).subagents ?? []
   const open = useOpenSubagent(thread.id)
-  const now = useNow(subagents.some((subagent) => subagent.status === "running"))
+  const now = useSecondTick(subagents.some((subagent) => subagent.status === "running"))
   if (subagents.length === 0) return null
   const shown = subagents.toSorted((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, SUBAGENT_ROWS)
 

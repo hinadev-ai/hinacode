@@ -56,7 +56,7 @@ CREATE TABLE sign_in_code (
 - `redirectUri` is `http://127.0.0.1:<port>/<path>` or `hinacode://<path>`, with no query or fragment. Anything else is refused, because the code is only safe on the device that holds the verifier.
 - `codeChallenge` is S256: base64url of SHA-256 of the verifier, 43 characters.
 - The exchange deletes the row before it checks the verifier, so a code is spent on its first use either way.
-- The old `POST /v1/sign-ins` and the approval on `/link` stay for released apps and the web app. `hinacode serve` keeps linking machines through `/link`, because a headless machine has no browser to redirect to.
+- The old `POST /v1/sign-ins` and the approval on `/link` stay for released apps. The web app signs in through `POST /v1/devices`. `hinacode serve` keeps linking machines through `/link`, because a headless machine has no browser to redirect to.
 
 ### Avatar
 

@@ -225,7 +225,6 @@ export const toPullRequest = ({ url, mergeRequest, approvals, diffs }: MergeRequ
 
 const jobStatus = ({ status, allow_failure }: JobsJson[number]): CheckRunStatus => {
   if (status === "failed" && allow_failure) return "skipped"
-  if (NOT_RUN.has(status)) return "skipped"
   return pipelineChecks(status) ?? "skipped"
 }
 

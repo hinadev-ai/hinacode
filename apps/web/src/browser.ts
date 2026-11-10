@@ -8,7 +8,7 @@ import {
   type NotificationPermission,
   type SettingsPatch,
 } from "../../../src/shared/domain.ts"
-import type { RelayHost, RelayMachine } from "../../../src/shared/relayMachines.ts"
+import { RelayHostList, type RelayMachine } from "../../../src/shared/relayMachines.ts"
 import { m } from "@/paraglide/messages.js"
 import { type RelayAccount, relayEndpoint, signOutDevice } from "./account.ts"
 
@@ -20,6 +20,16 @@ const encodeSettings = Schema.encodeSync(ClientSettings)
 
 export const readSettings = () =>
   Option.getOrElse(decodeSettings(localStorage.getItem(CLIENT_SETTINGS_KEY) ?? ""), () => defaultClientSettings)
+
+const decodeHosts = Schema.decodeUnknownOption(RelayHostList)
+const decodeProfile = Schema.decodeUnknownOption(
+  Schema.Struct({
+    name: Schema.NullOr(Schema.String),
+    email: Schema.NullOr(Schema.String),
+    imageUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  }),
+)
+const noProfile = { name: null, email: null, avatar: null }
 
 const permission = (): NotificationPermission => {
   if (!("Notification" in window)) return "unknown"
@@ -58,20 +68,21 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
     throw new Error(typeof reason === "string" ? reason : m.web_relay_bad_status({ status: String(response.status) }))
   }
 
-  const hosts = async () => ((await relay("GET", "/v1/hosts")) as { hosts: ReadonlyArray<RelayHost> }).hosts
+  const hosts = async () => {
+    const list = Option.getOrNull(decodeHosts(await relay("GET", "/v1/hosts")))
+    if (list === null) throw new Error(m.web_relay_bad_answer())
+    return list.hosts
+  }
 
   let profile: Promise<{ name: string | null; email: string | null; avatar: string | null }> | undefined
   const accountProfile = () => {
     profile ??= relay("GET", "/v1/account").then(
-      (answer) => {
-        const {
-          name = null,
-          email = null,
-          imageUrl = null,
-        } = (answer ?? {}) as { name?: string | null; email?: string | null; imageUrl?: string | null }
-        return { name, email, avatar: imageUrl }
-      },
-      () => ({ name: null, email: null, avatar: null }),
+      (answer) =>
+        Option.match(decodeProfile(answer), {
+          onNone: () => noProfile,
+          onSome: ({ name, email, imageUrl = null }) => ({ name, email, avatar: imageUrl }),
+        }),
+      () => noProfile,
     )
     return profile
   }

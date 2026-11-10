@@ -31,7 +31,7 @@ const serve = Command.make(
     host: Flag.String("host").pipe(
       Flag.withMetavar("host"),
       Flag.withDescription(
-        "Address to bind, or HINACODE_SERVE_HOST. Defaults to this machine's Tailscale address. Use 127.0.0.1 to reach the cloud only through the relay.",
+        "Address to bind, or HINACODE_SERVE_HOST. Defaults to private, every private-network address of this machine. Use 127.0.0.1 to reach the cloud only through the relay.",
       ),
       Flag.optional,
     ),

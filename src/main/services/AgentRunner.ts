@@ -431,8 +431,6 @@ const make = Effect.gen(function* () {
   yield* messages.closeInterrupted
   yield* threads.resetInterrupted
 
-  const providerFor = (id: ProviderId) => Effect.succeed(providers[id])
-
   const updateThread = (input: Parameters<typeof threads.update>[0]) =>
     threads.update(input).pipe(Effect.tap((thread) => push.publish({ type: "thread.updated", thread })))
 
@@ -1108,7 +1106,7 @@ const make = Effect.gen(function* () {
             if (thread.status === "archived") {
               return yield* new AgentError({ provider: "hinacode", message: "Cannot send to an archived thread" })
             }
-            const provider = yield* providerFor(thread.provider)
+            const provider = providers[thread.provider]
             const home = yield* accounts.home(thread.accountId)
             const workspace = yield* activeWorkspace(threadId)
             const { cwd, worktreeId } = workspace
@@ -1737,7 +1735,7 @@ const make = Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       if (thread.status === "archived") return
       if (thread.sideOf !== null && !(yield* threads.started(threadId))) return
-      const provider = yield* providerFor(thread.provider)
+      const provider = providers[thread.provider]
       if (provider.warm === undefined) return
       const home = yield* accounts.home(thread.accountId)
       const workspace = yield* activeWorkspace(threadId)
@@ -1819,7 +1817,7 @@ const make = Effect.gen(function* () {
       )
       return live?.type === "tool_call" && live.output !== undefined ? Effect.succeed(live.output) : persisted
     },
-    listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
+    listModels: (id) => providers[id].listModels,
     limits: Effect.gen(function* () {
       const added = yield* accounts.list
       const keys = Object.values(providers).flatMap(({ id }): ReadonlyArray<LimitsKey> => [

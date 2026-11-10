@@ -211,7 +211,6 @@ const seedThreads = () =>
         "account_id",
         "provider",
         "pinned_at",
-        "user_skills",
         "snoozed_until",
       ]),
       project_id: thread.project_id === chatsSourceId ? String(chats.id) : thread.project_id,

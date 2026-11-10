@@ -45,6 +45,7 @@ type Control = {
   backgroundTerminal?: boolean
   sessions?: { list: unknown; read: unknown; turnPages: ReadonlyArray<unknown> }
   skills?: import("./protocol.ts").SkillsListResponse["data"]
+  skillsFail?: boolean
   crashOn?: string
   crashMidTurn?: boolean
   noise?: boolean
@@ -322,6 +323,23 @@ describe("Codex attachments", () => {
           { type: "localImage", path: "/attachments/shot.png" },
           { type: "text", text: "Attached file: /attachments/logo.svg", text_elements: [] },
         ])
+      }),
+    ),
+  )
+})
+
+describe("Codex skills", () => {
+  it.live("runs a turn whose prompt has a dollar sign when the skills cannot be listed", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ skillsFail: true })
+        const events = yield* provider
+          .runTurn({ ...input("skills-fail"), prompt: "echo $HOME" })
+          .pipe(Stream.runCollect)
+        expect(countOf("skills/list")).toBe(1)
+        expect(countOf("turn/start")).toBe(1)
+        expect(events.at(-1)?.type).toBe("turn_completed")
       }),
     ),
   )

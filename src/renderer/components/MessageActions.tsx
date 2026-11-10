@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
+import { toast } from "sonner"
 import type { Message } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
@@ -25,7 +26,7 @@ export function MessageActions({ message, className }: { message: Message; class
       await navigate({ to: "/thread/$threadId", params: { threadId: thread.id } })
       useUi.getState().requestComposerFocus()
     } catch (cause) {
-      console.error(`Could not fork the thread: ${errorMessage(cause)}`)
+      toast.error(m.sidebar_fork_failed({ message: errorMessage(cause) }))
     }
   }
 

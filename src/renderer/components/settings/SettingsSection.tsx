@@ -43,14 +43,6 @@ export function SettingsGroup({ className, ...props }: ComponentProps<"div">) {
   return <div className={cn(settingsGroupClass, className)} {...props} />
 }
 
-export function SettingsGroupTitle({ className, children, ...props }: ComponentProps<"h3">) {
-  return (
-    <h3 className={cn("-mb-2 px-1 text-sm font-medium", className)} {...props}>
-      {children}
-    </h3>
-  )
-}
-
 interface SettingsPanelSectionProps {
   readonly title: string
   readonly action?: ReactNode

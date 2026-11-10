@@ -110,8 +110,10 @@ export const indicatorGlyph = (theme: Palette, { icon, tone }: { icon: IconName;
   color: toneColor(theme)[tone],
 })
 
-/** Each agent's mark in its own color, the same values as the desktop's `--provider-*` tokens. */
-/** OpenAI's mark and the magpie are monochrome, so they take the text color. */
+/**
+ * Each agent's mark in its own color, the same values as the desktop's `--provider-*` tokens. OpenAI's mark and the
+ * magpie are monochrome, so they take the text color.
+ */
 export const ProviderColors = {
   light: { claude: "#c15f3c", codex: Colors.light.text, muse: "#0064e0", opencode: "#a16207", magpie: Colors.light.text },
   dark: { claude: "#d97757", codex: Colors.dark.text, muse: "#0081fb", opencode: "#eab308", magpie: Colors.dark.text },

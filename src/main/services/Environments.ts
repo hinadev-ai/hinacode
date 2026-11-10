@@ -383,6 +383,7 @@ const make = Effect.gen(function* () {
   let nextCallId = 1
   let answer: (call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>> = () => Effect.succeed(notAnswering)
   const now = () => clock.currentTimeMillisUnsafe()
+  const nowIso = () => new Date(now()).toISOString()
 
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
@@ -694,7 +695,7 @@ const make = Effect.gen(function* () {
             port,
             relay,
             source: "pairing",
-            createdAt: new Date().toISOString(),
+            createdAt: nowIso(),
           }
       const write = existing
         ? sql`UPDATE environment SET name = ${environment.name}, host = ${host}, port = ${port}, relay = ${relay} WHERE id = ${id}`
@@ -742,7 +743,7 @@ const make = Effect.gen(function* () {
             port,
             relay,
             source: "relay",
-            createdAt: new Date().toISOString(),
+            createdAt: nowIso(),
           }
           yield* sql`INSERT INTO environment ${sql.insert(environment)}`.pipe(
             Effect.andThen(secrets.set(tokenSecret(id), token)),

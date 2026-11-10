@@ -24,7 +24,6 @@ const ONE_PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42
 
 test("signing in with Clerk on the gate loads the app with the relay's machines", async ({ page, web }) => {
   await page.goto(web.appUrl)
-  await expect(page.getByRole("textbox", { name: "Owner token" })).toHaveCount(0)
   await signIn(page, web)
   const resources = await openMachineResources(page)
   await expect(resources.getByText(web.machine.name, { exact: true })).toBeVisible()
@@ -114,7 +113,6 @@ test("reloading goes straight back to the app", async ({ page, web }) => {
   await openSignedIn(page, web)
   await page.reload()
   await expect(sidebar(page)).toBeVisible()
-  await expect(page.getByRole("textbox", { name: "Owner token", exact: true })).toHaveCount(0)
 })
 
 test("a hard reload, which skips the service worker, still loads the app", async ({ page, web }) => {

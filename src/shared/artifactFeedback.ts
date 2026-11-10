@@ -57,9 +57,8 @@ export const artifactFeedbackPrompt = ({ artifact, comment, elements, mentioned 
   ].join("\n")
 }
 
-export const feedbackTargets = (body: string, ownerThreadId: string | undefined): ReadonlyArray<string> => {
+export const feedbackTargets = (body: string): ReadonlyArray<string> => {
   const mentioned = new Set<string>()
   for (const [, kind, id] of body.matchAll(MENTION)) if (kind === "thread" && id !== undefined) mentioned.add(id)
-  if (mentioned.size > 0) return [...mentioned]
-  return ownerThreadId === undefined ? [] : [ownerThreadId]
+  return [...mentioned]
 }

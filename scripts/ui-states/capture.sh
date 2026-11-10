@@ -9,7 +9,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 out="$root/.context/hill/$label"
 port=${UI_STATES_PORT:-4431}
-axe=${AXE_PATH:-/Users/kalan/.hinacode/scratch/20261106-031021-thread-1a199-c762688a-c040-484d-8673-f118c44725e3/axe/package/axe.min.js}
+axe=${AXE_PATH:?set AXE_PATH to an axe.min.js file}
 origin="http://127.0.0.1:$port"
 mkdir -p "$out"
 rm -f "$out/errors.txt"

@@ -32,9 +32,7 @@ export function ActivityRow({
           {children}
         </button>
       ) : (
-        <div aria-label={label} className={rowClassName}>
-          {children}
-        </div>
+        <div className={rowClassName}>{children}</div>
       )}
       {actions}
     </div>
