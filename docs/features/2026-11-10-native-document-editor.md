@@ -39,7 +39,9 @@ The schema moves to shared code. `src/shared/documentSchema.ts` holds the extens
 
 ProseMirror already holds every rule the editor needs: flat positions in UTF-16 units, merged text runs with no empty text, mark ranks and `excludes`, content expressions checked by `check()`, `storedMarks`, text, node and all selections, and steps that map and invert. The phone does not re-implement any of them.
 
-Illegal trees are unrepresentable through the schema. `Node.fromJSON` and `check()` reject what the content expressions forbid. Content the parser cannot place becomes the `unsupported` fallback, a block node with a `source` attribute. It shows its source as text and saves it back verbatim, so it never blanks the document or loses text. The desktop gets the same node, so a tree the desktop rejects is never stored.
+The phone holds exactly the tree the desktop holds, invalid parts included. Tiptap loads Markdown without `check()`, so the desktop keeps and edits trees its own content expressions forbid: bold or a link over code, an image inside a paragraph, an empty quote. Repairing them on the phone would make a phone save rewrite the file, so the phone keeps them too, and the native renderer draws any combination of marks and any block where it sits. The conformance test pins both apps to the same tree.
+
+`parseDocument` never throws. A run of blocks the parser cannot place becomes plain paragraphs of its source, and the result says `lossy: true`. A lossy document opens read-only, because saving it would rewrite the source. No fixture and no generated input has produced one.
 
 ### Parsing fast enough on Hermes
 
@@ -47,11 +49,16 @@ The stock parse is quadratic, for three reasons we found and fixed in the probe.
 
 1. `@tiptap/extension-list`'s task list tokenizer calls `parseIndentedBlocks`, which splits the whole remaining source into lines at every block before it checks the first line. A guard that tests the first non-blank line first gives the same tokens. In Node, 300 KB went from 1150 ms to 200 ms.
 2. `@tiptap/extension-table`'s `start` splits the whole remaining source to read two lines. Reading only two lines gives the same tokens and takes 300 KB down to 85 ms in Node. Upstream already tracks both as ueberdosis/tiptap#8458, with the fix in #8467. `patches/@tiptap__core@3.32.2.patch` and `patches/@tiptap__extension-table@3.32.2.patch` apply that fix here, so the desktop gets it too. Drop them once a release carries it.
-3. Hermes copies on `substring`, where V8 shares the buffer. `marked` cuts `src.substring(raw.length)` after every token, so plain `marked` is quadratic on Hermes (271 ms at 120 KB, 953 ms at 240 KB). The fix is to lex in chunks. The source splits at top-level block boundaries (a blank line outside a fence, followed by a line that cannot continue a list, quote or table), and each chunk is parsed alone. Reference-style link definitions are document-wide, so they are collected first and appended to every chunk that uses one.
+3. Hermes copies on `substring`, where V8 shares the buffer. `marked` cuts `src.substring(raw.length)` after every token, so plain `marked` is quadratic on Hermes (271 ms at 120 KB, 953 ms at 240 KB). So `src/shared/document/parse.ts` lexes in chunks.
 
-The probe in `.context/probe/hermes-chunk.ts` lexes an 8 KB window, keeps every top-level token but the last, and checks each kept token's `raw` against the source before it cuts. It cuts only where exactly one blank line separates two blocks, because Tiptap turns extra blank lines into empty paragraphs. On the three generated documents the chunked tree equals the whole tree. On Hermes the 300 KB document parses in 470 ms instead of 1220 ms, and the first chunk is ready in under 10 ms. The probe lexes twice, once to cut and once inside `parse`. Handing the kept tokens straight to `MarkdownManager`'s token parser removes the second pass.
+`documentChunks` lexes an 8 KB window and cuts at the latest top-level boundary inside it where exactly one blank line separates two blocks, because Tiptap turns extra blank lines into empty paragraphs. Every token before the cut is checked against the source, and when no clean boundary exists the window doubles. Tiptap folds blank lines into a neighboring block's `raw` (a task list takes the ones before it, a list the ones after), so the cutter trims the last kept block's trailing newlines, as lexing that chunk alone would. Each chunk is lexed once, and its tokens go straight to `MarkdownManager.parseTokens`. A document with reference-style link definitions is parsed whole, since a definition applies to the whole document.
 
-Chunks also give the first screen early and make updates cheap (see Live updates). The conformance test checks that chunked parsing equals whole-document parsing on the desktop for every fixture.
+| `parseDocument` on Hermes, Mac CPU | 2 KB | 30 KB | 300 KB |
+| ---------------------------------- | ---- | ----- | ------ |
+| Parse                              | 2 ms | 30 ms | 300 ms |
+| Serialize                          | 5 ms | 17 ms | 186 ms |
+
+Chunks also give the first screen early and make updates cheap (see Live updates). The conformance test checks that the chunked 300 KB document and a document made of every fixture equal the desktop's whole parse, and a property test checks the same on generated documents.
 
 `MarkdownManager` falls back to the global `marked` instance when none is passed, and every manager then stacks its tokenizers onto it. Both apps pass their own `new Marked()`.
 
@@ -228,7 +235,7 @@ Collaboration and creating comments. Comment highlights get a prop so they can b
 
 - Conformance in `pnpm test`. For every fixture in `src/shared/document/fixtures/`, Markdown to tree equals the desktop editor's `getJSON()`, tree to Markdown equals its `getMarkdown()`, and chunked parsing equals whole parsing. Command cases apply the same commands on a desktop `Editor` and on the shared model and compare trees. The desktop side runs in the existing Chromium component test runner.
 - The fixtures cover every node and mark, deep nesting, the `@tiptap/markdown` round trip gaps (#8136, #8478, #8341, #8182, #8472, #8286, #8637), CJK, RTL, emoji and surrogate pairs, long unbroken strings, wide tables, an invalid chart, an unknown fence language, raw HTML, an empty document and a 300 KB document.
-- A property test feeds random strings and random Markdown fragments to the parser. It never throws and always yields a document that passes `check()`.
+- A property test feeds random strings and random Markdown fragments to the parser. It never throws, and its result serializes and parses again. A second property checks that generated documents larger than one chunk parse as they would whole.
 - Native, per block type, screenshots from the iOS simulator and the Android emulator next to the desktop rendering of the same fixture. A tree with an unknown node renders the fallback block.
 - Editing, on both platforms: Japanese and Chinese with the system IME in a paragraph, a heading, a list item and a table cell, with and without an active mark. Paste of multiple paragraphs, an autocorrected word, undo and redo across a structural edit. Then the same document on the desktop shows the same Markdown. Short recordings go in the PRs.
 - Performance through `scripts/perf/mobile.ts`'s document workload, against the baseline below. Simulator and emulator numbers are relative, not what a phone measures.
