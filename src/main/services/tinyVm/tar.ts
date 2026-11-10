@@ -188,6 +188,11 @@ export const decodeTar = (bytes: Uint8Array): ReadonlyArray<TarEntry> => {
       entries.push({ type: "symlink", path, target: linkTarget, mode, mtime })
     } else if (typeflag === "0" || typeflag === "\0") {
       entries.push({ type: "file", path, data, mode, mtime })
+    } else if (typeflag === "1") {
+      const original = entries.find((entry) => entry.type === "file" && entry.path === linkTarget)
+      if (original?.type !== "file")
+        throw new TarError({ message: `hard link "${path}" points at "${linkTarget}", which is not an earlier file` })
+      entries.push({ type: "file", path, data: original.data, mode, mtime })
     } else {
       throw new TarError({ message: `unsupported tar entry type "${typeflag}" for "${path}"` })
     }

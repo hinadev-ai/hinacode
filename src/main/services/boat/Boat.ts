@@ -606,7 +606,7 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
       if (baseName.length === 0)
         return yield* Effect.fail(new BoatError({ message: `boat: cannot download ${guestPath}` }))
       const tmpPath = `/tmp/.hinacode-${randomUUID()}.tar`
-      const command = `tar -cf ${shellQuote(tmpPath)} -C ${shellQuote(parent)} ${shellQuote(baseName)} && stat -c%s ${shellQuote(tmpPath)}`
+      const command = `tar -cf ${shellQuote(tmpPath)} --format=pax -C ${shellQuote(parent)} ${shellQuote(baseName)} && stat -c%s ${shellQuote(tmpPath)}`
       const result = yield* rawCommand(id, command)
       if (result.exitCode !== 0) {
         yield* cleanupGuestFiles(id, [tmpPath])
