@@ -263,7 +263,7 @@ const seedSettings = (remotePort: number) => {
     ...readJson(targetSettingsPath),
     ...kept(KEPT_SETTINGS),
     worktreeRoot: join(data, "worktrees"),
-    automations: { bindHost: "127.0.0.1", port: remotePort + 1 },
+    routines: { bindHost: "127.0.0.1", port: remotePort + 1 },
   })
   writeJson(join(data, "client-settings.json"), kept(KEPT_CLIENT_SETTINGS))
   writeJson(join(data, "keybindings.json"), setting("keybindings"))

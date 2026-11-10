@@ -23,12 +23,8 @@ import * as Terminals from "./Terminals.ts"
 import { layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
 
-const longAgo = "2000-01-01T00:00:00.000Z"
-const farAhead = "2999-01-01T00:00:00.000Z"
-
 const github = {
   statuses: new Map<string, PullRequestStatus>(),
-  openedAt: new Map<string, string>(),
   reads: new Array<string>(),
   installed: true,
 }
@@ -39,7 +35,6 @@ const gitHub = Layer.mock(GitHub, {
     github.reads.push(url)
     return Effect.succeed({ url, status: github.statuses.get(url) ?? "open" } as PullRequest)
   },
-  pullRequestOpenedAt: (url) => Effect.succeed(github.openedAt.get(url) ?? longAgo),
 })
 
 const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-lifecycle-")))
@@ -65,7 +60,7 @@ const testLayer = lifecycleLayer.pipe(
 
 let nextRepo = 0
 
-const linkPullRequest = (options: { readonly openedAt: string; readonly status?: PullRequestStatus }) =>
+const linkPullRequest = (status: PullRequestStatus = "open") =>
   Effect.gen(function* () {
     nextRepo += 1
     const name = `repo-${nextRepo}`
@@ -73,8 +68,7 @@ const linkPullRequest = (options: { readonly openedAt: string; readonly status?:
     mkdirSync(rootPath)
     const { threadId } = yield* seedThread({ rootPath })
     const url = `https://github.com/o/${name}/pull/1`
-    github.statuses.set(url, options.status ?? "open")
-    github.openedAt.set(url, options.openedAt)
+    github.statuses.set(url, status)
     const bus = yield* EventBus
     const subscription = yield* PubSub.subscribe(bus)
     yield* PullRequests.use((pullRequests) => pullRequests.link(threadId, url))
@@ -86,7 +80,6 @@ const linkPullRequest = (options: { readonly openedAt: string; readonly status?:
 const announce = (linked: PullRequestLinkedEvent) => PullRequestLifecycle.use((lifecycle) => lifecycle.announce(linked))
 const sweep = PullRequestLifecycle.use((lifecycle) => lifecycle.sweep)
 const drain = (subscription: PubSub.Subscription<BusEvent>) => PubSub.takeUpTo(subscription, Number.MAX_SAFE_INTEGER)
-const topics = (events: ReadonlyArray<BusEvent>) => events.map((event) => event.topic)
 const observedStatus = (linkId: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
@@ -100,7 +93,7 @@ describe("PullRequestLifecycle", () => {
   layer(testLayer)((it) => {
     it.effect("reads no pull request while gh is not installed", () =>
       Effect.gen(function* () {
-        const { url } = yield* linkPullRequest({ openedAt: longAgo })
+        const { url } = yield* linkPullRequest()
         github.installed = false
         github.reads.length = 0
         yield* sweep.pipe(Effect.ensuring(Effect.sync(() => (github.installed = true))))
@@ -109,128 +102,32 @@ describe("PullRequestLifecycle", () => {
       }),
     )
 
-    it.effect("announces a pull request created after its thread", () =>
+    it.effect("records the status of a newly linked pull request", () =>
       Effect.gen(function* () {
-        const { linked, subscription, threadId, url } = yield* linkPullRequest({ openedAt: farAhead })
+        const { linked } = yield* linkPullRequest("draft")
         yield* announce(linked)
-        const events = yield* drain(subscription)
-        expect(topics(events)).toEqual(["pullRequest.opened"])
-        expect(events[0]).toMatchObject({ threadId, pullRequest: { url } })
-      }),
-    )
-
-    it.effect("stays quiet about an older pull request a thread picked up, until it merges", () =>
-      Effect.gen(function* () {
-        const { linked, subscription, url } = yield* linkPullRequest({ openedAt: longAgo })
-        yield* announce(linked)
-        expect(topics(yield* drain(subscription))).toEqual([])
-        github.statuses.set(url, "merged")
-        yield* sweep
-        expect(topics(yield* drain(subscription))).toEqual(["pullRequest.merged"])
-      }),
-    )
-
-    it.effect("reports a pull request opened and merged before anyone observed it", () =>
-      Effect.gen(function* () {
-        const { linked, subscription } = yield* linkPullRequest({ openedAt: farAhead, status: "merged" })
-        yield* announce(linked)
-        expect(topics(yield* drain(subscription))).toEqual(["pullRequest.opened", "pullRequest.merged"])
-      }),
-    )
-
-    it.effect("records the first sweep of a link silently so upgrading replays no history", () =>
-      Effect.gen(function* () {
-        const { subscription } = yield* linkPullRequest({ openedAt: farAhead, status: "merged" })
-        yield* sweep
-        expect(topics(yield* drain(subscription))).toEqual([])
-      }),
-    )
-
-    it.effect("publishes a merge once and never reads a settled pull request again", () =>
-      Effect.gen(function* () {
-        const { linked, subscription, url } = yield* linkPullRequest({ openedAt: longAgo })
-        yield* announce(linked)
-        github.statuses.set(url, "merged")
-        yield* sweep
-        yield* drain(subscription)
-        github.reads.length = 0
-        yield* sweep
-        expect(github.reads).not.toContain(url)
-        expect(topics(yield* drain(subscription))).toEqual([])
-      }),
-    )
-
-    it.effect("publishes closed and ignores open to draft", () =>
-      Effect.gen(function* () {
-        const { linked, subscription, url } = yield* linkPullRequest({ openedAt: longAgo })
-        yield* announce(linked)
-        github.statuses.set(url, "draft")
-        yield* sweep
-        expect(topics(yield* drain(subscription))).toEqual([])
-        github.statuses.set(url, "closed")
-        yield* sweep
-        expect(topics(yield* drain(subscription))).toEqual(["pullRequest.closed"])
-      }),
-    )
-
-    it.effect("publishes a merge after a closed pull request reopens, and closed only once", () =>
-      Effect.gen(function* () {
-        const { linked, subscription, url } = yield* linkPullRequest({ openedAt: longAgo })
-        yield* announce(linked)
-
-        const expectAfterSweep = (status: PullRequestStatus, expectedTopics: ReadonlyArray<BusEvent["topic"]>) =>
-          Effect.gen(function* () {
-            github.statuses.set(url, status)
-            yield* sweep
-            expect(yield* observedStatus(linked.linkId)).toBe(status)
-            expect(topics(yield* drain(subscription))).toEqual(expectedTopics)
-          })
-
-        yield* expectAfterSweep("closed", ["pullRequest.closed"])
-        yield* expectAfterSweep("closed", [])
-        yield* expectAfterSweep("open", [])
-        yield* expectAfterSweep("merged", ["pullRequest.merged"])
-
-        github.reads.length = 0
-        yield* sweep
-        expect(github.reads).not.toContain(url)
-        expect(yield* observedStatus(linked.linkId)).toBe("merged")
-        expect(topics(yield* drain(subscription))).toEqual([])
-      }),
-    )
-
-    it.effect("follows a closed pull request reopened as a draft through to its merge", () =>
-      Effect.gen(function* () {
-        const { linked, subscription, url } = yield* linkPullRequest({ openedAt: longAgo })
-        yield* announce(linked)
-        github.statuses.set(url, "closed")
-        yield* sweep
-        github.statuses.set(url, "draft")
-        yield* sweep
         expect(yield* observedStatus(linked.linkId)).toBe("draft")
-        github.statuses.set(url, "merged")
-        yield* sweep
-        expect(yield* observedStatus(linked.linkId)).toBe("merged")
-        expect(topics(yield* drain(subscription))).toEqual(["pullRequest.closed", "pullRequest.merged"])
       }),
     )
 
-    it.effect("publishes a merge when the reopen happened between two sweeps", () =>
+    it.effect("follows a pull request through close and reopen, and never reads it again once merged", () =>
       Effect.gen(function* () {
-        const { linked, subscription, url } = yield* linkPullRequest({ openedAt: longAgo })
+        const { linked, url } = yield* linkPullRequest()
         yield* announce(linked)
-        github.statuses.set(url, "closed")
+        for (const status of ["closed", "draft", "open", "merged"] as const) {
+          github.statuses.set(url, status)
+          yield* sweep
+          expect(yield* observedStatus(linked.linkId)).toBe(status)
+        }
+        github.reads.length = 0
         yield* sweep
-        github.statuses.set(url, "merged")
-        yield* sweep
-        expect(yield* observedStatus(linked.linkId)).toBe("merged")
-        expect(topics(yield* drain(subscription))).toEqual(["pullRequest.closed", "pullRequest.merged"])
+        expect(github.reads).not.toContain(url)
       }),
     )
 
     it.effect("lets only one observer move a link", () =>
       Effect.gen(function* () {
-        const { linked } = yield* linkPullRequest({ openedAt: longAgo })
+        const { linked } = yield* linkPullRequest()
         const observe = PullRequests.use((pullRequests) => pullRequests.observe(linked.linkId, "merged"))
         const results = yield* Effect.all([observe, observe], { concurrency: "unbounded" })
         expect(results.filter((result) => result !== null)).toEqual([{ previous: null }])
@@ -239,15 +136,15 @@ describe("PullRequestLifecycle", () => {
 
     it.effect("does not link twice", () =>
       Effect.gen(function* () {
-        const { subscription, threadId, url } = yield* linkPullRequest({ openedAt: longAgo })
+        const { subscription, threadId, url } = yield* linkPullRequest()
         yield* PullRequests.use((pullRequests) => pullRequests.link(threadId, url))
-        expect(topics(yield* drain(subscription))).toEqual([])
+        expect(yield* drain(subscription)).toEqual([])
       }),
     )
 
     it.effect("reads a pull request linked to two threads once per sweep", () =>
       Effect.gen(function* () {
-        const { linked, url } = yield* linkPullRequest({ openedAt: longAgo })
+        const { linked, url } = yield* linkPullRequest()
         yield* announce(linked)
         const second = join(base, "second-thread")
         mkdirSync(second)

@@ -15,7 +15,7 @@ import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from ".
 import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
 import { BindHostSelect, LOOPBACK } from "./BindHostSelect.tsx"
-import { CopyField } from "./automations/shared.tsx"
+import { CopyField } from "./CopyField.tsx"
 import { SettingsGroup, SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
 
 type RemoteSettingsValue = ReturnType<typeof useSettings>["remote"]

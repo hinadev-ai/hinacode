@@ -5,7 +5,6 @@ import { useNavigate, useSearch } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { type ComponentType, type ReactNode, useState } from "react"
 import { AppearanceSettings } from "../components/settings/AppearanceSettings.tsx"
-import { AutomationSettings } from "../components/settings/automations/AutomationSettings.tsx"
 import { EnvironmentSettings } from "../components/settings/EnvironmentSettings.tsx"
 import { ExperimentalSettings } from "../components/settings/ExperimentalSettings.tsx"
 import { GeneralSettings } from "../components/settings/GeneralSettings.tsx"
@@ -14,6 +13,7 @@ import { KeybindingSettings } from "../components/settings/KeybindingSettings.ts
 import { ModelSettings } from "../components/settings/ModelSettings.tsx"
 import { NotificationSettings } from "../components/settings/NotificationSettings.tsx"
 import { RemoteSettings } from "../components/settings/RemoteSettings.tsx"
+import { RoutineSettings } from "../components/settings/routines/RoutineSettings.tsx"
 import { SettingsNav, settingsPageOf, useLeaveSettings } from "../components/settings/SettingsNav.tsx"
 import { PageActionSlotProvider, SETTINGS_FILL_WIDTH } from "../components/settings/SettingsSection.tsx"
 import { WorktreeSettings } from "../components/settings/WorktreeSettings.tsx"
@@ -48,7 +48,7 @@ const components: Record<string, ComponentType> = {
   providers: ModelSettings,
   worktrees: WorktreeSettings,
   integrations: IntegrationSettings,
-  automations: AutomationSettings,
+  routines: RoutineSettings,
   connections: ConnectionSettings,
   experimental: ExperimentalSettings,
 }

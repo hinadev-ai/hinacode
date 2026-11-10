@@ -45,11 +45,11 @@ describe("listeners that bound every interface", () => {
   it.effect("without Tailscale, turn remote control off, and webhooks fall back to loopback", () =>
     Effect.gen(function* () {
       const { dir } = yield* migrated(wildcards, null)
-      const { remote, automations } = yield* Settings.use((settings) => settings.get).pipe(
+      const { remote, routines } = yield* Settings.use((settings) => settings.get).pipe(
         Effect.provide(SettingsModule.layer(dir)),
       )
       expect(remote).toStrictEqual({ enabled: false, bindHost: "private", port: 48081 })
-      expect(automations).toStrictEqual({ bindHost: "127.0.0.1", port: 48080 })
+      expect(routines).toStrictEqual({ bindHost: "127.0.0.1", port: 48080 })
     }),
   )
 

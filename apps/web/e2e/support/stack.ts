@@ -82,8 +82,8 @@ const readEnvironmentId = (userData: string) => {
 
 export const startMachine = async (name: string): Promise<Machine> => {
   const userData = mkdtempSync(join(tmpdir(), "hinacode-web-e2e-"))
-  const automations = { bindHost: "127.0.0.1", port: await freePort() }
-  writeFileSync(join(userData, "settings.json"), JSON.stringify({ automations }))
+  const routines = { bindHost: "127.0.0.1", port: await freePort() }
+  writeFileSync(join(userData, "settings.json"), JSON.stringify({ routines }))
   const port = await freePort()
   let current = await spawnServe(userData, port)
   const running = () => current.child.exitCode === null && current.child.signalCode === null

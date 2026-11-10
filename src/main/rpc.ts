@@ -39,7 +39,7 @@ import { Favicons } from "./services/Favicons.ts"
 import { GitHub, pullRequestFiles } from "./services/GitHub.ts"
 import { SourceControl } from "./services/SourceControl.ts"
 import { codeHostOfUrl } from "../shared/codeHost.ts"
-import { Automations } from "./services/automations/Automations.ts"
+import { Routines } from "./services/routines/Routines.ts"
 import { Linear } from "./services/Linear.ts"
 import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
@@ -90,7 +90,7 @@ export type AppServices =
   | Artifacts
   | ArtifactInspector
   | Browser
-  | Automations
+  | Routines
   | Git
   | GitHub
   | SourceControl
@@ -569,7 +569,7 @@ const handlers: Handlers = {
   "attachments.read": ({ path }) => Attachments.use((attachments) => attachments.read(path)),
   "dialog.pickFiles": (_, desktop) => desktop?.pickFiles ?? Effect.succeed([]),
 
-  "automations.list": () => Automations.use((automations) => automations.list),
+  "routines.list": () => Routines.use((routines) => routines.list),
   "artifacts.list": () => Artifacts.use((artifacts) => artifacts.list),
   "artifacts.file": ({ id, path }) => Artifacts.use((artifacts) => artifacts.preview(id, path)),
   "artifacts.delete": ({ id }) => Artifacts.use((artifacts) => artifacts.remove(id)),
@@ -586,12 +586,15 @@ const handlers: Handlers = {
   "artifacts.rename": ({ id, title }) => Artifacts.use((artifacts) => artifacts.rename(id, title)),
   "artifacts.setTheme": (theme) => ArtifactInspector.use((inspector) => inspector.setTheme(theme)),
   "artifacts.export": (request, desktop) => desktop?.exportArtifact(request) ?? Effect.succeed(null),
-  "automations.create": (input) => Automations.use((automations) => automations.create(input)),
-  "automations.update": (input) => Automations.use((automations) => automations.update(input)),
-  "automations.delete": ({ id }) => Automations.use((automations) => automations.remove(id)),
-  "automations.runNow": ({ id, payload }) => Automations.use((automations) => automations.runNow(id, payload)),
-  "automations.runs": ({ id, limit }) => Automations.use((automations) => automations.runs(id, limit)),
-  "automations.webhookUrl": ({ id }) => Automations.use((automations) => automations.webhookUrl(id)),
+  "routines.create": (input) => Routines.use((routines) => routines.create(input)),
+  "routines.update": (input) => Routines.use((routines) => routines.update(input)),
+  "routines.delete": ({ id }) => Routines.use((routines) => routines.remove(id)),
+  "routines.run": ({ id }) => Routines.use((routines) => routines.run(id, "manual", null)),
+  "routines.runs": ({ id, limit }) => Routines.use((routines) => routines.runs(id, limit)),
+  "routines.webhook": ({ id }) => Routines.use((routines) => routines.webhook(id)),
+  "routines.rotateWebhookSecret": () => Routines.use((routines) => routines.rotateWebhookSecret),
+  "commands.forProject": ({ projectId, provider }) =>
+    AgentRunner.use((runner) => runner.listProjectCommands(projectId, provider)),
 
   "network.addresses": () => Effect.sync(() => networkAddresses()),
   "system.resources": () =>

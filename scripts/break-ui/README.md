@@ -7,7 +7,7 @@ Worst-case data for the `break-ui` skill (`.agents/skills/break-ui/`), shaped li
 - An image attachment whose file is gone, and a 1.2 GB file attachment
 - A queued message, a usage limit, an agent question with long options, and colored terminal output
 - PR links to repositories that do not exist, so the lookups fail
-- Automations, agent accounts and remote environments with long names and errors
+- Routines, agent accounts and remote environments with long names and errors
 - A project with no threads and one with 300
 
 ```sh

@@ -1,11 +1,4 @@
 import { Context, Layer, PubSub } from "effect"
-import type { PullRequest, PullRequestTopic } from "../../shared/domain.ts"
-
-export interface PullRequestEvent {
-  readonly topic: PullRequestTopic
-  readonly threadId: string
-  readonly pullRequest: PullRequest
-}
 
 export interface PullRequestLinkedEvent {
   readonly topic: "pullRequest.linked"
@@ -14,7 +7,7 @@ export interface PullRequestLinkedEvent {
   readonly url: string
 }
 
-export type BusEvent = PullRequestLinkedEvent | PullRequestEvent
+export type BusEvent = PullRequestLinkedEvent
 
 export class EventBus extends Context.Service<EventBus, PubSub.PubSub<BusEvent>>()("hinacode/EventBus") {}
 

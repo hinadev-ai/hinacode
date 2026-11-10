@@ -163,7 +163,7 @@ try {
       server.close((error) => (error ? reject(error) : resolve(address.port)))
     })
   })
-  await rpc("settings.set", { automations: { bindHost: "127.0.0.1", port: webhookPort } })
+  await rpc("settings.set", { routines: { bindHost: "127.0.0.1", port: webhookPort } })
   const cdp = await page.context().newCDPSession(page)
   await cdp.send("Performance.enable")
   const observedProcesses = new Map<number, string>()

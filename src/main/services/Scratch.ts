@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { Context, Effect, FileSystem, Layer } from "effect"
 import type { Thread } from "../../shared/domain.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
-import { slugifyBranch } from "./automations/template.ts"
+import { slugifyBranch } from "./branchName.ts"
 
 const MAX_SLUG_LENGTH = 40
 const REMOVING_SUFFIX = ".removing"

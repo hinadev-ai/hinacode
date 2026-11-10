@@ -30,7 +30,8 @@ import * as Attachments from "./services/Attachments.ts"
 import * as Boat from "./services/boat/Boat.ts"
 import * as Settle from "./services/Settle.ts"
 import * as Browser from "./services/Browser.ts"
-import * as Automations from "./services/automations/Automations.ts"
+import * as Routines from "./services/routines/Routines.ts"
+import * as Scheduler from "./services/Scheduler.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Conductor from "./services/Conductor.ts"
 import * as Environments from "./services/Environments.ts"
@@ -222,7 +223,7 @@ export const makeAppLayer = ({
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   const services = Layer.mergeAll(
-    Automations.layer,
+    Routines.layer.pipe(Layer.provide(Scheduler.layer)),
     Settle.layer,
     ArtifactFeedback.layer,
     PullRequestWatcher.layer,

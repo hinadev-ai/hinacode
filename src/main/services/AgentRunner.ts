@@ -94,6 +94,7 @@ import { Attachments, extensionOf } from "./Attachments.ts"
 import { Scratch } from "./Scratch.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
+import { Projects } from "./Projects.ts"
 import { Threads, type UpdateThread } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
@@ -264,6 +265,10 @@ export class AgentRunner extends Context.Service<
     readonly listCommands: (
       threadId: string,
     ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError | FolderMissingError>
+    readonly listProjectCommands: (
+      projectId: string,
+      provider: ProviderId,
+    ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError>
   }
 >()("hinacode/AgentRunner") {}
 
@@ -362,6 +367,7 @@ const make = Effect.gen(function* () {
   const settings = yield* Settings
   const naming = yield* ThreadNaming
   const accounts = yield* AgentAccounts
+  const projects = yield* Projects
   const activeWorkspace = yield* makeActiveWorkspace
 
   const providers: Record<ProviderId, AgentProvider> = {
@@ -1856,6 +1862,14 @@ const make = Effect.gen(function* () {
         const { cwd } = yield* activeWorkspace(threadId)
         const home = yield* accounts.home(thread.accountId)
         return withDocumentCommand(yield* providers[thread.provider].listCommands({ threadId, cwd, home }))
+      }),
+    listProjectCommands: (projectId, provider) =>
+      Effect.gen(function* () {
+        const { rootPath } = yield* projects.get(projectId)
+        const home = yield* accounts.home((yield* settings.get).defaultAccount[provider])
+        return withDocumentCommand(
+          yield* providers[provider].listCommands({ threadId: `project:${projectId}`, cwd: rootPath, home }),
+        )
       }),
   })
 })

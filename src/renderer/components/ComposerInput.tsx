@@ -49,7 +49,7 @@ interface ComposerInputProps {
   readonly projectId: string
   readonly placeholder: string
   readonly "aria-label": string
-  readonly onEnter: (event: KeyboardEvent) => void
+  readonly onEnter?: (event: KeyboardEvent) => void
   readonly onPaste?: (event: ClipboardEvent) => void
   readonly focusOnMount?: boolean
 }
@@ -151,7 +151,7 @@ export function ComposerInput({
       return true
     }
     if (event.key !== "Enter") return false
-    if (event.shiftKey) insertNewline(view)
+    if (event.shiftKey || onEnter === undefined) insertNewline(view)
     else onEnter(event)
     return true
   })

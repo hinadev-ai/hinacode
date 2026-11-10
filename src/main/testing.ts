@@ -23,7 +23,7 @@ import * as ArtifactInspector from "./services/ArtifactInspector.ts"
 import * as Artifacts from "./services/Artifacts.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Browser from "./services/Browser.ts"
-import { Automations } from "./services/automations/Automations.ts"
+import { Routines } from "./services/routines/Routines.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
 import { type Events, makeEventsLayer, type PushBroadcast, type WindowPush } from "./services/Events.ts"
@@ -52,7 +52,7 @@ import { unavailableDevicesLayer } from "./services/devices/unavailable.ts"
 import { unsupported, Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 
-const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Service)
+const routinesStub = Layer.succeed(Routines, {} as typeof Routines.Service)
 const updatesStub = Layer.succeed(Updates, unsupported("0.0.0"))
 
 export interface TestAppOptions {
@@ -120,7 +120,7 @@ export const makeTestAppLayer = (
   )
   const base = Layer.mergeAll(
     agents,
-    automationsStub,
+    routinesStub,
     updatesStub,
     logins,
     imports,

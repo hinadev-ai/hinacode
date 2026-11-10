@@ -14,7 +14,7 @@ export class NotFoundError extends Schema.TaggedError<NotFoundError>()("NotFound
     "project",
     "thread",
     "worktree",
-    "automation",
+    "routine",
     "terminal",
     "account",
     "fork point",

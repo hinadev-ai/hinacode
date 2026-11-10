@@ -143,7 +143,7 @@ message(t1, "user", [
   },
 ])
 const deepPath =
-  "src/main/services/automations/pollers/github/OnboardingWebhookRetryPolicyWithExponentialBackoffAndJitter.integration.test.ts"
+  "src/main/services/routines/webhooks/github/OnboardingWebhookRetryPolicyWithExponentialBackoffAndJitter.integration.test.ts"
 message(
   t1,
   "assistant",
@@ -282,7 +282,7 @@ thread(
   long,
   "Fix crash in src/renderer/components/sidePanel/ChangesViewWithVirtualizedDiffRendererAndStickyHeaders.tsx",
   {
-    created_by: "automation:x",
+    created_by: "routine:x",
   },
 )
 thread(long, "مرحبا بالعالم: إصلاح خطأ في واجهة المستخدم")
@@ -395,46 +395,150 @@ message(relay, "assistant", [
 thread(jp, "a")
 for (let i = 1; i <= 300; i++) thread(demo, `Thread ${i}: refactor module ${i}`)
 
-const automation = randomUUID()
-insert("automation", {
-  id: automation,
+const routine = randomUUID()
+insert("routine", {
+  id: routine,
   project_id: long.id,
   name: "Triage every new GitHub issue labelled bug or regression in the customer onboarding platform monorepo",
   enabled: 1,
-  trigger: {
-    type: "github.issue",
-    repo: "northwind-industries-holdings/customer-onboarding-platform-monorepo",
-    labels: ["bug", "regression", "needs-triage", "priority:p0-critical-customer-impact", "area:onboarding-webhooks"],
-  },
-  prompt_template: "Investigate {{issue.title}} ".repeat(30),
-  model: "claude-sonnet-5-5",
+  prompt:
+    "Investigate the newest issues labelled bug in northwind-industries-holdings/customer-onboarding-platform-monorepo ".repeat(
+      30,
+    ),
   provider: "claude",
-  run_in_worktree: 1,
-  branch_template: "fix/{{issue.number}}-{{issue.title}}",
+  model: "claude-sonnet-5-5",
+  effort: "ultrathink",
+  workspace: "worktree",
+  schedule: { cron: "0 9 * * 1-5", timezone: "Pacific/Chatham" },
+  next_run_at: at(),
   created_at: at(),
   updated_at: at(),
 })
-insert("automation_run", {
+insert("routine_run", {
   id: randomUUID(),
-  automation_id: automation,
+  routine_id: routine,
   thread_id: null,
-  event_key: "northwind-industries-holdings/customer-onboarding-platform-monorepo#128449",
-  payload: {},
+  source: "schedule",
+  event_key: null,
+  payload: null,
   status: "failed",
   error:
     "gh: GraphQL: Could not resolve to a Repository with the name 'northwind-industries-holdings/customer-onboarding-platform-monorepo'. (repository)\nHTTP 404: Not Found (https://api.github.com/graphql)",
   created_at: at(),
 })
-insert("automation", {
+const runStates = [
+  { source: "schedule", status: "started", error: null },
+  { source: "webhook", status: "skipped", error: "Already ran for gh-delivery-7f3c1e2a-9b44-11ef-8a3d-0242ac120002" },
+  { source: "schedule", status: "skipped", error: "The previous run is still working or waiting for you" },
+  { source: "manual", status: "started", error: null },
+  {
+    source: "webhook",
+    status: "failed",
+    error:
+      "fatal: 'kk/triage-every-new-github-issue-labelled-bug' is already checked out at '/Users/someone/.hinacode/worktrees/northwind/kk-triage'",
+  },
+] as const
+for (let i = 0; i < 60; i++) {
+  const state = runStates[i % runStates.length]!
+  insert("routine_run", {
+    id: randomUUID(),
+    routine_id: routine,
+    thread_id:
+      state.status === "started"
+        ? thread(long, `Triage run ${i + 1}`, {
+            created_by: `routine:${routine}`,
+            settled_at: i < 55 ? at() : null,
+          })
+        : null,
+    source: state.source,
+    event_key: null,
+    payload: null,
+    status: state.status,
+    error: state.error,
+    created_at: at(),
+  })
+}
+
+const paused = randomUUID()
+insert("routine", {
+  id: paused,
+  project_id: demo.id,
+  name: "Nightly dependency bump",
+  enabled: 0,
+  prompt: "Bump every dependency and fix what breaks.",
+  provider: "claude",
+  model: "claude-sonnet-5-5",
+  effort: "high",
+  workspace: "worktree",
+  schedule: { cron: "0 2 * * *", timezone: "Europe/Berlin" },
+  next_run_at: null,
+  created_at: at(),
+  updated_at: at(),
+})
+for (let i = 0; i < 3; i++)
+  insert("routine_run", {
+    id: randomUUID(),
+    routine_id: paused,
+    thread_id: null,
+    source: "schedule",
+    event_key: null,
+    payload: null,
+    status: "failed",
+    error: `ENOENT: no such file or directory, chdir '${"/very/long/missing/folder".repeat(6)}'`,
+    created_at: at(),
+  })
+
+for (const [i, cron] of [
+  "0 * * * *",
+  "30 8 * * 1-5",
+  "0 9 * * 1,3,5",
+  "15 12 * * *",
+  "0 0 1 * *",
+  "*/15 * * * *",
+].entries())
+  insert("routine", {
+    id: randomUUID(),
+    project_id: demo.id,
+    name: `Routine ${i + 1}`,
+    enabled: i % 2,
+    prompt: "Report anything unusual.",
+    provider: i % 3 === 0 ? "codex" : "claude",
+    model: "claude-sonnet-5-5",
+    effort: null,
+    workspace: "local",
+    schedule: { cron, timezone: "UTC" },
+    next_run_at: i % 2 === 1 ? at() : null,
+    created_at: at(),
+    updated_at: at(),
+  })
+
+insert("routine", {
   id: randomUUID(),
   project_id: demo.id,
   name: "a",
   enabled: 0,
-  trigger: { type: "webhook" },
-  prompt_template: "{{body}}",
-  model: "m",
+  prompt: "a",
   provider: "codex",
-  run_in_worktree: 0,
+  model: "m",
+  effort: null,
+  workspace: "local",
+  schedule: { cron: "*/5 0-3,22-23 1,15 * *", timezone: "UTC" },
+  next_run_at: null,
+  created_at: at(),
+  updated_at: at(),
+})
+insert("routine", {
+  id: randomUUID(),
+  project_id: jp.id,
+  name: "毎朝の依存関係チェックと脆弱性レポート",
+  enabled: 1,
+  prompt: "/code-review",
+  provider: "claude",
+  model: "claude-sonnet-5-5",
+  effort: null,
+  workspace: "local",
+  schedule: null,
+  next_run_at: null,
   created_at: at(),
   updated_at: at(),
 })
