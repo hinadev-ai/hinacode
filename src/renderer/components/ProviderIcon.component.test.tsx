@@ -12,9 +12,17 @@ test("shows the vendor mark beside magpie when it knows the model", async () => 
 
 test("gives the vendor mark its brand color", async () => {
   const { container } = await render(<ThreadProviderIcon provider="magpie" model="openrouter/deepseek-v4" />)
-  const [magpie, deepseek] = container.querySelectorAll("svg")
+  const [deepseek, magpie] = container.querySelectorAll("svg")
 
   expect(getComputedStyle(deepseek!).color).not.toBe(getComputedStyle(magpie!).color)
+})
+
+test("puts the vendor mark before magpie", async () => {
+  const { container } = await render(<ThreadProviderIcon provider="magpie" model="openrouter/deepseek-v4" />)
+  const [first, second] = container.querySelectorAll("svg")
+
+  expect(first!.getBoundingClientRect().left).toBeLessThan(second!.getBoundingClientRect().left)
+  expect(second).toHaveClass("text-provider-magpie")
 })
 
 test("shows only magpie when it does not know the model", async () => {
