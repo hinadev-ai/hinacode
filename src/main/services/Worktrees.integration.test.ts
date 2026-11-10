@@ -1192,6 +1192,81 @@ describe("fetching origin", () => {
   )
 })
 
+describe("fast-forwarding the local default branch after a fetch", () => {
+  const pushFromElsewhere = (root: string) => {
+    withOrigin(root)
+    git(root, "fetch", "-q", "origin")
+    git(root, "remote", "set-head", "origin", "main")
+    const elsewhere = join(dirname(root), "elsewhere")
+    execFileSync("git", ["clone", "-q", "-b", "main", join(dirname(root), "origin.git"), elsewhere])
+    const pushed = commit(elsewhere, "merged meanwhile")
+    git(elsewhere, "push", "-q", "origin", "main")
+    return pushed
+  }
+  const fetch = (projectId: string) => Worktrees.use((worktrees) => worktrees.fetch(projectId))
+  const localMain = (root: string) => git(root, "rev-parse", "refs/heads/main").trim()
+
+  it.live("pulls main into a clean root that has it checked out", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const pushed = pushFromElsewhere(root)
+        yield* fetch(projectId)
+        expect(localMain(root)).toBe(pushed)
+        expect(git(root, "rev-parse", "HEAD").trim()).toBe(pushed)
+        expect(git(root, "status", "--porcelain").trim()).toBe("")
+      }),
+    ),
+  )
+
+  it.live("moves main when nothing has it checked out", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const pushed = pushFromElsewhere(root)
+        git(root, "switch", "-q", "-c", "elsewhere-work")
+        yield* fetch(projectId)
+        expect(localMain(root)).toBe(pushed)
+        expect(git(root, "branch", "--show-current").trim()).toBe("elsewhere-work")
+      }),
+    ),
+  )
+
+  it.live("leaves main alone when it has commits origin lacks", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        pushFromElsewhere(root)
+        const unpushed = commit(root, "local only")
+        yield* fetch(projectId)
+        expect(localMain(root)).toBe(unpushed)
+      }),
+    ),
+  )
+
+  it.live("leaves a root with uncommitted changes alone", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        pushFromElsewhere(root)
+        const before = localMain(root)
+        writeFileSync(join(root, "draft.txt"), "wip")
+        yield* fetch(projectId)
+        expect(localMain(root)).toBe(before)
+      }),
+    ),
+  )
+
+  it.live("leaves the root alone while a thread runs in it", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        pushFromElsewhere(root)
+        const before = localMain(root)
+        const busy = yield* createThread(projectId, "root")
+        yield* Threads.use((threads) => threads.update({ id: busy.id, status: "running" }))
+        yield* fetch(projectId)
+        expect(localMain(root)).toBe(before)
+      }),
+    ),
+  )
+})
+
 describe("new worktree from origin's default branch", () => {
   it.live("forks from what origin has after a fetch, without tracking it", () =>
     withRepo(({ root, projectId }) =>
