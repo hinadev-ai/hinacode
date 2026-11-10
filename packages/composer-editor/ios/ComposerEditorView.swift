@@ -97,6 +97,7 @@ class ComposerEditorView: ExpoView, UITextViewDelegate {
       requestedSelection = selection
       if let selection { select(start: selection.location, end: selection.location + selection.length) }
     }
+    reportContentHeight()
   }
 
   func setFormatActions(_ json: String) {
@@ -157,12 +158,14 @@ class ComposerEditorView: ExpoView, UITextViewDelegate {
     placeholderLabel.font = font
     applyBaseAttributes()
     applyDecorations()
+    reportContentHeight()
   }
 
   func setLineHeight(_ height: CGFloat) {
     lineHeight = height
     applyBaseAttributes()
     applyDecorations()
+    reportContentHeight()
   }
 
   func setPadding(horizontal: CGFloat? = nil, vertical: CGFloat? = nil) {
@@ -305,6 +308,8 @@ class ComposerEditorView: ExpoView, UITextViewDelegate {
   }
 
   private func reportContentHeight() {
+    guard textView.bounds.width > 0 else { return }
+    layoutManager.ensureLayout(for: textView.textContainer)
     let used = layoutManager.usedRect(for: textView.textContainer).height
     let height = ceil(used + textView.textContainerInset.top + textView.textContainerInset.bottom)
     if height == contentHeight { return }
