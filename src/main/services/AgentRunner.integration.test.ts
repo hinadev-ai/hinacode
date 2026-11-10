@@ -372,6 +372,7 @@ const withPreparingThread = async (
           title: "Pending",
           provider: "claude",
           model: "initial-model",
+          accessMode: "supervised",
           createdBy: "automation",
           worktree: { branch: "fix/pending", baseRef: "main" },
         }),
