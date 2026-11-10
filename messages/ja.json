@@ -2333,7 +2333,7 @@
   "sidebar_projects": "プロジェクト",
   "sidebar_views": "表示",
   "sidebar_search_placeholder": "検索",
-  "overview_agents_all": "すべて表示（{count}）",
+  "overview_view_all": "すべて表示（{count}）",
   "action_scope_label": "使える場所",
   "action_scope_global": "すべてのプロジェクト",
   "site_meta_title": "HinaCode：コーディングエージェントを並行して動かす",
