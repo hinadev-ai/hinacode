@@ -1,4 +1,4 @@
-export interface DocumentTemplate {
+interface DocumentTemplate {
   readonly id: string
   readonly name: string
   readonly useFor: string

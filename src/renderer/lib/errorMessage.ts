@@ -34,7 +34,7 @@ export function errorMessage(cause: unknown): string {
 
 const commandTags = new Set(["CommandError", "GitCommandError"])
 
-export interface ErrorSummary {
+interface ErrorSummary {
   readonly message: string
   readonly detail: string | null
 }

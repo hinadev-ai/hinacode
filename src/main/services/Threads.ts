@@ -69,7 +69,7 @@ const ThreadRow = Schema.Struct({
   scheduled: Schema.fromJsonString(Schema.Array(ScheduledMessage)),
 })
 
-export interface CreateThread {
+interface CreateThread {
   readonly projectId: string
   readonly title: string
   readonly provider: ProviderId
@@ -81,7 +81,7 @@ export interface CreateThread {
   readonly parentId?: string | undefined
 }
 
-export type DraftThread = Omit<CreateThread, "worktree" | "createdBy" | "parentId">
+type DraftThread = Omit<CreateThread, "worktree" | "createdBy" | "parentId">
 
 export interface UpdateThread {
   readonly id: string

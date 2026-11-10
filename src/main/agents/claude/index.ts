@@ -424,7 +424,7 @@ const readSession = (sessionId: string, cwd: string, home: AccountHome | null) =
     catch: agentError("Failed to read the Claude session"),
   })
 
-export interface ClaudeHarness {
+interface ClaudeHarness {
   readonly id: ProviderId
   readonly listModels: Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
   readonly launchEnv: (input: SessionInput) => Effect.Effect<Readonly<Record<string, string>>, AgentError>

@@ -47,7 +47,7 @@ const localPort = (env: NodeJS.ProcessEnv) =>
     )
   }).pipe(Effect.orElseSucceed(() => DEFAULT_PORT))
 
-export const endpointOrigin = (endpoint: string) => endpoint.trim().replace(/\/+$/, "").replace(/\/v1$/, "")
+const endpointOrigin = (endpoint: string) => endpoint.trim().replace(/\/+$/, "").replace(/\/v1$/, "")
 
 const BoundKey = Schema.fromJsonString(Schema.Struct({ origin: Schema.String, key: Schema.String }))
 

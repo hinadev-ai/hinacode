@@ -36,7 +36,7 @@ export const ARTIFACT_PROTOCOL = "hinacode-artifact"
 export const artifactUrl = (id: string, path = "") =>
   `${ARTIFACT_PROTOCOL}://${id}/${path.split("/").map(encodeURIComponent).join("/")}`
 
-export const WEB_RESOURCE_PATH = "/_r/"
+const WEB_RESOURCE_PATH = "/_r/"
 
 const DESKTOP_RESOURCE = /^(hinacode-[a-z-]+):\/\/(.*)$/s
 

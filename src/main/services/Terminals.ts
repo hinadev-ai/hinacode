@@ -51,7 +51,7 @@ const quoteForShell = (shell: string, text: string) =>
 const typedLine = (shell: string, line: string) =>
   line.includes("\n") ? `${shell} -c ${quoteForShell(shell, line)}` : line
 
-export interface OpenTerminal {
+interface OpenTerminal {
   readonly threadId: string
   readonly cols: number
   readonly rows: number

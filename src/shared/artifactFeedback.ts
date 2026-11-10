@@ -3,7 +3,7 @@ import { MENTION } from "./mentions.ts"
 
 type ArtifactRef = { readonly id: string; readonly kind?: ArtifactKind; readonly title: string }
 
-export type FeedbackPromptInput = {
+type FeedbackPromptInput = {
   readonly artifact: ArtifactRef
   readonly comment: ArtifactComment
   readonly elements?: string

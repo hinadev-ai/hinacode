@@ -14,7 +14,7 @@ import {
 
 export type TransportStatus = "connecting" | "connected" | "offline" | "unauthorized"
 
-export interface ServerIdentity {
+interface ServerIdentity {
   readonly id: string
   readonly name: string
 }
@@ -31,7 +31,7 @@ export class RpcError extends Error {
 export const CLOSE_UNAUTHORIZED = 4001
 export const CLOSE_TOKEN_ROTATED = 4002
 export const CONNECT_TIMEOUT_MS = 10_000
-export const PING_INTERVAL_MS = 10_000
+const PING_INTERVAL_MS = 10_000
 export const IDLE_TIMEOUT_MS = 25_000
 export const PROBE_TIMEOUT_MS = 5_000
 export const OFFLINE_LIMIT_MS = 60_000
@@ -58,7 +58,7 @@ export interface TransportMessages {
   readonly protocolMismatch: (server: number, client: number) => string
 }
 
-export interface TransportOptions {
+interface TransportOptions {
   readonly dials: NonEmptyReadonlyArray<Dial>
   readonly token: string
   readonly messages: TransportMessages

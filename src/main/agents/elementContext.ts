@@ -19,7 +19,7 @@ export const elementContext = (element: PickedElement): string => {
   ].join("\n")
 }
 
-export const deviceElementContext = ({ device, platform, element }: PickedDeviceElement): string => {
+const deviceElementContext = ({ device, platform, element }: PickedDeviceElement): string => {
   const { x, y, width, height } = element.frame
   return [
     `The attached screenshot shows an element the user picked on the ${platform === "ios" ? "iOS simulator" : "Android emulator"} ${JSON.stringify(device)}.`,

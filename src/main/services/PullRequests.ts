@@ -19,7 +19,7 @@ import { requirePullRequestUrl, SourceControl, type SourceControlError } from ".
 import { Threads } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 
-export class NoBranchError extends Schema.TaggedError<NoBranchError>()("NoBranchError", { threadId: Schema.String }) {
+class NoBranchError extends Schema.TaggedError<NoBranchError>()("NoBranchError", { threadId: Schema.String }) {
   override get message(): string {
     return "This thread has no worktree branch to open a pull request from"
   }

@@ -9,7 +9,7 @@ import type {
 } from "./domain.ts"
 
 // FIXME: GitHub refuses to serve a pull request diff past these sizes
-export const DIFF_LIMITS = { lines: 20_000, files: 300 }
+const DIFF_LIMITS = { lines: 20_000, files: 300 }
 
 export const diffTooLarge = ({ additions, deletions, changedFiles }: PullRequestDetail) =>
   additions + deletions > DIFF_LIMITS.lines || changedFiles > DIFF_LIMITS.files

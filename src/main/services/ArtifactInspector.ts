@@ -20,7 +20,7 @@ export class ArtifactInspector extends Context.Service<
 
 export type InspectPage = (id: string, entry: string, theme: ArtifactTheme | undefined) => Promise<ArtifactInspection>
 
-export const MAX_PAGES_RENDERING = 2
+const MAX_PAGES_RENDERING = 2
 
 export const layerWith = (inspectPage: InspectPage) =>
   Layer.sync(ArtifactInspector, () => {

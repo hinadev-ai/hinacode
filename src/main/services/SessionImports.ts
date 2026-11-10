@@ -15,7 +15,7 @@ import { Settings } from "./Settings.ts"
 import { Threads } from "./Threads.ts"
 import type { CommandError } from "./Git.ts"
 
-export interface ExternalSessionList {
+interface ExternalSessionList {
   readonly sessions: ReadonlyArray<ExternalSession>
   readonly failures: ReadonlyArray<{
     readonly provider: AccountProviderId
@@ -24,7 +24,7 @@ export interface ExternalSessionList {
   }>
 }
 
-export interface ImportSession {
+interface ImportSession {
   readonly projectId: string
   readonly provider: AccountProviderId
   readonly sessionId: string

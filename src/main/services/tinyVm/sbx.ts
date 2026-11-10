@@ -8,7 +8,7 @@ export interface LoginSource {
   readonly env: Readonly<Record<string, string | undefined>>
 }
 
-export interface SbxLogin {
+interface SbxLogin {
   readonly url: string
   readonly token: Redacted.Redacted<string>
 }

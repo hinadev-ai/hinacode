@@ -1,6 +1,6 @@
 import type { Thread } from "../../shared/domain.ts"
 
-export interface ThreadEntry {
+interface ThreadEntry {
   readonly thread: Thread
   readonly nested: boolean
 }

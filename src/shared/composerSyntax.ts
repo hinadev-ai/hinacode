@@ -428,7 +428,7 @@ export interface MentionableTerminal {
   readonly label: string
 }
 
-export function matchTerminals(terminals: ReadonlyArray<MentionableTerminal>, query: string) {
+function matchTerminals(terminals: ReadonlyArray<MentionableTerminal>, query: string) {
   const needle = query.toLowerCase()
   return terminals.filter((terminal) => terminal.label.toLowerCase().includes(needle))
 }

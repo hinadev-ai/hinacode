@@ -23,7 +23,7 @@ import {
   SettingsIcon,
 } from "@hinacode/icons"
 
-export interface SettingsPage {
+interface SettingsPage {
   readonly id: string
   readonly scope: "app" | "environment"
   readonly label: () => string
@@ -33,7 +33,7 @@ export interface SettingsPage {
   readonly fill?: boolean
 }
 
-export const settingsPages: ReadonlyArray<SettingsPage> = [
+const settingsPages: ReadonlyArray<SettingsPage> = [
   {
     id: "general",
     scope: "app",

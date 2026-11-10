@@ -18,7 +18,7 @@ const formats: Record<ExportFormat, { readonly extension: string; readonly name:
   "document-markdown": { extension: "md", name: "Markdown" },
 }
 
-export const exportFileName = (title: string, format: ExportFormat) =>
+const exportFileName = (title: string, format: ExportFormat) =>
   `${title.replace(/[\\/:*?"<>|\p{Cc}]+/gu, " ").trim() || "Artifact"}.${formats[format].extension}`
 
 const fetchText = async (url: string) => {

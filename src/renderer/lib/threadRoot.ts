@@ -5,7 +5,7 @@ import { type Thread, threadFolder } from "../../shared/domain.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { projectsAtom } from "./rpc.ts"
 
-export interface ThreadRoot {
+interface ThreadRoot {
   readonly path: string
   readonly worktreeId: string | null
 }

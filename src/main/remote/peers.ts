@@ -6,11 +6,11 @@ import { Environments } from "../services/Environments.ts"
 
 const ASK_TIMEOUT = "15 seconds"
 
-export interface PeerError {
+interface PeerError {
   readonly message: string
 }
 
-export type AskFrame = Extract<ServerFrame, { type: "ask" }>
+type AskFrame = Extract<ServerFrame, { type: "ask" }>
 
 export interface Hub {
   readonly answer: (id: number, envelope: RpcEnvelope<unknown>) => void

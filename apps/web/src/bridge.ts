@@ -11,7 +11,7 @@ import { type MachineLink, makeRoute } from "./route.ts"
 
 const encodePush = Schema.encodeSync(PushEvent)
 
-export const dialsFor = (pairing: RelayMachine["pairing"], secure: boolean): NonEmptyReadonlyArray<Dial> =>
+const dialsFor = (pairing: RelayMachine["pairing"], secure: boolean): NonEmptyReadonlyArray<Dial> =>
   secure ? [{ url: relayWebSocketUrl(pairing.relay), route: "relay", delayMs: 0 }] : dialPlan(pairing)
 
 export const connectMachines = ({

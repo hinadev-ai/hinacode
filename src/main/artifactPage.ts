@@ -3,7 +3,7 @@ import { BrowserWindow } from "electron"
 const SETTLE_MS = 1000
 const LOAD_TIMEOUT_MS = 15_000
 
-export interface ArtifactPageOptions {
+interface ArtifactPageOptions {
   readonly url: string
   readonly size?: { readonly width: number; readonly height: number }
   readonly onProblem?: (problem: unknown) => void

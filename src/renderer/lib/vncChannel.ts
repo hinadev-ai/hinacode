@@ -3,7 +3,7 @@ import { callPromise, onPushEvent } from "./rpc.ts"
 
 type ReadyState = "connecting" | "open" | "closing" | "closed"
 
-export interface VncCloseEvent {
+interface VncCloseEvent {
   readonly code: number
   readonly reason: string
   readonly wasClean: boolean

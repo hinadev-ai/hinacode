@@ -23,7 +23,7 @@ const imageTypes: Readonly<Record<string, string>> = {
 
 const markdownExtensions = new Set(["md", "markdown", "mdx"])
 
-export type PreviewKind = "image" | "markdown"
+type PreviewKind = "image" | "markdown"
 
 export const previewKind = (path: string): PreviewKind | null => {
   const extension = extensionOf(path)

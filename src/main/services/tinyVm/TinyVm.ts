@@ -57,7 +57,7 @@ export interface ScreenOwner {
   readonly once: (event: "destroyed", listener: () => void) => unknown
 }
 
-export interface VmExec {
+interface VmExec {
   readonly command: string
   readonly timeoutSeconds: number
   readonly background: boolean

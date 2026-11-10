@@ -105,7 +105,7 @@ const RUN_AGENT_WAIT = Duration.minutes(4)
 const PERSIST_BYTES_PER_SECOND = 256 * 1024
 const interruptedSend = () => new AgentError({ provider: "hinacode", message: "Message send interrupted" })
 
-export interface AgentRequest {
+interface AgentRequest {
   readonly provider: ProviderId
   readonly description: string
   readonly prompt: string
@@ -113,7 +113,7 @@ export interface AgentRequest {
   readonly effort?: string | undefined
 }
 
-export interface SendOptions {
+interface SendOptions {
   readonly workspace?: WorkspaceChoice | undefined
   readonly scheduledId?: string | undefined
 }
@@ -150,7 +150,7 @@ const nextDeadline = (thread: Thread) => earliest([resumeAt(thread), ...thread.s
 const bySendAt = (messages: ReadonlyArray<ScheduledMessage>) =>
   messages.toSorted((a, b) => Date.parse(a.sendAt) - Date.parse(b.sendAt))
 
-export interface ScheduleInput {
+interface ScheduleInput {
   readonly threadId: string
   readonly text: string
   readonly attachments: ReadonlyArray<Attachment>

@@ -16,12 +16,12 @@ export interface Budget {
   readonly suppressed: number
 }
 
-export const rollBudget = (budget: Budget, now: number) =>
+const rollBudget = (budget: Budget, now: number) =>
   now - budget.windowStart < BUDGET_WINDOW_MS
     ? { budget, suppressed: 0 }
     : { budget: { windowStart: now, reported: 0, suppressed: 0 }, suppressed: budget.suppressed }
 
-export const spendBudget = (budget: Budget) =>
+const spendBudget = (budget: Budget) =>
   budget.reported < BUDGET_BURST
     ? { budget: { ...budget, reported: budget.reported + 1 }, report: true }
     : { budget: { ...budget, suppressed: budget.suppressed + 1 }, report: false }
@@ -29,7 +29,7 @@ export const spendBudget = (budget: Budget) =>
 const describeSpan = (span: SlowSpan) =>
   `${span.name}${span.detail ? ` ${span.detail}` : ""} (${Math.round(span.ms)}ms)`
 
-export const stallMessage = (stallMs: number, slow: ReadonlyArray<SlowSpan>) => {
+const stallMessage = (stallMs: number, slow: ReadonlyArray<SlowSpan>) => {
   const named = slow
     .toSorted((a, b) => Math.abs(a.ms - stallMs) - Math.abs(b.ms - stallMs))
     .slice(0, NAMED_SPANS)

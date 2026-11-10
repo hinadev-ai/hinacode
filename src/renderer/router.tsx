@@ -15,7 +15,7 @@ const rootRoute = createRootRoute({ component: AppShell })
 
 const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: HomeRoute })
 
-export const threadRoute = createRoute({
+const threadRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/thread/$threadId",
   component: ThreadRoute,

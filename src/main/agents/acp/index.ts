@@ -35,7 +35,7 @@ import {
 } from "./protocol.ts"
 import { makeUpdateMapper, type UpdateMapper } from "./updates.ts"
 
-export interface AcpAgentConfig {
+interface AcpAgentConfig {
   readonly id: ProviderId
   readonly binary?: string
   readonly args: ReadonlyArray<string>

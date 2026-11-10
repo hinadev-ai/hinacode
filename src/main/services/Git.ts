@@ -111,7 +111,7 @@ export const parseRawWithPatch = (output: string): CommitDiff => {
 }
 
 const LOG_FIELDS = ["%H", "%P", "%an", "%ad", "%D", "%s"]
-export const LOG_FORMAT = LOG_FIELDS.join("%x00")
+const LOG_FORMAT = LOG_FIELDS.join("%x00")
 
 const parseRefs = (decorations: string) =>
   decorations === "" ? [] : decorations.split(", ").flatMap((ref) => ref.split(" -> "))

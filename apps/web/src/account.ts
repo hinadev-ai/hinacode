@@ -29,7 +29,7 @@ export const chosenRelay = () => sessionStorage.getItem(RELAY_KEY) ?? storedAcco
 
 export const chooseRelay = (serviceUrl: string) => sessionStorage.setItem(RELAY_KEY, serviceUrl)
 
-export type MachinesAnswer =
+type MachinesAnswer =
   | { readonly _tag: "machines"; readonly machines: ReadonlyArray<RelayMachine> }
   | { readonly _tag: "unauthorized" }
   | { readonly _tag: "unreachable" }
@@ -80,7 +80,7 @@ const readAnswer = async <A>(
 const decodeConfig = Schema.decodeUnknownOption(Schema.Struct({ clerkPublishableKey: Schema.String }))
 const decodeDevice = Schema.decodeUnknownOption(Schema.Struct({ credential: Schema.String }))
 
-export const fetchClerkKey = async (serviceUrl: string): Promise<Answer<string>> => {
+const fetchClerkKey = async (serviceUrl: string): Promise<Answer<string>> => {
   const config = await readAnswer(fetch(relayEndpoint(serviceUrl, "/v1/config")), decodeConfig)
   return config._tag === "ok" ? { _tag: "ok", value: config.value.clerkPublishableKey } : config
 }
@@ -95,7 +95,7 @@ const approveAnswer = (account: RelayAccount, answer: MachinesAnswer): Approval 
   return { _tag: "signedIn", account, machines: answer.machines }
 }
 
-export const createDevice = async (serviceUrl: string, sessionToken: string): Promise<Approval> => {
+const createDevice = async (serviceUrl: string, sessionToken: string): Promise<Approval> => {
   const device = await readAnswer(
     fetch(relayEndpoint(serviceUrl, "/v1/devices"), {
       method: "POST",

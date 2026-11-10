@@ -34,7 +34,7 @@ const SignInCode = Schema.Struct({
   name: Schema.String,
   expiresAt: Schema.Number,
 })
-export type SignInCode = typeof SignInCode.Type
+type SignInCode = typeof SignInCode.Type
 
 const HostOfUser = Schema.Struct({ id: Schema.String, userId: Schema.String })
 

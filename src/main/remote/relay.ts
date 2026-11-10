@@ -45,9 +45,9 @@ export const relayOrigin = ({ bindHost, port }: Pick<SettingsValue["remote"], "b
   return `http://${host.includes(":") ? `[${host}]` : host}:${port}`
 }
 
-export type CloudflaredLine = { readonly type: "connected" } | { readonly type: "error"; readonly message: string }
+type CloudflaredLine = { readonly type: "connected" } | { readonly type: "error"; readonly message: string }
 
-export const parseCloudflaredLine = (line: string): CloudflaredLine | null => {
+const parseCloudflaredLine = (line: string): CloudflaredLine | null => {
   if (line.includes("Registered tunnel connection")) return { type: "connected" }
   const at = line.indexOf(" ERR ")
   return at === -1 ? null : { type: "error", message: line.slice(at + 5).trim() }

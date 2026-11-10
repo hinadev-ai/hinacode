@@ -10,7 +10,7 @@ import { type PersistenceError, persistence } from "../services/errors.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { Settings } from "../services/Settings.ts"
 
-export const REMOTE_TOKEN_SECRET = "remote.token"
+const REMOTE_TOKEN_SECRET = "remote.token"
 const ENVIRONMENT_ID_KEY = "environment.id"
 
 export interface EnvironmentIdentity {

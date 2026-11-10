@@ -55,7 +55,7 @@ import * as Worktrees from "./services/Worktrees.ts"
 const routinesStub = Layer.succeed(Routines, {} as typeof Routines.Service)
 const updatesStub = Layer.succeed(Updates, unsupported("0.0.0"))
 
-export interface TestAppOptions {
+interface TestAppOptions {
   readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider | OpencodeProvider | MagpieProvider>
   readonly events?: Layer.Layer<Events | PushBroadcast | WindowPush>
 }

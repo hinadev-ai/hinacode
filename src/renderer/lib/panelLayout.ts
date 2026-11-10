@@ -20,7 +20,7 @@ export function getPanelLayout() {
   return "compact"
 }
 
-export const getSidePanelMaxWidth = () =>
+const getSidePanelMaxWidth = () =>
   Math.max(
     SIDE_PANEL_BOUNDS.min,
     Math.floor(Math.min(SIDE_PANEL_BOUNDS.max, window.innerWidth / 2, panelSpace(rootFontSize()))),
