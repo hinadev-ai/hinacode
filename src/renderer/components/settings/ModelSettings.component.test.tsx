@@ -10,6 +10,7 @@ import { ModelSettings } from "./ModelSettings.tsx"
 
 let stored: Settings = defaultSettings
 let sent: Array<Partial<Settings["providerEnabled"]>> = []
+let guideSent: Array<Partial<Settings["pullRequestGuide"]>> = []
 let releaseFirstSave: () => void = () => {}
 let codexAt: string | null = null
 
@@ -28,6 +29,7 @@ const bridge: HinacodeBridge = {
     if (method === "settings.set") {
       const patch = payload as SettingsPatch<Settings>
       if (patch.providerEnabled !== undefined) sent.push(patch.providerEnabled)
+      if (patch.pullRequestGuide !== undefined) guideSent.push(patch.pullRequestGuide)
       if (patch.providerBinary?.codex !== undefined) codexAt = patch.providerBinary.codex
       if (patch.providerEnabled !== undefined && sent.length === 1)
         await new Promise<void>((resolve) => (releaseFirstSave = resolve))
@@ -46,6 +48,7 @@ Object.defineProperty(window, "hinacode", { value: bridge })
 beforeEach(() => {
   stored = defaultSettings
   sent = []
+  guideSent = []
   codexAt = "/usr/bin/codex"
 })
 
@@ -86,4 +89,12 @@ test("turns off an agent whose CLI is missing until its path is set", async () =
 
   await expect.element(toggle).toBeChecked()
   expect(stored.providerBinary.codex).toBe("/opt/codex/bin/codex")
+})
+
+test("the pull request guide switch sends only whether it is on", async () => {
+  await renderSettings()
+  await page.getByRole("switch", { name: "Pull request guide" }).click()
+
+  await expect.poll(() => guideSent).toEqual([{ enabled: true }])
+  expect(stored.pullRequestGuide).toEqual({ ...defaultSettings.pullRequestGuide, enabled: true })
 })
