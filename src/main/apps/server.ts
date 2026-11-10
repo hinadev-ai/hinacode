@@ -266,6 +266,7 @@ const routes = Layer.effectDiscard(
           const verifier = randomToken()
           const nonce = randomToken()
           yield* forgetExpired(signIns, undefined)
+          for (const [earlier, entry] of signIns) if (entry.request === request) signIns.delete(earlier)
           signIns.set(nonce, { request, verifier, expiresAt: yield* later })
           const signIn = new URL("/sign-in", relay.serviceUrl)
           signIn.searchParams.set("redirect_uri", `${issuer}${SIGNED_IN_PATH}`)
