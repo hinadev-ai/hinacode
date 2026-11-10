@@ -53,27 +53,27 @@ const logFailure = (what: string) => (cause: unknown) => {
   return []
 }
 
-let lastThreads: { query: string; items: Promise<ReadonlyArray<ThreadSearchHit>> } | null = null
+let lastThreads: { query: string; items: Promise<ReadonlyArray<PaletteItem>> } | null = null
 let lastFiles: { key: string; items: Promise<ReadonlyArray<PaletteItem>> } | null = null
 
-const searchThreads = async (query: string): Promise<ReadonlyArray<ThreadSearchHit>> => {
+const searchThreads = async (query: string, ctx: PaletteContext): Promise<ReadonlyArray<PaletteItem>> => {
   await afterTypingPause()
   if (lastThreads?.query !== query) return []
-  return callPromise("search.threads", { query }).catch(logFailure("Search failed"))
+  return callPromise("search.threads", { query }).then(
+    (hits) => hits.map((hit) => threadItem(hit, query, ctx)),
+    logFailure("Search failed"),
+  )
 }
 
 export const threadSearchSource: PaletteSource = {
   group: "threads",
   items: (query, ctx) => {
-    if (query === "") return []
-    if (lastThreads?.query !== query) {
-      const request = { query, items: searchThreads(query) }
-      lastThreads = request
-      void request.items.then(() => {
-        if (lastThreads === request) lastThreads = null
-      })
+    if (query === "") {
+      lastThreads = null
+      return []
     }
-    return lastThreads.items.then((hits) => hits.map((hit) => threadItem(hit, query, ctx)))
+    if (lastThreads?.query !== query) lastThreads = { query, items: searchThreads(query, ctx) }
+    return lastThreads.items
   },
 }
 
@@ -97,15 +97,12 @@ const searchFiles = async (
 export const fileSearchSource: PaletteSource = {
   group: "files",
   items: (query, ctx) => {
-    if (query === "" || !ctx.threadId) return []
-    const key = `${ctx.threadId}\0${query}`
-    if (lastFiles?.key !== key) {
-      const request = { key, items: searchFiles(ctx, ctx.threadId, query, key) }
-      lastFiles = request
-      void request.items.then(() => {
-        if (lastFiles === request) lastFiles = null
-      })
+    if (query === "" || !ctx.threadId) {
+      lastFiles = null
+      return []
     }
+    const key = `${ctx.threadId}\0${query}`
+    if (lastFiles?.key !== key) lastFiles = { key, items: searchFiles(ctx, ctx.threadId, query, key) }
     return lastFiles.items
   },
 }
