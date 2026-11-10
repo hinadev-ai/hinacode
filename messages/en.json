@@ -1136,7 +1136,7 @@
   "apps_request_returns": "Returns to {host}",
   "apps_approve": "Approve",
   "apps_deny": "Deny",
-  "apps_copied_message": "Copied. Send it to {app}.",
+  "apps_copied_connector_url": "Copied the URL. In {app}, add a custom connector named HinaCode with it.",
   "apps_copied_url": "Copied the URL. Add it in {app} with OAuth.",
   "apps_copied_command": "Copied the command. Run it where {app} runs.",
   "apps_connected": "Connected {time}",

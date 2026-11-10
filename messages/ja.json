@@ -1127,7 +1127,7 @@
   "apps_request_returns": "戻り先: {host}",
   "apps_approve": "承認",
   "apps_deny": "拒否",
-  "apps_copied_message": "コピーしました。{app} に送信してください。",
+  "apps_copied_connector_url": "URL をコピーしました。{app} で HinaCode という名前のカスタムコネクタを追加し、URL を貼り付けてください。",
   "apps_copied_url": "URL をコピーしました。{app} で OAuth を選んで追加してください。",
   "apps_copied_command": "コマンドをコピーしました。{app} を動かしている場所で実行してください。",
   "apps_connected": "{time}に接続",

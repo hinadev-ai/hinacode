@@ -13,7 +13,7 @@ Running something inside the other app's sandbox does not work either. Those san
 
 1. The machine is linked to the relay (`2026-10-24-relay.md`). Settings > Connections > **Apps** shows a button per app (Grok Bot, Claude, ChatGPT, Hermes Agent) and the URL `https://<hostname>/mcp`.
 2. The developer clicks an app. HinaCode hands the URL over the way that app takes it and starts waiting for ten minutes:
-   - Grok Bot: copies `Add the MCP server <url> and connect it.` and opens `x.ai/bot`.
+   - Grok Bot: copies the URL and opens `x.ai/bot`, where the developer adds a custom connector with a name and the URL.
    - Claude: opens its Add custom connector form with the URL filled in.
    - ChatGPT: copies the URL and opens `chatgpt.com/plugins`.
    - Hermes Agent: copies `hermes mcp add hinacode --url <url> --auth oauth --connect-timeout 315`.
@@ -92,8 +92,8 @@ The app server is its own authorization server, as the MCP authorization spec ex
 | `GET /.well-known/oauth-protected-resource` (also `/mcp` suffixed) | Names the resource and the issuer                                                                                                                                            |
 | `GET /.well-known/oauth-authorization-server`                      | Endpoints, `S256`, `authorization_code`, public clients                                                                                                                      |
 | `POST /oauth/register`                                             | Dynamic client registration. The `client_id` is the client's name and redirect URIs, signed with a key from `Secrets`, so nothing is stored for a client that never finishes |
-| `GET /oauth/authorize`                                             | While waiting, records the request, shows it in Settings and redirects to `/oauth/wait`. Otherwise says to start in HinaCode                                                |
-| `GET /oauth/wait?request=`                                         | Waits for Approve or Deny, refreshing every two seconds, then redirects to the app with a code or `access_denied`                                                           |
+| `GET /oauth/authorize`                                             | While waiting, records the request, shows it in Settings and redirects to `/oauth/wait`. Otherwise says to start in HinaCode                                                 |
+| `GET /oauth/wait?request=`                                         | Waits for Approve or Deny, refreshing every two seconds, then redirects to the app with a code or `access_denied`                                                            |
 | `POST /oauth/token`                                                | Checks PKCE and the redirect URI, inserts the `app_connection`, returns the token                                                                                            |
 | `/mcp`                                                             | 401 with `WWW-Authenticate: Bearer resource_metadata=...` without a valid token                                                                                              |
 

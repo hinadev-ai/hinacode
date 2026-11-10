@@ -85,11 +85,11 @@ test("asks for the relay when this machine has no address", async () => {
   expect(page.getByRole("button", { name: "Grok Bot" }).query()).toBeNull()
 })
 
-test("choosing Grok Bot copies the message, opens Grok and waits for its sign-in", async () => {
+test("choosing Grok Bot copies the URL, opens Grok and waits for its sign-in", async () => {
   await renderSettings()
   await page.getByRole("button", { name: "Grok Bot" }).click()
   await expect.element(page.getByText("Waiting for the app to sign in.")).toBeVisible()
-  expect(copied).toEqual(["Add the MCP server https://0123456789abcdef.hinacode.app/mcp and connect it."])
+  expect(copied).toEqual([linked.url])
   expect(opened).toEqual(["https://x.ai/bot"])
 })
 

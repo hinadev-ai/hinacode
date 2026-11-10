@@ -1100,7 +1100,7 @@
   "apps_request_returns": "返回 {host}",
   "apps_approve": "核准",
   "apps_deny": "拒絕",
-  "apps_copied_message": "已複製，請傳送給 {app}。",
+  "apps_copied_connector_url": "已複製網址。請在 {app} 新增名為 HinaCode 的自訂連接器，並貼上網址。",
   "apps_copied_url": "已複製網址，請在 {app} 中以 OAuth 新增。",
   "apps_copied_command": "已複製指令，請在執行 {app} 的地方執行。",
   "apps_connected": "{time}連接",

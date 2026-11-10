@@ -87,7 +87,7 @@ const APPS: ReadonlyArray<ConnectableApp> = [
     name: "Grok Bot",
     icon: RiGrokAiFill,
     handoff: (url) => ({
-      copy: { text: `Add the MCP server ${url} and connect it.`, toast: m.apps_copied_message({ app: "Grok Bot" }) },
+      copy: { text: url, toast: m.apps_copied_connector_url({ app: "Grok Bot" }) },
       open: "https://x.ai/bot",
     }),
   },
