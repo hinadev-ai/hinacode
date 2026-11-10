@@ -1,8 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { createServer } from "node:http"
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer"
-import { Effect, Layer } from "effect"
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http"
+import { ByteSize, Effect, Layer } from "effect"
+import { HttpIncomingMessage, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http"
 import type { RoutineRun } from "../../../shared/domain.ts"
 
 export const hookPath = (routineId: string) => `/hooks/routines/${routineId}`
@@ -29,6 +29,8 @@ export interface WebhookHandlers {
   readonly deliver: (routineId: string, body: string | null, eventKey: string | null) => Effect.Effect<RoutineRun>
 }
 
+const MAX_BODY_BYTES = 1024 * 1024
+
 const json = (body: unknown, status: number) => HttpServerResponse.jsonUnsafe(body, { status })
 
 const firstHeader = (headers: Readonly<Record<string, string | undefined>>, names: ReadonlyArray<string>) =>
@@ -38,12 +40,13 @@ const handleHook = (handlers: WebhookHandlers) =>
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest
     const { id } = yield* HttpRouter.params
-    const raw = new Uint8Array(yield* request.arrayBuffer)
     const secret = yield* handlers.secret
+    if (secret === undefined) return json({ error: "unauthorized" }, 401)
+    if (Number(request.headers["content-length"]) > MAX_BODY_BYTES) return json({ error: "body_too_large" }, 413)
+    const raw = new Uint8Array(yield* request.arrayBuffer)
     const authorized =
-      secret !== undefined &&
-      (bearerMatches(secret, request.headers["authorization"]) ||
-        signatureMatches(secret, raw, firstHeader(request.headers, SIGNATURE_HEADERS)))
+      bearerMatches(secret, request.headers["authorization"]) ||
+      signatureMatches(secret, raw, firstHeader(request.headers, SIGNATURE_HEADERS))
     if (!authorized) return json({ error: "unauthorized" }, 401)
 
     const enabled = id === undefined ? undefined : yield* handlers.enabled(id)
@@ -64,7 +67,10 @@ const handleHook = (handlers: WebhookHandlers) =>
       case "failed":
         return json({ runId: run.id, error: run.error }, 500)
     }
-  }).pipe(Effect.catchTag("HttpServerError", () => Effect.succeed(json({ error: "unreadable_body" }, 400))))
+  }).pipe(
+    Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(MAX_BODY_BYTES)),
+    Effect.catchTag("HttpServerError", () => Effect.succeed(json({ error: "unreadable_body" }, 400))),
+  )
 
 export const webhookServer = (address: { readonly host: string; readonly port: number }, handlers: WebhookHandlers) =>
   HttpRouter.serve(HttpRouter.add("POST", "/hooks/routines/:id", handleHook(handlers)), {
