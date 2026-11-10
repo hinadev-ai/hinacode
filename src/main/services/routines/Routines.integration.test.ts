@@ -372,6 +372,21 @@ const post = (port: number, id: string, init: { body?: string; headers?: Record<
 const sign = (secret: string, body: string) => `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`
 
 describe("routine webhook", () => {
+  it.live("refuses a body over 1 MB without starting a run", () =>
+    withApp(({ projectId, port }) =>
+      Effect.gen(function* () {
+        const routine = yield* createRoutine(projectId, { schedule: null })
+        const { secret } = yield* Routines.use((routines) => routines.rotateWebhookSecret)
+        const oversized = yield* post(port, routine.id, {
+          body: "x".repeat(1024 * 1024 + 1),
+          headers: { authorization: `Bearer ${secret}` },
+        })
+        expect(oversized.status).toBe(413)
+        expect(yield* Routines.use((routines) => routines.runs(routine.id, 10))).toHaveLength(0)
+      }),
+    ),
+  )
+
   it.live("authenticates with a bearer secret or an HMAC and appends the body to the prompt", () =>
     withApp(({ projectId, port }) =>
       Effect.gen(function* () {
