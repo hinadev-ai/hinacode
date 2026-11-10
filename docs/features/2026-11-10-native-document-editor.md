@@ -24,14 +24,14 @@ Tiptap has no native runtime, and a WebView editor costs 0.9 to 9 s before it is
 
 The phone runs the desktop's model. `prosemirror-model`, `-transform`, `-state`, `-history`, `-commands`, `-schema-list` and `-tables` run on Hermes without a DOM, and so do `@tiptap/core`'s `getSchema` and `@tiptap/markdown`'s `MarkdownManager`. Only `prosemirror-view` needs a DOM, and the phone never creates one. The probe in `.context/probe/hermes-probe.ts` ran on the release Hermes VM (`hermes-ios-260318099.0.4`, macOS framework, Mac CPU).
 
-| Measurement on Hermes                     | 2 KB    | 30 KB   | 300 KB                    |
-| ----------------------------------------- | ------- | ------- | ------------------------- |
-| Schema and Markdown setup                 | 8 ms    |         |                           |
-| Markdown to JSON, tokenizers guarded, unchunked | 2 ms    | 32 ms   | 1200 ms                   |
-| JSON to `Node`, with `check()`            | 2 ms    | 7 ms    | 64 ms                     |
-| `insertText`, one character, p50 / p95    | 0.04 ms | 0.07 ms | 0.39 / 0.49 ms            |
-| `toggleMark`, `splitBlock`                | 1, 2 ms | 0.3, 0.1 ms | 2, 4 ms               |
-| Model to Markdown                         | 6 ms    | 18 ms   | 166 ms                    |
+| Measurement on Hermes                           | 2 KB    | 30 KB       | 300 KB         |
+| ----------------------------------------------- | ------- | ----------- | -------------- |
+| Schema and Markdown setup                       | 8 ms    |             |                |
+| Markdown to JSON, tokenizers guarded, unchunked | 2 ms    | 32 ms       | 1200 ms        |
+| JSON to `Node`, with `check()`                  | 2 ms    | 7 ms        | 64 ms          |
+| `insertText`, one character, p50 / p95          | 0.04 ms | 0.07 ms     | 0.39 / 0.49 ms |
+| `toggleMark`, `splitBlock`                      | 1, 2 ms | 0.3, 0.1 ms | 2, 4 ms        |
+| Model to Markdown                               | 6 ms    | 18 ms       | 166 ms         |
 
 `undo`, `redo`, `splitListItem` and `addRowAfter` ran and gave valid documents. So the phone shares the schema, the commands and the Markdown serializer with the desktop, and behavior cannot drift between two implementations. The hand written Markdown parser from the first plan is not needed and will not be built. `prosemirror-kotlin` and a hand written native model stay unbuilt unless the typing prototype (below) shows the JS model is too slow.
 
@@ -57,7 +57,9 @@ Chunks also give the first screen early and make updates cheap (see Live updates
 
 ### Raw HTML
 
-Without `window.DOMParser`, `@tiptap/markdown` keeps raw HTML as literal text. The desktop converts the tags its schema knows (for example `<em>`, `<br>`). Left alone, the same file would parse into different trees on the two apps, and a phone save could rewrite HTML the desktop had turned into marks. Checkpoint 3 settles this by measurement: a small DOM parser shim on Hermes (`linkedom` or `htmlparser2` with a `DOMParser` facade) if it costs under 50 KB of bytecode and passes the HTML fixtures, otherwise literal HTML on both apps. Either way both apps run one rule.
+Without `window.DOMParser`, `@tiptap/markdown` keeps raw HTML as literal text, and the desktop converts the tags its schema knows (`<em>` to italic, `<br>` to a hard break, comments and unknown wrappers dropped). Literal text is not a safe fallback. Serializing it escapes the tags, so a phone save would write `<em>` back as `&lt;em&gt;` and damage the file for the desktop. So the phone parses HTML the way the desktop does.
+
+The phone gives `@tiptap/markdown` a `DOMParser` backed by `linkedom`. linkedom's own `DOMParser` returns an empty body for a fragment, so the facade wraps the fragment in a full document before parsing. On Hermes the four HTML fixtures then give the desktop's tree. linkedom is large: the minified parser bundle grows from 500 KB to 950 KB (158 KB to 299 KB gzipped) and its Hermes bytecode from 0.95 MB to 1.6 MB. It loads lazily, the first time a document holds an `html` token, so a document without raw HTML pays nothing. The 50 KB budget in the first draft assumed a hand-rolled shim. ProseMirror's `DOMParser` walks a real DOM API, so a smaller facade over `htmlparser2` would reimplement most of linkedom.
 
 ### Rendering by block
 
@@ -165,7 +167,11 @@ type DocumentEditorProps = {
   readonly onBlur?: () => void
   readonly onLinkPress?: (href: string) => void
   readonly onContentSizeChange?: (size: { readonly height: number }) => void
-  readonly onError?: (error: { readonly kind: "unsupported" | "image"; readonly message: string; readonly at?: number }) => void
+  readonly onError?: (error: {
+    readonly kind: "unsupported" | "image"
+    readonly message: string
+    readonly at?: number
+  }) => void
   readonly onReady?: (ready: { readonly capabilities: ReadonlyArray<Capability> }) => void
 }
 
@@ -184,14 +190,14 @@ type DocumentEditorHandle = {
 
 The props and the handle are the same wherever the model lives. What crosses the bridge differs.
 
-| Model in JS (chosen, pending the typing prototype)                                                     | Model in native code (fallback)                                    |
-| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| Down, on open: render blocks for the first screen, then the rest in chunks                             | Down, on open: the parsed tree as JSON, once                       |
-| Up, per keystroke: `{ block, eventCount, from, to, text, selection }`, about 100 bytes                  | Up, per keystroke: `{ blocks changed, edits }`                     |
-| Down, per keystroke: nothing, unless the model changed the text the view shows                         | Down, per keystroke: nothing                                       |
-| Down, per structural edit or update: a patch `{ eventCount, remove, insert: RenderBlock[] }` per range | Down, per command: the command name and args                       |
-| Commands run in JS on the model                                                                        | Commands run in native code                                        |
-| `getMarkdown` serializes in JS                                                                         | `getMarkdown` asks native for JSON, then serializes in JS          |
+| Model in JS (chosen, pending the typing prototype)                                                     | Model in native code (fallback)                           |
+| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| Down, on open: render blocks for the first screen, then the rest in chunks                             | Down, on open: the parsed tree as JSON, once              |
+| Up, per keystroke: `{ block, eventCount, from, to, text, selection }`, about 100 bytes                 | Up, per keystroke: `{ blocks changed, edits }`            |
+| Down, per keystroke: nothing, unless the model changed the text the view shows                         | Down, per keystroke: nothing                              |
+| Down, per structural edit or update: a patch `{ eventCount, remove, insert: RenderBlock[] }` per range | Down, per command: the command name and args              |
+| Commands run in JS on the model                                                                        | Commands run in native code                               |
+| `getMarkdown` serializes in JS                                                                         | `getMarkdown` asks native for JSON, then serializes in JS |
 
 The budget for the chosen shape: under 1 KB and 1 ms of bridge time per typed character, and a patch proportional to the changed blocks for a structural edit or an `artifact.updated`. Patches go down as one view function call carrying JSON. A synchronous or shared-object path is used only if the measurement shows the async one is too slow.
 
@@ -220,7 +226,7 @@ Collaboration and creating comments. Comment highlights get a prop so they can b
 
 ## Verification
 
-- Conformance in `pnpm test`. For every fixture in `src/shared/documentFixtures/`, Markdown to tree equals the desktop editor's `getJSON()`, tree to Markdown equals its `getMarkdown()`, and chunked parsing equals whole parsing. Command cases apply the same commands on a desktop `Editor` and on the shared model and compare trees. The desktop side runs in the existing Chromium component test runner.
+- Conformance in `pnpm test`. For every fixture in `src/shared/document/fixtures/`, Markdown to tree equals the desktop editor's `getJSON()`, tree to Markdown equals its `getMarkdown()`, and chunked parsing equals whole parsing. Command cases apply the same commands on a desktop `Editor` and on the shared model and compare trees. The desktop side runs in the existing Chromium component test runner.
 - The fixtures cover every node and mark, deep nesting, the `@tiptap/markdown` round trip gaps (#8136, #8478, #8341, #8182, #8472, #8286, #8637), CJK, RTL, emoji and surrogate pairs, long unbroken strings, wide tables, an invalid chart, an unknown fence language, raw HTML, an empty document and a 300 KB document.
 - A property test feeds random strings and random Markdown fragments to the parser. It never throws and always yields a document that passes `check()`.
 - Native, per block type, screenshots from the iOS simulator and the Android emulator next to the desktop rendering of the same fixture. A tree with an unknown node renders the fallback block.
@@ -231,20 +237,20 @@ Collaboration and creating comments. Comment highlights get a prop so they can b
 
 The baseline is the current screen (`document-segments.ts` and `react-native-enriched-markdown`), Release builds with the perf harness, at `cc4adf6d`. iOS ran on an iPhone 17 Pro Max simulator (iOS 27.0), and Android on an API 36 arm64 emulator, both on one Apple silicon Mac mini. Each value is a median over 3 runs, with 9 samples per open and 3 per large-document pass. The one-minute load average stayed between 2.9 and 9. These are relative numbers. A simulator runs on the Mac's CPU, and an emulator adds its own overhead.
 
-| Measurement                                  | iOS before        | iOS after | Android before     | Android after |
-| -------------------------------------------- | ----------------- | --------- | ------------------ | ------------- |
-| Open small (2 KB), first content             | 89 ms             |           | 81 ms              |               |
-| Open medium (30 KB), first content           | 92 ms             |           | 89 ms              |               |
-| Open large (300 KB), first content           | 180 ms            |           | 745 ms             |               |
-| Open, interactive (S / M / L)                | 700 / 776 / 759 ms |          | 315 / 493 / 746 ms |               |
-| Parse in JS (S / M / L)                      | 1 / 14 / 106 ms   |           | 1 / 13 / 230 ms    |               |
-| Handoff to native                            | not separable     |           | not separable      |               |
-| Longest commit opening large                 | 90 ms             |           | 405 ms             |               |
-| Memory after opening large                   | 356 MB footprint  |           | 259 MB PSS         |               |
-| Fling through large, native frame p95 / max  | 16.7 / 38.9 ms    |           | 33.3 / 66.7 ms     |               |
-| Fling, native frames over 32 ms              | 6                 |           | 55                 |               |
-| Fling, `gfxinfo` janky frames / p99          | not available     |           | 72 / 73 ms         |               |
-| One paragraph changed by `artifact.updated`  | 203 ms            |           | 494 ms             |               |
+| Measurement                                 | iOS before         | iOS after | Android before     | Android after |
+| ------------------------------------------- | ------------------ | --------- | ------------------ | ------------- |
+| Open small (2 KB), first content            | 89 ms              |           | 81 ms              |               |
+| Open medium (30 KB), first content          | 92 ms              |           | 89 ms              |               |
+| Open large (300 KB), first content          | 180 ms             |           | 745 ms             |               |
+| Open, interactive (S / M / L)               | 700 / 776 / 759 ms |           | 315 / 493 / 746 ms |               |
+| Parse in JS (S / M / L)                     | 1 / 14 / 106 ms    |           | 1 / 13 / 230 ms    |               |
+| Handoff to native                           | not separable      |           | not separable      |               |
+| Longest commit opening large                | 90 ms              |           | 405 ms             |               |
+| Memory after opening large                  | 356 MB footprint   |           | 259 MB PSS         |               |
+| Fling through large, native frame p95 / max | 16.7 / 38.9 ms     |           | 33.3 / 66.7 ms     |               |
+| Fling, native frames over 32 ms             | 6                  |           | 55                 |               |
+| Fling, `gfxinfo` janky frames / p99         | not available      |           | 72 / 73 ms         |               |
+| One paragraph changed by `artifact.updated` | 203 ms             |           | 494 ms             |               |
 
 How to read it:
 
