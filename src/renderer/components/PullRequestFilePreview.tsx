@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import type { PullRequestFile } from "../../shared/domain.ts"
+import { extensionOf } from "../../shared/media.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { pullRequestFileContentAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
@@ -21,8 +22,6 @@ const imageTypes: Readonly<Record<string, string>> = {
 }
 
 const markdownExtensions = new Set(["md", "markdown", "mdx"])
-
-const extensionOf = (path: string) => path.slice(path.lastIndexOf(".") + 1).toLowerCase()
 
 export type PreviewKind = "image" | "markdown"
 

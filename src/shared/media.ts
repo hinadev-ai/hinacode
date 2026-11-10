@@ -35,7 +35,11 @@ const assetMimes: Readonly<Record<string, string>> = {
   otf: "font/otf",
 }
 
-export const extensionOf = (name: string) => name.slice(name.lastIndexOf(".") + 1).toLowerCase()
+export const extensionOf = (path: string) => {
+  const name = path.slice(path.lastIndexOf("/") + 1)
+  const dot = name.lastIndexOf(".")
+  return dot === -1 ? "" : name.slice(dot + 1).toLowerCase()
+}
 
 export const previewMimeOf = (name: string): string | undefined => previewMimes[extensionOf(name)]
 
