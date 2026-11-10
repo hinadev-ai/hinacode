@@ -144,104 +144,89 @@ Selection that spans blocks is the risk in a view-per-block design. Checkpoint 8
 
 ### Saving
 
-The saved format stays Markdown. The pure part of `documentSync.ts` (revisions, edit counts, the 500 ms debounce, conflict, Keep mine, Use theirs, catching up on `artifact.updated` only when clean) moves to `src/shared/documentSync.ts`, parameterized by `getMarkdown` and an rpc caller. Both apps run that one implementation. Serializing happens on the save debounce only and is measured. Opening a document never saves it. Only an edit makes it dirty.
+The saved format stays Markdown. The pure part of the desktop's save logic (revisions, edit counts, the 500 ms debounce, conflict, Keep mine, Use theirs, catching up on `artifact.updated` only when clean) lives in `src/shared/document/sync.ts`. It takes the rpc calls, the editor and the error formatter as functions, and the desktop's `documentSync.ts` is a thin adapter over it. The phone uses the same module. Serializing happens on the save debounce only. Opening a document never saves it. Only an edit makes it dirty.
 
 ### Live updates
 
-A push of `artifact.updated` for a clean document re-reads it. The new Markdown is split into chunks, chunks with the same text as before reuse their parsed nodes, and only changed chunks are parsed. The new document is diffed against the shown one by top-level node, and native code gets a patch for the changed blocks only. Cost follows the size of the change, apart from one linear string comparison.
+A push of `artifact.updated` for a clean document re-reads it. The new Markdown is split into chunks, chunks with the same text as before reuse their parsed nodes, and top-level nodes equal to the shown ones keep their identity, so their blocks keep their ids. Native code gets a patch for the changed blocks only.
+
+An edit works the same way. After any transaction the session finds the runs of top-level nodes that changed by object identity, re-renders only those runs, and shifts the positions after them. A keystroke in the middle of the 300 KB document sends one patch that replaces one block. Tiptap's trailing-node plugin appends an empty paragraph after the first transaction, as it does on the desktop, and that arrives as its own one-block patch.
 
 ### The bridge: `DocumentEditor`
 
-`packages/document-view` is an Expo module with the same layout as `packages/composer-editor`. It exports one component, `DocumentEditor`, and its types. `document.tsx` uses nothing else, and no screen calls the native module directly. The contract is written first, in `packages/document-view/src/types.ts`, and the JS half decodes everything that crosses the bridge with Effect Schema.
+`packages/document-view` is an Expo module with the same layout as `packages/composer-editor`. It exports one component, `DocumentEditor`, its types and the action registry. `document.tsx` uses nothing else, and no screen calls the native module directly. Everything native code sends is decoded with Effect Schema (`src/events.ts`) before it reaches the session.
 
 ```ts
-type Result<E extends string = string> = { readonly ok: true } | { readonly ok: false; readonly reason: E }
-
-type BlockType =
-  | { readonly type: "paragraph" }
-  | { readonly type: "heading"; readonly level: 1 | 2 | 3 }
-  | { readonly type: "codeBlock"; readonly language: string }
-  | { readonly type: "callout"; readonly tone: CalloutTone }
-  | { readonly type: "blockquote" }
-
-type MarkName = "bold" | "italic" | "strike" | "code" | "link"
-
-type EditorSelection =
-  | { readonly type: "text"; readonly anchor: number; readonly head: number }
-  | { readonly type: "node"; readonly at: number }
-  | { readonly type: "all" }
-
-type SelectionChange = {
-  readonly selection: EditorSelection
-  readonly marks: ReadonlyArray<MarkName>
-  readonly block: BlockType["type"] | "listItem" | "taskItem" | "tableCell" | "chart" | "diagram" | "image"
-  readonly can: Readonly<Record<DocumentCommand, boolean>>
-}
-
 type DocumentEditorProps = {
-  readonly document: DocumentContent
-  readonly editable: boolean
+  readonly document: { readonly revision: number; readonly markdown: string }
   readonly theme: DocumentTheme
-  readonly resolveImage: (path: `images/${string}`) => Promise<string>
-  readonly highlights?: ReadonlyArray<{ readonly id: string; readonly from: number; readonly to: number }>
+  readonly resolveImage: (path: string) => Promise<string>
+  readonly highlightCode?: (code: string, language: string) => ReadonlyArray<CodeToken>
+  readonly editable?: boolean
   readonly contentInset?: { readonly top: number; readonly bottom: number }
-  readonly onChange?: (change: { readonly edits: number; readonly blocks: ReadonlyArray<BlockId> }) => void
-  readonly onSelectionChange?: (change: SelectionChange) => void
+  readonly onChange?: () => void
+  readonly onSelectionChange?: (selection: SelectionState) => void
   readonly onFocus?: () => void
   readonly onBlur?: () => void
   readonly onLinkPress?: (href: string) => void
   readonly onContentSizeChange?: (size: { readonly height: number }) => void
-  readonly onError?: (error: {
-    readonly kind: "unsupported" | "image"
-    readonly message: string
-    readonly at?: number
-  }) => void
+  readonly onError?: (error: { readonly kind: "unsupported" | "image" | "lossy"; readonly message: string }) => void
   readonly onReady?: (ready: { readonly capabilities: ReadonlyArray<Capability> }) => void
+  readonly onLoaded?: (loaded: { readonly blocks: number }) => void
 }
 
 type DocumentEditorHandle = {
-  focus(at?: number): Promise<Result>
-  blur(): Promise<Result>
-  run(command: DocumentCommand, args?: CommandArgs): Promise<Result<"not-applicable" | "unsupported">>
-  undo(): Promise<Result<"empty">>
-  redo(): Promise<Result<"empty">>
-  getMarkdown(): Promise<string>
-  scrollTo(at: number): Promise<Result>
+  readonly getMarkdown: () => string
+  readonly run: (action: DocumentAction) => Promise<Result<"not-applicable" | "not-loaded">>
+  readonly focus: () => Promise<Result<"not-loaded">>
+  readonly blur: () => Promise<Result<"not-loaded">>
+  readonly scrollTo: (position: number) => Promise<Result<"not-loaded">>
+}
+
+type SelectionState = {
+  readonly active: ReadonlyArray<DocumentActionType>
+  readonly available: ReadonlyArray<DocumentActionType>
+  readonly heading: 1 | 2 | 3 | 4 | 5 | 6 | null
+  readonly href: string | null
+  readonly empty: boolean
 }
 ```
 
-`DocumentCommand` is one list, `toggleBold` through `deleteTableColumn`, with `insertImage` and `setLink` taking arguments. `onChange` says which blocks changed and how many edits there have been, never the document. The screen saves through the shared sync with `getMarkdown`. A command that cannot run returns a reason and never throws across the bridge. A capability one platform lacks is missing from `onReady`'s list, and its command returns `unsupported`.
+`DocumentAction` (`src/actions.ts`) is a union of the desktop toolbar's actions: the four marks, `setLink`, `toggleHeading` with a level, the three lists, quote, callout and its tone, code block, list nesting, table insert and delete, add row or column after, delete row or column, `insertImage`, `undo` and `redo`. One registry maps each action to the desktop's Tiptap command chain and to its active test. `SelectionState` is what a toolbar needs to draw: the active actions, the actions the selection allows (dry runs through `editor.can()`), the heading level and the link under the caret. `onChange` says only that the document changed. The screen saves through the shared sync with `getMarkdown`. An action that cannot run returns a reason and never throws across the bridge. A capability one platform lacks is missing from `onReady`'s list.
 
-The props and the handle are the same wherever the model lives. What crosses the bridge differs.
+The model lives in JS (see Editing), so this is what crosses the bridge:
 
-| Model in JS (chosen, pending the typing prototype)                                                     | Model in native code (fallback)                           |
-| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| Down, on open: render blocks for the first screen, then the rest in chunks                             | Down, on open: the parsed tree as JSON, once              |
-| Up, per keystroke: `{ block, eventCount, from, to, text, selection }`, about 100 bytes                 | Up, per keystroke: `{ blocks changed, edits }`            |
-| Down, per keystroke: nothing, unless the model changed the text the view shows                         | Down, per keystroke: nothing                              |
-| Down, per structural edit or update: a patch `{ eventCount, remove, insert: RenderBlock[] }` per range | Down, per command: the command name and args              |
-| Commands run in JS on the model                                                                        | Commands run in native code                               |
-| `getMarkdown` serializes in JS                                                                         | `getMarkdown` asks native for JSON, then serializes in JS |
+| Direction | When                                            | Payload                                                                               |
+| --------- | ----------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Down      | Open                                            | Render blocks for the first screen, then the rest as append patches                   |
+| Up        | Each typed character                            | `edit { eventCount, block, cell, from, to, text }` in UTF-16 offsets, about 100 bytes |
+| Down      | Each typed character                            | One patch replacing the edited block, carrying the event count                        |
+| Up        | Caret move                                      | `select { anchor, head }`, each a `{ block, cell, offset }` point                     |
+| Up        | Enter, Backspace or Delete at a block edge, Tab | `key { eventCount, key, shift }`                                                      |
+| Down      | Structural key, action, `artifact.updated`      | Patches for the changed blocks, plus the new caret as a `selection`                   |
 
-The budget for the chosen shape: under 1 KB and 1 ms of bridge time per typed character, and a patch proportional to the changed blocks for a structural edit or an `artifact.updated`. Patches go down as one view function call carrying JSON. A synchronous or shared-object path is used only if the measurement shows the async one is too slow.
+Stale patches cannot undo typing. Every native edit raises the view's event count, and every patch carries the latest count JS has applied. While a block is focused, the view applies a patch for it only when the patch's count is at least its own and no composition is active. If the patch's text equals what the view shows, the view keeps its text and caret and only takes the new id and styling. The budget is under 1 KB and 1 ms of bridge time per typed character. A synchronous or shared-object path is used only if a measurement shows the async one is too slow.
 
-The names of commands, events and capabilities live in one file, `packages/document-view/src/protocol.ts`. A generator writes `ios/Protocol.swift` and `android/.../Protocol.kt` from it, and a test fails when the generated files are stale, so a platform cannot miss a case. A web file (`DocumentEditor.web.tsx`) renders the document read-only so the Expo web build compiles.
+The names of block kinds, containers, marks, path operations, events, view functions and capabilities live in one file, `packages/document-view/src/protocol.ts`. `pnpm --dir packages/document-view protocol` writes `ios/Protocol.swift` and `android/.../Protocol.kt` from it, and `protocol.test.ts` fails when the generated files are stale. Native code switches over the generated enums, so a new kind fails to compile until both platforms handle it. `DocumentEditor.web.tsx` renders the document read-only so the Expo web build compiles.
 
 ```tsx
 const editor = useRef<DocumentEditorHandle>(null)
-const sync = useDocumentSync({ id, loaded, getMarkdown: () => editor.current!.getMarkdown() })
+const [selection, setSelection] = useState<SelectionState | null>(null)
 
 <DocumentEditor
   ref={editor}
-  document={sync.document}
-  editable={connected}
-  theme={documentTheme(scheme)}
-  resolveImage={(path) => call("artifacts.file", { id, path }).then(({ dataUrl }) => dataUrl)}
+  document={document}
+  editable={connected && !lossy}
+  theme={documentTheme(theme, scheme)}
+  highlightCode={highlighter(scheme)}
+  resolveImage={async (path) => (await call("artifacts.file", { id, path })).dataUrl}
   contentInset={{ top: 0, bottom: keyboardHeight + TOOLBAR_HEIGHT }}
   onChange={sync.edited}
-  onSelectionChange={setToolbarState}
-  onLinkPress={openHttpLink}
+  onSelectionChange={setSelection}
+  onLinkPress={openWebUrl}
 />
+
+editor.current?.run({ type: "toggleHeading", level: 2 })
 ```
 
 ## Out of scope
