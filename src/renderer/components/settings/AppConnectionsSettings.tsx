@@ -25,13 +25,22 @@ export function AppConnectionsSettings() {
         {m.apps_title()}
       </h3>
       {AsyncResult.builder(status)
-        .onSuccess((value) =>
-          value.url === null ? (
-            <p className="text-sm text-muted-foreground">{m.apps_needs_relay()}</p>
-          ) : (
-            <AppConnectionsDetails url={value.url} status={value} />
-          ),
-        )
+        .onSuccess(({ url, approvalCode, connections }) => (
+          <div className="flex flex-col gap-4">
+            {url === null ? (
+              <p className="text-sm text-muted-foreground">{m.apps_needs_relay()}</p>
+            ) : (
+              <Endpoint url={url} approvalCode={approvalCode} />
+            )}
+            {connections.length > 0 && (
+              <ul className="flex flex-col divide-y divide-border">
+                {connections.map((connection) => (
+                  <ConnectionRow key={connection.id} connection={connection} />
+                ))}
+              </ul>
+            )}
+          </div>
+        ))
         .onError((cause) => <FieldError>{errorMessage(cause)}</FieldError>)
         .orElse(() => null)}
     </section>
@@ -53,12 +62,11 @@ function useAppConnectionsAction() {
   return { error, run }
 }
 
-function AppConnectionsDetails({ url, status }: { url: string; status: AppConnectionsStatus }) {
+function Endpoint({ url, approvalCode }: Pick<AppConnectionsStatus, "approvalCode"> & { url: string }) {
   const { error, run } = useAppConnectionsAction()
-  const { approvalCode, connections } = status
 
   return (
-    <div className="flex flex-col gap-4">
+    <>
       <Field className="min-w-0">
         <FieldLabel htmlFor="apps-url">{m.apps_url_label()}</FieldLabel>
         <CopyField id="apps-url" value={url} copyLabel={m.apps_url_copy()} />
@@ -76,14 +84,7 @@ function AppConnectionsDetails({ url, status }: { url: string; status: AppConnec
         </Button>
         {error && <FieldError>{error}</FieldError>}
       </div>
-      {connections.length > 0 && (
-        <ul className="flex flex-col divide-y divide-border">
-          {connections.map((connection) => (
-            <ConnectionRow key={connection.id} connection={connection} />
-          ))}
-        </ul>
-      )}
-    </div>
+    </>
   )
 }
 
