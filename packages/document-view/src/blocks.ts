@@ -9,13 +9,14 @@ export type Run = {
   readonly marks: number
   readonly href?: string
   readonly image?: string
+  readonly alt?: string
 }
 
 export type Container =
   | { readonly kind: "bullet"; readonly first: boolean }
   | { readonly kind: "ordered"; readonly number: number; readonly first: boolean }
   | { readonly kind: "task"; readonly checked: boolean; readonly first: boolean }
-  | { readonly kind: "quote" }
+  | { readonly kind: "quote"; readonly first: boolean; readonly last: boolean }
   | { readonly kind: "callout"; readonly tone: CalloutTone; readonly first: boolean; readonly last: boolean }
 
 export type CodeToken = readonly [start: number, end: number, color: string]

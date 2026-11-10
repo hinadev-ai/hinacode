@@ -23,13 +23,17 @@ const hrefOf = (marks: ReadonlyArray<Mark>) => {
   return typeof link?.attrs["href"] === "string" ? link.attrs["href"] : undefined
 }
 
-const runOf = (text: string, marks: ReadonlyArray<Mark>, image?: string): Run => {
+const runOf = (
+  text: string,
+  marks: ReadonlyArray<Mark>,
+  image?: { readonly src: string; readonly alt: string },
+): Run => {
   const href = hrefOf(marks)
   return {
     text,
     marks: markBits(marks),
     ...(href === undefined ? {} : { href }),
-    ...(image === undefined ? {} : { image }),
+    ...(image === undefined ? {} : { image: image.src, alt: image.alt }),
   }
 }
 
@@ -38,7 +42,10 @@ export const inlineRuns = (textblock: Node): Run[] => {
   textblock.forEach((child) => {
     if (child.isText) runs.push(runOf(child.text ?? "", child.marks))
     else if (child.type.name === "hardBreak") runs.push({ text: "\n", marks: 0 })
-    else if (child.type.name === "image") runs.push(runOf("￼", child.marks, String(child.attrs["src"] ?? "")))
+    else if (child.type.name === "image")
+      runs.push(
+        runOf("￼", child.marks, { src: String(child.attrs["src"] ?? ""), alt: String(child.attrs["alt"] ?? "") }),
+      )
     else runs.push(runOf(child.textContent || "￼", child.marks))
   })
   return runs
@@ -162,7 +169,7 @@ const signature = (container: Container) => {
     case "task":
       return `${container.first ? "t" : "T"}${container.checked ? 1 : 0}`
     case "quote":
-      return "q"
+      return `q${container.first ? 1 : 0}${container.last ? 1 : 0}`
     case "callout":
       return `c${container.tone}${container.first ? 1 : 0}${container.last ? 1 : 0}`
   }
@@ -202,7 +209,7 @@ const itemContainer = (list: Node, item: Node, index: number): Container => {
 const quoteContainer = (node: Node): Container =>
   node.type.name === "callout"
     ? { kind: "callout", tone: calloutTone(node.attrs["tone"]), first: true, last: false }
-    : { kind: "quote" }
+    : { kind: "quote", first: true, last: false }
 
 export function renderNodes(
   nodes: ReadonlyArray<Node>,
@@ -214,10 +221,7 @@ export function renderNodes(
   let topIndex = top
 
   const emit = (node: Node, pos: number) => {
-    const containers = frames.map(({ container, emitted }): Container => {
-      if (container.kind === "quote") return container
-      return { ...container, first: emitted === 0 }
-    })
+    const containers = frames.map(({ container, emitted }): Container => ({ ...container, first: emitted === 0 }))
     const body = bodyOf(node, decorate)
     const id = blockId(node, body, containers)
     for (const frame of frames) {
@@ -228,11 +232,13 @@ export function renderNodes(
     sources.push({ node, pos, top: topIndex, owners: frames.map((frame) => frame.owner) })
   }
 
-  const markCalloutEnd = (frame: Frame, depth: number) => {
+  const markEnclosureEnd = (frame: Frame, depth: number) => {
     const last = blocks[frame.lastIndex]
-    if (frame.container.kind !== "callout" || last === undefined) return
+    if ((frame.container.kind !== "callout" && frame.container.kind !== "quote") || last === undefined) return
     const containers = last.containers.map((container, at) =>
-      at === depth && container.kind === "callout" ? { ...container, last: true } : container,
+      at === depth && (container.kind === "callout" || container.kind === "quote")
+        ? { ...container, last: true }
+        : container,
     )
     blocks[frame.lastIndex] = { ...last, id: `${last.id}~${depth}`, containers } as RenderBlock
   }
@@ -242,7 +248,7 @@ export function renderNodes(
     frames.push(frame)
     owner.forEach((child, offset) => walk(child, pos + 1 + offset))
     frames.pop()
-    markCalloutEnd(frame, frames.length)
+    markEnclosureEnd(frame, frames.length)
   }
 
   const walk = (node: Node, pos: number) => {

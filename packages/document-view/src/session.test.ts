@@ -245,3 +245,12 @@ test("typing inside a table cell edits that cell", () => {
   session.edit({ eventCount: 1, block: table, cell: [1, 1], from: 3, to: 3, text: "!" })
   expect(session.markdown()).toContain("| one | two! |")
 })
+
+test("two quotes in a row stay two quotes", () => {
+  const { blocks } = renderBlocks(parseDocument("> one\n>\n> two\n\n> three").doc)
+  expect(blocks.map((block) => block.containers)).toEqual([
+    [{ kind: "quote", first: true, last: false }],
+    [{ kind: "quote", first: false, last: true }],
+    [{ kind: "quote", first: true, last: true }],
+  ])
+})
