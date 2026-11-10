@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import { beforeEach, expect, onTestFinished, test } from "vitest"
 import { page, userEvent } from "vitest/browser"
 import { toast } from "sonner"
-import { render } from "vitest-browser-react"
+import { cleanup, render } from "vitest-browser-react"
 import type { Artifact, ArtifactComment, ArtifactFeedback, DocumentSaveResult } from "../../../shared/artifact.ts"
 import { type HinacodeBridge, type PushEvent, RpcMethods } from "../../../shared/contract.ts"
 import { defaultClientSettings, type Thread } from "../../../shared/domain.ts"
@@ -50,6 +50,7 @@ const documentAt = (version: number, revision = version): Artifact => ({
 
 let stored = { version: 1, revision: 1, markdown: AGENT_MARKDOWN }
 let nextSave: DocumentSaveResult | undefined
+let saveReleased: Promise<void> = Promise.resolve()
 let saves: Array<{ baseRevision: number; markdown: string }> = []
 let storedImages: Array<string> = []
 let fileReads: Array<{ id: string; path: string }> = []
@@ -73,6 +74,7 @@ const bridge: HinacodeBridge = {
     if (method === "artifacts.readDocument") return { result: stored }
     if (method === "artifacts.saveDocument") {
       const save = payload as { baseRevision: number; markdown: string }
+      await saveReleased
       saves.push(save)
       if (nextSave !== undefined) return { result: nextSave }
       stored = { version: 2, revision: stored.revision + 1, markdown: save.markdown }
@@ -150,6 +152,7 @@ beforeEach(({ task }) => {
   renames = []
   stored = { version: 1, revision: 1, markdown: AGENT_MARKDOWN }
   nextSave = undefined
+  saveReleased = Promise.resolve()
   saves = []
   storedImages = []
   fileReads = []
@@ -360,6 +363,28 @@ test("offers to keep the developer's edits or take the agent's when a save confl
   await alert.getByRole("button", { name: "Use theirs" }).click()
   await expect.element(editor.getByText("The agent's version.")).toBeInTheDocument()
   await expect.element(alert).not.toBeInTheDocument()
+})
+
+test("saves the edits of a document closed again while its first close is still saving", async () => {
+  let releaseSave: () => void = () => {}
+  saveReleased = new Promise((resolve) => {
+    releaseSave = resolve
+  })
+  await openDocument()
+  await typeAtEnd(" First.")
+  await cleanup()
+
+  await openDocument()
+  await typeAtEnd(" Second.")
+  const secondEditor = document.querySelector(".hina-document")!
+  expect(secondEditor).toHaveProperty("editor")
+  await cleanup()
+  await expect.poll(() => "editor" in secondEditor).toBe(false)
+  releaseSave()
+
+  await expect.poll(() => saves.length).toBe(2)
+  expect(saves[1]?.baseRevision).toBe(2)
+  expect(saves[1]?.markdown).toContain("Ship the **editor** first. First. Second.")
 })
 
 test("comments on the selected text with its quote and context, then highlights it", async () => {
