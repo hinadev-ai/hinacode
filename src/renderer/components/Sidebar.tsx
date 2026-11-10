@@ -1,7 +1,8 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { cn } from "../lib/utils.ts"
 import { listMotionPausedWhile } from "../lib/listMotion.ts"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
-import { useRouter, useNavigate } from "@tanstack/react-router"
+import { Link, useRouter, useNavigate } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react"
@@ -58,6 +59,7 @@ import { ProjectIcon } from "./ProjectIcon.tsx"
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  BoltIcon,
   ChatIcon,
   ChevronDownIcon,
   ChevronRightIcon,
@@ -143,7 +145,12 @@ export function Sidebar({
           : "relative flex min-h-0 flex-1 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground glass:bg-sidebar/(--glass-chrome-alpha)"
       }
     >
-      <Tabs value={tab} onValueChange={(value: SidebarTab) => setTab(value)} className="min-h-0 flex-1 flex-col gap-2">
+      <Tabs
+        orientation="vertical"
+        value={tab}
+        onValueChange={(value: SidebarTab) => setTab(value)}
+        className="min-h-0 flex-1 flex-col gap-2"
+      >
         <div className="flex flex-col gap-1 px-2 pt-1">
           <div className="flex items-center gap-0.5">
             <div className="group/search flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md ps-2.5 pe-1 text-sidebar-foreground focus-within:bg-sidebar-row-hover hover:bg-sidebar-row-hover">
@@ -160,13 +167,19 @@ export function Sidebar({
             </div>
             <ComposeButton />
           </div>
-          <TabsList
-            aria-label={m.sidebar_views()}
-            className="h-8 w-full items-stretch gap-1 bg-transparent p-0 *:data-[slot=tabs-indicator]:hidden"
-          >
-            <InboxTabTrigger />
-            <SidebarTabTrigger value="threads" icon={ChatIcon} label={m.sidebar_tab_threads()} />
-          </TabsList>
+          <div className="flex flex-col gap-0.5">
+            <TabsList
+              aria-label={m.sidebar_views()}
+              className="w-full flex-col items-stretch gap-0.5 bg-transparent p-0 *:data-[slot=tabs-indicator]:hidden"
+            >
+              <InboxTabTrigger />
+              <SidebarTabTrigger value="threads" icon={ChatIcon} label={m.sidebar_tab_threads()} />
+            </TabsList>
+            <Link to="/settings" search={{ page: "routines" }} className={cn(sidebarTabClass, "flex items-center")}>
+              <BoltIcon aria-hidden className="shrink-0" />
+              <span className="truncate">{m.settings_routines()}</span>
+            </Link>
+          </div>
         </div>
         <ScrollArea
           className="min-h-0 flex-1"
@@ -352,6 +365,9 @@ function InboxTabTrigger() {
   return <SidebarTabTrigger value="inbox" icon={RiInbox2Line} label={m.sidebar_tab_inbox()} count={count} />
 }
 
+const sidebarTabClass =
+  "h-8 w-full min-w-0 flex-none justify-start gap-2 rounded-md border-0 px-2.5 text-sm font-normal text-sidebar-meta outline-none hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring dark:text-sidebar-meta data-active:bg-sidebar-row-selected data-active:font-medium data-active:text-sidebar-foreground dark:data-active:text-sidebar-foreground"
+
 function SidebarTabTrigger({
   value,
   icon: Icon,
@@ -366,7 +382,7 @@ function SidebarTabTrigger({
   return (
     <TabsTrigger
       value={value}
-      className="h-8 min-w-0 flex-1 justify-start gap-2 rounded-md border-0 px-2.5 text-sm font-normal text-sidebar-meta hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring dark:text-sidebar-meta data-active:bg-sidebar-row-selected data-active:font-medium data-active:text-sidebar-foreground dark:data-active:text-sidebar-foreground"
+      className={sidebarTabClass}
     >
       <Icon aria-hidden />
       {label}
