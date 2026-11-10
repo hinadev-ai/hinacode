@@ -13,8 +13,8 @@ Running something inside the other app's sandbox does not work either. Those san
 
 1. The machine is linked to the relay (`2026-10-24-relay.md`). Settings > Connections > **Apps** shows the URL `https://<hostname>/mcp`, a **Copy URL** button and one line: copy the URL, add it to your app as a custom MCP connector, then approve the request here.
 2. **Copy URL** copies it and makes HinaCode wait ten minutes for an app to sign in. The developer adds it in Grok Bot, Claude, ChatGPT or any app that takes a remote MCP server with OAuth.
-3. The app registers and sends the developer's browser to the authorize page, which the developer's own machine serves through the tunnel. The page says to approve in HinaCode and refreshes every two seconds.
-4. Settings shows `<app> wants to connect` with the host it returns to, and **Approve** and **Deny**.
+3. The app registers and sends the developer's browser to the authorize page, which the developer's own machine serves through the tunnel. It names the app, lists what approving lets it do, and offers **Sign in to approve**.
+4. The developer either signs in on the relay, which returns to the page with Approve and Deny and "Signed in as <email>", or answers `<app> wants to connect` in Settings. The page refreshes every two seconds until one of them answers.
 5. After Approve, the page redirects to the app's callback with an authorization code. The app exchanges it, and appears in the list with when it was last used. Remove ends its access at once.
 6. The app can now list projects and threads, read a thread, start one, send to one and stop one.
 
@@ -88,12 +88,16 @@ The app server is its own authorization server, as the MCP authorization spec ex
 | `GET /.well-known/oauth-authorization-server`                      | Endpoints, `S256`, `authorization_code`, public clients                                                                                                                      |
 | `POST /oauth/register`                                             | Dynamic client registration. The `client_id` is the client's name and redirect URIs, signed with a key from `Secrets`, so nothing is stored for a client that never finishes |
 | `GET /oauth/authorize`                                             | While waiting, records the request, shows it in Settings and redirects to `/oauth/wait`. Otherwise says to start in HinaCode                                                 |
+| `GET /oauth/sign-in?request=`                                      | Sets a sign-in cookie and sends the browser to the relay's `/sign-in` with a PKCE challenge and `redirect_uri=https://<hostname>/oauth/signed-in`                            |
+| `GET /oauth/signed-in?code=`                                       | Redeems the code with the relay using the machine's host credential, then sets an owner cookie bound to the request                                                          |
+| `POST /oauth/answer`                                               | Approve or Deny from the page, accepted only with that owner cookie                                                                                                          |
 | `GET /oauth/wait?request=`                                         | Waits for Approve or Deny, refreshing every two seconds, then redirects to the app with a code or `access_denied`                                                            |
 | `POST /oauth/token`                                                | Checks PKCE and the redirect URI, inserts the `app_connection`, returns the token                                                                                            |
 | `/mcp`                                                             | 401 with `WWW-Authenticate: Bearer resource_metadata=...` without a valid token                                                                                              |
 
 - PKCE with `S256` is required. Redirect URIs must be https, or http on loopback.
 - An authorization code lives 60 seconds and works once.
+- Cookies are `HttpOnly; Secure; SameSite=Lax; Path=/oauth`, live ten minutes, and the owner cookie answers only its own request. The relay never turns these codes into device credentials.
 - Choosing an app waits ten minutes. At most five requests wait at once. Approving one ends the wait and turns the others away.
 - Access tokens do not expire. Remove in Settings is the way to end one. There are no refresh tokens.
 - A registered redirect URI must match exactly, except the port of a loopback one.

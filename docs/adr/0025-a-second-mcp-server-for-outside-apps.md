@@ -15,7 +15,7 @@ One server with two kinds of credential would keep one listener, but every tool 
 
 Outside apps get their own MCP server with its own tool list and its own OAuth authorization server, in `src/main/apps/`. The thread server stays on loopback, unchanged. The remote listener forwards plain HTTP on the relay hostname to the app server, and the app server answers 404 until the developer copies the URL from Settings or has a connected app.
 
-The developer starts a connection by choosing the app in Settings and approves the request in HinaCode itself. The page the other app opens only waits for that answer, so nothing typed into a browser can approve a connection. Access tokens are stored hashed, do not expire, and end when the developer removes the connection.
+The developer starts a connection with Copy URL in Settings and approves the request in HinaCode, or on the page the other app opens after signing in to the relay. The page is public, so its Approve button appears only to a browser that just signed in as the account this machine is linked to. The relay sends that sign-in's code only to `https://<one of the account's machines>/oauth/signed-in`, and only that machine can redeem it, with its host credential. The code never becomes a device credential, and the machine keeps the answer in an HttpOnly cookie bound to that one request. Access tokens are stored hashed, do not expire, and end when the developer removes the connection.
 
 ## Consequences
 
@@ -24,4 +24,5 @@ The developer starts a connection by choosing the app in Settings and approves t
 - Anyone who reaches the hostname in the ten minutes after the developer copies the URL can put a request in front of them. Approve shows the app's name and the host it returns to, at most five requests wait, and nothing is exposed while HinaCode is not waiting.
 - A leaked token works until removed. Expiry with refresh tokens is the next step if connections turn out to be long-lived and forgotten.
 - The MCP transport keeps a session until the client ends it or HinaCode restarts. Only a connected app can open one, and a request body is capped at 1 MB, so a client that reconnects without closing costs a little memory per session. Expiry belongs in the transport.
+- Approving on the page needs the relay to be up, the same as the URL.
 - A machine without a relay cannot use this. A second ingress path or another tunnel provider would need the issuer to stop being the relay hostname.
