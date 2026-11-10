@@ -1,0 +1,580 @@
+import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
+import { request as httpRequest } from "node:http"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { Effect, Layer, ManagedRuntime, Stream } from "effect"
+import { describe, expect, test, vi } from "vitest"
+import { WebSocket } from "ws"
+import { type AgentEvent, unlistedModel } from "../../shared/agent.ts"
+import { defaultSettings } from "../../shared/domain.ts"
+import { ClaudeProvider } from "../agents/claude/index.ts"
+import { CodexProvider } from "../agents/codex/index.ts"
+import { MagpieProvider } from "../agents/magpie/index.ts"
+import { MuseProvider } from "../agents/muse/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
+import type { AgentProvider } from "../agents/provider.ts"
+import { seedThread } from "../db/testing.ts"
+import { RemoteAccess } from "../remote/access.ts"
+import { unusedLoopbackPort } from "../remote/testing.ts"
+import { Settings } from "../services/Settings.ts"
+import { Threads } from "../services/Threads.ts"
+import { makeTestAppLayer } from "../testing.ts"
+import { AppConnections } from "./AppConnections.ts"
+
+vi.mock("electron", () => ({
+  Notification: EventTarget,
+  app: { getPath: () => "", focus: () => {} },
+  ipcMain: { handle: () => {} },
+  BrowserWindow: { getAllWindows: () => [], fromWebContents: () => null },
+  dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
+  shell: { showItemInFolder: () => undefined },
+  safeStorage: { isEncryptionAvailable: () => false },
+}))
+
+const HOSTNAME = "desk.relay.example"
+const ISSUER = `https://${HOSTNAME}`
+const REDIRECT = "https://chat.example/callback"
+const VERIFIER = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
+const CHALLENGE = createHash("sha256").update(VERIFIER).digest("base64url")
+const TOOLS = [
+  "create_thread",
+  "list_projects",
+  "list_threads",
+  "read_thread",
+  "search_threads",
+  "send_to_thread",
+  "stop_thread",
+]
+const EVERY_PATH = [
+  "/",
+  "/mcp",
+  "/.well-known/oauth-protected-resource",
+  "/.well-known/oauth-protected-resource/mcp",
+  "/.well-known/oauth-authorization-server",
+  "/oauth/register",
+  "/oauth/authorize",
+  "/oauth/token",
+]
+
+const replyingProvider = (id: AgentProvider["id"]): AgentProvider => ({
+  id,
+  listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
+  account: () => Effect.succeed({ type: "signedOut" }),
+  planLimits: () => Effect.succeed(null),
+  usage: () => Effect.succeed(null),
+  listCommands: () => Effect.succeed([]),
+  runTurn: (input) =>
+    Stream.fromIterable<AgentEvent>([
+      { type: "text_delta", text: `Done: ${input.prompt}` },
+      { type: "turn_completed" },
+    ]),
+  steer: () => Effect.void,
+  interrupt: () => Effect.void,
+  respondApproval: () => Effect.succeed(false),
+  respondQuestion: () => Effect.void,
+  setAccessMode: () => Effect.void,
+})
+
+const providers = Layer.mergeAll(
+  Layer.succeed(ClaudeProvider, replyingProvider("claude")),
+  Layer.succeed(CodexProvider, replyingProvider("codex")),
+  Layer.succeed(MuseProvider, replyingProvider("muse")),
+  Layer.succeed(OpencodeProvider, replyingProvider("opencode")),
+  Layer.succeed(MagpieProvider, replyingProvider("magpie")),
+)
+
+const makeApp = (dbPath: string) => makeTestAppLayer(dbPath, { providers })
+
+interface App {
+  readonly runtime: ManagedRuntime.ManagedRuntime<Layer.Success<ReturnType<typeof makeApp>>, unknown>
+  readonly origin: string
+  readonly repo: string
+}
+
+const linkRelay = ({ runtime }: App, hostname: string | null = HOSTNAME) =>
+  runtime.runPromise(
+    RemoteAccess.use((access) =>
+      access.report({ relay: hostname === null ? { state: "off" } : { state: "connected", hostname } }),
+    ),
+  )
+
+const withApp = async (use: (app: App) => Promise<void>) => {
+  const dir = mkdtempSync(join(tmpdir(), "kk-apps-server-"))
+  const repo = join(dir, "repo")
+  mkdirSync(repo)
+  execFileSync("git", ["init", "-q", "-b", "main", repo])
+  const runtime = ManagedRuntime.make(makeApp(join(dir, "hinacode.sqlite")))
+  try {
+    const port = await runtime.runPromise(AppConnections.use((connections) => Effect.sync(() => connections.port())))
+    const app = { runtime, origin: `http://127.0.0.1:${port}`, repo }
+    await linkRelay(app)
+    await use(app)
+  } finally {
+    await runtime.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+const status = ({ runtime }: App) => runtime.runPromise(AppConnections.use((connections) => connections.status))
+
+const newApprovalCode = async ({ runtime }: App) => {
+  const { approvalCode } = await runtime.runPromise(AppConnections.use((connections) => connections.newApprovalCode))
+  return approvalCode!.code
+}
+
+const get = ({ origin }: App, path: string, params: Record<string, string> = {}) =>
+  fetch(`${origin}${path}?${new URLSearchParams(params)}`, { redirect: "manual" })
+
+const postForm = ({ origin }: App, path: string, form: Record<string, string>) =>
+  fetch(`${origin}${path}`, { method: "POST", body: new URLSearchParams(form), redirect: "manual" })
+
+const register = async ({ origin }: App, metadata: object = { client_name: "Chat app", redirect_uris: [REDIRECT] }) =>
+  fetch(`${origin}/oauth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(metadata),
+  })
+
+const registered = async (app: App, metadata?: object) => {
+  const { client_id: clientId } = (await (await register(app, metadata)).json()) as { client_id: string }
+  return clientId
+}
+
+const authorization = (clientId: string, overrides: Record<string, string> = {}) => ({
+  response_type: "code",
+  client_id: clientId,
+  redirect_uri: REDIRECT,
+  code_challenge: CHALLENGE,
+  code_challenge_method: "S256",
+  state: "state-1",
+  resource: `${ISSUER}/mcp`,
+  ...overrides,
+})
+
+const decide = (app: App, clientId: string, approvalCode: string, decision = "approve") =>
+  postForm(app, "/oauth/authorize", { ...authorization(clientId), decision, approval_code: approvalCode })
+
+const authorizationCode = async (app: App, clientId: string, approvalCode?: string) => {
+  const approved = await decide(app, clientId, approvalCode ?? (await newApprovalCode(app)))
+  return new URL(approved.headers.get("location")!).searchParams.get("code")!
+}
+
+const exchange = (app: App, clientId: string, code: string, overrides: Record<string, string> = {}) =>
+  postForm(app, "/oauth/token", {
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: REDIRECT,
+    client_id: clientId,
+    code_verifier: VERIFIER,
+    ...overrides,
+  })
+
+const connect = async (app: App) => {
+  const approvalCode = await newApprovalCode(app)
+  const clientId = await registered(app)
+  const answer = await exchange(app, clientId, await authorizationCode(app, clientId, approvalCode))
+  return ((await answer.json()) as { access_token: string }).access_token
+}
+
+const initialize = (token?: string) => ({
+  method: "POST",
+  headers: {
+    "content-type": "application/json",
+    accept: "application/json, text/event-stream",
+    ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+  },
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0" } },
+  }),
+})
+
+const withMcp = async <A>({ origin }: App, token: string, use: (client: Client) => Promise<A>) => {
+  const client = new Client({ name: "test", version: "0" })
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`${origin}/mcp`), {
+      requestInit: { headers: { authorization: `Bearer ${token}` } },
+    }),
+  )
+  try {
+    return await use(client)
+  } finally {
+    await client.close()
+  }
+}
+
+const call = async (client: Client, name: string, args: Record<string, unknown> = {}) => {
+  const result = await client.callTool({ name, arguments: args })
+  const content = result.content as Array<{ text?: string }>
+  return { text: content.map((part) => part.text ?? "").join(""), isError: result.isError === true }
+}
+
+const statuses = async (app: App) => {
+  const answers = await Promise.all(EVERY_PATH.map((path) => get(app, path)))
+  return answers.map((answer) => answer.status)
+}
+
+describe("app server", () => {
+  test("an app registers, is approved, gets a token and drives threads", () =>
+    withApp(async (app) => {
+      const approvalCode = await newApprovalCode(app)
+
+      for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"]) {
+        expect(await (await get(app, path)).json()).toMatchObject({
+          resource: `${ISSUER}/mcp`,
+          authorization_servers: [ISSUER],
+        })
+      }
+      expect(await (await get(app, "/.well-known/oauth-authorization-server")).json()).toMatchObject({
+        issuer: ISSUER,
+        authorization_endpoint: `${ISSUER}/oauth/authorize`,
+        token_endpoint: `${ISSUER}/oauth/token`,
+        registration_endpoint: `${ISSUER}/oauth/register`,
+        code_challenge_methods_supported: ["S256"],
+        grant_types_supported: ["authorization_code"],
+        token_endpoint_auth_methods_supported: ["none"],
+      })
+
+      const registration = await register(app, { client_name: "Chat <b>app</b>", redirect_uris: [REDIRECT] })
+      expect(registration.status).toBe(201)
+      const { client_id: clientId } = (await registration.json()) as { client_id: string }
+
+      const page = await get(app, "/oauth/authorize", authorization(clientId))
+      expect(page.status).toBe(200)
+      expect(page.headers.get("x-frame-options")).toBe("DENY")
+      expect(page.headers.get("content-security-policy")).toContain("default-src 'none'")
+      const html = await page.text()
+      expect(html).toContain("Chat &#60;b&#62;app&#60;/b&#62;")
+      expect(html).not.toContain("<b>app</b>")
+      expect(html).toContain("chat.example")
+      expect(html).toContain("run code on this machine")
+      expect(html).not.toMatch(/<script|src=|href=/)
+
+      const approved = await decide(app, clientId, approvalCode)
+      expect(approved.status).toBe(302)
+      const back = new URL(approved.headers.get("location")!)
+      expect(`${back.origin}${back.pathname}`).toBe(REDIRECT)
+      expect(back.searchParams.get("state")).toBe("state-1")
+      expect((await status(app)).approvalCode).toBeNull()
+
+      const answer = await exchange(app, clientId, back.searchParams.get("code")!, { resource: `${ISSUER}/mcp` })
+      expect(answer.status).toBe(200)
+      expect(answer.headers.get("cache-control")).toBe("no-store")
+      const token = (await answer.json()) as { access_token: string }
+      expect(token).toEqual({ access_token: token.access_token, token_type: "Bearer", scope: "hinacode" })
+
+      const [connection] = (await status(app)).connections
+      expect(connection).toMatchObject({ name: "Chat <b>app</b>", lastUsedAt: null })
+
+      const { projectId, threadId: seededThread } = await app.runtime.runPromise(seedThread({ rootPath: app.repo }))
+      await withMcp(app, token.access_token, async (client) => {
+        expect((await client.listTools()).tools.map((tool) => tool.name).toSorted()).toEqual(TOOLS)
+
+        expect(JSON.parse((await call(client, "list_projects")).text)).toEqual([
+          { id: projectId, name: "demo", path: app.repo },
+        ])
+
+        const created = await call(client, "create_thread", {
+          projectId,
+          title: "From the chat app",
+          prompt: "ship it",
+          provider: "claude",
+          model: "claude-model",
+        })
+        expect(created).toEqual({
+          text: expect.stringMatching(/^Created thread \S+ "From the chat app" and sent it the prompt\.$/),
+          isError: false,
+        })
+        const threadId = /^Created thread (\S+)/.exec(created.text)![1]!
+        const thread = await app.runtime.runPromise(Threads.use((threads) => threads.get(threadId)))
+        expect(thread).toMatchObject({ projectId, createdBy: `app:${connection!.id}`, provider: "claude" })
+
+        await vi.waitFor(async () => {
+          const read = await call(client, "read_thread", { threadId })
+          expect(read.text).toContain("ship it")
+          expect(read.text).toContain("Done: ship it")
+          expect(read.text).toContain(`created_by: app:${connection!.id}`)
+        })
+
+        const listed = JSON.parse((await call(client, "list_threads", { projectId })).text) as Array<{ id: string }>
+        expect(listed.map((row) => row.id).toSorted()).toEqual([seededThread, threadId].toSorted())
+        expect((await call(client, "list_threads", { projectId: "missing" })).isError).toBe(true)
+      })
+      expect((await status(app)).connections[0]?.lastUsedAt).not.toBeNull()
+    }))
+
+  test("create_thread falls back to the developer's default agent and model", () =>
+    withApp(async (app) => {
+      const token = await connect(app)
+      const { projectId } = await app.runtime.runPromise(seedThread({ rootPath: app.repo }))
+      await app.runtime.runPromise(
+        Settings.use((settings) =>
+          settings.set({
+            defaultProvider: "codex",
+            defaultModel: { ...defaultSettings.defaultModel, codex: "gpt-default" },
+          }),
+        ),
+      )
+      await withMcp(app, token, async (client) => {
+        const created = await call(client, "create_thread", { projectId, title: "Defaults", prompt: "go" })
+        expect(created.isError).toBe(false)
+        const threadId = /^Created thread (\S+)/.exec(created.text)![1]!
+        expect(await app.runtime.runPromise(Threads.use((threads) => threads.get(threadId)))).toMatchObject({
+          provider: "codex",
+          model: "gpt-default",
+        })
+      })
+    }))
+
+  test("a wrong approval code shows the page again and the right one still works", () =>
+    withApp(async (app) => {
+      const approvalCode = await newApprovalCode(app)
+      const clientId = await registered(app)
+
+      const refused = await decide(app, clientId, "WRONGWRONG")
+      expect(refused.status).toBe(200)
+      expect(refused.headers.get("location")).toBeNull()
+      expect(await refused.text()).toContain("That code is not right")
+      expect((await status(app)).approvalCode?.code).toBe(approvalCode)
+
+      expect((await decide(app, clientId, approvalCode)).status).toBe(302)
+    }))
+
+  test("five wrong approval codes throw the code away", () =>
+    withApp(async (app) => {
+      const approvalCode = await newApprovalCode(app)
+      const clientId = await registered(app)
+
+      for (let tries = 1; tries <= 4; tries++) {
+        expect(await (await decide(app, clientId, "WRONGWRONG")).text()).toContain("That code is not right")
+      }
+      const last = await decide(app, clientId, "WRONGWRONG")
+      expect(await last.text()).toContain("No approval code is live")
+      expect((await status(app)).approvalCode).toBeNull()
+
+      expect((await decide(app, clientId, approvalCode)).status).toBe(404)
+      expect((await status(app)).connections).toEqual([])
+    }))
+
+  test("denying sends the app back without a code", () =>
+    withApp(async (app) => {
+      const approvalCode = await newApprovalCode(app)
+      const clientId = await registered(app)
+      const denied = await decide(app, clientId, approvalCode, "deny")
+      expect(denied.status).toBe(302)
+      const back = new URL(denied.headers.get("location")!)
+      expect(back.searchParams.get("error")).toBe("access_denied")
+      expect(back.searchParams.get("state")).toBe("state-1")
+      expect(back.searchParams.has("code")).toBe(false)
+      expect((await status(app)).approvalCode?.code).toBe(approvalCode)
+    }))
+
+  test("an authorization code is exchanged once", () =>
+    withApp(async (app) => {
+      const approvalCode = await newApprovalCode(app)
+      const clientId = await registered(app)
+      const code = await authorizationCode(app, clientId, approvalCode)
+      expect((await exchange(app, clientId, code)).status).toBe(200)
+
+      const reused = await exchange(app, clientId, code)
+      expect(reused.status).toBe(400)
+      expect(await reused.json()).toMatchObject({ error: "invalid_grant" })
+      expect((await status(app)).connections).toHaveLength(1)
+    }))
+
+  test("a token needs the PKCE verifier, the client and the redirect URI the code was issued for", () =>
+    withApp(async (app) => {
+      await connect(app)
+      const clientId = await registered(app)
+      const otherClient = await registered(app, { client_name: "Other", redirect_uris: [REDIRECT] })
+      const refusals: ReadonlyArray<Record<string, string>> = [
+        { code_verifier: VERIFIER.split("").toReversed().join("") },
+        { client_id: otherClient },
+        { redirect_uri: "https://chat.example/elsewhere" },
+      ]
+      for (const overrides of refusals) {
+        const refused = await exchange(app, clientId, await authorizationCode(app, clientId), overrides)
+        expect(refused.status).toBe(400)
+        expect(await refused.json()).toMatchObject({ error: "invalid_grant" })
+      }
+
+      const wrongResource = await exchange(app, clientId, await authorizationCode(app, clientId), {
+        resource: "https://elsewhere.example/mcp",
+      })
+      expect(await wrongResource.json()).toMatchObject({ error: "invalid_target" })
+
+      const forged = await exchange(app, `${clientId}x`, await authorizationCode(app, clientId))
+      expect(forged.status).toBe(400)
+      expect(await forged.json()).toMatchObject({ error: "invalid_client" })
+
+      const short = await exchange(app, clientId, await authorizationCode(app, clientId), { code_verifier: "short" })
+      expect(await short.json()).toMatchObject({ error: "invalid_request" })
+
+      expect((await status(app)).connections).toHaveLength(1)
+    }))
+
+  test("the approval page only opens for a registered client and redirect URI", () =>
+    withApp(async (app) => {
+      await newApprovalCode(app)
+      const clientId = await registered(app)
+      const requests = [
+        authorization(clientId, { redirect_uri: "https://evil.example/callback" }),
+        authorization(`${clientId}x`),
+        authorization(clientId, { redirect_uri: `${REDIRECT}/more` }),
+      ]
+      for (const params of requests) {
+        const refused = await get(app, "/oauth/authorize", params)
+        expect(refused.status).toBe(400)
+        expect(refused.headers.get("location")).toBeNull()
+        expect(await refused.text()).toContain("This link does not work")
+      }
+      const posted = await postForm(app, "/oauth/authorize", {
+        ...authorization(clientId, { redirect_uri: "https://evil.example/callback" }),
+        decision: "approve",
+        approval_code: "WRONGWRONG",
+      })
+      expect(posted.status).toBe(400)
+      expect((await decide(app, clientId, "WRONGWRONG")).status).toBe(200)
+
+      const withoutPkce = await get(
+        app,
+        "/oauth/authorize",
+        authorization(clientId, { code_challenge_method: "plain" }),
+      )
+      expect(withoutPkce.status).toBe(302)
+      expect(new URL(withoutPkce.headers.get("location")!).searchParams.get("error")).toBe("invalid_request")
+
+      const loopback = await registered(app, { redirect_uris: ["http://127.0.0.1:1234/callback"] })
+      const anyPort = authorization(loopback, { redirect_uri: "http://127.0.0.1:5678/callback" })
+      expect((await get(app, "/oauth/authorize", anyPort)).status).toBe(200)
+    }))
+
+  test("registration refuses redirect URIs that are not https or loopback", () =>
+    withApp(async (app) => {
+      await newApprovalCode(app)
+      const refusals = [
+        [{ redirect_uris: ["http://chat.example/callback"] }, "invalid_redirect_uri"],
+        [{ redirect_uris: ["javascript:alert(1)"] }, "invalid_redirect_uri"],
+        [{ redirect_uris: [] }, "invalid_redirect_uri"],
+        [{ redirect_uris: Array.from({ length: 6 }, (_, index) => `${REDIRECT}/${index}`) }, "invalid_client_metadata"],
+        [{ client_name: "n".repeat(101), redirect_uris: [REDIRECT] }, "invalid_client_metadata"],
+        [{ client_name: "No redirects" }, "invalid_client_metadata"],
+      ] as const
+      for (const [metadata, error] of refusals) {
+        const refused = await register(app, metadata)
+        expect(refused.status).toBe(400)
+        expect(await refused.json()).toMatchObject({ error })
+      }
+    }))
+
+  test("a removed connection is refused while the others keep working", () =>
+    withApp(async (app) => {
+      const removed = await connect(app)
+      const kept = await connect(app)
+      const [first] = (await status(app)).connections
+      await app.runtime.runPromise(AppConnections.use((connections) => connections.remove(first!.id)))
+
+      const refused = await fetch(`${app.origin}/mcp`, initialize(removed))
+      expect(refused.status).toBe(401)
+      expect(refused.headers.get("www-authenticate")).toBe(
+        `Bearer resource_metadata="${ISSUER}/.well-known/oauth-protected-resource"`,
+      )
+      expect((await fetch(`${app.origin}/mcp`, initialize())).status).toBe(401)
+      expect((await fetch(`${app.origin}/mcp`, initialize(kept))).status).toBe(200)
+
+      const [second] = (await status(app)).connections
+      await app.runtime.runPromise(AppConnections.use((connections) => connections.remove(second!.id)))
+      expect((await fetch(`${app.origin}/mcp`, initialize(kept))).status).toBe(404)
+    }))
+
+  test("every path is 404 until a code is live or an app is connected", () =>
+    withApp(async (app) => {
+      expect(await statuses(app)).toEqual(EVERY_PATH.map(() => 404))
+      expect((await register(app)).status).toBe(404)
+
+      await newApprovalCode(app)
+      expect((await get(app, "/.well-known/oauth-authorization-server")).status).toBe(200)
+      expect((await get(app, "/mcp")).status).toBe(401)
+      expect((await get(app, "/")).status).toBe(404)
+
+      await linkRelay(app, null)
+      expect(await statuses(app)).toEqual(EVERY_PATH.map(() => 404))
+    }))
+})
+
+const viaListener = (
+  port: number,
+  host: string,
+  path: string,
+  { method = "GET", headers = {}, body }: { method?: string; headers?: Record<string, string>; body?: string } = {},
+) =>
+  new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const request = httpRequest(
+      { host: "127.0.0.1", port, path, method, headers: { ...headers, host }, agent: false },
+      (response) => {
+        const chunks: Array<Buffer> = []
+        response.on("data", (chunk: Buffer) => chunks.push(chunk))
+        response.on("end", () => resolve({ status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString() }))
+      },
+    )
+    request.on("error", reject)
+    request.end(body)
+  })
+
+const firstFrame = (url: string) =>
+  new Promise<{ type: string }>((resolve, reject) => {
+    const socket = new WebSocket(url)
+    socket.once("error", reject)
+    socket.once("message", (raw) => {
+      socket.close()
+      resolve(JSON.parse(String(raw)) as { type: string })
+    })
+  })
+
+describe("remote listener", () => {
+  test("forwards plain HTTP for the relay hostname to the app server and nothing else", () =>
+    withApp(async (app) => {
+      const port = await unusedLoopbackPort()
+      await app.runtime.runPromise(
+        Settings.use((settings) => settings.set({ remote: { enabled: true, bindHost: "127.0.0.1", port } })),
+      )
+      await vi.waitFor(async () =>
+        expect((await app.runtime.runPromise(RemoteAccess.use((remote) => remote.status))).listening).toBe(true),
+      )
+      await newApprovalCode(app)
+      const metadata = "/.well-known/oauth-authorization-server"
+      await vi.waitFor(async () => {
+        await linkRelay(app)
+        expect((await viaListener(port, HOSTNAME, metadata)).status).toBe(200)
+      })
+
+      const forwarded = await viaListener(port, `${HOSTNAME.toUpperCase()}:443`, metadata)
+      expect(JSON.parse(forwarded.body)).toMatchObject({ issuer: ISSUER })
+
+      for (const host of [`127.0.0.1:${port}`, "other.relay.example", `${HOSTNAME}.evil.example`]) {
+        expect(await viaListener(port, host, metadata)).toEqual({ status: 404, body: "" })
+      }
+
+      const registration = await viaListener(port, HOSTNAME, "/oauth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ client_name: "Chat app", redirect_uris: [REDIRECT] }),
+      })
+      expect(registration.status).toBe(201)
+      expect(JSON.parse(registration.body)).toMatchObject({ client_name: "Chat app" })
+
+      const token = await connect(app)
+      const initialized = await viaListener(port, HOSTNAME, "/mcp", initialize(token))
+      expect(initialized.status).toBe(200)
+      expect(initialized.body).toContain('"serverInfo"')
+      expect((await viaListener(port, HOSTNAME, "/mcp", initialize())).status).toBe(401)
+
+      expect(await firstFrame(`ws://127.0.0.1:${port}/remote`)).toMatchObject({ type: "challenge" })
+    }))
+})
