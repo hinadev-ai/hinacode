@@ -15,6 +15,7 @@ The `Build` workflow builds macOS on a Blacksmith macOS runner, and Linux and Wi
    | `APPLE_API_KEY_P8`         | The contents of `AuthKey_XXXX.p8`                                           |
    | `APPLE_API_KEY_ID`         | The key id                                                                  |
    | `APPLE_API_ISSUER`         | The issuer uuid                                                             |
+   | `CLOUDFLARE_API_TOKEN`     | A Cloudflare API token with the "Edit Cloudflare Workers" template          |
 
    The workflow's own `GITHUB_TOKEN` creates and publishes the release, since it lives in this repository.
 
@@ -33,6 +34,8 @@ The `Build` workflow builds macOS on a Blacksmith macOS runner, and Linux and Wi
    ```
 
    Then on npmjs.com, under the package's Settings > Trusted publishing, add GitHub Actions with this repository and the workflow `build.yml`.
+
+4. The `web` job deploys `apps/web` to `code.hinacode.app` with `wrangler deploy`, after the release is published.
 
 For a local build without signing or publishing, run `CSC_IDENTITY_AUTO_DISCOVERY=false pnpm dist -c.mac.notarize=false`. It builds for the current platform, and the output lands in `dist/`.
 
