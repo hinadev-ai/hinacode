@@ -170,8 +170,7 @@ export const switchAccount = async (clerk: Clerk) => {
 }
 
 export const signOutDevice = async (account: RelayAccount) => {
-  const clerk = await openClerk(account.serviceUrl)
-  if (clerk._tag === "failed") throw new Error(clerk.message)
-  await clerk.value.signOut()
   await endDevice(account)
+  const clerk = await openClerk(account.serviceUrl)
+  if (clerk._tag === "ok") await clerk.value.signOut().catch(() => undefined)
 }
