@@ -317,6 +317,12 @@ describe("a publish call when compact", () => {
     expect(finished(blocks)).toMatchObject({ event: { output: publishedLine } })
   })
 
+  test("keeps the first line of a publish from Codex, which wraps the blocks in content", () => {
+    const codexResult = { content: [{ type: "text", text: `${publishedLine}\n\nMore.` }], structuredContent: null }
+    expect(compacted(publish({ output: codexResult })).output).toBe(publishedLine)
+    expect(finished(codexResult)).toMatchObject({ event: { output: publishedLine } })
+  })
+
   test("drops the document a conflict carries", () => {
     const conflict = "The developer edited document doc-1 after your revision 3.\n\n# Their whole document"
     expect(compacted(publish({ output: conflict, status: "error" })).output).toBeUndefined()
