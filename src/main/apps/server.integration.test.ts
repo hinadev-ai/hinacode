@@ -48,6 +48,7 @@ const TOOLS = [
   "search_threads",
   "send_to_thread",
   "stop_thread",
+  "wait_for_thread",
 ]
 const EVERY_PATH = [
   "/",
@@ -311,12 +312,11 @@ describe("app server", () => {
         const thread = await app.runtime.runPromise(Threads.use((threads) => threads.get(threadId)))
         expect(thread).toMatchObject({ projectId, createdBy: `app:${connection!.id}`, provider: "claude" })
 
-        await vi.waitFor(async () => {
-          const read = await call(client, "read_thread", { threadId })
-          expect(read.text).toContain("ship it")
-          expect(read.text).toContain("Done: ship it")
-          expect(read.text).toContain(`created_by: app:${connection!.id}`)
-        })
+        const finished = await call(client, "wait_for_thread", { threadId })
+        expect(finished.text).not.toContain("Still running.")
+        expect(finished.text).toContain("Done: ship it")
+        expect(finished.text).toContain(`created_by: app:${connection!.id}`)
+        expect((await call(client, "read_thread", { threadId })).text).toBe(finished.text)
 
         const listed = JSON.parse((await call(client, "list_threads", { projectId })).text) as Array<{ id: string }>
         expect(listed.map((row) => row.id).toSorted()).toEqual([seededThread, threadId].toSorted())

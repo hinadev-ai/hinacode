@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Duration, Effect, Layer, Option, Schema } from "effect"
 import { Toolkit } from "effect/ai"
 import { ProviderId } from "../../shared/agent.ts"
 import { isThreadBusy } from "../../shared/domain.ts"
@@ -30,6 +30,9 @@ const AppTool = McpTool.toolsFor(CallingApp, {
   invalid: McpTool.text("This app is not connected to HinaCode.", true),
 })
 
+export const WAIT_LIMIT = Duration.seconds(60)
+const POLL_EVERY = Duration.seconds(1)
+
 const ThreadId = Schema.String.annotate({ description: "Id of a thread, from list_threads or search_threads." })
 
 const AppTools = Toolkit.make(
@@ -59,9 +62,14 @@ const AppTools = Toolkit.make(
       "Read one thread. Returns text: its status, agent and model, project and workspace, linked pull requests, what it is waiting on the developer for (approvals, questions and secrets can only be answered in HinaCode), and its latest messages.",
     parameters: Schema.Struct({ threadId: ThreadId, limit: Schema.optionalKey(ReadLimit) }),
   }),
+  AppTool.make("wait_for_thread", {
+    description:
+      "Wait for a thread's running turn to end, up to one minute, then read it as read_thread does. Use it after create_thread or send_to_thread instead of sleeping and calling read_thread in a loop. It also returns when the thread waits on the developer for an approval, a question or a secret. If the turn is still running after a minute, the result starts with `Still running.`: call wait_for_thread again.",
+    parameters: Schema.Struct({ threadId: ThreadId, limit: Schema.optionalKey(ReadLimit) }),
+  }),
   AppTool.make("create_thread", {
     description:
-      "Start a thread in a project and send it a first prompt. A coding agent then works on the prompt in that project's folder on the developer's machine, and can run commands there. Returns the new thread's id at once, without waiting for the agent. Uses the developer's default agent and model unless `provider` and `model` are passed. Pass `worktree` to run it in a new git worktree. Follow up with read_thread to check on it, send_to_thread to steer it and stop_thread to interrupt it.",
+      "Start a thread in a project and send it a first prompt. A coding agent then works on the prompt in that project's folder on the developer's machine, and can run commands there. Returns the new thread's id at once, without waiting for the agent. Uses the developer's default agent and model unless `provider` and `model` are passed. Pass `worktree` to run it in a new git worktree. Follow up with wait_for_thread to get its answer, send_to_thread to steer it and stop_thread to interrupt it.",
     parameters: Schema.Struct({
       projectId: Schema.String.annotate({ description: "Id of the project to work in, from list_projects." }),
       title: Schema.String.annotate({ description: "Shown in the developer's sidebar." }),
@@ -74,7 +82,7 @@ const AppTools = Toolkit.make(
   }),
   AppTool.make("send_to_thread", {
     description:
-      "Send a user message to a thread. A running thread gets it as steering input in its current turn, and an idle one starts a new turn with it. Returns which of the two happened. `effort` applies from this message on. `model` can only change before the thread's first turn starts.",
+      "Send a user message to a thread. A running thread gets it as steering input in its current turn, and an idle one starts a new turn with it. Returns which of the two happened; call wait_for_thread for the answer. `effort` applies from this message on. `model` can only change before the thread's first turn starts.",
     parameters: Schema.Struct({
       threadId: ThreadId,
       prompt: Schema.String.annotate({ description: "The user message to send." }),
@@ -98,6 +106,28 @@ const appToolsLayer = AppTools.toLayer(
     const projects = yield* Projects
     const search = yield* Search
     const defaults = yield* Effect.context<Settings | AgentRunner>()
+
+    const readThread = (threadId: string, limit: number | undefined) =>
+      Effect.gen(function* () {
+        const thread = yield* threads.get(threadId)
+        const { worktreeId } = thread
+        const [transcript, worktree, links, labels] = yield* Effect.all([
+          runner.transcript(threadId),
+          worktreeId === null
+            ? Effect.succeed(null)
+            : worktrees.get(worktreeId).pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(null))),
+          pullRequests.list(threadId),
+          projectLabels(projects),
+        ])
+        return renderThread({
+          thread,
+          place: { here: true, project: labels.get(thread.projectId) },
+          transcript,
+          worktree,
+          pullRequestUrls: links.map((link) => link.url),
+          limit,
+        })
+      })
 
     return AppTools.of({
       list_projects: () =>
@@ -127,26 +157,17 @@ const appToolsLayer = AppTools.toLayer(
           const [all, labels] = yield* Effect.all([threads.list, projectLabels(projects)])
           return yield* searchThreads({ threads: all, labels, search }, query, { limit })
         }),
-      read_thread: ({ threadId, limit }) =>
+      read_thread: ({ threadId, limit }) => readThread(threadId, limit),
+      wait_for_thread: ({ threadId, limit }) =>
         Effect.gen(function* () {
-          const thread = yield* threads.get(threadId)
-          const { worktreeId } = thread
-          const [transcript, worktree, links, labels] = yield* Effect.all([
-            runner.transcript(threadId),
-            worktreeId === null
-              ? Effect.succeed(null)
-              : worktrees.get(worktreeId).pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(null))),
-            pullRequests.list(threadId),
-            projectLabels(projects),
-          ])
-          return renderThread({
-            thread,
-            place: { here: true, project: labels.get(thread.projectId) },
-            transcript,
-            worktree,
-            pullRequestUrls: links.map((link) => link.url),
-            limit,
-          })
+          const settled = yield* Effect.gen(function* () {
+            for (;;) {
+              if ((yield* threads.get(threadId)).status !== "running") return
+              yield* Effect.sleep(POLL_EVERY)
+            }
+          }).pipe(Effect.timeoutOption(WAIT_LIMIT))
+          const view = yield* readThread(threadId, limit)
+          return Option.isSome(settled) ? view : `Still running.\n\n${view}`
         }),
       create_thread: ({ projectId, title, prompt, provider: chosenProvider, model, effort, worktree }) =>
         Effect.gen(function* () {
