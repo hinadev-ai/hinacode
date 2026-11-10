@@ -114,7 +114,9 @@ const reply = ({ id, method, params }) => {
         },
       })
     case "skills/list":
-      return send({ id, result: { data: control().skills ?? [] } })
+      return control().skillsFail
+        ? send({ id, error: { code: -32603, message: "skills could not be listed" } })
+        : send({ id, result: { data: control().skills ?? [] } })
     case "thread/list":
       return send({ id, result: control().sessions?.list ?? { data: [], nextCursor: null } })
     case "thread/read": {
