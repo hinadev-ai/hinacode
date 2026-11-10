@@ -89,7 +89,7 @@ const fallbackModel = (id: string, label: string): ModelInfo => ({
 
 const FALLBACK_MODELS: ReadonlyArray<ModelInfo> = [
   fallbackModel("claude-opus-5-5", "Opus 5.5"),
-  fallbackModel("claude-fable-5-1", "Fable 5.1"),
+  fallbackModel("claude-fable-5-2", "Fable 5.2"),
   fallbackModel("claude-sonnet-5-5", "Sonnet 5.5"),
   fallbackModel("claude-haiku-5-5", "Haiku 5.5"),
 ]
