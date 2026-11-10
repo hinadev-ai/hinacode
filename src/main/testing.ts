@@ -60,11 +60,12 @@ const updatesStub = Layer.succeed(Updates, unsupported("0.0.0"))
 export interface TestAppOptions {
   readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider | OpencodeProvider | MagpieProvider>
   readonly events?: Layer.Layer<Events | PushBroadcast | WindowPush>
+  readonly relay?: Relay.RelayOptions
 }
 
 export const makeTestAppLayer = (
   dbPath: string,
-  { providers, events = makeEventsLayer(sendToWindows) }: TestAppOptions,
+  { providers, events = makeEventsLayer(sendToWindows), relay: relayOptions = {} }: TestAppOptions,
 ) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -84,7 +85,7 @@ export const makeTestAppLayer = (
     Files.layer,
   )
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
-  const relay = Relay.layer().pipe(Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)))
+  const relay = Relay.layer(relayOptions).pipe(Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)))
   const tinyVm = TinyVm.layer(
     { configPath: join(dirname(dbPath), "sbx", "config.json"), env: {} },
     join(dirname(dbPath), "tiny-vm"),
