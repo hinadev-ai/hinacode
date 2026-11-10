@@ -79,7 +79,7 @@ When("I run the routine {string} now", async ({ app, names }, name: string) => {
 
 Then("the run history of {string} links to the thread it started", async ({ app, names }, name: string) => {
   const row = routineRow(app.page, names, name)
-  await row.locator("button[aria-expanded]").click()
+  await row.locator("button[aria-expanded]").first().click()
   const runs = row.getByRole("region", { name: "Recent runs" })
   await expect(runs.getByText("Run now", { exact: true })).toBeVisible({ timeout: 10_000 })
   await runs.getByRole("link", { name: "Open thread" }).first().click()
@@ -89,7 +89,7 @@ Then("the run history of {string} links to the thread it started", async ({ app,
 When("I get a new webhook secret for {string}", async ({ app, names, webhook }, name: string) => {
   const page = app.page
   const row = routineRow(page, names, name)
-  await row.locator("button[aria-expanded]").click()
+  await row.locator("button[aria-expanded]").first().click()
   const create = row.getByRole("button", { name: "Create secret", exact: true })
   const rotate = row.getByRole("button", { name: "Rotate secret", exact: true })
   await expect(create.or(rotate)).toBeVisible()
