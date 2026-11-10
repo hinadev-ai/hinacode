@@ -1,15 +1,19 @@
-import { describe, expect, test } from "@effect/vitest"
-import { Schema } from "effect"
+import { describe, expect, it, test } from "@effect/vitest"
+import { Effect, Layer, Schema, Sink, Stream } from "effect"
+import { ChildProcessSpawner } from "effect/process"
+import { Events } from "./Events.ts"
 import { CommandError } from "./Git.ts"
 import {
   ApprovalsJson,
   DiffsJson,
   diffStat,
+  GitLab,
   GitLabApiError,
   GitLabCliMissingError,
   gitLabErrorOf,
   GitLabSignedOutError,
   JobsJson,
+  layer,
   MergeRequestJson,
   mergeRequestUrlIn,
   NotesJson,
@@ -263,4 +267,119 @@ describe("mergeRequestUrlIn", () => {
     expect(mergeRequestUrlIn(output)).toBe("https://gitlab.example.com/group/project/-/merge_requests/42")
     expect(mergeRequestUrlIn("nothing here")).toBe(undefined)
   })
+})
+
+interface GlabReply {
+  readonly stdout?: string
+  readonly stderr?: string
+  readonly exitCode?: number
+}
+
+const fakeGlab = (reply: (path: string) => GlabReply) => {
+  const paths: Array<string> = []
+  const spawner = ChildProcessSpawner.make((command) => {
+    const path = command._tag === "StandardCommand" ? (command.args.at(-1) ?? "") : ""
+    paths.push(path)
+    const { stdout = "", stderr = "", exitCode = 0 } = reply(path)
+    return Effect.succeed(
+      ChildProcessSpawner.makeHandle({
+        pid: ChildProcessSpawner.ProcessId(1),
+        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(exitCode)),
+        isRunning: Effect.succeed(false),
+        kill: () => Effect.void,
+        stdin: Sink.drain,
+        stdout: Stream.make(new TextEncoder().encode(stdout)),
+        stderr: Stream.make(new TextEncoder().encode(stderr)),
+        all: Stream.empty,
+        getInputFd: () => Sink.drain,
+        getOutputFd: () => Stream.empty,
+        unref: Effect.succeed(Effect.void),
+      }),
+    )
+  })
+  return {
+    paths,
+    layer: layer.pipe(
+      Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
+      Layer.provide(Layer.succeed(Events, Events.of({ publish: () => Effect.void }))),
+    ),
+  }
+}
+
+const NETWORK_ERROR: GlabReply = { stderr: "dial tcp: lookup gitlab.example.com: no such host", exitCode: 1 }
+
+const probeTwice = (replies: ReadonlyArray<GlabReply>) => {
+  const glab = fakeGlab(() => replies[glab.paths.length - 1] ?? {})
+  return GitLab.use((gitlab) =>
+    Effect.gen(function* () {
+      const first = yield* gitlab.isGitLabHost("gitlab.example.com")
+      const second = yield* gitlab.isGitLabHost("gitlab.example.com")
+      return { answers: [first, second], probes: glab.paths.length }
+    }),
+  ).pipe(Effect.provide(glab.layer))
+}
+
+describe("isGitLabHost", () => {
+  it.effect("probes again after glab could not reach the host", () =>
+    Effect.gen(function* () {
+      expect(yield* probeTwice([NETWORK_ERROR, { stdout: "{}" }])).toStrictEqual({ answers: [false, true], probes: 2 })
+    }),
+  )
+
+  it.effect("probes again after glab was missing", () =>
+    Effect.gen(function* () {
+      expect(yield* probeTwice([{ exitCode: -1 }, { stdout: "{}" }])).toStrictEqual({
+        answers: [false, true],
+        probes: 2,
+      })
+    }),
+  )
+
+  it.effect("remembers a host whose API refused the probe", () =>
+    Effect.gen(function* () {
+      expect(yield* probeTwice([{ stderr: "glab: 404 Not found (HTTP 404)", exitCode: 1 }])).toStrictEqual({
+        answers: [false, false],
+        probes: 1,
+      })
+    }),
+  )
+
+  it.effect("remembers a host glab is signed out of", () =>
+    Effect.gen(function* () {
+      expect(yield* probeTwice([{ stderr: "glab: 401 Unauthorized (HTTP 401)", exitCode: 1 }])).toStrictEqual({
+        answers: [true, true],
+        probes: 1,
+      })
+    }),
+  )
+})
+
+const json = (value: unknown): GlabReply => ({ stdout: JSON.stringify(value) })
+
+const mergeRequest4344Reply = (path: string, userReply: () => GlabReply): GlabReply => {
+  if (path === "user") return userReply()
+  if (path.endsWith("/approvals")) return json(fixtures.approvals4344)
+  if (path.includes("/diffs?")) return { stdout: `HTTP/1.1 200 OK\r\n\r\n${JSON.stringify(fixtures.diffs4344)}` }
+  if (path.includes("/notes?")) return json(fixtures.notes4344)
+  if (path.includes("/jobs?")) return json(fixtures.jobs4344)
+  return json(fixtures.mergeRequest4344)
+}
+
+describe("pullRequestDetail", () => {
+  it.effect("asks who the viewer is again after the lookup failed", () =>
+    Effect.gen(function* () {
+      const userReplies = [NETWORK_ERROR, json({ username: "jay_mccure" })]
+      const glab = fakeGlab((path) => mergeRequest4344Reply(path, () => userReplies.shift() ?? {}))
+      const yours = yield* GitLab.use((gitlab) =>
+        Effect.all([gitlab.pullRequestDetail(OPEN_URL), gitlab.pullRequestDetail(OPEN_URL)]),
+      ).pipe(
+        Effect.map((details) =>
+          details.map((detail) => detail.comments.filter((comment) => comment.authorKind === "you").length),
+        ),
+        Effect.provide(glab.layer),
+      )
+      expect(yours[0]).toBe(0)
+      expect(yours[1]).toBeGreaterThan(0)
+    }),
+  )
 })
