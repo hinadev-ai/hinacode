@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, layer } from "@effect/vitest"
 import { Effect, Layer } from "effect"
+import which from "which"
 import type { PullRequest } from "../../shared/domain.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
@@ -20,6 +21,8 @@ const hasGlab = (() => {
     return false
   }
 })()
+
+const glabOnPath = which.sync("glab", { nothrow: true }) !== null
 
 const dirs: Array<string> = []
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })))
@@ -74,7 +77,7 @@ describe("SourceControl", () => {
         expect(yield* sourceControl.installedFor("https://github.com/hinadev-ai/hinacode/pull/617")).toBe(false)
         expect(yield* sourceControl.installedFor("https://example.com/a/b/issues/1")).toBe(false)
         expect(yield* sourceControl.installedFor("https://gitlab.com/gitlab-org/cli/-/merge_requests/4335")).toBe(
-          hasGlab,
+          glabOnPath,
         )
       }),
     )

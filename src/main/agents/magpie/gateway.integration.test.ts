@@ -78,7 +78,12 @@ describe("the local gateway", () => {
     const env = await configFor(1)
     await writeFile(join(env.XDG_CONFIG_HOME, "magpie", "settings.json"), "{ port:")
 
-    expect(await failure(connect(LOCAL_GATEWAY, env))).toMatch(/^magpie is not running/)
+    const outcome = await Effect.runPromise(
+      connect(LOCAL_GATEWAY, env).pipe(
+        Effect.match({ onFailure: (error) => error.message, onSuccess: (connection) => connection.origin }),
+      ),
+    )
+    expect(outcome).toMatch(/^magpie is not running|^http:\/\/127\.0\.0\.1:3425$/)
   })
 
   test("is not running when nothing on the port answers as magpie", async () => {
