@@ -1,6 +1,6 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router"
 import { useHeaderHeight } from "expo-router/react-navigation"
-import { type ReactNode, useCallback, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useState } from "react"
 import { AppState, KeyboardAvoidingView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { ArtifactList } from "@/components/artifact-list"
@@ -28,6 +28,7 @@ import type { Thread, ThreadStatus } from "@shared/domain.ts"
 import { useMessages } from "@/stores/messages"
 import { useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
+import { useThreadVm, useVms } from "@/stores/vms"
 
 /** Room the native header keeps for its back and menu items on each side of a custom title. */
 const HEADER_ITEMS_WIDTH = 72
@@ -59,6 +60,10 @@ export default function ThreadScreen() {
       return () => subscription.remove()
     }, [id]),
   )
+
+  useEffect(() => {
+    if (status === "connected") void useVms.getState().load(id).catch(() => {})
+  }, [status, id])
 
   const select = (next: ThreadTab) => {
     setTab(next)
@@ -106,7 +111,10 @@ export default function ThreadScreen() {
           {thread === undefined ? (
             <View style={styles.headerSlot} />
           ) : (
-            <ThreadActionsButton thread={thread} onOpenTerminal={() => select("terminal")} />
+            <>
+              <VmButton threadId={thread.id} />
+              <ThreadActionsButton thread={thread} onOpenTerminal={() => select("terminal")} />
+            </>
           )}
         </View>
       )}
@@ -175,9 +183,17 @@ function TabPanel({ shown, readable = false, children }: { shown: boolean; reada
  */
 function ThreadMenu({ thread, onOpenTerminal }: { thread: Thread; onOpenTerminal: () => void }) {
   const state = useThreadActions(thread)
+  const hasVm = useHasVm(thread.id)
   return (
     <>
       <Stack.Toolbar placement="right">
+        {hasVm && (
+          <Stack.Toolbar.Button
+            icon="desktopcomputer"
+            accessibilityLabel={copy("mobile_vm_open")}
+            onPress={() => openVm(thread.id)}
+          />
+        )}
         <Stack.Toolbar.Menu icon="ellipsis.circle" accessibilityLabel={copy("mobile_thread_actions")}>
           <Stack.Toolbar.Menu inline>
             <Stack.Toolbar.MenuAction icon="apple.terminal" onPress={onOpenTerminal}>
@@ -207,6 +223,29 @@ function ThreadMenu({ thread, onOpenTerminal }: { thread: Thread; onOpenTerminal
 }
 
 const leave = () => (router.canGoBack() ? router.back() : router.replace("/"))
+
+const openVm = (id: string) => router.push({ pathname: "/thread/[id]/vm", params: { id } })
+
+/** Whether the thread has a VM to look at: once the agent starts one, until it is stopped. */
+const useHasVm = (threadId: string) => {
+  const vm = useThreadVm(threadId)
+  return vm !== undefined && vm.status !== "none"
+}
+
+/** Android's header button for the thread's VM, which iOS shows as a toolbar item. */
+function VmButton({ threadId }: { threadId: string }) {
+  const theme = useTheme()
+  if (!useHasVm(threadId)) return null
+  return (
+    <IconButton
+      testID="vm-button"
+      icon="Computer"
+      accessibilityLabel={copy("mobile_vm_open")}
+      onPress={() => openVm(threadId)}
+      style={roundButton(theme)}
+    />
+  )
+}
 
 /** Android's header button for the actions iOS shows as a native menu, with the same sheet the list opens. */
 function ThreadActionsButton({ thread, onOpenTerminal }: { thread: Thread; onOpenTerminal: () => void }) {

@@ -22,6 +22,7 @@ import { usePullRequests } from "@/stores/pull-requests"
 import { useRelayAccount } from "@/stores/relay-account"
 import { useSubagents } from "@/stores/subagents"
 import { useThreads } from "@/stores/threads"
+import { useVms } from "@/stores/vms"
 
 /** Adds a server, or updates the one this pairing reaches again. Returns its id. */
 export function pair(target: PairingTarget) {
@@ -117,6 +118,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         else if (event.type === "worktree.updated") useThreads.getState().upsertWorktree(event.worktree)
         else if (event.type === "thread.pullRequests") usePullRequests.getState().replace(event.threadId, event.links)
         else if (event.type === "thread.subagents") useSubagents.getState().replace(event.threadId, event.subagents)
+        else if (event.type === "vm.updated") useVms.getState().replace(event.threadId, event.vm)
       }),
     [],
   )
@@ -127,12 +129,14 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     void usePullRequests.getState().load()
     useMessages.getState().reload()
     useSubagents.getState().reload()
+    useVms.getState().reload()
   }, [generation])
 
   useEffect(
     () => () => {
       useMessages.getState().reset()
       useSubagents.getState().reset()
+      useVms.getState().reset()
     },
     [paired],
   )
