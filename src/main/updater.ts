@@ -22,6 +22,8 @@ const make = Effect.gen(function* () {
     Effect.runFork(events.publish({ type: "update.changed" }))
   }
   autoUpdater.autoDownload = true
+  // FIXME: a prerelease version makes electron-updater pick the newest tag from releases.atom, which lists a tag while its release is still a draft and its assets 404. `/releases/latest` skips drafts.
+  autoUpdater.allowPrerelease = false
   autoUpdater.on("checking-for-update", () => set({ type: "checking" }))
   autoUpdater.on("update-not-available", () => set({ type: "upToDate" }))
   autoUpdater.on("update-available", ({ version }) => set({ type: "downloading", version }))
