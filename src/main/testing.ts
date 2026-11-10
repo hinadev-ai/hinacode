@@ -6,6 +6,8 @@ import type { CodexProvider } from "./agents/codex/index.ts"
 import type { MuseProvider } from "./agents/muse/index.ts"
 import type { MagpieProvider } from "./agents/magpie/index.ts"
 import type { OpencodeProvider } from "./agents/opencode/index.ts"
+import * as AppConnections from "./apps/AppConnections.ts"
+import * as AppServer from "./apps/server.ts"
 import * as Db from "./db/client.ts"
 import { sendToWindows } from "./ipc.ts"
 import { answerAsksLayer } from "./environments/route.ts"
@@ -58,11 +60,12 @@ const updatesStub = Layer.succeed(Updates, unsupported("0.0.0"))
 interface TestAppOptions {
   readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider | OpencodeProvider | MagpieProvider>
   readonly events?: Layer.Layer<Events | PushBroadcast | WindowPush>
+  readonly relay?: Relay.RelayOptions
 }
 
 export const makeTestAppLayer = (
   dbPath: string,
-  { providers, events = makeEventsLayer(sendToWindows) }: TestAppOptions,
+  { providers, events = makeEventsLayer(sendToWindows), relay: relayOptions = {} }: TestAppOptions,
 ) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -82,7 +85,7 @@ export const makeTestAppLayer = (
     Files.layer,
   )
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
-  const relay = Relay.layer().pipe(Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)))
+  const relay = Relay.layer(relayOptions).pipe(Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)))
   const tinyVm = TinyVm.layer(
     { configPath: join(dirname(dbPath), "sbx", "config.json"), env: {} },
     join(dirname(dbPath), "tiny-vm"),
@@ -99,6 +102,7 @@ export const makeTestAppLayer = (
     SystemResources.layer,
     remoteAccess,
     relay,
+    AppConnections.layer.pipe(Layer.provide(remoteAccess)),
     tinyVm,
     linear,
     peers,
@@ -129,7 +133,11 @@ export const makeTestAppLayer = (
     Settle.layer.pipe(Layer.provide(agents)),
     ArtifactFeedback.layer.pipe(Layer.provide(agents)),
   )
-  const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
+  const app = Layer.mergeAll(
+    base,
+    Mcp.serverLayer.pipe(Layer.provide(base)),
+    AppServer.layer.pipe(Layer.provide(Layer.mergeAll(base, Secrets.layer))),
+  )
   return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
     Layer.provideMerge(app),
     Layer.provideMerge(SourceControl.layer),

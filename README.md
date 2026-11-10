@@ -60,6 +60,7 @@ HinaCode is a **delightful workstation for coding agents**. It handles the work 
 - **Routines.** Run a prompt on a schedule, from a webhook, or from the CLI, in the project folder or a new worktree.
 - **Built-in MCP server.** Agents can ask you for secrets, hand work to other threads, drive a disposable VM or mobile simulators, and use Linear.
 - **Remote machines and your phone.** Run `npx hinacode serve` on another machine, then approve, steer, and merge from the phone app.
+- **Other apps.** Add your machine's URL to a chat app or agent harness that speaks remote MCP, approve it with a one-time code, then start, read, and steer threads from there.
 
 ---
 
@@ -242,7 +243,8 @@ HinaCode runs agents that execute code on your machine, so a few boundaries are 
 
 - The renderer is sandboxed, and only the top-level app frame may call `rpc`.
 - `shell.openExternal` only opens `http(s)` URLs.
-- The MCP server listens on loopback only, and its credential scopes each call to one thread.
+- The MCP server for agents listens on loopback only, and its credential scopes each call to one thread.
+- The MCP server for apps you connect is reachable only through your relay hostname, only after you approve the app with a one-time code, and only offers project and thread tools.
 - Webhooks require an HMAC signature, checked with `timingSafeEqual`.
 - The attachment protocol refuses paths outside its root.
 - Secrets go through `services/Secrets.ts`, sealed by the OS keyring. They are never logged, put in a URL, or sent to the renderer.

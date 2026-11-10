@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect"
 import { Toolkit } from "effect/ai"
 import { ProviderId } from "../../../shared/agent.ts"
-import { isThreadBusy, type Machine, type Message, type Thread, type Worktree } from "../../../shared/domain.ts"
+import { isThreadBusy, type Thread } from "../../../shared/domain.ts"
 import { RemoteAccess } from "../../remote/access.ts"
 import { Peers } from "../../remote/peers.ts"
 import { AgentRunner } from "../../services/AgentRunner.ts"
@@ -11,85 +11,19 @@ import { PullRequests } from "../../services/PullRequests.ts"
 import { Search } from "../../services/Search.ts"
 import { Threads } from "../../services/Threads.ts"
 import { Worktrees } from "../../services/Worktrees.ts"
+import {
+  Effort,
+  HERE,
+  listedThread,
+  NewWorktree,
+  type Place,
+  projectLabels,
+  ReadLimit,
+  renderThread,
+  SearchLimit,
+  searchThreads,
+} from "./threadViews.ts"
 import * as McpTool from "./tool.ts"
-
-const DEFAULT_READ_LIMIT = 20
-const MAX_READ_LIMIT = 100
-const DEFAULT_SEARCH_LIMIT = 20
-const MAX_SEARCH_LIMIT = 100
-
-const renderPart = (part: Message["parts"][number]): string | null => {
-  switch (part.type) {
-    case "text":
-    case "questions":
-      return part.text
-    case "reasoning":
-      return null
-    case "tool_call":
-      return `[tool ${part.name}: ${part.status}]`
-    case "file_change":
-      return `[edited ${part.path}]`
-    case "attachment":
-      return `[attachment ${part.attachment.name}]`
-    case "compaction":
-      return `[context compaction: ${part.compaction.status}]`
-    case "agent_switch":
-      return `[agent switched: ${part.from} → ${part.to}]`
-    case "signed_out":
-      return part.loginCommand === undefined
-        ? `**Error:** ${part.message}. Sign in as the model provider's documentation describes.`
-        : `**Error:** ${part.message}. Sign in with \`${part.loginCommand}\``
-    case "session_import":
-      return part.history === "replayed"
-        ? `[imported ${part.provider} session]`
-        : `[imported ${part.provider} session, earlier history not shown]`
-  }
-}
-
-const renderMessage = (message: Message) =>
-  [`## ${message.role} (${message.createdAt})`, ...message.parts.flatMap((part) => renderPart(part) ?? [])].join("\n")
-
-const renderMetadata = (thread: Thread, pullRequestUrls: ReadonlyArray<string>) =>
-  [
-    "<metadata>",
-    `thread_id: ${thread.id}`,
-    `title: ${thread.title}`,
-    `status: ${thread.status}`,
-    `provider: ${thread.provider}`,
-    `model: ${thread.model}`,
-    `effort: ${thread.effort ?? "default"}`,
-    `created_by: ${thread.createdBy}`,
-    `created_at: ${thread.createdAt}`,
-    `updated_at: ${thread.updatedAt}`,
-    ...(pullRequestUrls.length === 0
-      ? ["pull_requests: none"]
-      : ["pull_requests:", ...pullRequestUrls.map((url) => `- ${url}`)]),
-    "</metadata>",
-  ].join("\n")
-
-type Place =
-  | { readonly here: true; readonly project?: string }
-  | { readonly here: false; readonly machine: MachineRef | undefined }
-type MachineRef = Pick<Machine, "id" | "name">
-const HERE: Place = { here: true }
-
-const renderEnvironment = (worktree: Worktree | null, place: Place) =>
-  [
-    "<environment>",
-    ...(place.here
-      ? place.project === undefined
-        ? []
-        : [`project: ${place.project}`]
-      : [
-          place.machine === undefined
-            ? "machine: another one, so its paths are not on this machine"
-            : `machine: ${place.machine.name} (${place.machine.id}), not this one, so its paths are not here`,
-        ]),
-    ...(worktree === null
-      ? ["workspace: project root"]
-      : ["workspace: worktree", `branch: ${worktree.branch}`, `path: ${worktree.path}`]),
-    "</environment>",
-  ].join("\n")
 
 const TargetThreadId = Schema.String.annotate({
   description: "Id of a thread in this project, on this machine or on another of the user's machines.",
@@ -97,7 +31,6 @@ const TargetThreadId = Schema.String.annotate({
 const AnyThreadId = Schema.String.annotate({
   description: "Id of a thread in any project on this machine, or in this project on another of the user's machines.",
 })
-const Effort = Schema.String.annotate({ description: "Reasoning effort, such as low, medium or high." })
 
 export const ThreadTools = Toolkit.make(
   McpTool.make("create_thread", {
@@ -109,12 +42,7 @@ export const ThreadTools = Toolkit.make(
       provider: Schema.optionalKey(ProviderId),
       model: Schema.optionalKey(Schema.String.annotate({ description: "Model id for that provider." })),
       effort: Schema.optionalKey(Effort),
-      worktree: Schema.optionalKey(
-        Schema.Struct({
-          branch: Schema.String.annotate({ description: "Branch to create for the worktree." }),
-          baseRef: Schema.String.annotate({ description: "Ref the branch forks from, for example main." }),
-        }),
-      ),
+      worktree: Schema.optionalKey(NewWorktree),
       machine: Schema.optionalKey(
         Schema.String.annotate({
           description:
@@ -142,11 +70,7 @@ export const ThreadTools = Toolkit.make(
       "Search the threads of every project on this machine, archived ones included, by title and message text. Returns JSON with each thread's id, title, status and project, a snippet of its latest matching message when one matches, and `self` on this thread. Title matches come first, then threads with the newest matching message. Pass an id to read_thread to read it.",
     parameters: Schema.Struct({
       query: Schema.String.annotate({ description: "Text to find." }),
-      limit: Schema.optionalKey(
-        Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: MAX_SEARCH_LIMIT })).annotate({
-          description: `Threads to return, 1-${MAX_SEARCH_LIMIT}. Defaults to ${DEFAULT_SEARCH_LIMIT}.`,
-        }),
-      ),
+      limit: Schema.optionalKey(SearchLimit),
     }),
   }),
   McpTool.make("read_thread", {
@@ -154,11 +78,7 @@ export const ThreadTools = Toolkit.make(
       "Read another thread, of any project on this machine or of this project on another of the user's machines: its status, agent and model, project and workspace, linked pull requests, whether it is waiting on the user, and its latest messages.",
     parameters: Schema.Struct({
       threadId: AnyThreadId,
-      limit: Schema.optionalKey(
-        Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: MAX_READ_LIMIT })).annotate({
-          description: `Latest messages to return, 1-${MAX_READ_LIMIT}. Defaults to ${DEFAULT_READ_LIMIT}.`,
-        }),
-      ),
+      limit: Schema.optionalKey(ReadLimit),
     }),
   }),
   McpTool.make("send_to_thread", {
@@ -204,17 +124,12 @@ export const threadToolsLayer = ThreadTools.toLayer(
         return target
       })
 
-    const projectLabels = Effect.map(
-      projects.list,
-      (all) => new Map(all.map((project) => [project.id, `${project.name} (${project.rootPath})`])),
-    )
-
     const anyLocalThread = (targetId: string) =>
       Effect.gen(function* () {
         const caller = yield* threads.get(yield* McpTool.CallingThread)
         const target = yield* threads.get(targetId)
         if (target.projectId === caller.projectId) return { thread: target, place: HERE }
-        const place: Place = { here: true, project: (yield* projectLabels).get(target.projectId) }
+        const place: Place = { here: true, project: (yield* projectLabels(projects)).get(target.projectId) }
         return { thread: target, place }
       })
 
@@ -396,13 +311,10 @@ export const threadToolsLayer = ThreadTools.toLayer(
           ]
             .filter(({ thread }) => thread.status !== "archived" && thread.status !== "draft")
             .map(({ thread, place }) => ({
-              id: thread.id,
-              title: thread.title,
-              status: thread.status,
-              provider: thread.provider,
-              model: thread.model,
-              createdBy: thread.createdBy,
-              branch: (thread.worktreeId && (place.here ? branches : otherBranches).get(thread.worktreeId)) ?? null,
+              ...listedThread(
+                thread,
+                thread.worktreeId && (place.here ? branches : otherBranches).get(thread.worktreeId),
+              ),
               ...(thread.id === threadId ? { self: true } : {}),
               ...(place.here ? {} : { machine: place.machine ?? "another machine" }),
             }))
@@ -410,33 +322,9 @@ export const threadToolsLayer = ThreadTools.toLayer(
         }),
       search_threads: ({ query, limit }) =>
         Effect.gen(function* () {
-          const callerId = yield* McpTool.CallingThread
-          const trimmed = query.trim()
-          if (trimmed === "") return "[]"
-          const max = limit ?? DEFAULT_SEARCH_LIMIT
-          const [all, labels] = yield* Effect.all([threads.list, projectLabels])
-          const searchable = all.filter((thread) => thread.status !== "draft")
-          const titled = searchable
-            .filter((thread) => thread.title.toLowerCase().includes(trimmed.toLowerCase()))
-            .slice(0, max)
-          const [newest, ofTitled] = yield* Effect.all([
-            search.perThread(trimmed, { limit: max }),
-            search.perThread(trimmed, { limit: titled.length, threadIds: titled.map((thread) => thread.id) }),
-          ])
-          const byId = new Map(searchable.map((thread) => [thread.id, thread]))
-          const snippets = new Map([...ofTitled, ...newest].map((hit) => [hit.threadId, hit.snippet]))
-          const ids = new Set([...titled.map((thread) => thread.id), ...newest.map((hit) => hit.threadId)])
-          const found = [...ids].flatMap((id) => byId.get(id) ?? []).slice(0, max)
-          return JSON.stringify(
-            found.map((thread) => ({
-              id: thread.id,
-              title: thread.title,
-              status: thread.status,
-              project: labels.get(thread.projectId) ?? thread.projectId,
-              ...(snippets.has(thread.id) ? { snippet: snippets.get(thread.id) } : {}),
-              ...(thread.id === callerId ? { self: true } : {}),
-            })),
-          )
+          const self = yield* McpTool.CallingThread
+          const [all, labels] = yield* Effect.all([threads.list, projectLabels(projects)])
+          return yield* searchThreads({ threads: all, labels, search }, query, { limit, self })
         }).pipe(Effect.mapError((error) => ({ message: error.message }))),
       read_thread: ({ threadId: targetId, limit }) =>
         Effect.gen(function* () {
@@ -463,24 +351,14 @@ export const threadToolsLayer = ThreadTools.toLayer(
                 ],
                 { concurrency: "unbounded" },
               )
-          const waiting = [
-            ...transcript.approvals.map((request) => `- approval: ${request.title}`),
-            ...transcript.questions.flatMap((request) =>
-              request.questions.map((question) => `- question: ${question.question}`),
-            ),
-            ...transcript.secretRequests.map((request) => `- secret: ${request.name}`),
-          ]
-          const messages = transcript.messages.slice(-(limit ?? DEFAULT_READ_LIMIT))
-          return [
-            renderMetadata(
-              target,
-              links.map((link) => link.url),
-            ),
-            renderEnvironment(worktree, place),
-            ...(waiting.length > 0 ? ["Waiting on the user for:", ...waiting] : []),
-            "",
-            messages.length === 0 ? "No messages yet." : messages.map(renderMessage).join("\n\n"),
-          ].join("\n")
+          return renderThread({
+            thread: target,
+            place,
+            transcript,
+            worktree,
+            pullRequestUrls: links.map((link) => link.url),
+            limit,
+          })
         }),
       send_to_thread: ({ threadId: targetId, prompt, model, effort }) =>
         Effect.gen(function* () {

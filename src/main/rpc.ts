@@ -1,14 +1,12 @@
 import { homedir } from "node:os"
 import { Cause, Effect, Option, Schema } from "effect"
-import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
-import { binaryStatuses, installedProviders } from "./agents/binary.ts"
+import { binaryStatuses } from "./agents/binary.ts"
 import { bindKey, keyFor, probe } from "./agents/magpie/gateway.ts"
 import { MAGPIE_KEY_SECRET } from "../shared/providers.ts"
 import { AgentError } from "./agents/provider.ts"
 import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
 import { compactSubagentWork } from "../shared/subagents.ts"
-import { startingProvider } from "../shared/domain.ts"
 import type {
   NotificationPermission,
   Opener,
@@ -41,7 +39,9 @@ import { SourceControl } from "./services/SourceControl.ts"
 import { codeHostOfUrl } from "../shared/codeHost.ts"
 import { Routines } from "./services/routines/Routines.ts"
 import { Linear } from "./services/Linear.ts"
+import { AppConnections } from "./apps/AppConnections.ts"
 import { McpCredentials } from "./mcp/index.ts"
+import { newThreadOptions, newThreadProvider } from "./services/newThread.ts"
 import { Ports } from "./services/Ports.ts"
 import { networkAddresses } from "./network.ts"
 import { RemoteAccess } from "./remote/access.ts"
@@ -66,6 +66,7 @@ import { Worktrees } from "./services/Worktrees.ts"
 
 export type AppServices =
   | AgentAccounts
+  | AppConnections
   | AgentLogins
   | SessionImports
   | Projects
@@ -134,14 +135,6 @@ type Handlers = {
     desktop: DesktopCalls | null,
   ) => Effect.Effect<RpcResponse<M>, HandlerError, AppServices>
 }
-
-const newThreadOptions = (provider: ProviderId) =>
-  Effect.gen(function* () {
-    const settings = yield* Settings.use((service) => service.get)
-    const model =
-      settings.defaultModel[provider] ?? (yield* AgentRunner.use((runner) => runner.listModels(provider)))[0]?.id ?? ""
-    return { model, effort: settings.defaultEffort[provider], fastMode: settings.defaultFastMode[provider] }
-  })
 
 const rememberNewThreadOptions = (thread: Thread) =>
   Effect.gen(function* () {
@@ -219,8 +212,7 @@ const handlers: Handlers = {
   "threads.list": () => Threads.use((threads) => threads.list),
   "threads.create": ({ projectId, title, provider: chosenProvider, model, effort, worktree, createdBy }) =>
     Effect.gen(function* () {
-      const settings = yield* Settings.use((service) => service.get)
-      const provider = chosenProvider ?? startingProvider(settings, yield* installedProviders)
+      const provider = chosenProvider ?? (yield* newThreadProvider)
       const defaults =
         model === undefined ? yield* newThreadOptions(provider) : { model, effort: undefined, fastMode: undefined }
       const thread = yield* Threads.use((threads) =>
@@ -239,7 +231,7 @@ const handlers: Handlers = {
     }),
   "threads.draft": ({ projectId }) =>
     Effect.gen(function* () {
-      const provider = startingProvider(yield* Settings.use((service) => service.get), yield* installedProviders)
+      const provider = yield* newThreadProvider
       const options = yield* newThreadOptions(provider)
       const thread = yield* Threads.use((threads) =>
         threads.draft({ projectId, title: randomName(), provider, ...options }),
@@ -375,6 +367,10 @@ const handlers: Handlers = {
   "relayAccount.machines": () => RelayAccount.use((account) => account.machines),
   "relayAccount.setShown": (input) => RelayAccount.use((account) => account.setShown(input)),
   "relayAccount.removeMachine": (input) => RelayAccount.use((account) => account.removeMachine(input)),
+  "appConnections.status": () => AppConnections.use((connections) => connections.status),
+  "appConnections.start": () => AppConnections.use((connections) => connections.start),
+  "appConnections.answer": (input) => AppConnections.use((connections) => connections.answer(input)),
+  "appConnections.remove": ({ id }) => AppConnections.use((connections) => connections.remove(id)),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),

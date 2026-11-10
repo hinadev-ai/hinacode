@@ -2,7 +2,7 @@ import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { SqlClient } from "effect/sql"
 import * as Db from "./client.ts"
-import routines from "./migrations/0046_routines.ts"
+import routines from "./migrations/0047_routines.ts"
 import { restoreAutomationTables, seedThread } from "./testing.ts"
 
 it.effect("copies each automation into a disabled routine with no schedule and drops the automation tables", () =>

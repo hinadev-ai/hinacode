@@ -9,20 +9,6 @@ const Output = Schema.Union([Schema.String, Schema.Array(McpSchema.ContentBlock)
 
 const Failure = Schema.Struct({ message: Schema.String })
 
-export const make = <const Name extends string, Parameters extends Schema.Constraint = Tool.EmptyParams>(
-  name: Name,
-  options: { readonly description: string; readonly parameters?: Parameters },
-) =>
-  Tool.make(name, {
-    description: options.description,
-    parameters: options.parameters,
-    success: Output,
-    failure: Failure,
-    dependencies: [CallingThread],
-  })
-
-type HinacodeTool = ReturnType<typeof make<string, Schema.Top>>
-
 export const text = (value: string, isError = false) =>
   new McpSchema.CallToolResult({ content: [{ type: "text", text: value }], isError })
 
@@ -43,52 +29,71 @@ export const callingThreadId = (credentials: typeof McpCredentials.Service) =>
   )
 
 // FIXME: `McpServer.toolkit` JSON-encodes every result, which quotes text and cannot return images
-export const register = Effect.fnUntraced(function* <Tools extends Record<string, HinacodeTool>>(
-  toolkit: Toolkit.Toolkit<Tools>,
-  annotations: Context.Context<never> = Context.empty(),
-) {
-  const server = yield* McpServer.McpServer
-  const credentials = yield* McpCredentials
-  const built = yield* toolkit
-  // FIXME: `Tool.HandlerServices` and `Tool.Result` do not reduce for a generic `Tools`
-  const handle = built.handle as unknown as (
-    name: string,
-    payload: unknown,
-  ) => Effect.Effect<
-    Stream.Stream<{ readonly result: typeof Output.Type }, { readonly message: string }, CallingThread>,
-    { readonly message: string },
-    CallingThread
-  >
-  yield* Effect.forEach(Object.values(built.tools), (tool) =>
-    server.addTool({
-      tool: new McpSchema.Tool({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: Schema.decodeUnknownSync(McpSchema.ToolJson)(Tool.getJsonSchema(tool)),
-        annotations: { readOnlyHint: Context.get(tool.annotations, Tool.Readonly) },
-      }),
-      annotations,
-      handle: (payload) =>
-        Effect.gen(function* () {
-          const threadId = yield* callingThreadId(credentials)
-          if (Option.isNone(threadId)) return invalidCredential
-          return yield* handle(tool.name, payload ?? {}).pipe(
-            Stream.unwrap,
-            Stream.runLast,
-            Effect.flatMap(Effect.fromOption),
-            Effect.provideService(CallingThread, threadId.value),
-            Effect.match({
-              onFailure: (error) => text(errorMessage(error), true),
-              onSuccess: ({ result }) => toolResult(result),
-            }),
-          )
-        }).pipe(
-          Effect.catchDefect((defect) =>
-            Effect.logError("mcp tool defect", tool.name, defect).pipe(
-              Effect.as(text(`${tool.name} failed unexpectedly. See the HinaCode logs.`, true)),
+export const toolsFor = <Caller, R>(
+  caller: Context.Key<Caller, string>,
+  options: {
+    readonly resolve: Effect.Effect<Option.Option<string>, never, R>
+    readonly invalid: McpSchema.CallToolResult
+  },
+) => {
+  const make = <const Name extends string, Parameters extends Schema.Constraint = Tool.EmptyParams>(
+    name: Name,
+    { description, parameters }: { readonly description: string; readonly parameters?: Parameters },
+  ) => Tool.make(name, { description, parameters, success: Output, failure: Failure, dependencies: [caller] })
+
+  const register = Effect.fnUntraced(function* <
+    Tools extends Record<string, ReturnType<typeof make<string, Schema.Top>>>,
+  >(toolkit: Toolkit.Toolkit<Tools>, annotations: Context.Context<never> = Context.empty()) {
+    const server = yield* McpServer.McpServer
+    const resolve = Effect.provide(options.resolve, yield* Effect.context<R>())
+    const built = yield* toolkit
+    // FIXME: `Tool.HandlerServices` and `Tool.Result` do not reduce for a generic `Tools`
+    const handle = built.handle as unknown as (
+      name: string,
+      payload: unknown,
+    ) => Effect.Effect<
+      Stream.Stream<{ readonly result: typeof Output.Type }, { readonly message: string }, Caller>,
+      { readonly message: string },
+      Caller
+    >
+    yield* Effect.forEach(Object.values(built.tools), (tool) =>
+      server.addTool({
+        tool: new McpSchema.Tool({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: Schema.decodeUnknownSync(McpSchema.ToolJson)(Tool.getJsonSchema(tool)),
+          annotations: { readOnlyHint: Context.get(tool.annotations, Tool.Readonly) },
+        }),
+        annotations,
+        handle: (payload) =>
+          Effect.gen(function* () {
+            const callerId = yield* resolve
+            if (Option.isNone(callerId)) return options.invalid
+            return yield* handle(tool.name, payload ?? {}).pipe(
+              Stream.unwrap,
+              Stream.runLast,
+              Effect.flatMap(Effect.fromOption),
+              Effect.provideService(caller, callerId.value),
+              Effect.match({
+                onFailure: (error) => text(errorMessage(error), true),
+                onSuccess: ({ result }) => toolResult(result),
+              }),
+            )
+          }).pipe(
+            Effect.catchDefect((defect) =>
+              Effect.logError("mcp tool defect", tool.name, defect).pipe(
+                Effect.as(text(`${tool.name} failed unexpectedly. See the HinaCode logs.`, true)),
+              ),
             ),
           ),
-        ),
-    }),
-  )
+      }),
+    )
+  })
+
+  return { make, register }
+}
+
+export const { make, register } = toolsFor(CallingThread, {
+  resolve: Effect.flatMap(McpCredentials, callingThreadId),
+  invalid: invalidCredential,
 })

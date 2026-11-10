@@ -1128,3 +1128,19 @@ export const RemotePairing = Schema.Struct({
   relay: Schema.NullOr(Schema.String),
 })
 export type RemotePairing = typeof RemotePairing.Type
+
+export const AppConnection = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  createdAt: Timestamp,
+  lastUsedAt: Schema.NullOr(Timestamp),
+})
+export type AppConnection = typeof AppConnection.Type
+
+export const AppConnectionsStatus = Schema.Struct({
+  url: Schema.NullOr(Schema.String),
+  waitingUntil: Schema.NullOr(Timestamp),
+  requests: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, redirectHost: Schema.String })),
+  connections: Schema.Array(AppConnection),
+})
+export type AppConnectionsStatus = typeof AppConnectionsStatus.Type

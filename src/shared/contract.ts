@@ -88,6 +88,7 @@ import {
   NetworkAddress,
   RemotePairing,
   RemoteStatus,
+  AppConnectionsStatus,
   Settings,
   TerminalAttachment,
   TerminalOffset,
@@ -393,6 +394,10 @@ export const RpcMethods = {
   "relayAccount.machines": rpc(Schema.Void, Schema.Array(RelayHost)),
   "relayAccount.setShown": rpc(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }), Schema.Array(RelayHost)),
   "relayAccount.removeMachine": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(RelayHost)),
+  "appConnections.status": rpc(Schema.Void, AppConnectionsStatus),
+  "appConnections.start": rpc(Schema.Void, AppConnectionsStatus),
+  "appConnections.answer": rpc(Schema.Struct({ id: Schema.String, approve: Schema.Boolean }), AppConnectionsStatus),
+  "appConnections.remove": rpc(Schema.Struct({ id: Schema.String }), AppConnectionsStatus),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   "agents.account": rpc(
@@ -814,6 +819,10 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "relayAccount.machines": "read",
   "relayAccount.setShown": "mutation",
   "relayAccount.removeMachine": "mutation",
+  "appConnections.status": "read",
+  "appConnections.start": "mutation",
+  "appConnections.answer": "mutation",
+  "appConnections.remove": "mutation",
   "models.list": "read",
   "agents.account": "read",
   "agents.updates": "read",
@@ -988,6 +997,10 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "relayAccount.machines",
   "relayAccount.setShown",
   "relayAccount.removeMachine",
+  "appConnections.status",
+  "appConnections.start",
+  "appConnections.answer",
+  "appConnections.remove",
   "agents.update",
 ])
 export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEvent["type"]>([
@@ -995,6 +1008,7 @@ export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEve
   "vm.screen.closed",
   "fs.changed",
   "environments.changed",
+  "appConnections.changed",
 ])
 export type RpcRequest<M extends RpcMethod> = (typeof RpcMethods)[M]["request"]["Type"]
 export type RpcResponse<M extends RpcMethod> = (typeof RpcMethods)[M]["response"]["Type"]
@@ -1089,6 +1103,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("update.changed") }),
   Schema.Struct({ type: Schema.Literal("environment.status"), id: Schema.String, status: EnvironmentStatus }),
   Schema.Struct({ type: Schema.Literal("environments.changed") }),
+  Schema.Struct({ type: Schema.Literal("appConnections.changed"), status: AppConnectionsStatus }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   Schema.Struct({ type: Schema.Literal("device.updated"), threadId: Schema.String, devices: ThreadDevices }),
   Schema.Struct({

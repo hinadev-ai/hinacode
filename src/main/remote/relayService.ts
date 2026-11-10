@@ -29,6 +29,7 @@ const Profile = Schema.Struct({
   email: Schema.NullOr(Schema.String),
   imageUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
 })
+const SignedInOwner = Schema.Struct({ name: Schema.NullOr(Schema.String), email: Schema.NullOr(Schema.String) })
 const Tunnel = Schema.Struct({ hostname: Schema.String, connectorToken: Schema.String })
 const ServiceFailure = Schema.Struct({ error: Schema.String })
 
@@ -135,6 +136,17 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
           if (answer.status === 410) return Effect.fail(new RelayError({ message: EXPIRED }))
           if (answer.status === 403) return Effect.fail(new RelayError({ message: DENIED }))
           return Effect.map(decode("finish linking", Claimed, answer), ({ credential }) => Option.some(credential))
+        }),
+      ),
+    verifyOwnerSignIn: (credential: string, code: string, codeVerifier: string) =>
+      call("check who signed in", "POST", "/v1/host/sign-in-codes/verify", {
+        body: { code, codeVerifier },
+        credential,
+      }).pipe(
+        Effect.flatMap((answer) => {
+          if (answer.status === 401) return Effect.fail(forgotten())
+          if (answer.status === 410) return Effect.fail(new RelayError({ message: SIGN_IN_USED }))
+          return decode("check who signed in", SignedInOwner, answer)
         }),
       ),
     putTunnel: (credential: string, origin: string) =>
