@@ -24,6 +24,7 @@ const die = (code, lastWords) => {
 
 if (exitOnStart) die(1, "Error: Claude Code could not read its settings")
 
+writeFileSync(join(home, "argv.json"), JSON.stringify(process.argv.slice(2)))
 const sessions = join(home, "sessions")
 mkdirSync(sessions, { recursive: true })
 const resumed = process.argv.find((arg) => arg.startsWith("--resume="))?.slice("--resume=".length) ?? null

@@ -56,6 +56,9 @@ type Received = {
     turnId?: string
     input?: Array<import("./protocol.ts").UserInput>
     config?: { model_auto_compact_token_limit?: number; shell_environment_policy?: unknown }
+    approvalPolicy?: unknown
+    sandbox?: unknown
+    sandboxPolicy?: unknown
   }
   id?: number
   result?: import("./protocol.ts").ToolRequestUserInputResponse
@@ -97,7 +100,8 @@ const waitFor = (predicate: () => boolean) =>
     return Effect.sync(() => watcher.close())
   })
 
-const countOf = (method: string) => received().filter((message) => message.method === method).length
+const sent = (method: string) => received().filter((message) => message.method === method)
+const countOf = (method: string) => sent(method).length
 
 const input = (threadId: string, home: AccountHome | null = null): RunTurnInput => ({
   threadId,
@@ -293,6 +297,44 @@ describe("Codex auto-compact", () => {
         yield* provider.runTurn(input("default-compact")).pipe(Stream.runDrain)
         const started = received().find((message) => message.method === "thread/start")
         expect(started?.params?.config).not.toHaveProperty("model_auto_compact_token_limit")
+      }),
+    ),
+  )
+})
+
+describe("Codex full access", () => {
+  it.live("starts a full access thread and turn that never ask for approval", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const events = yield* provider.runTurn({ ...input("full"), accessMode: "full" }).pipe(Stream.runCollect)
+        expect(sent("thread/start")[0]?.params).toMatchObject({
+          approvalPolicy: "never",
+          sandbox: "danger-full-access",
+        })
+        expect(sent("turn/start")[0]?.params).toMatchObject({ approvalPolicy: "never" })
+        expect(events.filter((event) => event.type === "approval_requested")).toStrictEqual([])
+        expect(events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
+  it.live("lifts the sandbox of a loaded thread switched from supervised to full", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        yield* provider.runTurn({ ...input("switch"), accessMode: "supervised" }).pipe(Stream.runDrain)
+        yield* provider
+          .runTurn({ ...input("switch"), accessMode: "full", resumeSessionId: "codex-thread" })
+          .pipe(Stream.runDrain)
+        expect(sent("turn/start").map((message) => message.params?.approvalPolicy)).toStrictEqual([
+          "untrusted",
+          "never",
+        ])
+        expect(sent("turn/start").map((message) => message.params?.sandboxPolicy)).toStrictEqual([
+          undefined,
+          { type: "dangerFullAccess" },
+        ])
       }),
     ),
   )

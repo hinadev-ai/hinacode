@@ -249,6 +249,42 @@ describe("makeAcpProvider", () => {
     )
   }
 
+  it.live("answers a command itself in full mode", () =>
+    Effect.gen(function* () {
+      const { provider: make, received } = setup()
+      const provider = yield* make
+      const events = yield* runToEnd(provider, input({ prompt: "ask to run", accessMode: "full" }))
+      expect(types(events)).not.toContain("approval_requested")
+      expect(events).toContainEqual({
+        type: "tool_call_finished",
+        callId: "call_run",
+        output: "Removed build.",
+        isError: false,
+      })
+      const answer = received().find((message) => message.id === 0 && message.method === undefined)
+      expect(answer?.result).toStrictEqual({ outcome: { outcome: "selected", optionId: "once" } })
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("asks before a command in auto mode", () =>
+    Effect.gen(function* () {
+      const { provider: make } = setup()
+      const provider = yield* make
+      const turn = yield* startTurn(provider, input({ prompt: "ask to run", accessMode: "auto" }))
+      const requested = yield* turn.until((event) => event.type === "approval_requested")
+      if (requested.type !== "approval_requested") throw new Error("expected an approval")
+      expect(requested.request).toMatchObject({ kind: "command", title: "Run command", detail: "rm -rf build" })
+      yield* provider.respondApproval(requested.request.id, "deny")
+      yield* Fiber.join(turn.fiber)
+      expect(turn.events).toContainEqual({
+        type: "tool_call_finished",
+        callId: "call_run",
+        output: "Rejected",
+        isError: true,
+      })
+    }).pipe(Effect.scoped),
+  )
+
   it.live("interrupts a turn, closing its open tool call and its pending approval", () =>
     Effect.gen(function* () {
       const { provider: make, received } = setup()
