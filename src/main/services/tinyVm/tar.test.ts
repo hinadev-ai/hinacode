@@ -1,5 +1,7 @@
+import { execFileSync } from "node:child_process"
 import {
   existsSync,
+  linkSync,
   lstatSync,
   mkdtempSync,
   mkdirSync,
@@ -67,6 +69,24 @@ describe("encodeTar and decodeTar", () => {
     const junk = Object.fromEntries(Array.from({ length: 100_000 }, (_, index) => [`k${index}`, "v"]))
     const archive = Buffer.concat([paxHeader(junk), encodeTar([file("x", "ok")])])
     expect(() => decodeTar(archive)).toThrow("too large")
+  })
+
+  it("decodes a pax archive from GNU tar with a path over 100 bytes and a hard link", () => {
+    const root = mkdtempSync(join(tmpdir(), "tar-gnu-"))
+    const deep = join(root, "proj", ...Array.from({ length: 12 }, (_, index) => `directory-${index}`))
+    mkdirSync(deep, { recursive: true })
+    writeFileSync(join(deep, "notes.txt"), "deep\n")
+    writeFileSync(join(root, "proj", "a.txt"), "shared\n")
+    linkSync(join(root, "proj", "a.txt"), join(root, "proj", "b.txt"))
+    const archive = join(root, "out.tar")
+    execFileSync("tar", ["-cf", archive, "--format=pax", "-C", root, "proj"])
+
+    const files = decodeTar(readFileSync(archive)).filter((entry) => entry.type === "file")
+    const contents = Object.fromEntries(files.map((entry) => [entry.path, new TextDecoder().decode(entry.data)]))
+
+    expect(contents[`proj/${deep.slice(join(root, "proj").length + 1)}/notes.txt`]).toBe("deep\n")
+    expect(contents["proj/a.txt"]).toBe("shared\n")
+    expect(contents["proj/b.txt"]).toBe("shared\n")
   })
 
   it("refuses an archive cut off before its end marker", () => {
