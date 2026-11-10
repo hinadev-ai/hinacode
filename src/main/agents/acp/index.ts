@@ -13,6 +13,7 @@ import type {
 } from "../../../shared/agent.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { providerInfo } from "../../../shared/providers.ts"
+import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
 import { attachmentContext } from "../elementContext.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
@@ -380,6 +381,10 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
           if (input.home !== null) return yield* agentError(`${name} runs on its CLI login only`)
           accessModes.set(input.threadId, input.accessMode)
           const { client, capabilities } = yield* startAgent
+          yield* Effect.acquireRelease(
+            Effect.sync(() => registerAgentPid(input.threadId, client.pid)),
+            (unregister) => Effect.sync(unregister),
+          )
           yield* client.subscribe((message) => {
             trackCommands(input.threadId, message)
             answerUnowned(client, message)
