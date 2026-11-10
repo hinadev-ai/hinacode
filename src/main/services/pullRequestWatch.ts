@@ -136,16 +136,25 @@ const eventLines = (
   }
 }
 
+const closingLines = (events: ReadonlyArray<WatchEventKind>, ended: boolean): ReadonlyArray<string> => {
+  if (events.includes("mergedOrClosed")) return []
+  if (ended) return ["Act on this in this thread."]
+  return [
+    "Act on this in this thread. The watch stays on, so the next push, failure, review or comment will be reported here too.",
+  ]
+}
+
 export const watchMessage = (
   detail: PullRequestDetail,
   previous: PullRequestWatchSnapshot | null,
   events: ReadonlyArray<WatchEventKind>,
+  { ended = false }: { readonly ended?: boolean } = {},
 ): string =>
   [
     `Pull request watch: news on ${detail.url} (branch ${detail.headRef}, base ${detail.baseRef}).`,
     "",
     ...events.flatMap((kind) => [...eventLines(detail, previous, kind), ""]),
-    "Act on this in this thread. The watch stays on, so the next push, failure, review or comment will be reported here too.",
+    ...closingLines(events, ended),
   ]
     .join("\n")
     .trimEnd()
