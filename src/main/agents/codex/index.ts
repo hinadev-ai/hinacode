@@ -554,7 +554,9 @@ const make = Effect.gen(function* () {
 
           const compacting = isCompactCommand(input.prompt)
           const startTurn = Effect.gen(function* () {
-            const skills = input.prompt.includes("$") ? yield* listSkills(input.cwd, input.home) : []
+            const skills = input.prompt.includes("$")
+              ? yield* listSkills(input.cwd, input.home).pipe(Effect.orElseSucceed(() => []))
+              : []
             const turnStart: TurnStartParams = {
               threadId: thread.id,
               input: [...userInput(input.prompt, input.attachments), ...skillInputs(input.prompt, skills)],
