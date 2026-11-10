@@ -922,6 +922,20 @@ it("allows the approval a turn is waiting on when the thread switches to full ac
   })
 })
 
+it("allows an approval a full access thread receives without showing it", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, decisions, transcript }) => {
+    release()
+    await Effect.runPromise(threads.update({ id: thread.id, accessMode: "full" }))
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    await vi.waitFor(() => expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow" }]))
+
+    const shown = transcript.filter((push) => push.type === "thread.event" && push.event.type === "approval_requested")
+    expect(shown).toStrictEqual([])
+    expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toStrictEqual([])
+    expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running")
+  })
+})
+
 it("holds a steer sent during an approval and steers it after the allowed tool call", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, steers }) => {
     release()
