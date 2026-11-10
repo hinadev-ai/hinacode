@@ -1,6 +1,6 @@
 # App connections: drive HinaCode from another app
 
-Status: Building
+Status: Shipped
 Date: 2026-11-10
 
 ## Problem
@@ -18,7 +18,7 @@ Running something inside the other app's sandbox does not work either. Those san
 5. The app appears in the list in Settings with when it was last used, or when it connected if it has not called yet. Remove ends its access at once.
 6. The app can now list projects and threads, read a thread, start one, send to one and stop one.
 
-Without a relay the section says to sign in to the relay first.
+Without a relay the section says to sign in to the relay first. Apps connected earlier stay listed, so they can still be removed.
 
 ## Design
 
@@ -95,6 +95,7 @@ The app server is its own authorization server, as the MCP authorization spec ex
 - An approval code is 8 characters from a 32 letter alphabet, lives ten minutes, works once, and is thrown away after 5 wrong tries.
 - Access tokens do not expire. Remove in Settings is the way to end one. There are no refresh tokens.
 - A registered redirect URI must match exactly, except the port of a loopback one.
+- A `/mcp` request must declare its length and stay under 1 MB. OAuth bodies stay under 64 KB.
 
 ### Tools
 

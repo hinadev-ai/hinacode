@@ -23,4 +23,5 @@ The developer approves an app by typing a one-time code from Settings into a pag
 - A connected app can start an agent in any project on the machine, and that agent runs code. Connecting an app is as strong as pairing a phone, and the approval page says so.
 - The approval code is typed into a page reached from a link the other app produced. Someone who tricks the developer into opening their link while a code is live, and into typing it, gets a connection. The page names the app and its redirect host, the code lasts ten minutes, and nothing is exposed while no code is live.
 - A leaked token works until removed. Expiry with refresh tokens is the next step if connections turn out to be long-lived and forgotten.
+- The MCP transport keeps a session until the client ends it or HinaCode restarts. Only a connected app can open one, and a request body is capped at 1 MB, so a client that reconnects without closing costs a little memory per session. Expiry belongs in the transport.
 - A machine without a relay cannot use this. A second ingress path or another tunnel provider would need the issuer to stop being the relay hostname.
