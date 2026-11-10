@@ -1219,6 +1219,26 @@ describe("fetching origin", () => {
       }),
     ),
   )
+
+  it.effect("fetches again right after a fetch that failed", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        withOrigin(root)
+        const origin = git(root, "remote", "get-url", "origin").trim()
+        const fetch = Worktrees.use((worktrees) => worktrees.fetch(projectId))
+        const hasOriginBranch = () => git(root, "for-each-ref", "refs/remotes/origin/feature/login").trim() !== ""
+
+        git(root, "update-ref", "-d", "refs/remotes/origin/feature/login")
+        git(root, "remote", "set-url", "origin", join(dirname(root), "missing.git"))
+        yield* Effect.exit(fetch)
+        expect(hasOriginBranch()).toBe(false)
+
+        git(root, "remote", "set-url", "origin", origin)
+        yield* fetch
+        expect(hasOriginBranch()).toBe(true)
+      }),
+    ),
+  )
 })
 
 const pushFromElsewhere = (root: string) => {

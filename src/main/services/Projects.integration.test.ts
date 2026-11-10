@@ -252,7 +252,39 @@ describe("Projects.create with a new GitHub repository", () => {
   )
 })
 
+describe("Projects.update", () => {
+  it.live("normalizes a moved root the way create does", () =>
+    Effect.gen(function* () {
+      const projects = yield* Projects
+      const project = yield* projects.create({ name: "repo", rootPath: emptyDir(), setupScript: null })
+      const moved = emptyDir()
+
+      const updated = yield* projects.update({ id: project.id, rootPath: ` ${moved}/ ` })
+      expect(updated.rootPath).toBe(moved)
+      expect((yield* projects.get(project.id)).rootPath).toBe(moved)
+    }).pipe(Effect.provide(projectsLayer)),
+  )
+})
+
 describe("Projects.clone", () => {
+  it.live("keeps a folder that already holds the clone, whatever the repository name's case", () =>
+    Effect.gen(function* () {
+      const rootPath = withOrigin("git@github.com:octocat/hello-world.git")
+      const project = yield* provided(
+        Projects.use((projects) =>
+          projects.clone({
+            cloneId: "clone",
+            repository: { owner: "octocat", name: "Hello-World" },
+            rootPath,
+            name: "x",
+            setupScript: null,
+          }),
+        ),
+      )
+      expect(project.rootPath).toBe(rootPath)
+    }),
+  )
+
   it.live("refuses a folder that already holds other files, before cloning", () =>
     Effect.gen(function* () {
       const rootPath = repoWith({ "README.md": "mine" })
