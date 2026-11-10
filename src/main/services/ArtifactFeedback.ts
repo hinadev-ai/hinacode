@@ -109,7 +109,7 @@ const make = Effect.gen(function* () {
         ownerThreadId === undefined
           ? undefined
           : yield* threads.get(ownerThreadId).pipe(Effect.catch(() => Effect.succeed(undefined)))
-      const mentioned = yield* Effect.filter(feedbackTargets(body, undefined), inProject(owner?.projectId))
+      const mentioned = yield* Effect.filter(feedbackTargets(body), inProject(owner?.projectId))
       if (mentioned.length > 0) return mentioned
       return owner === undefined ? [] : [owner.id]
     })

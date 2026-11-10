@@ -1,9 +1,4 @@
-import type {
-  SDKAssistantMessage,
-  SDKMessage,
-  SDKRateLimitEvent,
-  SDKResultSuccess,
-} from "@anthropic-ai/claude-agent-sdk"
+import type { SDKAssistantMessage, SDKRateLimitEvent, SDKResultSuccess } from "@anthropic-ai/claude-agent-sdk"
 
 export const usageLimitMessage = "You've hit your limit · resets 3pm (Asia/Tokyo)"
 export const orgSpendLimitMessage =
@@ -68,5 +63,3 @@ export const usageLimitAssistant: SDKAssistantMessage = {
     usage: usageLimitResult.usage,
   },
 }
-
-export const usageLimitMessages: ReadonlyArray<SDKMessage> = [rejectedRateLimit, usageLimitAssistant, usageLimitResult]

@@ -895,14 +895,7 @@ export const WatchEventKind = Schema.Literals([
 ])
 export type WatchEventKind = typeof WatchEventKind.Type
 
-export const allWatchEventKinds: ReadonlyArray<WatchEventKind> = [
-  "checksFailed",
-  "checksPassed",
-  "reviewChanged",
-  "conflicting",
-  "mergedOrClosed",
-  "commented",
-]
+export const allWatchEventKinds: ReadonlyArray<WatchEventKind> = WatchEventKind.literals
 
 export const PullRequestWatchSnapshot = Schema.Struct({
   status: PullRequestStatus,

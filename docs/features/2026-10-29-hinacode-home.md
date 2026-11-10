@@ -24,7 +24,7 @@ HinaCode spreads its data over `~/Library/Application Support/kkcode` (or `kkcod
   keybindings.json                 { "<CommandId>": "<chord>" }, user overrides only
   chats/<threadId>/
   attachments/<threadId>/
-  cache/<label>_<provider>.json    { accountId, account, fetchedAt }
+  cache/<label>_<provider>.json    { accountId, account }
   scratch/<YYYYMMDD-HHmmss>-<slug>-<threadId>/
   tiny-vm/  cloudflared/  accounts/  resource-monitor/  devices/
   chromium/                        Electron's userData: localStorage, cookies, caches, SingletonLock

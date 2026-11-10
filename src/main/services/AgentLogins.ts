@@ -9,7 +9,6 @@ import { MagpieProvider } from "../agents/magpie/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentError, AgentProvider } from "../agents/provider.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
-import { nowIso } from "./clock.ts"
 import type { NotFoundError, PersistenceError } from "./errors.ts"
 import { Settings } from "./Settings.ts"
 
@@ -29,7 +28,6 @@ const CachedAccount = Schema.fromJsonString(
   Schema.Struct({
     accountId: Schema.NullOr(Schema.String),
     account: AgentAccount,
-    fetchedAt: Schema.String,
   }),
 )
 const decodeCached = Schema.decodeUnknownEffect(CachedAccount)
@@ -52,7 +50,7 @@ const remove = (path: string) => Effect.tryPromise(() => rm(path, { force: true 
 
 const writeCached = (path: string, accountId: string | null, account: AgentAccount) =>
   Effect.gen(function* () {
-    const content = yield* encodeCached({ accountId, account, fetchedAt: yield* nowIso })
+    const content = yield* encodeCached({ accountId, account })
     const temp = `${path}.${process.pid}.tmp`
     yield* Effect.tryPromise(async () => {
       await mkdir(dirname(path), { recursive: true })

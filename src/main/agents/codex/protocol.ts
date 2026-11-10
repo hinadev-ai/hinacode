@@ -43,7 +43,6 @@ export type ThreadForkParams = ThreadResumeParams & {
 
 export type Thread = { id: string; sessionId: string }
 export type ThreadStartResponse = { thread: Thread; sandbox: SandboxPolicy }
-export type ThreadResumeResponse = ThreadStartResponse
 export type ThreadForkResponse = ThreadStartResponse
 
 export type UserInput =
