@@ -19,7 +19,7 @@ A developer who picks Full access expects the agent to run without asking. Each 
 
 - `src/shared/access.ts` maps an agent, a mode and a model to an `AccessBehavior`. `ComposerControls.tsx` and the phone's `access-mode.tsx` keep one label and hint per behavior, so they cannot drift per agent.
 - `AgentRunner`'s turn `handle` answers allow for any `approval_requested` on a thread whose stored mode is `full`, through the provider named in the request. Turns, wake turns and sub-runs all pass through it.
-- The Claude provider compares the mode in each `init` message with the one it asked for, and fails the turn when the CLI did not take `bypassPermissions`. `plan` is let through because the model can enter it itself.
+- The Claude provider reads the mode in the first `init` message of each CLI process, which is the mode the CLI started in. When it launched the CLI in `bypassPermissions` and the CLI reports another mode that HinaCode has not switched to since, the turn fails. A refused switch later in the session already fails through `setPermissionMode`.
 - `create_thread` passes the caller's `accessMode` to `Threads.create` and to `threads.create` on another machine. Side chats stay `supervised` (see `2026-10-30-side-chat.md`).
 
 ## Out of scope
