@@ -44,6 +44,7 @@ const cliProcesses = Effect.acquireRelease(
 interface Control {
   readonly lifeline?: string
   readonly exitOnStart?: boolean
+  readonly bypassDisabled?: boolean
 }
 
 const fakeHome = (control: Control) => {
@@ -161,6 +162,32 @@ describe("Claude Code CLI failures", () => {
 
         setControl({ lifeline })
         expect(ended(yield* runToEnd(provider, input(home)))).toMatchObject({ type: "turn_completed" })
+      }).pipe(Effect.scoped),
+    ),
+  )
+
+  it.live("runs a full access turn when the CLI starts in bypassPermissions", () =>
+    withClis((lifeline) =>
+      Effect.gen(function* () {
+        const { home } = fakeHome({ lifeline })
+        const provider = yield* harness
+        const events = yield* runToEnd(provider, input(home, { accessMode: "full" }))
+        expect(ended(events)).toMatchObject({ type: "turn_completed" })
+      }).pipe(Effect.scoped),
+    ),
+  )
+
+  it.live("fails a full access turn when the CLI's settings disable bypassPermissions", () =>
+    withClis((lifeline) =>
+      Effect.gen(function* () {
+        const { home } = fakeHome({ lifeline, bypassDisabled: true })
+        const provider = yield* harness
+        const events = yield* runToEnd(provider, input(home, { accessMode: "full" }))
+        expect(ended(events)).toStrictEqual({
+          type: "turn_failed",
+          message: expect.stringContaining("disableBypassPermissionsMode"),
+        })
+        expect(events.map((event) => event.type)).not.toContain("text_delta")
       }).pipe(Effect.scoped),
     ),
   )
