@@ -30,10 +30,10 @@ const memoryStorage = (): Storage => {
   }
 }
 
+const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } })
+
 const relay = () => {
   const requests: Array<string> = []
-  const json = (body: unknown) =>
-    new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } })
   const fetch = async (input: string, init?: RequestInit) => {
     const path = new URL(input).pathname
     requests.push(`${init?.method ?? "GET"} ${path}`)
@@ -63,5 +63,22 @@ describe("signOutDevice", () => {
     expect(step._tag).not.toBe("signingIn")
     expect(server.requests).not.toContain("POST /v1/devices")
     expect(storedAccount()).toBeNull()
+  })
+
+  it("signs in again only after the user signs in to Clerk deliberately", async () => {
+    const server = relay()
+    vi.stubGlobal("fetch", server.fetch)
+    clerk.signOut = () => Promise.reject(new Error("Clerk is unavailable"))
+    await signOutDevice({ serviceUrl, credential: "old-credential" })
+
+    clerk.signOut = async () => {
+      clerk.isSignedIn = false
+    }
+    const afterSignOut = await openSignIn(serviceUrl, () => undefined).step
+    clerk.isSignedIn = true
+    const afterSignIn = await openSignIn(serviceUrl, () => undefined).step
+
+    expect(afterSignOut._tag).toBe("signIn")
+    expect(afterSignIn._tag).toBe("signingIn")
   })
 })
