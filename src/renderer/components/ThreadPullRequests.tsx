@@ -610,7 +610,7 @@ function PullRequestHeader({
         <h3 className="text-base/snug font-semibold text-pretty">{pullRequest.title}</h3>
       </div>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="flex min-w-0 items-center gap-2 text-xs">
+        <span className="flex min-w-4 items-center gap-2 text-xs">
           <Avatar login={pullRequest.author} host={host} />
           <span className="truncate font-medium">{pullRequest.author}</span>
         </span>
