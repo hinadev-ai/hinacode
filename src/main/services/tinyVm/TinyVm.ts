@@ -1017,7 +1017,6 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         own(owner, streamId)
         buffer(streamId, screen, head)
         socket.on("data", (data: Buffer) => buffer(streamId, screen, data))
-        socket.on("error", () => {})
         socket.once("close", () => screenClosed(streamId, screen, owner))
       }).pipe(Effect.ensuring(Effect.sync(() => openingScreens.delete(streamId))))
 
