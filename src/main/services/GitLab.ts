@@ -324,19 +324,21 @@ const make = Effect.gen(function* () {
     return api(hostname, ["version"], { timeout: PROBE_TIMEOUT }).pipe(
       Effect.as(true),
       Effect.catchTag("GitLabSignedOutError", () => Effect.succeed(true)),
-      Effect.orElseSucceed(() => false),
+      Effect.catchTag("GitLabApiError", () => Effect.succeed(false)),
       Effect.tap((answer) => Effect.sync(() => hostAnswers.set(hostname, answer))),
+      Effect.orElseSucceed(() => false),
     )
   }
 
-  const viewers = new Map<string, string | null>()
+  const viewers = new Map<string, string>()
   const viewer = (hostname: string) => {
-    if (viewers.has(hostname)) return Effect.succeed(viewers.get(hostname) ?? null)
+    const known = viewers.get(hostname)
+    if (known !== undefined) return Effect.succeed(known)
     return api(hostname, ["user"]).pipe(
       Effect.flatMap(decodeUser),
-      Effect.map((user): string | null => user.username),
-      Effect.orElseSucceed(() => null),
+      Effect.map((user) => user.username),
       Effect.tap((username) => Effect.sync(() => viewers.set(hostname, username))),
+      Effect.orElseSucceed(() => null),
     )
   }
 
