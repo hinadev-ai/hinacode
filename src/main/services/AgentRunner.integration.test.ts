@@ -937,6 +937,34 @@ it("allows an approval a full access thread receives without showing it", async 
   })
 })
 
+it("allows an approval a full access thread receives in a turn its agent starts by itself", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, idle, wake, decisions, transcript }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+    await Effect.runPromise(threads.update({ id: thread.id, accessMode: "full" }))
+    const { providerSessionId } = await Effect.runPromise(threads.get(thread.id))
+    void wake("claude", providerSessionId!, [
+      {
+        type: "approval_requested",
+        request: {
+          id: "wake-approval",
+          threadId: thread.id,
+          provider: "claude",
+          kind: "command",
+          title: "Run command",
+          detail: "pnpm build",
+        },
+      },
+    ])
+    await vi.waitFor(() => expect(decisions).toStrictEqual([{ requestId: "wake-approval", decision: "allow" }]))
+
+    const shown = transcript.filter((push) => push.type === "thread.event" && push.event.type === "approval_requested")
+    expect(shown).toStrictEqual([])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
 it("holds a steer sent during an approval and steers it after the allowed tool call", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, steers }) => {
     release()
