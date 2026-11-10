@@ -9,6 +9,7 @@ private struct Item {
 final class DocumentBlocksView: ExpoView {
   let onDocumentEvent = EventDispatcher()
 
+  private let layout = BlockListLayout()
   private let collectionView: UICollectionView
   private var dataSource: UICollectionViewDiffableDataSource<Int, String>!
   private var style = DocumentStyle()
@@ -23,12 +24,7 @@ final class DocumentBlocksView: ExpoView {
   private var announcedReady = false
 
   required init(appContext: AppContext? = nil) {
-    let item = NSCollectionLayoutItem(
-      layoutSize: NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .estimated(48)))
-    let group = NSCollectionLayoutGroup.vertical(layoutSize: item.layoutSize, subitems: [item])
-    let section = NSCollectionLayoutSection(group: group)
-    section.contentInsets = NSDirectionalEdgeInsets(top: 16, leading: 0, bottom: 32, trailing: 0)
-    collectionView = UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewCompositionalLayout(section: section))
+    collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
     super.init(appContext: appContext)
     renders.countLimit = 400
     collectionView.contentInsetAdjustmentBehavior = .never
@@ -54,14 +50,15 @@ final class DocumentBlocksView: ExpoView {
   @objc(updateClippedSubviewsWithClipRect:relativeToView:)
   func updateClippedSubviews(withClipRect clipRect: CGRect, relativeTo clipView: UIView) {}
 
-  override func didMoveToWindow() {
-    super.didMoveToWindow()
-    guard window != nil, !announcedReady else { return }
+  // Fabric sets the event emitter before it inserts the view, so the document can load while react-native-screens
+  // still holds its screen out of the window behind another transition.
+  override func didMoveToSuperview() {
+    super.didMoveToSuperview()
+    guard superview != nil, !announcedReady else { return }
     announcedReady = true
     let capabilities: [Capability] = [.render, .charts, .images, .highlight, .diagrams]
     send(.ready, ["capabilities": capabilities.map(\.rawValue)])
   }
-
 
   func setTheme(_ json: String) {
     let object = json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
@@ -103,6 +100,7 @@ final class DocumentBlocksView: ExpoView {
       return Item(key: key, block: block)
     }
     items.replaceSubrange(range, with: inserted)
+    layout.replace(range, count: inserted.count)
     let previousPlacements = Array(placements[range])
     let insertedPlacements = inserted.indices.map { offset in
       Placement.between(start + offset > 0 ? items[start + offset - 1].block : nil, items[start + offset].block)
