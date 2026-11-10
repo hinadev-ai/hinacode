@@ -117,6 +117,21 @@ Mermaid diagrams look the same as on the desktop. The desktop draws them with `p
 
 ### Editing
 
+The editing model is the desktop's own Tiptap `Editor`, running headless on Hermes (`packages/document-view/src/engine.ts`). Tiptap 3 skips mounting when there is no `document`, and its `view` becomes a proxy that only exposes `state` and `dispatch`. So the phone runs the desktop's command chains (`toggleBold`, `toggleTaskList`, `addRowAfter`) and its keymaps unchanged. Enter, Backspace, Delete and Tab are offered to the same keymap plugins with a synthetic key event and a minimal view whose `endOfTextblock` answers from the caret's offset in its block. Two details matter:
+
+- A headless editor's state has no plugins. The engine builds it from `editor.extensionManager.plugins`.
+- The document must be built with the editor's own schema. ProseMirror compares node types by identity, so a document from another `Schema` instance makes the trailing-node plugin append a paragraph on every keystroke. Parsing keeps the fast, conformance-tested `MarkdownManager` and only builds nodes with `editor.schema`, since the JSON between them does not depend on a schema.
+
+Input rules (`## ` to a heading) stay off on the phone (see Out of scope).
+
+| Headless editor on Hermes, Mac CPU, warm, load under 7 | 300 KB document |
+| ------------------------------------------------------ | --------------- |
+| Parse into the editor's schema                         | 328 ms          |
+| One typed character, every desktop plugin, p50         | 3.4 ms          |
+| One typed character, bare ProseMirror, p50             | 0.37 ms         |
+
+Three of the desktop's `appendTransaction` plugins account for the gap: table cell fixing (about 1.1 ms), autolink (about 1.0 ms) and clear-document (about 0.8 ms). Each compares the top-level nodes of the old and new document, so the cost grows with the number of top-level blocks, about 0.8 µs each, not with the document's text. The desktop pays the same, and removing any of them would change behavior, so the phone keeps them. `prosemirror-kotlin` and a native model are not needed: the per-character model cost is well under a frame, and the native text view shows the character before JS runs. The bridge cost per character is measured with the editing slice (checkpoint 9).
+
 The native text view of the focused block owns its text while the user types. It reports text diffs and selection changes, and JS applies them to the model as transactions. Typed characters therefore show up without waiting for JS. The model's cost shows up as CPU and as the delay before a structural edit (Enter, a toolbar command) redraws.
 
 - No model change is pushed into a text view that has marked text. Input rules, normalization and mark changes wait until the composition commits. This is the same rule `packages/composer-editor` keeps, and it covers tiptap #5733 and #8626.
