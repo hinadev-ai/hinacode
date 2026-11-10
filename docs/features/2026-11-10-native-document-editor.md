@@ -264,7 +264,7 @@ The baseline is the current screen (`document-segments.ts` and `react-native-enr
 How to read it:
 
 - First content is the frame after the first commit that holds the document list, timed from JS. It does not see enriched-markdown's native layout after the commit.
-- On iOS, interactive is dominated by the push transition. Its last commits are the screen freeze at about 670 ms and the list layout at about 735 ms, so all three sizes land near 700 to 800 ms.
+- On iOS, interactive is dominated by navigation, not by the document. The harness's `router().back()` reaches the native stack only with the next push, which first plays the pending pop (about 460 ms) while react-native-screens holds the new screen out of the window. The last commits are the screen freeze at about 670 ms and the list layout at about 735 ms, so all three sizes land near 700 to 800 ms. The first open after launch has no pending pop. This inflates every open after the first, in both apps.
 - On Android, the large document arrives in one 400 to 550 ms commit after a 230 ms parse, so first content and interactive are the same. The JS thread's p95 frame during the fling is 104 ms.
 - The old path has no separate handoff. Enriched-markdown parses Markdown again natively inside its view.
 - Native frame gaps come from `CADisplayLink` and `Choreographer` (`packages/perf-frames`). They show main-thread stalls and miss render-thread and GPU work. Xcode's Hitches and Core Animation FPS instruments do not support the simulator.
