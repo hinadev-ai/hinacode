@@ -167,6 +167,8 @@ const readBody = (response: Response, maxBytes = Number.POSITIVE_INFINITY) =>
       }),
   })
 
+const leaveFailuresToClose = () => {}
+
 const filesPath = (id: string, guestPath: string) =>
   `/v1/sandboxes/${encodeURIComponent(id)}/files?path=${encodeURIComponent(guestPath)}`
 
@@ -315,6 +317,7 @@ export const sbxClient = (login: SbxLogin) => {
         const code = Number(statusLine.split(" ")[1])
         if (code !== 101) return fail(errorOf(code, received.subarray(end + 4).toString(), id))
         cleanup()
+        socket.on("error", leaveFailuresToClose)
         resume(Effect.succeed({ socket, head: received.subarray(end + 4) }))
       }
       const onError = (cause: Error) =>
