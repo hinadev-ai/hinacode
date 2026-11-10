@@ -1344,6 +1344,31 @@ describe("magpie", () => {
     ),
   )
 
+  it.effect("fails a model change that would end the thread's background shell, and keeps the shell", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        sdk.respond = (cli) => cli.push(init("session-1"), backgroundTasks({ task_id: "shell-1" }), succeeded)
+        yield* magpieTurn("openrouter/deepseek-v4")
+        const first = latestCli()
+
+        const provider = yield* MagpieProvider
+        const error = yield* provider
+          .runTurn(turnInput({ model: "moonshot/kimi-k3" }))
+          .pipe(Stream.runCollect, Effect.flip)
+        expect(error).toMatchObject({ provider: "magpie", message: expect.stringContaining("npm run dev") })
+        expect(first.close).not.toHaveBeenCalled()
+        expect(sdk.clis).toHaveLength(1)
+
+        first.push(backgroundTasks())
+        yield* settle
+        sdk.respond = completeWith(succeeded)
+        yield* magpieTurn("moonshot/kimi-k3")
+        expect(first.close).toHaveBeenCalled()
+        expect(latestCli().options.resume).toBe("session-1")
+      }),
+    ),
+  )
+
   it.effect("fails the turn before starting Claude Code when magpie is not running", () =>
     onMagpie(
       Effect.gen(function* () {
