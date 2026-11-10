@@ -878,6 +878,35 @@ describe("startup", () => {
 })
 
 describe("thread changes", () => {
+  it.live("a worktree made from a detached root keeps the root's commit as its base", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const base = commit(root, "base")
+        git(root, "checkout", "-q", "--detach")
+        const baseRef = yield* Worktrees.use((worktrees) => worktrees.currentBranch(projectId))
+        expect(baseRef).toBe(base)
+
+        const thread = yield* Threads.use((threads) =>
+          threads.create({
+            projectId,
+            title: "detached",
+            provider: "claude",
+            model: "claude-sonnet-5-5",
+            worktree: { branch: "kk/detached", baseRef },
+          }),
+        )
+        yield* waitUntilSetUp(thread.worktreeId)
+        const { path } = yield* worktreeOf(thread.worktreeId)
+        writeFileSync(join(path, "committed.txt"), "one\n")
+        git(path, "add", "committed.txt")
+        git(path, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "work")
+
+        const changes = yield* Threads.use((threads) => threads.changes(thread.id, "worktree"))
+        expect(changes?.files).toStrictEqual([{ path: "committed.txt", status: "added" }])
+      }),
+    ),
+  )
+
   it.live("the worktree scope covers commits, edits and new files since the fork, and is null once removed", () =>
     withRepo(({ projectId }) =>
       Effect.gen(function* () {

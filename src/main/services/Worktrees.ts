@@ -579,10 +579,12 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
     })
 
   const currentBranch = (projectId: string) =>
-    projects.get(projectId).pipe(
-      Effect.flatMap(({ rootPath }) => git.run(rootPath, ["rev-parse", "--abbrev-ref", "HEAD"])),
-      Effect.map((output) => output.trim()),
-    )
+    Effect.gen(function* () {
+      const { rootPath } = yield* projects.get(projectId)
+      const branch = (yield* git.run(rootPath, ["rev-parse", "--abbrev-ref", "HEAD"])).trim()
+      if (branch !== "HEAD") return branch
+      return (yield* git.run(rootPath, ["rev-parse", "HEAD"])).trim()
+    })
 
   const branches = (projectId: string) =>
     projects.get(projectId).pipe(
