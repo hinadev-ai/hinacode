@@ -7,8 +7,9 @@ const shared = path.resolve(__dirname, "../../src/shared")
 const messages = path.resolve(__dirname, "../../messages")
 const icons = path.resolve(__dirname, "../../packages/icons")
 const composerEditor = path.resolve(__dirname, "../../packages/composer-editor")
+const perfFrames = path.resolve(__dirname, "../../packages/perf-frames")
 
-config.watchFolders = [shared, messages, icons, composerEditor]
+config.watchFolders = [shared, messages, icons, composerEditor, perfFrames]
 config.resolver.nodeModulesPaths = [path.resolve(__dirname, "node_modules"), path.resolve(__dirname, "../../node_modules")]
 
 // src/shared would otherwise resolve `effect` from the repo root, giving the bundle two copies whose
@@ -23,7 +24,7 @@ const perfRenderer = path.join(__dirname, "src/lib/perf-renderer.js")
 const resolvesFromApp = (context, moduleName) =>
   moduleName === "effect" ||
   moduleName.startsWith("effect/") ||
-  ((context.originModulePath.startsWith(icons) || context.originModulePath.startsWith(composerEditor)) &&
+  ([icons, composerEditor, perfFrames].some((dir) => context.originModulePath.startsWith(dir)) &&
     fromAppForPackages.test(moduleName))
 config.resolver.resolveRequest = (context, moduleName, platform) =>
   context.resolveRequest(

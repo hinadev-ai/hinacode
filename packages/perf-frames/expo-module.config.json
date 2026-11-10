@@ -1,0 +1,5 @@
+{
+  "platforms": ["android", "apple"],
+  "android": { "modules": ["dev.hinacode.perfframes.PerfFramesModule"] },
+  "apple": { "modules": ["PerfFramesModule"] }
+}

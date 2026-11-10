@@ -177,6 +177,10 @@ const stores = () => ({
   messages: (require("@/stores/messages") as typeof import("@/stores/messages")).useMessages,
 })
 const router = () => (require("expo-router") as typeof import("expo-router")).router
+const connection = () => require("@/lib/connection") as typeof import("@/lib/connection")
+const documentSegments = () =>
+  (require("@/lib/document-segments") as typeof import("@/lib/document-segments")).documentSegments
+const perfFrames = () => (require("@hinacode/perf-frames") as typeof import("@hinacode/perf-frames")).loadPerfFrames()
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 let firstCommit: number | null = null
@@ -317,7 +321,101 @@ async function reply(command: Command) {
   return { start, done, painted, settled, ...stopRecording() }
 }
 
-const workloads: Record<string, (command: Command) => Promise<unknown>> = { hello, pair, open, back, scroll, type, reply }
+/** Resolves with the next frame after the first commit whose tree holds a fiber that `match` accepts. */
+async function paintedOnceMounted(match: (fiber: Fiber) => boolean) {
+  for (;;) {
+    await nextCommit()
+    if (findFiber(match) !== undefined) return nextFrame()
+  }
+}
+
+const firstFrameAfter = (frameTimes: number[], at: number) => frameTimes.find((frame) => frame > at) ?? null
+
+function hermesHeap() {
+  const stats = (
+    globalThis as { HermesInternal?: { getInstrumentedStats?: () => Record<string, number> } }
+  ).HermesInternal?.getInstrumentedStats?.()
+  return stats === undefined ? null : { heapSize: stats.js_heapSize, allocatedBytes: stats.js_allocatedBytes }
+}
+
+/**
+ * Opens a document screen and times its first content and its last commit. Afterwards, outside the recording, it
+ * reads the same Markdown and times `documentSegments` on it alone, the JS parse the screen runs while rendering.
+ */
+async function openDocument(command: Command) {
+  const threadId = String(command.threadId)
+  const artifactId = String(command.artifactId)
+  await settle(300)
+  startRecording()
+  const start = performance.now()
+  const shown = paintedOnceMounted(withTestID("document"))
+  router().push({ pathname: "/thread/[id]/document", params: { id: threadId, artifactId, title: "perf" } })
+  const firstContent = await shown
+  const settled = await settle(1000)
+  const heap = hermesHeap()
+  const recorded = stopRecording()
+  const { markdown } = await connection().call("artifacts.readDocument", { id: artifactId })
+  const parse = documentSegments()
+  const parseStart = performance.now()
+  const segments = parse(markdown).length
+  const segmentMs = performance.now() - parseStart
+  return { start, firstContent, settled, heap, segmentMs, segments, bytes: markdown.length, ...recorded }
+}
+
+/** Samples native frames while the driver injects swipes. The driver answers `/ready` once the last one is done. */
+async function fling(command: Command) {
+  const sampler = perfFrames()
+  await settle(500)
+  startRecording()
+  await sampler.start()
+  const start = performance.now()
+  await post("/ready", { id: command.id })
+  const nativeFrames = await sampler.stop()
+  const end = performance.now()
+  await settle(500)
+  return { start, end, nativeFrames, ...stopRecording() }
+}
+
+/** Waits for the open document's `artifact.updated` push while the driver saves it, then times the repaint. */
+async function updateDocument(command: Command) {
+  const artifactId = String(command.artifactId)
+  const list = findFiber((fiber) => withTestID("document")(fiber) && hasScrollTo(fiber.stateNode))
+  if (list === undefined) throw new Error("no open document")
+  ;(list.stateNode as { scrollToOffset: (options: { offset: number; animated: boolean }) => void }).scrollToOffset({
+    offset: 0,
+    animated: false,
+  })
+  await settle(1000)
+  let unsubscribe = () => {}
+  const arrived = new Promise<number>((resolve) => {
+    unsubscribe = connection().onEvent((event) => {
+      if (event.type === "artifact.updated" && event.artifact.id === artifactId) resolve(performance.now())
+    })
+  })
+  startRecording()
+  const start = performance.now()
+  await post("/ready", { id: command.id })
+  const eventAt = await Promise.race([arrived, sleep(20000).then(() => null)])
+  unsubscribe()
+  if (eventAt === null) throw new Error("no artifact.updated within 20 s")
+  const settled = await settle(1000)
+  const recorded = stopRecording()
+  const paintedAt = settled > eventAt ? firstFrameAfter(recorded.frames, settled) : null
+  return { start, eventAt, settled, paintedAt, ...recorded }
+}
+
+const workloads: Record<string, (command: Command) => Promise<unknown>> = {
+  hello,
+  pair,
+  open,
+  back,
+  scroll,
+  type,
+  reply,
+  openDocument,
+  fling,
+  updateDocument,
+}
 
 async function post(path: string, body: unknown) {
   await fetch(`${url}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })

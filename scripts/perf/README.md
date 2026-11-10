@@ -282,6 +282,43 @@ cold starts and three rounds of the other workloads (`PERF_ROUNDS` changes that)
 | Typing           | Calls the composer's `onChangeText` once per character, 50 ms apart, and times each key to its commit and to the next frame. Native text input is not in it |
 | Reply            | Sends "go" to the desktop's paced mock reply and records until the reply completes and paints                                                               |
 
+### Documents
+
+`PERF_WORKLOADS` picks what `run` measures, from `cold`, `threads` and `documents`. It defaults to
+`cold,threads`. `documents` opens a 2 KB, a 30 KB and a 300 KB document `PERF_ROUNDS` times each. Then it opens the
+large one once more, measures memory, flings it and edits it from the desktop. `documents.ts` writes the three
+documents, and the large one carries a 500 row line chart and a 50 row table.
+
+```sh
+node scripts/perf/seed-documents.ts $PORT <"small a" id>   # prints PERF_DOC_THREAD=... PERF_DOCS=...
+export PERF_DOC_THREAD=<thread id> PERF_DOCS=small:<id>,medium:<id>,large:<id> PERF_WORKLOADS=documents
+PERF_APP=.context/perf/base.app node scripts/perf/mobile.ts run base-doc-ios-1
+
+# Android: a Release APK built with EXPO_PUBLIC_PERF_URL, on an emulator or phone adb sees
+PERF_PLATFORM=android PERF_SERIAL=emulator-5554 PERF_APK=.context/perf/base.apk \
+  node scripts/perf/mobile.ts run base-doc-android-1
+```
+
+On Android, `run` forwards `PERF_PORT` and the desktop's remote port with `adb reverse`. Native frame times come
+from `packages/perf-frames`, a small Expo module that records `CADisplayLink` or `Choreographer` timestamps on the
+main thread, only between `start()` and `stop()`. Xcode's Hitches and Core Animation FPS instruments do not run on
+the simulator, so the app records them itself.
+
+| Measurement            | How it is taken                                                                                                                                                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Document first content | Pushes the document route, then waits for the first commit that holds the list with testID `document`, and the frame after it. Includes the fetch                                                                           |
+| Document interactive   | The last commit before 1 s without one. It sees React's work, not the native Markdown layout that follows it                                                                                                                |
+| Document JS segment    | Reads the same Markdown again after the recording and times `documentSegments` on it alone                                                                                                                                  |
+| Document Hermes heap   | `HermesInternal.getInstrumentedStats()` after the screen settles. It includes garbage not yet collected                                                                                                                     |
+| Document memory        | The app's `phys_footprint` from `footprint` on iOS, `TOTAL PSS` from `dumpsys meminfo` on Android, with the large document open                                                                                             |
+| Document fling         | Ten fast swipes meant to land 600 ms apart, from `axe batch` on iOS and `adb shell input swipe` on Android. Gaps between native frame callbacks, plus `gfxinfo` on Android. `flingMs` holds how long the swipes really took |
+| Document update        | The desktop saves the open large document with one paragraph changed. Times the `artifact.updated` push to the frame after the last commit it caused                                                                        |
+
+A frame callback fires on every vsync the main thread is free for, so a gap over one vsync means the main thread was
+busy. It does not see work on the render thread or the GPU. The simulator does not let `simctl` answer the
+notification prompt, so deny it by hand once after the first install, or the swipes land on the prompt. `run` warns
+when a fling commits nothing.
+
 Read these as relative numbers. The simulator runs on the Mac's CPU, and other simulators on the same Mac slow it
 down, so alternate the two builds, compare medians, and write the load average down with them. `top` in the JSON
 lists which components rendered most in each recording. For where JS time goes inside one workload, add
