@@ -15,22 +15,22 @@ Running something inside the other app's sandbox does not work either. Those san
 2. The developer adds that URL as a remote MCP server in the other app and picks OAuth.
 3. The other app opens the sign-in page, served by the developer's own machine through the tunnel. It names the app and asks for an approval code.
 4. In Settings, **New code** shows a one-time code for ten minutes. The developer types it on the page and approves.
-5. The app appears in the list in Settings with when it connected and when it was last used. Remove ends its access at once.
+5. The app appears in the list in Settings with when it was last used, or when it connected if it has not called yet. Remove ends its access at once.
 6. The app can now list projects and threads, read a thread, start one, send to one and stop one.
 
-Without a relay the section says to link this machine first.
+Without a relay the section says to sign in to the relay first.
 
 ## Design
 
 Two MCP servers, because the caller is a different kind of thing. See [ADR 0025](../adr/0025-a-second-mcp-server-for-outside-apps.md).
 
-| | Thread server | App server |
-| --- | --- | --- |
-| Caller | An agent HinaCode started | An app the developer connected |
-| Reached at | `127.0.0.1:<port>/mcp` | `https://<relay hostname>/mcp` |
-| Credential | Bearer bound to one thread, in memory | OAuth access token, stored hashed |
-| Scope | The calling thread and its project | Every project on this machine |
-| Tools | Thread, secret, review, PR, Linear, VM, device, artifact tools | Project and thread tools only |
+|            | Thread server                                                  | App server                        |
+| ---------- | -------------------------------------------------------------- | --------------------------------- |
+| Caller     | An agent HinaCode started                                      | An app the developer connected    |
+| Reached at | `127.0.0.1:<port>/mcp`                                         | `https://<relay hostname>/mcp`    |
+| Credential | Bearer bound to one thread, in memory                          | OAuth access token, stored hashed |
+| Scope      | The calling thread and its project                             | Every project on this machine     |
+| Tools      | Thread, secret, review, PR, Linear, VM, device, artifact tools | Project and thread tools only     |
 
 ```mermaid
 flowchart LR
@@ -80,15 +80,15 @@ In memory only, so a restart drops them: the one live approval code with its rem
 
 The app server is its own authorization server, as the MCP authorization spec expects of a remote server.
 
-| Path | Does |
-| --- | --- |
-| `GET /.well-known/oauth-protected-resource` (also `/mcp` suffixed) | Names the resource and the issuer |
-| `GET /.well-known/oauth-authorization-server` | Endpoints, `S256`, `authorization_code`, public clients |
-| `POST /oauth/register` | Dynamic client registration. The `client_id` is the client's name and redirect URIs, signed with a key from `Secrets`, so nothing is stored for a client that never finishes |
-| `GET /oauth/authorize` | The approval page: the app's name, the host it redirects to, a code field |
-| `POST /oauth/authorize` | Checks the approval code, then redirects with an authorization code |
-| `POST /oauth/token` | Checks PKCE and the redirect URI, inserts the `app_connection`, returns the token |
-| `/mcp` | 401 with `WWW-Authenticate: Bearer resource_metadata=...` without a valid token |
+| Path                                                               | Does                                                                                                                                                                         |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /.well-known/oauth-protected-resource` (also `/mcp` suffixed) | Names the resource and the issuer                                                                                                                                            |
+| `GET /.well-known/oauth-authorization-server`                      | Endpoints, `S256`, `authorization_code`, public clients                                                                                                                      |
+| `POST /oauth/register`                                             | Dynamic client registration. The `client_id` is the client's name and redirect URIs, signed with a key from `Secrets`, so nothing is stored for a client that never finishes |
+| `GET /oauth/authorize`                                             | The approval page: the app's name, the host it redirects to, a code field                                                                                                    |
+| `POST /oauth/authorize`                                            | Checks the approval code, then redirects with an authorization code                                                                                                          |
+| `POST /oauth/token`                                                | Checks PKCE and the redirect URI, inserts the `app_connection`, returns the token                                                                                            |
+| `/mcp`                                                             | 401 with `WWW-Authenticate: Bearer resource_metadata=...` without a valid token                                                                                              |
 
 - PKCE with `S256` is required. Redirect URIs must be https, or http on loopback.
 - An authorization code lives 60 seconds and works once.
