@@ -268,7 +268,7 @@ export function Avatar({ login, host = "github" }: { login: string; host?: CodeH
     <img
       src={src}
       alt=""
-      className="size-4 shrink-0 rounded-full bg-muted outline-1 -outline-offset-1 outline-white/10"
+      className="size-4 max-w-none shrink-0 rounded-full bg-muted outline-1 -outline-offset-1 outline-white/10"
       onError={() => setFailed(true)}
     />
   )
