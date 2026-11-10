@@ -10,6 +10,7 @@ import {
   sidebar,
   signIn,
   startThread,
+  stubClerk,
 } from "./support/app.ts"
 import { expect, test } from "./support/fixtures.ts"
 
@@ -73,6 +74,17 @@ test("retrying at the gate signs in again after the relay signed this browser ou
   await page.getByRole("button", { name: "Retry", exact: true }).click()
   await expect(sidebar(page)).toBeVisible()
   expect(web.relay.deviceName(await browserCredential(page))).toBe("HinaCode in a browser")
+})
+
+test("a new tab signs in again on the relay this browser's account lives on", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  web.relay.signOutEveryDevice()
+  const tab = await page.context().newPage()
+  await stubClerk(tab)
+  await tab.goto(web.appUrl)
+  await tab.getByRole("button", { name: "Continue with GitHub", exact: true }).click()
+  await expect(sidebar(tab)).toBeVisible()
+  expect(web.relay.deviceName(await browserCredential(tab))).toBe("HinaCode in a browser")
 })
 
 test("signing in from a pull request window's link returns to that window", async ({ page, web }) => {

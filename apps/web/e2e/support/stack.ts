@@ -131,9 +131,9 @@ export interface Relay {
   readonly close: () => Promise<void>
 }
 
-export const CLERK_HOST = "web-e2e.clerk.accounts.dev"
+export const CLERK_HOST = "clerk.web-e2e.test"
 export const CLERK_SESSION_TOKEN = "web-e2e-clerk-session"
-const CLERK_PUBLISHABLE_KEY = `pk_test_${Buffer.from(`${CLERK_HOST}$`).toString("base64")}`
+const CLERK_PUBLISHABLE_KEY = `pk_live_${Buffer.from(`${CLERK_HOST}$`).toString("base64")}`
 
 const json = (response: ServerResponse, status: number, body?: unknown) => {
   response.writeHead(status, { "content-type": "application/json" })
