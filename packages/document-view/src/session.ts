@@ -18,6 +18,7 @@ export type SessionOptions = {
   readonly schedule: (run: () => void) => void
   readonly now: () => number
   readonly sliceMs?: number
+  readonly restSliceMs?: number
   readonly highlight?: (text: string, language: string) => ReadonlyArray<CodeToken>
   readonly drawDiagram?: (source: string) => Promise<DiagramDrawing | null>
   readonly onEdited?: () => void
@@ -78,6 +79,7 @@ export function createDocumentSession({
   schedule,
   now,
   sliceMs = 8,
+  restSliceMs = 32,
   highlight,
   drawDiagram,
   onEdited,
@@ -191,6 +193,8 @@ export function createDocumentSession({
       previous === null ? undefined : { source: previous.markdown, chunks: previous.chunks.map(({ chunk }) => chunk) },
     )
     const shownIds = new Set<string>()
+    let pending: RenderBlock[] = []
+    let firstScreen = true
     let offset = 0
     let top = 0
     if (progressive) sources = []
@@ -208,10 +212,18 @@ export function createDocumentSession({
       top += record.nodes.length
       sources.push(...rendered.sources)
       for (const block of rendered.blocks) shownIds.add(block.id)
-      if (rendered.blocks.length > 0) show(appendPatch(blocks.length, rendered.blocks, loadRevision))
+      pending.push(...rendered.blocks)
+    }
+
+    const flush = () => {
+      if (pending.length === 0) return
+      show(appendPatch(blocks.length, pending, loadRevision))
+      pending = []
+      firstScreen = false
     }
 
     const finish = () => {
+      flush()
       const { topNodeType } = manager.schema
       const kept = progressive ? nodes : keepUnchanged(loaded ? topLevelNodes(editor.state.doc) : [], nodes)
       const doc = kept.length === 0 ? topNodeType.createAndFill()! : topNodeType.create(null, kept)
@@ -228,12 +240,16 @@ export function createDocumentSession({
 
     const step = () => {
       if (loadRevision !== revision) return
-      const deadline = now() + sliceMs
+      const deadline = now() + (firstScreen ? sliceMs : restSliceMs)
       for (;;) {
         const next = iterator.next()
         if (next.done === true) return finish()
         take(next.value)
-        if (now() >= deadline) return schedule(step)
+        if (firstScreen) flush()
+        if (now() >= deadline) {
+          flush()
+          return schedule(step)
+        }
       }
     }
     step()
