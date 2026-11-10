@@ -146,6 +146,7 @@ let heldTurn = Promise.withResolvers<void>()
 const approvalAnswers: Array<{ requestId: string; decision: ApprovalDecision; note?: string }> = []
 
 const stoppedSubagents: Array<{ readonly threadId: string; readonly subagentId: string }> = []
+const interruptedThreads: Array<string> = []
 
 const claudeWakes = Effect.runSync(Queue.unbounded<Wake>())
 
@@ -296,7 +297,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
     }),
   ...(id === "claude" ? { wakes: Stream.fromQueue(claudeWakes) } : {}),
   steer: () => Effect.void,
-  interrupt: () => Effect.void,
+  interrupt: (threadId) => Effect.sync(() => void interruptedThreads.push(threadId)),
   stopSubagent: (threadId, subagentId) => Effect.sync(() => void stoppedSubagents.push({ threadId, subagentId })),
   respondApproval: (requestId, decision, note) =>
     Effect.sync(() => approvalAnswers.push({ requestId, decision, ...(note !== undefined && { note }) })).pipe(
@@ -546,6 +547,27 @@ describe("projects, threads and settings over rpc", () => {
     expect(result(await invoke("threads.list", undefined)).map((item) => item.id)).toContain(thread.id)
     result(await invoke("threads.delete", { id: thread.id, removeWorktree: false }))
     expect(result(await invoke("threads.list", undefined)).map((item) => item.id)).not.toContain(thread.id)
+  })
+
+  test("deleting a running thread waits for its turn to stop before removing the worktree", async () => {
+    heldTurn = Promise.withResolvers()
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(
+      await invoke("threads.create", {
+        projectId: project.id,
+        worktree: { branch: "kk/delete-running", baseRef: "main" },
+      }),
+    )
+    const worktree = result(await invoke("worktrees.list", undefined)).find((item) => item.id === thread.worktreeId)!
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held turn" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("running")
+
+    const deleting = invoke("threads.delete", { id: thread.id, removeWorktree: true })
+    await expect.poll(() => interruptedThreads).toContain(thread.id)
+    heldTurn.resolve()
+
+    result(await deleting)
+    await expect.poll(() => existsSync(worktree.path)).toBe(false)
   })
 
   test("lists every thread's linked pull requests in one call", async () => {
