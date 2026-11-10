@@ -35,7 +35,7 @@ import * as Attachments from "../services/Attachments.ts"
 import * as AgentAccounts from "../services/AgentAccounts.ts"
 import { AgentRunner, layer as runnerLayer } from "../services/AgentRunner.ts"
 import { ThreadNaming } from "../services/ThreadNaming.ts"
-import { Events } from "../services/Events.ts"
+import { Events, PushBroadcast } from "../services/Events.ts"
 import * as Git from "../services/Git.ts"
 import * as GitHub from "../services/GitHub.ts"
 import * as Messages from "../services/Messages.ts"
@@ -157,6 +157,7 @@ const stubs = Layer.mergeAll(
   Layer.succeed(OpencodeProvider, fakeProvider("opencode")),
   Layer.succeed(MagpieProvider, fakeProvider("magpie")),
   Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
+  Layer.succeed(PushBroadcast, { subscribe: () => Effect.void }),
   Layer.succeed(
     Peers,
     Peers.of({

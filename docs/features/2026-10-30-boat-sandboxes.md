@@ -81,7 +81,7 @@ The key stays in main as a `Secrets` value and is sent only to `boat.dev` (or `B
 
 ### Cost guardrails
 
-Sandboxes bill per second while running. Creates and resumes send `ttlSeconds` 7200, so a forgotten VM archives itself within two hours and inside the free-trial auto-stop cap. Stop and quit both archive, and a boat stop that fails keeps the VM in the running state so the next stop retries it instead of reporting success.
+Sandboxes bill per second while running. Creates and resumes send `ttlSeconds` 7200, so a forgotten VM archives itself within two hours and inside the free-trial auto-stop cap. Stop, quit, and deleting or archiving the thread all archive, and a boat stop that fails keeps the VM in the running state so the next stop retries it instead of reporting success.
 
 ## Out of scope
 

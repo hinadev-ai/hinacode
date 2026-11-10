@@ -9,7 +9,7 @@ import { Effect, Layer, ManagedRuntime, Scope } from "effect"
 import { defaultSettings } from "../../../shared/domain.ts"
 import * as Db from "../../db/client.ts"
 import * as Boat from "../boat/Boat.ts"
-import { Events } from "../Events.ts"
+import { makeEventsLayer } from "../Events.ts"
 import * as Secrets from "../Secrets.ts"
 import * as Settings from "../Settings.ts"
 import { TinyVm, layer } from "./TinyVm.ts"
@@ -347,7 +347,7 @@ const makeRuntime = (fake: FakeBoat, dir: string) =>
       Layer.provide(
         Layer.mergeAll(
           Settings.layer(mkdtempSync(join(tmpdir(), "hinacode-boat-vm-settings-"))),
-          Layer.succeed(Events, { publish: () => Effect.void }),
+          makeEventsLayer(() => {}),
           Secrets.noKeyring,
         ).pipe(Layer.provideMerge(Db.layer(":memory:")), Layer.provide(NodeServices.layer)),
       ),
