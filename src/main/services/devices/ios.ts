@@ -271,6 +271,7 @@ const frameReader = (onFrame: (frame: Frame) => void, onCorrupt: () => void) => 
 export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver => {
   let developerDir: Promise<string> | undefined
   let helper: Promise<string> | undefined
+  const orientations = new Map<DeviceId, number>()
 
   const xcodeDeveloperDir = () =>
     (developerDir ??= run("xcode-select", ["-p"]).then(
@@ -371,7 +372,8 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
         if (line.startsWith("touch down")) lastTouchDown = lastInput
       }
     }
-    let orientation = PORTRAIT
+    let orientation = orientations.get(id) ?? PORTRAIT
+    if (orientation !== PORTRAIT) await input(`rotate ${orientation}`)
     const shownPoints = () =>
       shown ??
       (orientation === PORTRAIT
@@ -429,6 +431,7 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
         }
         case "rotate":
           orientation = orientation === PORTRAIT ? LANDSCAPE_LEFT : PORTRAIT
+          orientations.set(id, orientation)
           return input(`rotate ${orientation}`)
         case "posture":
           return input(`hinge ${HINGE_DEGREES[command.posture]}`)
