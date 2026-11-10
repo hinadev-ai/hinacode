@@ -50,7 +50,15 @@ import {
   type RepositoryVisibility,
 } from "../../shared/github.ts"
 import { Events } from "./Events.ts"
-import { CommandError, LONG_TIMEOUT, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV, type RunOptions } from "./Git.ts"
+import {
+  CommandError,
+  COMMAND_NOT_FOUND_EXIT_CODE,
+  LONG_TIMEOUT,
+  makeExec,
+  REMOTE_GIT_ARGS,
+  REMOTE_GIT_ENV,
+  type RunOptions,
+} from "./Git.ts"
 import { findBinary } from "../agents/binary.ts"
 
 export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingError>()("GitHubCliMissingError", {}) {
@@ -802,7 +810,7 @@ const make = Effect.gen(function* () {
   ) =>
     exec("gh", args, cwd, { timeout: GH_TIMEOUT, ...options, env: { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" } }).pipe(
       Effect.mapError((error): GhError => {
-        if (error.exitCode === -1) return new GitHubCliMissingError()
+        if (error.exitCode === COMMAND_NOT_FOUND_EXIT_CODE) return new GitHubCliMissingError()
         if (error.exitCode === SIGNED_OUT_EXIT_CODE) return new GitHubSignedOutError()
         return error
       }),
