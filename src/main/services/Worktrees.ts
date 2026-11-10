@@ -6,6 +6,7 @@ import {
   Context,
   Duration,
   Effect,
+  Exit,
   Fiber,
   FileSystem,
   Layer,
@@ -634,17 +635,16 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
       yield* git.run(rootPath, ["merge", "--ff-only", "--quiet", upstream], { timeout: LONG_TIMEOUT })
     }).pipe(exclusive, Effect.ignore)
 
-  const fetches = yield* Cache.make({
-    lookup: (projectId: string) =>
+  const fetches = yield* Cache.makeWith(
+    (projectId: string) =>
       Effect.gen(function* () {
         const { rootPath } = yield* projects.get(projectId)
         yield* git.remote(rootPath, ["fetch", "--quiet", "origin"])
         yield* fastForwardDefaultBranch(projectId, rootPath)
         return yield* Clock.currentTimeMillis
       }),
-    capacity: 64,
-    timeToLive: FETCH_INTERVAL,
-  })
+    { capacity: 64, timeToLive: (exit) => (Exit.isSuccess(exit) ? FETCH_INTERVAL : Duration.zero) },
+  )
 
   const fetch = (projectId: string) => Cache.get(fetches, projectId)
 
