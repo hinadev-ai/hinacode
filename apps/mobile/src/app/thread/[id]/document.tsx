@@ -3,35 +3,74 @@ import type { CalloutTone } from "@shared/documentCallout.ts"
 import type { Thread } from "@shared/domain.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { useEffect, useEffectEvent, useRef, useState } from "react"
-import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, useWindowDimensions, View } from "react-native"
+import { type CodeToken, DocumentEditor, type DocumentTheme } from "@hinacode/document-view"
+import { ActivityIndicator, Platform, StyleSheet, Text, useWindowDimensions, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Failure } from "@/components/files"
-import { Icon, type IconName } from "@/components/icon"
-import { Markdown } from "@/components/markdown"
 import { EmptyState, Notice } from "@/components/ui"
-import { CalloutColors, READABLE_WIDTH, radius } from "@/constants/theme"
+import { CalloutColors, ChartColors, mono, type Palette, SyntaxColors } from "@/constants/theme"
 import { useThreadConnection, useThreadServer } from "@/hooks/use-server"
-import { useScheme, useTheme } from "@/hooks/use-theme"
+import { type Scheme, useScheme, useTheme } from "@/hooks/use-theme"
 import { call, onEvent } from "@/lib/connection"
 import { copy } from "@/lib/copy"
-import { type DocumentSegment, documentSegments } from "@/lib/document-segments"
 import { errorText } from "@/lib/error-text"
-import { useThreadRoot, useThreads } from "@/stores/threads"
+import { lex } from "@/lib/lexer"
+import { openWebUrl } from "@/lib/open-url"
+import { useThreads } from "@/stores/threads"
 
 type Params = { id: string; artifactId: string; title?: string }
 
-const PADDING = 16
-/** The Markdown renderer trims a segment's last margin, so the space between segments lives here. */
-const SEGMENT_GAP = 14
 const TITLE_INSET = 120
 
-const calloutCopy = {
-  note: { label: "mobile_document_callout_note", icon: "Info" },
-  tip: { label: "mobile_document_callout_tip", icon: "RiLightbulbLine" },
-  important: { label: "mobile_document_callout_important", icon: "RiFeedbackLine" },
-  warning: { label: "mobile_document_callout_warning", icon: "Alert" },
-  caution: { label: "mobile_document_callout_caution", icon: "RiSpam2Line" },
-} as const satisfies Record<CalloutTone, { label: Parameters<typeof copy>[0]; icon: IconName }>
+const calloutLabels = {
+  note: "mobile_document_callout_note",
+  tip: "mobile_document_callout_tip",
+  important: "mobile_document_callout_important",
+  warning: "mobile_document_callout_warning",
+  caution: "mobile_document_callout_caution",
+} as const satisfies Record<CalloutTone, Parameters<typeof copy>[0]>
+
+const highlighter =
+  (scheme: Scheme) =>
+  (code: string, language: string): CodeToken[] =>
+    lex(code, `snippet.${language}`).flatMap(({ type, start, end }) =>
+      type === "plain" ? [] : [[start, end, SyntaxColors[scheme][type]] as const],
+    )
+
+const documentTheme = (theme: Palette, scheme: Scheme): DocumentTheme => ({
+  text: theme.text,
+  muted: theme.textMuted,
+  link: theme.link,
+  background: theme.background,
+  surface: theme.surface,
+  border: theme.border,
+  codeBackground: theme.surface,
+  codeText: SyntaxColors[scheme].plain,
+  accent: theme.primary,
+  callouts: CalloutColors[scheme],
+  calloutLabels: {
+    note: copy(calloutLabels.note),
+    tip: copy(calloutLabels.tip),
+    important: copy(calloutLabels.important),
+    warning: copy(calloutLabels.warning),
+    caution: copy(calloutLabels.caution),
+  },
+  chartLanes: ChartColors[scheme],
+  diagram: {
+    bg: theme.surface,
+    fg: theme.text,
+    muted: theme.textMuted,
+    line: theme.textMuted,
+    surface: theme.background,
+    surfaceAlt: theme.surface,
+    border: theme.textMuted,
+    accent: theme.primary,
+    critical: theme.danger,
+  },
+  fontSize: 16,
+  lineHeight: 24,
+  monoFont: mono ?? "Menlo",
+})
 
 type Loaded =
   | { readonly status: "loading" }
@@ -125,7 +164,7 @@ function DocumentBody({
       ) : state.status === "loading" ? (
         <Loading />
       ) : (
-        <DocumentText thread={thread} markdown={state.document.markdown} />
+        <DocumentText artifactId={artifactId} server={server} document={state.document} />
       )}
     </>
   )
@@ -157,56 +196,28 @@ function Loading() {
   )
 }
 
-function DocumentText({ thread, markdown }: { thread: Thread; markdown: string }) {
-  const root = useThreadRoot(thread)
-  const segments = documentSegments(markdown)
-  if (segments.length === 0) return <EmptyState icon="FileText" title={copy("mobile_document_empty")} />
+function DocumentText({
+  artifactId,
+  server,
+  document,
+}: {
+  artifactId: string
+  server: string | undefined
+  document: DocumentContent
+}) {
+  const theme = useTheme()
+  const scheme = useScheme()
   return (
-    <FlatList
+    <DocumentEditor
+      key={scheme}
       testID="document"
       style={styles.flex}
-      contentContainerStyle={styles.content}
-      data={segments}
-      keyExtractor={(_, index) => String(index)}
-      renderItem={({ item }) => <Segment segment={item} root={root} threadId={thread.id} />}
-      ItemSeparatorComponent={SegmentGap}
-      // One segment can hold hundreds of views, so the list mounts a screenful first, as the transcript does.
-      initialNumToRender={4}
-      maxToRenderPerBatch={2}
-      windowSize={9}
+      document={document}
+      theme={documentTheme(theme, scheme)}
+      highlightCode={highlighter(scheme)}
+      resolveImage={async (path) => (await call("artifacts.file", { id: artifactId, path }, { server })).dataUrl}
+      onLinkPress={openWebUrl}
     />
-  )
-}
-
-function SegmentGap() {
-  return <View style={styles.gap} />
-}
-
-function Segment({ segment, root, threadId }: { segment: DocumentSegment; root: string | null; threadId: string }) {
-  if (segment.kind === "callout") return <Callout segment={segment} root={root} threadId={threadId} />
-  return <Markdown text={segment.text} root={root} threadId={threadId} gutter={PADDING} measure="document" />
-}
-
-function Callout({
-  segment: { tone, text },
-  root,
-  threadId,
-}: {
-  segment: Extract<DocumentSegment, { kind: "callout" }>
-  root: string | null
-  threadId: string
-}) {
-  const scheme = useScheme()
-  const { tint, label } = CalloutColors[scheme][tone]
-  const { label: labelKey, icon } = calloutCopy[tone]
-  return (
-    <View style={[styles.callout, { backgroundColor: tint }]}>
-      <View style={styles.calloutLabel}>
-        <Icon name={icon} size={14} color={label} />
-        <Text style={[styles.calloutLabelText, { color: label }]}>{copy(labelKey)}</Text>
-      </View>
-      {text !== "" && <Markdown text={text} root={root} threadId={threadId} measure="document" />}
-    </View>
   )
 }
 
@@ -214,7 +225,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   banner: { paddingHorizontal: 12, paddingTop: 8 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
-  content: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center", padding: PADDING, paddingBottom: 32 },
   titleRow: {
     flexDirection: "row",
     alignItems: "baseline",
@@ -223,8 +233,4 @@ const styles = StyleSheet.create({
   },
   title: { flexShrink: 1, fontSize: 16, fontWeight: "600" },
   version: { fontSize: 13, fontVariant: ["tabular-nums"] },
-  gap: { height: SEGMENT_GAP },
-  callout: { borderRadius: radius.lg, paddingHorizontal: 14, paddingVertical: 12, gap: 6 },
-  calloutLabel: { flexDirection: "row", alignItems: "center", gap: 6 },
-  calloutLabelText: { fontSize: 13, lineHeight: 18, fontWeight: "600" },
 })
