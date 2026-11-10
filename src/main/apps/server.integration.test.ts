@@ -1,13 +1,13 @@
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
-import { request as httpRequest } from "node:http"
+import { createServer, request as httpRequest, type Server } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { Effect, Layer, ManagedRuntime, Stream } from "effect"
-import { describe, expect, test, vi } from "vitest"
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest"
 import { WebSocket } from "ws"
 import { type AgentEvent, unlistedModel } from "../../shared/agent.ts"
 import { defaultSettings } from "../../shared/domain.ts"
@@ -19,7 +19,9 @@ import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { seedThread } from "../db/testing.ts"
 import { RemoteAccess } from "../remote/access.ts"
+import { CREDENTIAL_SECRET } from "../remote/relay.ts"
 import { unusedLoopbackPort } from "../remote/testing.ts"
+import { Secrets } from "../services/Secrets.ts"
 import { Settings } from "../services/Settings.ts"
 import { Threads } from "../services/Threads.ts"
 import { makeTestAppLayer } from "../testing.ts"
@@ -59,6 +61,9 @@ const EVERY_PATH = [
   "/oauth/register",
   "/oauth/authorize",
   "/oauth/wait",
+  "/oauth/sign-in",
+  "/oauth/signed-in",
+  "/oauth/answer",
   "/oauth/token",
 ]
 
@@ -89,7 +94,37 @@ const providers = Layer.mergeAll(
   Layer.succeed(MagpieProvider, replyingProvider("magpie")),
 )
 
-const makeApp = (dbPath: string) => makeTestAppLayer(dbPath, { providers })
+const HOST_CREDENTIAL = "host-credential"
+const OWNER_CODE = "owner-signed-in"
+const fakeRelay = { url: "", challenges: [] as Array<string> }
+let relayServer: Server
+
+beforeAll(async () => {
+  relayServer = createServer((request, response) => {
+    let text = ""
+    request.on("data", (chunk) => (text += chunk))
+    request.on("end", () => {
+      const { code, codeVerifier } = JSON.parse(text || "{}") as { code?: string; codeVerifier?: string }
+      const challenge = createHash("sha256")
+        .update(codeVerifier ?? "")
+        .digest("base64url")
+      const owner =
+        request.url === "/v1/host/sign-in-codes/verify" &&
+        request.headers.authorization === `Bearer ${HOST_CREDENTIAL}` &&
+        code === OWNER_CODE &&
+        fakeRelay.challenges.includes(challenge)
+      response.writeHead(owner ? 200 : 410, { "content-type": "application/json" })
+      response.end(JSON.stringify(owner ? { name: "Dev", email: "dev@example.test" } : { error: "gone" }))
+    })
+  })
+  await new Promise<void>((resolve) => relayServer.listen(0, "127.0.0.1", resolve))
+  const address = relayServer.address()
+  fakeRelay.url = typeof address === "object" && address !== null ? `http://127.0.0.1:${address.port}` : ""
+})
+
+afterAll(() => new Promise<void>((resolve) => relayServer.close(() => resolve())))
+
+const makeApp = (dbPath: string) => makeTestAppLayer(dbPath, { providers, relay: { serviceUrl: fakeRelay.url } })
 
 interface App {
   readonly runtime: ManagedRuntime.ManagedRuntime<Layer.Success<ReturnType<typeof makeApp>>, unknown>
@@ -114,6 +149,7 @@ const withApp = async (use: (app: App) => Promise<void>) => {
     const port = await runtime.runPromise(AppConnections.use((connections) => Effect.sync(() => connections.port())))
     const app = { runtime, origin: `http://127.0.0.1:${port}`, repo }
     await linkRelay(app)
+    await runtime.runPromise(Secrets.use((secrets) => secrets.set(CREDENTIAL_SECRET, HOST_CREDENTIAL)))
     await use(app)
   } finally {
     await runtime.dispose()
@@ -229,6 +265,88 @@ const statuses = async (app: App) => {
   return answers.map((answer) => answer.status)
 }
 
+const cookieFrom = (response: Response, name: string) => {
+  const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith(`${name}=`))
+  return { header, pair: header?.split(";", 1)[0] ?? "" }
+}
+
+const withCookie = ({ origin }: App, path: string, cookie: string, init: RequestInit = {}) =>
+  fetch(`${origin}${path}`, { ...init, redirect: "manual", headers: { ...init.headers, cookie } })
+
+const signInAsOwner = async (app: App, request: string) => {
+  const started = await get(app, "/oauth/sign-in", { request })
+  expect(started.status).toBe(303)
+  const relayPage = new URL(started.headers.get("location")!)
+  fakeRelay.challenges.push(relayPage.searchParams.get("code_challenge")!)
+  const signIn = cookieFrom(started, "hinacode_sign_in")
+  const back = await withCookie(app, `/oauth/signed-in?code=${OWNER_CODE}`, signIn.pair)
+  return { started, relayPage, signIn, back, owner: cookieFrom(back, "hinacode_owner") }
+}
+
+describe("approving on the web", () => {
+  test("the owner signs in on the relay, then approves on the page", () =>
+    withApp(async (app) => {
+      await start(app)
+      const clientId = await registered(app)
+      const { path, request } = await askToConnect(app, clientId)
+      const signedOut = await (await get(app, path, { request })).text()
+      expect(signedOut).toContain(`href="/oauth/sign-in?request=${request}"`)
+      expect(signedOut).not.toContain('name="decision"')
+
+      const { relayPage, signIn, back, owner } = await signInAsOwner(app, request)
+      expect(`${relayPage.origin}${relayPage.pathname}`).toBe(`${fakeRelay.url}/sign-in`)
+      expect(relayPage.searchParams.get("redirect_uri")).toBe(`${ISSUER}/oauth/signed-in`)
+      expect(signIn.header).toMatch(/; Path=\/oauth; .*HttpOnly; Secure; SameSite=Lax/)
+      expect(back.status).toBe(303)
+      expect(back.headers.get("location")).toBe(`${path}?request=${request}`)
+      expect(owner.header).toMatch(/HttpOnly; Secure; SameSite=Lax/)
+
+      const signedIn = await (await withCookie(app, `${path}?request=${request}`, owner.pair)).text()
+      expect(signedIn).toContain('<button class="primary" name="decision" value="approve">Approve</button>')
+      expect(signedIn).toContain("Signed in as <strong>dev@example.test</strong>")
+      expect(signedIn).not.toContain('http-equiv="refresh"')
+
+      const form = { method: "POST", body: new URLSearchParams({ request, decision: "approve" }) }
+      expect((await withCookie(app, "/oauth/answer", "", form)).status).toBe(403)
+      expect((await status(app)).requests).toHaveLength(1)
+
+      const answered = await withCookie(app, "/oauth/answer", owner.pair, form)
+      expect(answered.status).toBe(303)
+      const done = await get(app, path, { request })
+      const callback = new URL(done.headers.get("location")!)
+      expect(`${callback.origin}${callback.pathname}`).toBe(REDIRECT)
+      expect(callback.searchParams.get("code")).not.toBeNull()
+      expect((await status(app)).requests).toEqual([])
+    }))
+
+  test("an owner cookie answers only the request it signed in for", () =>
+    withApp(async (app) => {
+      await start(app)
+      const clientId = await registered(app)
+      const first = await askToConnect(app, clientId)
+      const second = await askToConnect(app, clientId)
+      const { owner } = await signInAsOwner(app, first.request)
+      const form = { method: "POST", body: new URLSearchParams({ request: second.request, decision: "approve" }) }
+      expect((await withCookie(app, "/oauth/answer", owner.pair, form)).status).toBe(403)
+      expect((await status(app)).requests).toHaveLength(2)
+    }))
+
+  test("a sign-in the relay refuses, or one this page did not start, grants nothing", () =>
+    withApp(async (app) => {
+      await start(app)
+      const clientId = await registered(app)
+      const { request } = await askToConnect(app, clientId)
+      const started = await get(app, "/oauth/sign-in", { request })
+      const signIn = cookieFrom(started, "hinacode_sign_in")
+      const refused = await withCookie(app, "/oauth/signed-in?code=forged", signIn.pair)
+      expect(refused.status).toBe(403)
+      expect(refused.headers.getSetCookie()).toEqual([])
+      expect((await withCookie(app, `/oauth/signed-in?code=${OWNER_CODE}`, signIn.pair)).status).toBe(400)
+      expect((await get(app, "/oauth/signed-in", { code: OWNER_CODE })).status).toBe(400)
+      expect((await get(app, "/oauth/sign-in", { request: "made-up" })).status).toBe(404)
+    }))
+})
+
 describe("app server", () => {
   test("an app registers, is approved, gets a token and drives threads", () =>
     withApp(async (app) => {
@@ -268,7 +386,8 @@ describe("app server", () => {
       expect(html).toContain("chat.example")
       expect(html).toContain("run code on this machine")
       expect(html).toContain('<meta http-equiv="refresh" content="2">')
-      expect(html).not.toMatch(/<script|src=|href=/)
+      expect(html).not.toMatch(/<script|src=/)
+      expect(html).toContain("Sign in to approve")
 
       const answered = await answerRequest(app, request, true)
       expect(answered.requests).toEqual([])

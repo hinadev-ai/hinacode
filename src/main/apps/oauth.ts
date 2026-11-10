@@ -8,6 +8,9 @@ export const AUTHORIZATION_SERVER_PATH = "/.well-known/oauth-authorization-serve
 export const REGISTER_PATH = "/oauth/register"
 export const AUTHORIZE_PATH = "/oauth/authorize"
 export const WAIT_PATH = "/oauth/wait"
+export const SIGN_IN_PATH = "/oauth/sign-in"
+export const SIGNED_IN_PATH = "/oauth/signed-in"
+export const ANSWER_PATH = "/oauth/answer"
 export const TOKEN_PATH = "/oauth/token"
 
 const MAX_NAME_LENGTH = 100
@@ -101,6 +104,8 @@ export const AuthorizationParams = Schema.Struct({
 export type AuthorizationParams = typeof AuthorizationParams.Type
 
 export const WaitParams = Schema.Struct({ request: Schema.String })
+export const SignedInParams = Schema.Struct({ code: Schema.String })
+export const AnswerForm = Schema.Struct({ request: Schema.String, decision: Schema.Literals(["approve", "deny"]) })
 
 export const TokenRequest = Schema.Struct({
   grant_type: Schema.String,

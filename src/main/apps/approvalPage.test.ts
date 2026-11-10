@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vitest"
-import { waitingPage } from "./approvalPage.ts"
+import { type Approver, waitingPage } from "./approvalPage.ts"
+
+const SIGNED_OUT: Approver = { signedIn: false, signInPath: "/oauth/sign-in?request=r" }
 
 const tileOf = (appName: string, redirectHost: string) =>
-  waitingPage({ appName, redirectHost }).html.match(/<span class="tile ([^"]+)"/)?.[1]
+  waitingPage({ appName, redirectHost, approver: SIGNED_OUT }).html.match(/<span class="tile ([^"]+)"/)?.[1]
 
 describe("waiting page", () => {
   test("shows the mark of a known app, found by its name or its callback host", () => {
@@ -14,7 +16,7 @@ describe("waiting page", () => {
   })
 
   test("falls back to the first letter of any other app", () => {
-    const html = waitingPage({ appName: "  ōtter <i>", redirectHost: "otter.example" }).html
+    const html = waitingPage({ appName: "  ōtter <i>", redirectHost: "otter.example", approver: SIGNED_OUT }).html
     expect(html).toContain('<span class="tile letter" aria-hidden="true">ō</span>')
     expect(html).toContain("ōtter &#60;i&#62; wants to connect to HinaCode")
   })

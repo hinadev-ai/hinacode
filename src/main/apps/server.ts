@@ -1,13 +1,16 @@
-import { randomBytes } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import { createServer } from "node:http"
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer"
-import { ByteSize, Effect, Layer, Option } from "effect"
+import { ByteSize, Clock, Duration, Effect, Layer, Option } from "effect"
 import { McpProtocol, McpServer as AiMcpServer } from "effect/ai"
 import { HttpIncomingMessage, HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http"
+import { Relay } from "../remote/relay.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { AppConnections } from "./AppConnections.ts"
-import { brokenLinkPage, notStartedPage, waitingPage } from "./approvalPage.ts"
+import { type Approver, brokenLinkPage, notStartedPage, signInFailedPage, waitingPage } from "./approvalPage.ts"
 import {
+  ANSWER_PATH,
+  AnswerForm,
   AUTHORIZATION_SERVER_PATH,
   AUTHORIZE_PATH,
   AuthorizationParams,
@@ -23,6 +26,9 @@ import {
   redirectTo,
   REGISTER_PATH,
   Registration,
+  SIGN_IN_PATH,
+  SIGNED_IN_PATH,
+  SignedInParams,
   registrationResponse,
   resourceOf,
   SCOPE,
@@ -45,8 +51,22 @@ const PUBLIC_PATHS = new Set([
   REGISTER_PATH,
   AUTHORIZE_PATH,
   WAIT_PATH,
+  SIGN_IN_PATH,
+  SIGNED_IN_PATH,
+  ANSWER_PATH,
   TOKEN_PATH,
 ])
+
+const SIGN_IN_COOKIE = "hinacode_sign_in"
+const OWNER_COOKIE = "hinacode_owner"
+const OWNER_LIFE = Duration.minutes(10)
+const COOKIE = { path: "/oauth", httpOnly: true, secure: true, sameSite: "lax", maxAge: OWNER_LIFE } as const
+const SIGN_IN_NAME = "HinaCode app approval"
+const SIGN_IN_LOST = "Open the app's sign-in page again, then choose Sign in to approve."
+
+const sha256 = (value: string) => createHash("sha256").update(value).digest("hex")
+const randomToken = () => randomBytes(32).toString("base64url")
+const waitPath = (request: string) => `${WAIT_PATH}?${new URLSearchParams({ request })}`
 
 const NO_STORE = { "cache-control": "no-store" }
 const notFound = HttpServerResponse.empty({ status: 404 })
@@ -97,6 +117,12 @@ const gate = HttpRouter.middleware(
   }),
   { global: true },
 )
+
+const forgetExpired = <V extends { readonly expiresAt: number }>(entries: Map<string, V>, wanted: string | undefined) =>
+  Effect.map(Clock.currentTimeMillis, (now) => {
+    for (const [stale, entry] of entries) if (entry.expiresAt <= now) entries.delete(stale)
+    return wanted === undefined ? undefined : entries.get(wanted)
+  })
 
 const routes = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -189,23 +215,100 @@ const routes = Layer.effectDiscard(
       ),
     )
 
+    const relay = yield* Relay
+    const signIns = new Map<
+      string,
+      { readonly request: string; readonly verifier: string; readonly expiresAt: number }
+    >()
+    const owners = new Map<
+      string,
+      { readonly request: string; readonly email: string | null; readonly expiresAt: number }
+    >()
+
+    const ownerOf = (cookies: Readonly<Record<string, string | undefined>>, request: string) =>
+      Effect.map(forgetExpired(owners, cookies[OWNER_COOKIE] && sha256(cookies[OWNER_COOKIE])), (owner) =>
+        owner?.request === request ? owner : undefined,
+      )
+
+    const later = Effect.map(Clock.currentTimeMillis, (now) => now + Duration.toMillis(OWNER_LIFE))
+
     yield* router.add(
       "GET",
       WAIT_PATH,
-      HttpServerRequest.schemaSearchParams(WaitParams).pipe(
-        Effect.flatMap(({ request }) => connections.outcome(request)),
-        Effect.map((outcome) => {
-          if (outcome.type === "unknown") return page(brokenLinkPage(), 404)
-          const { name, redirectUri, state } = outcome.request
-          if (outcome.type === "waiting") {
-            return page(waitingPage({ appName: name, redirectHost: new URL(redirectUri).host }))
-          }
-          const answer =
-            outcome.type === "approved"
-              ? { code: outcome.authorizationCode }
-              : { error: "access_denied", error_description: "The developer denied the connection" }
-          return HttpServerResponse.redirect(redirectTo(redirectUri, { ...answer, state }), { headers: NO_STORE })
-        }),
+      Effect.gen(function* () {
+        const { request } = yield* HttpServerRequest.schemaSearchParams(WaitParams)
+        const outcome = yield* connections.outcome(request)
+        if (outcome.type === "unknown") return page(brokenLinkPage(), 404)
+        const { name, redirectUri, state } = outcome.request
+        if (outcome.type === "waiting") {
+          const owner = yield* ownerOf((yield* HttpServerRequest.HttpServerRequest).cookies, request)
+          const approver: Approver =
+            owner === undefined
+              ? { signedIn: false, signInPath: `${SIGN_IN_PATH}?${new URLSearchParams({ request })}` }
+              : { signedIn: true, email: owner.email, answerPath: ANSWER_PATH, request }
+          return page(waitingPage({ appName: name, redirectHost: new URL(redirectUri).host, approver }))
+        }
+        const answer =
+          outcome.type === "approved"
+            ? { code: outcome.authorizationCode }
+            : { error: "access_denied", error_description: "The developer denied the connection" }
+        return HttpServerResponse.redirect(redirectTo(redirectUri, { ...answer, state }), { headers: NO_STORE })
+      }).pipe(Effect.catch(() => Effect.succeed(page(brokenLinkPage(), 400)))),
+    )
+
+    yield* router.add(
+      "GET",
+      SIGN_IN_PATH,
+      withIssuer((issuer) =>
+        Effect.gen(function* () {
+          const { request } = yield* HttpServerRequest.schemaSearchParams(WaitParams)
+          if (Option.isNone(yield* connections.waiting(request))) return page(brokenLinkPage(), 404)
+          const verifier = randomToken()
+          const nonce = randomToken()
+          yield* forgetExpired(signIns, undefined)
+          signIns.set(nonce, { request, verifier, expiresAt: yield* later })
+          const signIn = new URL("/sign-in", relay.serviceUrl)
+          signIn.searchParams.set("redirect_uri", `${issuer}${SIGNED_IN_PATH}`)
+          signIn.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"))
+          signIn.searchParams.set("name", SIGN_IN_NAME)
+          return HttpServerResponse.redirect(signIn.href, { status: 303, headers: NO_STORE }).pipe(
+            HttpServerResponse.setCookieUnsafe(SIGN_IN_COOKIE, nonce, COOKIE),
+          )
+        }).pipe(Effect.catch(() => Effect.succeed(page(brokenLinkPage(), 400)))),
+      ),
+    )
+
+    yield* router.add(
+      "GET",
+      SIGNED_IN_PATH,
+      Effect.gen(function* () {
+        const { cookies } = yield* HttpServerRequest.HttpServerRequest
+        const nonce = cookies[SIGN_IN_COOKIE]
+        const pending = yield* forgetExpired(signIns, nonce)
+        if (nonce === undefined || pending === undefined) return page(signInFailedPage(SIGN_IN_LOST), 400)
+        signIns.delete(nonce)
+        const { code } = yield* HttpServerRequest.schemaSearchParams(SignedInParams)
+        const signedIn = yield* relay.verifyOwnerSignIn({ code, codeVerifier: pending.verifier }).pipe(Effect.result)
+        if (signedIn._tag === "Failure") return page(signInFailedPage(signedIn.failure.message), 403)
+        const token = randomToken()
+        owners.set(sha256(token), { request: pending.request, email: signedIn.success.email, expiresAt: yield* later })
+        return HttpServerResponse.redirect(waitPath(pending.request), { status: 303, headers: NO_STORE }).pipe(
+          HttpServerResponse.setCookieUnsafe(OWNER_COOKIE, token, COOKIE),
+        )
+      }).pipe(Effect.catch(() => Effect.succeed(page(signInFailedPage(SIGN_IN_LOST), 400)))),
+    )
+
+    yield* router.add(
+      "POST",
+      ANSWER_PATH,
+      Effect.gen(function* () {
+        const { request, decision } = yield* HttpServerRequest.schemaBodyUrlParams(AnswerForm)
+        const owner = yield* ownerOf((yield* HttpServerRequest.HttpServerRequest).cookies, request)
+        if (owner === undefined) return page(signInFailedPage(SIGN_IN_LOST), 403)
+        yield* connections.answer({ id: request, approve: decision === "approve" })
+        return HttpServerResponse.redirect(waitPath(request), { status: 303, headers: NO_STORE })
+      }).pipe(
+        Effect.catchTag("PersistenceError", () => Effect.succeed(HttpServerResponse.empty({ status: 500 }))),
         Effect.catch(() => Effect.succeed(page(brokenLinkPage(), 400))),
       ),
     )

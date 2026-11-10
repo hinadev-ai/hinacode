@@ -11,7 +11,13 @@ const COPY = {
     "Send messages to threads and stop them",
     "Stay connected until you remove it in HinaCode",
   ],
-  approveInApp: "Approve or deny in HinaCode, under Settings > Connections > Apps. This page continues on its own.",
+  signInToApprove: "Sign in to approve",
+  orInApp: "Or approve it in HinaCode, under Settings > Connections > Apps.",
+  approve: "Approve",
+  deny: "Deny",
+  signedInAs: "Signed in as",
+  yourAccount: "your HinaCode account",
+  signInFailedTitle: "Sign-in did not finish",
   notStartedTitle: "Start in HinaCode",
   notStarted: "Open HinaCode, go to Settings > Connections > Apps, choose Copy URL, then connect again.",
   brokenLinkTitle: "This link does not work",
@@ -70,15 +76,22 @@ h1 { font-size: 1.375rem; font-weight: 600; line-height: 1.3; margin: 0; text-wr
 .grants { list-style: none; margin: 0; padding: 4px 0; border-block: 1px solid var(--border); }
 .grants li { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; }
 .grants svg { width: 20px; height: 20px; flex: none; margin-top: 2px; color: var(--coral); }
-.status { display: flex; gap: 12px; align-items: flex-start; margin: 24px 0 0; padding: 12px 16px; border-radius: 10px; background: color-mix(in oklab, var(--ink) 6%, transparent); font-size: 0.9375rem; text-wrap: pretty; }
-.pulse { width: 8px; height: 8px; margin-top: 8px; border-radius: 50%; flex: none; background: var(--teal); animation: pulse 1.6s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: 0.3; } }
+.actions { display: grid; gap: 8px; margin: 24px 0 0; }
+.primary, .ghost { display: block; font: inherit; text-align: center; text-decoration: none; cursor: pointer; border: 0; border-radius: 10px; transition: background-color 150ms ease-out; }
+.primary { padding: 12px 16px; background: var(--ink); color: var(--paper); font-weight: 600; }
+.primary:hover { background: color-mix(in oklab, var(--ink) 88%, var(--paper)); }
+.ghost { padding: 10px 16px; background: transparent; color: var(--ink); }
+.ghost:hover { background: color-mix(in oklab, var(--ink) 6%, transparent); }
+.primary:focus-visible, .ghost:focus-visible { outline: 2px solid color-mix(in oklab, var(--teal) 60%, transparent); outline-offset: 2px; }
+.hint { margin: 12px 0 0; color: var(--muted); font-size: 0.875rem; text-align: center; text-wrap: pretty; }
+footer { margin-top: 24px; text-align: center; color: var(--muted); font-size: 0.875rem; overflow-wrap: anywhere; }
+footer strong { color: var(--ink); font-weight: 500; }
 @media (width < 480px) {
   body { padding-top: 24px; }
   .card { padding: 32px 20px 20px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pulse { animation: none; }
+  .primary, .ghost { transition: none; }
 }
 `
 
@@ -148,27 +161,53 @@ const document = (title: string, body: Markup, head = NOTHING) => ({
 ${head}
 <style>${new Markup(STYLE)}</style>
 </head>
-<body><main><article class="card">${body}</article></main></body>
+<body><main>${body}</main></body>
 </html>`.html,
 })
 
-export const waitingPage = (input: { readonly appName: string; readonly redirectHost: string }) =>
+export type Approver =
+  | { readonly signedIn: false; readonly signInPath: string }
+  | { readonly signedIn: true; readonly email: string | null; readonly answerPath: string; readonly request: string }
+
+const actions = (approver: Approver) =>
+  approver.signedIn
+    ? markup`<form class="actions" method="post" action="${approver.answerPath}">
+<input type="hidden" name="request" value="${approver.request}">
+<button class="primary" name="decision" value="approve">${COPY.approve}</button>
+<button class="ghost" name="decision" value="deny">${COPY.deny}</button>
+</form>`
+    : markup`<div class="actions"><a class="primary" href="${approver.signInPath}">${COPY.signInToApprove}</a></div>
+<p class="hint">${COPY.orInApp}</p>`
+
+export const waitingPage = (input: {
+  readonly appName: string
+  readonly redirectHost: string
+  readonly approver: Approver
+}) =>
   document(
     COPY.wantsToConnect(input.appName),
-    markup`<div class="mark">${appTile(input.appName, input.redirectHost)}<span class="wire"></span>${brandTile}</div>
+    markup`<article class="card">
+<div class="mark">${appTile(input.appName, input.redirectHost)}<span class="wire"></span>${brandTile}</div>
 <h1>${COPY.wantsToConnect(input.appName)}</h1>
 <p class="detail">${COPY.returnsTo(input.redirectHost)}</p>
 <section class="request">
 <p class="lead">${COPY.lead}</p>
 <ul class="grants">${COPY.grants.map((grant) => markup`<li>${CHECK}${grant}</li>`)}</ul>
-<p class="status" role="status"><span class="pulse" aria-hidden="true"></span>${COPY.approveInApp}</p>
-</section>`,
-    markup`<meta http-equiv="refresh" content="${String(REFRESH_SECONDS)}">`,
+${actions(input.approver)}
+</section>
+</article>
+${input.approver.signedIn ? markup`<footer>${COPY.signedInAs} <strong>${input.approver.email ?? COPY.yourAccount}</strong></footer>` : NOTHING}`,
+    input.approver.signedIn ? NOTHING : markup`<meta http-equiv="refresh" content="${String(REFRESH_SECONDS)}">`,
   )
 
 const notice = (title: string, detail: string) =>
-  document(title, markup`<div class="mark">${brandTile}</div><h1>${title}</h1><p class="detail">${detail}</p>`)
+  document(
+    title,
+    markup`<article class="card"><div class="mark">${brandTile}</div><h1>${title}</h1><p class="detail">${detail}</p></article>`,
+  )
 
 export const notStartedPage = () => notice(COPY.notStartedTitle, COPY.notStarted)
 
 export const brokenLinkPage = () => notice(COPY.brokenLinkTitle, COPY.brokenLink)
+
+export const signInFailedPage = (reason: string) => notice(COPY.signInFailedTitle, reason)

@@ -50,6 +50,7 @@ export class AppConnections extends Context.Service<
     readonly inUse: Effect.Effect<boolean, PersistenceError>
     readonly request: (request: ConnectRequest) => Effect.Effect<Option.Option<string>>
     readonly outcome: (id: string) => Effect.Effect<Outcome>
+    readonly waiting: (id: string) => Effect.Effect<Option.Option<ConnectRequest>>
     readonly redeem: (authorizationCode: string) => Effect.Effect<Option.Option<Grant>>
     readonly connect: (name: string) => Effect.Effect<{ readonly id: string; readonly token: string }, PersistenceError>
     readonly authenticate: (authorization: string | undefined) => Effect.Effect<Option.Option<string>, PersistenceError>
@@ -223,6 +224,11 @@ const make = Effect.gen(function* () {
     }),
     request,
     outcome,
+    waiting: (id) =>
+      Effect.map(forgetExpired, () => {
+        const pending = requests.get(id)
+        return pending?.answer.type === "waiting" ? Option.some(pending.request) : Option.none()
+      }),
     redeem,
     connect,
     authenticate,
