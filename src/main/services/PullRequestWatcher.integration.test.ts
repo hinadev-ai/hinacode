@@ -198,6 +198,28 @@ describe("PullRequestWatcher", () => {
         const sent = wakesFor(threadId)
         expect(sent).toHaveLength(1)
         expect(sent[0]?.text).toContain("closed")
+        expect(sent[0]?.text).not.toContain("The watch stays on")
+        expect((yield* linkOf(threadId))?.watch).toBeNull()
+      }),
+    )
+
+    it.effect("ends the watch at the update cap without promising more reports", () =>
+      Effect.gen(function* () {
+        const { threadId, url } = yield* watchedThread("capped", (u) => detailFor(u))
+        yield* sweep
+        const link = yield* linkOf(threadId)
+        const watch = link?.watch
+        if (!link || !watch) throw new Error("the thread should be watching")
+        yield* PullRequests.use((pullRequests) =>
+          pullRequests.updateWatch(link.id, watch.generation, { ...watch, wakes: 24 }),
+        )
+        details.set(url, failing(url))
+        yield* sweep
+
+        const sent = wakesFor(threadId)
+        expect(sent).toHaveLength(1)
+        expect(sent[0]?.text).toContain("Watching has ended after 25 updates")
+        expect(sent[0]?.text).not.toContain("The watch stays on")
         expect((yield* linkOf(threadId))?.watch).toBeNull()
       }),
     )

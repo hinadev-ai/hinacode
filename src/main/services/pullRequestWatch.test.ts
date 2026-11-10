@@ -191,6 +191,17 @@ describe("watchMessage", () => {
     const message = watchMessage(detail({ status: "closed" }), snapshot(), ["mergedOrClosed"])
     expect(message).toContain("closed")
     expect(message).toContain("watching has ended")
+    expect(message).not.toContain("The watch stays on")
+  })
+
+  test("news that ends the watch still asks for action without promising more reports", () => {
+    const message = watchMessage(failingDetail(["CI / test"]), null, ["checksFailed"], { ended: true })
+    expect(message).toContain("Act on this in this thread.")
+    expect(message).not.toContain("The watch stays on")
+  })
+
+  test("news on a watch that continues says more reports will follow", () => {
+    expect(watchMessage(failingDetail(["CI / test"]), null, ["checksFailed"])).toContain("The watch stays on")
   })
 })
 
