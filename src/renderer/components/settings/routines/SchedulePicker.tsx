@@ -8,7 +8,16 @@ import { FieldError } from "../../ui/field.tsx"
 import { Input } from "../../ui/input.tsx"
 import { Label } from "../../ui/label.tsx"
 import { Tabs, TabsList, TabsTrigger } from "../../ui/tabs.tsx"
-import { type DaySlot, type Repeat, repeats, type ScheduleDraft, toCron, weekAhead, weekdayName } from "./schedule.ts"
+import {
+  type DaySlot,
+  type Repeat,
+  repeats,
+  type ScheduleDraft,
+  RUNS_COUNTED_PER_DAY,
+  toCron,
+  weekAhead,
+  weekdayName,
+} from "./schedule.ts"
 
 const repeatLabel = {
   none: m.routines_repeat_none,
@@ -139,7 +148,7 @@ function WeekStrip({ schedule, days, onToggleDay }: WeekStripProps) {
   const locale = getLocale()
   const now = useNow()
   const slots = weekAhead(schedule, new Date(now))
-  const next = slots.find((slot) => slot.runs.length > 0)
+  const next = slots.find((slot) => slot.count > 0)
 
   return (
     <ol
@@ -147,9 +156,10 @@ function WeekStrip({ schedule, days, onToggleDay }: WeekStripProps) {
       className="grid grid-cols-7 gap-1.5"
     >
       {slots.map((slot) => {
+        const on = days === null ? slot.count > 0 : days.includes(slot.weekday)
         const className = cn(
           "flex w-full flex-col items-center gap-0.5 rounded-lg border py-2 tabular-nums",
-          slot.runs.length === 0 ? "border-dashed border-input text-muted-foreground" : "border-input bg-background",
+          on ? "border-input bg-background" : "border-dashed border-input text-muted-foreground",
           slot === next && "border-primary bg-primary/10",
         )
         const content = <DayCell slot={slot} next={slot === next} timezone={schedule.timezone} locale={locale} />
@@ -159,7 +169,6 @@ function WeekStrip({ schedule, days, onToggleDay }: WeekStripProps) {
               {content}
             </li>
           )
-        const on = days.includes(slot.weekday)
         return (
           <li key={slot.key}>
             <button
@@ -190,7 +199,7 @@ interface DayCellProps {
 }
 
 function DayCell({ slot, next, timezone, locale }: DayCellProps) {
-  const [first] = slot.runs
+  const { first, count } = slot
   return (
     <>
       <span className="text-xs text-muted-foreground">{weekdayName(slot.weekday, locale)}</span>
@@ -202,7 +211,7 @@ function DayCell({ slot, next, timezone, locale }: DayCellProps) {
       ) : (
         <span className={cn("font-mono text-xs", next ? "text-primary" : "text-muted-foreground")}>
           <time dateTime={first.toISOString()}>{clockIn(first, timezone, locale)}</time>
-          {slot.runs.length > 1 && ` +${slot.runs.length - 1}`}
+          {count > 1 && ` +${count - 1}${count === RUNS_COUNTED_PER_DAY ? "+" : ""}`}
         </span>
       )}
     </>

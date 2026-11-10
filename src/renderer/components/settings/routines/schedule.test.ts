@@ -4,6 +4,7 @@ import {
   describeCron,
   fromCron,
   nextRuns,
+  RUNS_COUNTED_PER_DAY,
   type ScheduleDraft,
   toCron,
   weekAhead,
@@ -90,7 +91,7 @@ describe("nextRuns", () => {
 describe("weekAhead", () => {
   const tuesdayNoonTokyo = new Date("2026-11-10T03:00:00Z")
   const summary = (cron: string, timezone = "Asia/Tokyo") =>
-    weekAhead({ cron, timezone }, tuesdayNoonTokyo).map((slot) => `${slot.day}:${slot.runs.length}`)
+    weekAhead({ cron, timezone }, tuesdayNoonTokyo).map((slot) => `${slot.day}:${slot.count}`)
 
   test("starts today in the schedule's time zone and spans seven days", () => {
     const slots = weekAhead({ cron: "0 9 * * *", timezone: "Asia/Tokyo" }, tuesdayNoonTokyo)
@@ -108,6 +109,20 @@ describe("weekAhead", () => {
 
   test("counts every run of an hourly schedule", () => {
     expect(summary("0 * * * *")).toEqual(["10:11", "11:24", "12:24", "13:24", "14:24", "15:24", "16:24"])
+  })
+
+  test("stops counting a day's runs at the cap", () => {
+    expect(summary("* * * * *").slice(1)).toEqual(
+      Array(6)
+        .fill(0)
+        .map((_, i) => `${11 + i}:${RUNS_COUNTED_PER_DAY}`),
+    )
+  })
+
+  test("counts runs across a daylight saving change", () => {
+    const sunday = new Date("2027-03-14T05:00:00Z")
+    const slots = weekAhead({ cron: "30 2,3 * * *", timezone: "America/New_York" }, sunday)
+    expect(slots.map((slot) => slot.count)).toEqual([1, 2, 2, 2, 2, 2, 2])
   })
 
   test("uses the calendar day of the time zone, not UTC", () => {

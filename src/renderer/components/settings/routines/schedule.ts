@@ -1,4 +1,4 @@
-import { Cron } from "effect"
+import { Cron, DateTime, Option } from "effect"
 import { isCronExpression, type RoutineSchedule } from "../../../../shared/domain.ts"
 import { m } from "../../../paraglide/messages.js"
 
@@ -114,26 +114,39 @@ export interface DaySlot {
   readonly key: string
   readonly weekday: number
   readonly day: number
-  readonly runs: ReadonlyArray<Date>
+  readonly first: Date | undefined
+  readonly count: number
 }
 
-const dayKey = (date: Date, timeZone: string) =>
-  new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date)
+const dayKeyFormat = (timeZone: string) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
+
+export const RUNS_COUNTED_PER_DAY = 100
+
+const localMidnight = (date: Date, timeZone: string) =>
+  DateTime.makeZoned(date, { timeZone, adjustForTimeZone: true }).pipe(Option.map(DateTime.toEpochMillis))
 
 export function weekAhead(schedule: RoutineSchedule, from: Date): ReadonlyArray<DaySlot> {
-  const [year, month, day] = dayKey(from, schedule.timezone).split("-").map(Number) as [number, number, number]
+  const local = dayKeyFormat(schedule.timezone)
+  const utc = dayKeyFormat("UTC")
+  const [year, month, day] = local.format(from).split("-").map(Number) as [number, number, number]
   const dates = Array.from({ length: 7 }, (_, offset) => new Date(Date.UTC(year, month - 1, day + offset)))
-  const runs = new Map(dates.map((date) => [dayKey(date, "UTC"), [] as Array<Date>]))
-  const lastKey = dayKey(dates[6]!, "UTC")
-  if (isCronExpression(schedule.cron, schedule.timezone)) {
-    for (const run of Cron.sequence(Cron.parseUnsafe(schedule.cron, schedule.timezone), from)) {
-      const key = dayKey(run, schedule.timezone)
-      if (key > lastKey) break
-      runs.get(key)?.push(run)
+  const cron = isCronExpression(schedule.cron, schedule.timezone)
+    ? Cron.parseUnsafe(schedule.cron, schedule.timezone)
+    : undefined
+  return dates.map((date, index) => {
+    const key = utc.format(date)
+    const slot = { key, weekday: date.getUTCDay(), day: date.getUTCDate() }
+    const start =
+      index === 0 ? Option.some(from.getTime()) : Option.map(localMidnight(date, schedule.timezone), (ms) => ms - 1)
+    if (cron === undefined || Option.isNone(start)) return { ...slot, first: undefined, count: 0 }
+    let first: Date | undefined
+    let count = 0
+    for (const run of Cron.sequence(cron, new Date(start.value))) {
+      if (local.format(run) !== key || count === RUNS_COUNTED_PER_DAY) break
+      first ??= run
+      count += 1
     }
-  }
-  return dates.map((date) => {
-    const key = dayKey(date, "UTC")
-    return { key, weekday: date.getUTCDay(), day: date.getUTCDate(), runs: runs.get(key) ?? [] }
+    return { ...slot, first, count }
   })
 }

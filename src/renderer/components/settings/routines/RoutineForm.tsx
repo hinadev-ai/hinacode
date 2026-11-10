@@ -235,7 +235,7 @@ function RoutineForm({ state, projects, onDone }: RoutineFormProps) {
           {m.routines_enabled_label()}
         </Label>
         <DialogClose render={<Button type="button" variant="outline" />}>{m.common_cancel()}</DialogClose>
-        <Button type="submit" disabled={isPending || invalidSchedule || project === undefined}>
+        <Button type="submit" disabled={isPending || invalidSchedule || project === undefined || model.trim() === ""}>
           {editing ? m.settings_save() : m.routines_create()}
         </Button>
       </DialogFooter>
