@@ -673,10 +673,10 @@ function PullRequestGuideField() {
     label: effortLabel(value),
   }))
 
-  const save = async (next: typeof pullRequestGuide) => {
+  const save = async (patch: Partial<typeof pullRequestGuide>) => {
     setError(null)
     try {
-      await updateSettings({ pullRequestGuide: next })
+      await updateSettings({ pullRequestGuide: patch })
     } catch (cause) {
       setError(errorMessage(cause))
     }
@@ -692,7 +692,7 @@ function PullRequestGuideField() {
 
   const saveModel = async (model: string | null) => {
     if (model === null) return
-    await save({ ...pullRequestGuide, model, effort: effortKeptOrDefaultFor(model) })
+    await save({ model, effort: effortKeptOrDefaultFor(model) })
   }
 
   return (
@@ -702,7 +702,7 @@ function PullRequestGuideField() {
         <Switch
           id="pull-request-guide-enabled"
           checked={pullRequestGuide.enabled}
-          onCheckedChange={(enabled) => void save({ ...pullRequestGuide, enabled })}
+          onCheckedChange={(enabled) => void save({ enabled })}
         />
       </Field>
       {pullRequestGuide.enabled && (
@@ -717,7 +717,7 @@ function PullRequestGuideField() {
             <Select
               items={effortItems}
               value={pullRequestGuide.effort}
-              onValueChange={(effort) => effort !== null && void save({ ...pullRequestGuide, effort })}
+              onValueChange={(effort) => effort !== null && void save({ effort })}
             >
               <SelectTrigger aria-label={m.thread_effort_picker()} className="min-w-0 flex-1 basis-28">
                 <SelectValue />
