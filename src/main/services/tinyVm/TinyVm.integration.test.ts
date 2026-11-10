@@ -1,13 +1,14 @@
-import { mkdtempSync } from "node:fs"
+import { existsSync, mkdtempSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
-import { Effect, Layer, ManagedRuntime } from "effect"
-import { defaultSettings, type ExperimentalSettings } from "../../../shared/domain.ts"
+import { Effect, Layer, ManagedRuntime, Schema } from "effect"
+import type { PushEvent } from "../../../shared/contract.ts"
+import { defaultSettings, type ExperimentalSettings, Thread } from "../../../shared/domain.ts"
 import * as Db from "../../db/client.ts"
-import { Events } from "../Events.ts"
+import { Events, makeEventsLayer } from "../Events.ts"
 import * as Settings from "../Settings.ts"
 import { encodeTar } from "./tar.ts"
 import { type FakeSbx, startFakeSbx } from "./testing.ts"
@@ -30,10 +31,10 @@ const makeRuntime = (fake: FakeSbx, profileDir: string, experimental: Partial<Ex
         return layer({ configPath: fake.configPath, env: {} }, profileDir)
       }),
     ).pipe(
-      Layer.provide(
+      Layer.provideMerge(
         Layer.mergeAll(
           Settings.layer(mkdtempSync(join(tmpdir(), "hinacode-vm-settings-"))),
-          Layer.succeed(Events, { publish: () => Effect.void }),
+          makeEventsLayer(() => {}),
         ).pipe(Layer.provide(Db.layer(":memory:")), Layer.provide(NodeServices.layer)),
       ),
     ),
@@ -138,3 +139,63 @@ it.effect("a failing setup script fails the start and destroys the sandbox", () 
     }),
   ),
 )
+
+const archivedThread = (id: string) =>
+  Schema.decodeUnknownSync(Thread)({
+    id,
+    projectId: "project",
+    worktreeId: null,
+    title: "archived",
+    provider: "claude",
+    model: "sonnet",
+    effort: null,
+    fastMode: false,
+    accessMode: "supervised",
+    accountId: null,
+    providerSessionId: null,
+    status: "archived",
+    usageLimit: null,
+    sortIndex: 0,
+    pinnedAt: null,
+    queue: [],
+    createdBy: "user",
+    createdAt: "2026-11-10T00:00:00.000Z",
+    updatedAt: "2026-11-10T00:00:00.000Z",
+  })
+
+for (const [name, event] of [
+  ["deleting", { type: "thread.removed", id: "thread" }],
+  ["archiving", { type: "thread.updated", thread: archivedThread("thread") }],
+] as const satisfies ReadonlyArray<readonly [string, PushEvent]>) {
+  it.effect(`${name} a thread stops its VM and deletes the files it pulled`, () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fake = yield* startFakeSbx
+        const dir = mkdtempSync(join(tmpdir(), "hinacode-vm-profile-"))
+        const runtime = yield* Effect.acquireRelease(
+          Effect.sync(() => makeRuntime(fake, dir, { tinyVmProfile: false })),
+          (value) => Effect.promise(() => value.dispose()),
+        )
+        const vm = yield* Effect.promise(() => runtime.runPromise(TinyVm.use((tinyVm) => tinyVm.start("thread"))))
+        if (vm.status !== "running") throw new Error("VM did not start")
+        fake.seedFile(
+          vm.sandboxId,
+          "/tmp/report.txt",
+          encodeTar([{ type: "file", path: "report.txt", data: Buffer.from("report"), mode: 0o644, mtime: 0 }]),
+        )
+        const pulled = yield* Effect.promise(() =>
+          runtime.runPromise(TinyVm.use((tinyVm) => tinyVm.pullFiles("thread", "/tmp/report.txt"))),
+        )
+        expect(existsSync(pulled.path)).toBe(true)
+
+        yield* Effect.promise(() => runtime.runPromise(Events.use((events) => events.publish(event))))
+        yield* Effect.promise(() => fake.whenRemoved(vm.sandboxId))
+
+        expect(yield* Effect.promise(() => runtime.runPromise(TinyVm.use((tinyVm) => tinyVm.get("thread"))))).toEqual({
+          status: "none",
+        })
+        expect(existsSync(join(dir, "pulled", "thread"))).toBe(false)
+      }),
+    ),
+  )
+}
