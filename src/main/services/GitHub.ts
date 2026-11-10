@@ -916,7 +916,7 @@ const make = Effect.gen(function* () {
       return { body: response.body, errors }
     })
 
-  const auth = gh(homedir(), ["auth", "status", "--json", "hosts"]).pipe(
+  const auth = ghUnpaused(homedir(), ["auth", "status", "--json", "hosts"]).pipe(
     Effect.flatMap(decodeAuthStatus),
     Effect.map(parseAuthStatus),
     Effect.catchTags({
