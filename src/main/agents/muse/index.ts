@@ -271,7 +271,8 @@ const make = Effect.gen(function* () {
     [...threadSessions.entries()].find(([, session]) => session === sessionId)?.[0]
 
   const setBackgroundTasks = (entry: HostEntry, sessionId: string, tasks: ReadonlyArray<BackgroundTask>) => {
-    if ((entry.backgroundTasks.get(sessionId) ?? []) === tasks) return
+    const current = entry.backgroundTasks.get(sessionId)
+    if (current === tasks || (current === undefined && tasks.length === 0)) return
     if (tasks.length === 0) entry.backgroundTasks.delete(sessionId)
     else entry.backgroundTasks.set(sessionId, tasks)
     const threadId = threadOf(sessionId)
