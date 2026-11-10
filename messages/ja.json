@@ -2038,6 +2038,7 @@
   "artifacts_go_to_thread": "スレッドへ移動",
   "artifacts_mention": "スレッドでメンション",
   "artifacts_copy_mention": "メンションをコピー",
+  "artifacts_mentioned": "{title} をメッセージに入力しました。",
   "artifacts_failed": "アーティファクト一覧を取得できませんでした：{message}",
   "artifacts_updated_on": "{time}、{machine}",
   "artifacts_delete": "削除",

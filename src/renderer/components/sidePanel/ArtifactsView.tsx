@@ -42,7 +42,6 @@ import {
 } from "@hinacode/icons"
 import { useDrafts } from "../../stores/drafts.ts"
 import { useThreads } from "../../stores/threads.ts"
-import { useUi } from "../../stores/ui.ts"
 import { Button } from "../ui/button.tsx"
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../ui/context-menu.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu.tsx"
@@ -69,10 +68,10 @@ function useSelectedArtifact(threadId: string) {
   return artifacts.find((artifact) => artifact.id === id)
 }
 
-const appendMention = (threadId: string, artifact: Artifact) =>
+const mentionInThread = (threadId: string, artifact: Artifact) => {
   useDrafts.getState().appendText(threadId, artifactMention(artifact.id))
-
-const focusComposer = () => useUi.getState().requestComposerFocus()
+  toast(m.artifacts_mentioned({ title: `@${artifact.title}` }))
+}
 
 const copyMention = (artifact: Artifact) =>
   navigator.clipboard.writeText(artifactMention(artifact.id)).then(() => toast(m.common_copied()))
@@ -107,10 +106,7 @@ export function ArtifactsHeader({ thread }: { thread: Thread }) {
           size="icon-sm"
           aria-label={m.artifacts_mention()}
           title={m.artifacts_mention()}
-          action={() => {
-            appendMention(thread.id, selected)
-            focusComposer()
-          }}
+          action={() => mentionInThread(thread.id, selected)}
         >
           <AtIcon aria-hidden />
         </Button>
@@ -476,7 +472,6 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
   )
   const clouds = useClouds()
   const readable = useReadableByAgent(threadId, artifact)
-  const focusComposerOnClose = useRef(false)
   const now = useNow()
   const updated = formatRelativeTime(artifact.updatedAt, now, getLocale())
   const remove = () =>
@@ -486,13 +481,7 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
         toast.error(m.artifacts_delete_failed({ title: artifact.title, message: errorMessage(cause) })),
       )
   return (
-    <ContextMenu
-      onOpenChangeComplete={(open) => {
-        if (open || !focusComposerOnClose.current) return
-        focusComposerOnClose.current = false
-        focusComposer()
-      }}
-    >
+    <ContextMenu>
       <ContextMenuTrigger render={<li />}>
         <button
           type="button"
@@ -513,12 +502,7 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
       </ContextMenuTrigger>
       <ContextMenuContent>
         {readable && (
-          <DropdownMenuItem
-            onClick={() => {
-              appendMention(threadId, artifact)
-              focusComposerOnClose.current = true
-            }}
-          >
+          <DropdownMenuItem onClick={() => mentionInThread(threadId, artifact)}>
             <AtIcon aria-hidden />
             {m.artifacts_mention()}
           </DropdownMenuItem>

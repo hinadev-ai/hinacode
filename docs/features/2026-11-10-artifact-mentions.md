@@ -10,7 +10,7 @@ A developer looks at an artifact beside the thread and wants the agent to act on
 ## User flow
 
 1. In the composer, the developer types `@`. The suggestion list shows artifacts by title after terminals and before files, with their kind icon. The thread's own artifacts come first. Picking one inserts `@artifact:<id>`.
-2. In the Artifacts panel, right-clicking a row offers Mention in thread and Copy mention. An open artifact has the same Mention in thread as an `@` button in its header. Mention in thread appends `@artifact:<id>` to the draft and focuses the composer. Copy mention puts the token on the clipboard, for another thread or a terminal agent.
+2. In the Artifacts panel, right-clicking a row offers Mention in thread and Copy mention. An open artifact has the same Mention in thread as an `@` button in its header. Mention in thread appends `@artifact:<id>` to the draft and confirms it in a toast, like the file explorer's Mention in message. It leaves focus alone, because an expanded or overlaid panel hides the composer. Copy mention puts the token on the clipboard, for another thread or a terminal agent.
 3. The sent message shows `@<title>`. Clicking it opens the artifact beside the thread.
 4. The agent sees `@artifact:<id>` and calls `read_artifact` with the id. To point the developer at an artifact, it writes the mention in its reply, which renders as the same link.
 
@@ -20,7 +20,7 @@ A developer looks at an artifact beside the thread and wants the agent to act on
 
 `read_artifact` reads only the store on the agent's machine. `mentionableArtifacts` therefore offers only artifacts whose `environmentId` matches the thread's project, and the panel hides Mention in thread for the others. Copy mention stays, because the developer may paste it into a thread on that machine.
 
-Renderer: the composer reads `artifactsAtom`, which the panel already loads. `Mention.tsx` renders an artifact as a button that calls `openArtifact`, or as the raw token when the artifact is unknown. The row's context menu requests composer focus in `onOpenChangeComplete`, because Base UI returns focus to the trigger when the menu closes.
+Renderer: the composer reads `artifactsAtom`, which the panel already loads. `Mention.tsx` renders an artifact as a button that calls `openArtifact`, or as the raw token when the artifact is unknown.
 
 ## Out of scope
 

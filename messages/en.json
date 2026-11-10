@@ -2092,6 +2092,7 @@
   "artifacts_go_to_thread": "Go to thread",
   "artifacts_mention": "Mention in thread",
   "artifacts_copy_mention": "Copy mention",
+  "artifacts_mentioned": "Added {title} to the message.",
   "artifacts_failed": "Could not list artifacts: {message}",
   "artifacts_updated_on": "{time} on {machine}",
   "artifacts_delete": "Delete",
