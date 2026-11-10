@@ -107,6 +107,7 @@ import {
   WorkspaceChoice,
   OpenPullRequest,
   PullRequestMatch,
+  type SettingsPatch,
 } from "./domain.ts"
 import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } from "./github.ts"
 import { RelayHost } from "./relayMachines.ts"
@@ -138,10 +139,6 @@ const AutomationInput = Schema.Struct({
 export type AutomationInput = typeof AutomationInput.Type
 
 const TerminalSize = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 1000 }))
-
-export type SettingsPatch<A> = {
-  readonly [K in keyof A]?: A[K] extends ReadonlyArray<unknown> ? A[K] : A[K] extends object ? Partial<A[K]> : A[K]
-}
 
 const groupPatch = (field: Schema.Struct.Fields[string]): Schema.Struct.Fields[string] => {
   const group = Predicate.hasProperty(field, "to") && Schema.isSchema(field.to) ? field.to : field

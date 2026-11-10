@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Effect, Predicate, Schema } from "effect"
 import {
   AccountProviderId,
   AgentBinary,
@@ -649,6 +649,19 @@ export const SidebarGroups = Schema.Struct({
   groupOf: Schema.Record(Schema.String, Schema.String),
 })
 export type SidebarGroups = typeof SidebarGroups.Type
+
+export type SettingsPatch<A> = {
+  readonly [K in keyof A]?: A[K] extends ReadonlyArray<unknown> ? A[K] : A[K] extends object ? Partial<A[K]> : A[K]
+}
+
+export const applySettingsPatch = <A extends object>(current: A, patch: SettingsPatch<A>): A => {
+  const merged = Object.entries(patch).map(([key, value]) => {
+    const group: unknown = current[key as keyof A]
+    const isGroup = Predicate.isObject(group) && !Array.isArray(group) && Predicate.isObject(value)
+    return [key, isGroup ? { ...group, ...value } : value]
+  })
+  return { ...current, ...Object.fromEntries(merged.filter(([, value]) => value !== undefined)) }
+}
 
 export const ClientSettings = Schema.Struct({
   locale: Locale,

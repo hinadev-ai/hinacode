@@ -3,8 +3,8 @@ import { RouterProvider, createMemoryHistory, createRootRoute, createRouter } fr
 import { beforeEach, expect, test } from "vitest"
 import { page } from "vitest/browser"
 import { render } from "vitest-browser-react"
-import type { HinacodeBridge, SettingsPatch } from "../../../shared/contract.ts"
-import { defaultSettings, type Settings } from "../../../shared/domain.ts"
+import type { HinacodeBridge } from "../../../shared/contract.ts"
+import { applySettingsPatch, defaultSettings, type Settings, type SettingsPatch } from "../../../shared/domain.ts"
 import "../../index.css"
 import { ModelSettings } from "./ModelSettings.tsx"
 
@@ -31,16 +31,7 @@ const bridge: HinacodeBridge = {
       if (patch.providerBinary?.codex !== undefined) codexAt = patch.providerBinary.codex
       if (patch.providerEnabled !== undefined && sent.length === 1)
         await new Promise<void>((resolve) => (releaseFirstSave = resolve))
-      const groups = Object.entries(patch).map(([key, value]) => {
-        const group = stored[key as keyof Settings]
-        return [
-          key,
-          group === null || Array.isArray(group) || typeof group !== "object"
-            ? value
-            : { ...group, ...(value as object) },
-        ]
-      })
-      stored = { ...stored, ...Object.fromEntries(groups) }
+      stored = applySettingsPatch(stored, patch)
       return { result: stored }
     }
     return { error: { tag: "NotStubbed", message: method } }

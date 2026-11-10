@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import { Effect, Exit, Predicate, PubSub, Schema, type Scope, Semaphore, Stream } from "effect"
-import type { SettingsPatch } from "../../shared/contract.ts"
+import { applySettingsPatch, type SettingsPatch } from "../../shared/domain.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 
 export interface SettingStore<A> {
@@ -88,13 +88,11 @@ export const makeSettingStore = <A extends Record<string, unknown>>(
         const shared = entries.filter(([key]) => !ownKeys.has(key))
         if (shared.length > 0) {
           const stored = yield* readObject(path)
-          const current: Record<string, unknown> = yield* get
-          const merged = shared.map(([key, value]) => {
-            const group = current[key]
-            const isGroup = Predicate.isObject(group) && !Array.isArray(group) && Predicate.isObject(value)
-            return [key, isGroup ? { ...group, ...value } : value] as const
-          })
-          yield* writeJson(path, { ...stored, ...Object.fromEntries(merged) })
+          const next: Record<string, unknown> = applySettingsPatch(
+            yield* get,
+            Object.fromEntries(shared) as SettingsPatch<A>,
+          )
+          yield* writeJson(path, { ...stored, ...Object.fromEntries(shared.map(([key]) => [key, next[key]])) })
         }
         for (const [key, file] of ownFiles) {
           if (patch[key] === undefined) continue
