@@ -102,7 +102,7 @@ export type CommandExecutionStatus = "inProgress" | "completed" | "failed" | "de
 export type PatchApplyStatus = "inProgress" | "completed" | "failed" | "declined"
 export type McpToolCallStatus = "inProgress" | "completed" | "failed"
 
-export type PatchChangeKind = { type: "add" } | { type: "delete" } | { type: "update"; move_path: string | null }
+type PatchChangeKind = { type: "add" } | { type: "delete" } | { type: "update"; move_path: string | null }
 export type FileUpdateChange = { path: string; kind: PatchChangeKind; diff: string }
 
 export type CollabAgentTool =
@@ -182,7 +182,7 @@ export type UserMessageInput = { type: string; text?: string; url?: string; path
 
 export type AsyncUserInputQuestion = { title: string; options: Array<string> | null }
 
-export type TokenUsageBreakdown = {
+type TokenUsageBreakdown = {
   totalTokens: number
   inputTokens: number
   cachedInputTokens: number
@@ -302,12 +302,12 @@ export const RateLimitWindow = Schema.Struct({
   resetsAt: Schema.NullOr(Schema.Number),
 })
 export type RateLimitWindow = typeof RateLimitWindow.Type
-export const RateLimitSnapshot = Schema.Struct({
+const RateLimitSnapshot = Schema.Struct({
   limitId: Schema.NullOr(Schema.String),
   primary: Schema.NullOr(RateLimitWindow),
   secondary: Schema.NullOr(RateLimitWindow),
 })
-export type RateLimitSnapshot = typeof RateLimitSnapshot.Type
+type RateLimitSnapshot = typeof RateLimitSnapshot.Type
 export const GetAccountRateLimitsResponse = Schema.Struct({
   rateLimits: RateLimitSnapshot,
   rateLimitsByLimitId: Schema.NullOr(Schema.Record(Schema.String, RateLimitSnapshot)),
@@ -316,7 +316,7 @@ export type GetAccountRateLimitsResponse = typeof GetAccountRateLimitsResponse.T
 
 export type ThreadBackgroundTerminalsListParams = { threadId: string; cursor?: string | null; limit?: number | null }
 export type ThreadBackgroundTerminalsTerminateParams = { threadId: string; processId: string }
-export const ThreadBackgroundTerminal = Schema.Struct({ processId: Schema.String, command: Schema.String })
+const ThreadBackgroundTerminal = Schema.Struct({ processId: Schema.String, command: Schema.String })
 export const ThreadBackgroundTerminalsListResponse = Schema.Struct({
   data: Schema.Array(ThreadBackgroundTerminal),
   nextCursor: Schema.NullOr(Schema.String),

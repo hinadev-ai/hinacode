@@ -7,7 +7,7 @@ import { type Host, type Link, runStore } from "./store"
 
 export type { Fetch } from "./cloudflare"
 
-export interface Deps {
+interface Deps {
   verifySession(request: Request, env: Env): Promise<string | null>
   accountProfile(
     userId: string,

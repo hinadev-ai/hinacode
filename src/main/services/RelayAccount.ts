@@ -11,7 +11,7 @@ import { Environments } from "./Environments.ts"
 import type { PersistenceError } from "./errors.ts"
 import { Secrets } from "./Secrets.ts"
 
-export const DEVICE_CREDENTIAL_SECRET = "relay.deviceCredential"
+const DEVICE_CREDENTIAL_SECRET = "relay.deviceCredential"
 
 const SYNC_INTERVAL = "5 minutes"
 const SIGN_IN_EXPIRED = "The sign-in expired. Try again."
@@ -38,7 +38,7 @@ export class RelayAccount extends Context.Service<
   }
 >()("hinacode/RelayAccount") {}
 
-export interface RelayAccountOptions {
+interface RelayAccountOptions {
   readonly serviceUrl: string
   readonly fetch?: Fetch
 }

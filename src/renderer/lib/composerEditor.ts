@@ -7,7 +7,7 @@ import { codeRuns, highlighterFor, type Loaded } from "./codeTokens.ts"
 import { composerMarks } from "./composerMarks.ts"
 import { iconDom } from "./iconDom.ts"
 
-export interface ComposerConfig {
+interface ComposerConfig {
   readonly commands: ReadonlyArray<AgentCommand>
   readonly files: ReadonlyArray<string>
   readonly threadIds: ReadonlyArray<string>

@@ -21,7 +21,7 @@ const RIPGREP_TIMEOUT_MS = 3000
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-export function snippetAround(text: string, query: string, width: number): string {
+function snippetAround(text: string, query: string, width: number): string {
   const pattern = new RegExp(escapeRegExp(query), "iu")
   const found = Math.max(0, text.search(pattern))
   const from = Math.max(0, found - 2 * width)
@@ -118,7 +118,7 @@ const runRipgrep = (rg: string, root: string, query: string, limit: number) =>
     })
   })
 
-export interface PerThreadOptions {
+interface PerThreadOptions {
   readonly limit: number
   readonly threadIds?: ReadonlyArray<string>
 }

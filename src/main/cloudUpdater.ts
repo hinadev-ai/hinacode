@@ -17,7 +17,7 @@ const INSTALL_TIMEOUT_MS = 10 * 60_000
 
 const NpmRelease = Schema.Struct({ version: Schema.String })
 
-export interface CloudUpdaterOptions {
+interface CloudUpdaterOptions {
   readonly current: string
   readonly packageRoot: string
   readonly registry: string

@@ -4,7 +4,7 @@ import { useContext } from "react"
 import type { Artifact, ArtifactFeedback, CommentAnchor } from "../../../shared/artifact.ts"
 import { call, callPromise, type EnvironmentId, familyOf, onPushEvent } from "../../lib/rpc.ts"
 
-export const feedbackAtom = familyOf((environment: EnvironmentId, id: string) =>
+const feedbackAtom = familyOf((environment: EnvironmentId, id: string) =>
   Atom.make((get) => {
     get.addFinalizer(
       onPushEvent((event) => {

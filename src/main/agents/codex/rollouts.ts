@@ -71,7 +71,7 @@ interface Spent {
 const RELEVANT = ['"turn_context"', '"token_usage_record"', '"token_count"']
 
 // FIXME: older rollouts only have token_count, a cumulative total that repeats and can restart from zero
-export const parseRollout = async (lines: AsyncIterable<string> | Iterable<string>): Promise<ReadonlyArray<Spent>> => {
+const parseRollout = async (lines: AsyncIterable<string> | Iterable<string>): Promise<ReadonlyArray<Spent>> => {
   let model = "unknown"
   const records = new Map<string, Spent>()
   const counted: Array<Spent> = []
@@ -112,7 +112,7 @@ const readSessionId = (path: string) =>
     () => null,
   )
 
-export const findRollouts = async (
+const findRollouts = async (
   home: string,
   threadId: string,
   sessionIdOf: (path: string) => Promise<string | null> = readSessionId,

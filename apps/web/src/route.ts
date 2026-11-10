@@ -19,9 +19,9 @@ export interface MachineLink {
   readonly call: (method: RpcMethod, payload: unknown) => Promise<RpcEnvelope<unknown>>
 }
 
-export type BrowserAnswer = (method: RpcMethod, payload: unknown) => Promise<RpcEnvelope<unknown>> | undefined
+type BrowserAnswer = (method: RpcMethod, payload: unknown) => Promise<RpcEnvelope<unknown>> | undefined
 
-export const GATHER_TIMEOUT_MS = 3_000
+const GATHER_TIMEOUT_MS = 3_000
 
 const payloadId = (payload: unknown, key: string) => {
   const id = typeof payload === "object" && payload !== null ? (payload as Record<string, unknown>)[key] : undefined

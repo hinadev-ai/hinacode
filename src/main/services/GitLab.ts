@@ -151,14 +151,14 @@ const decodeNotes = decodeJson(NotesJson)
 const decodeMergeRequestList = decodeJson(MergeRequestList)
 const decodeUser = decodeJson(User)
 
-export interface MergeRequestReads {
+interface MergeRequestReads {
   readonly url: string
   readonly mergeRequest: MergeRequestJson
   readonly approvals: ApprovalsJson
   readonly diffs: DiffsJson
 }
 
-export interface MergeRequestDetailReads extends MergeRequestReads {
+interface MergeRequestDetailReads extends MergeRequestReads {
   readonly changedFiles: number
   readonly jobs: JobsJson
   readonly notes: NotesJson

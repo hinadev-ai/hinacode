@@ -34,7 +34,7 @@ export type SidebarTab = (typeof sidebarTabs)[number]
 
 export const pullRequestTabs = ["info", "files", "guide"] as const
 export type PullRequestTab = (typeof pullRequestTabs)[number]
-export type VmPlacement = "panel" | "floating"
+type VmPlacement = "panel" | "floating"
 export type ComposerPicker = "model" | "effort"
 
 const pullRequestSections = ["links", "checks", "description", "comments"] as const
@@ -53,7 +53,7 @@ const VM_FLOATING_WIDTH_KEY = "hinacode.vmFloatingWidth"
 const FILE_TREE_HEIGHT_KEY = "hinacode.fileTreeHeight"
 const GIT_GRAPH_SPLIT_KEY = "hinacode.gitGraphSplit"
 export const VM_FLOATING_BOUNDS: SizeBounds = { min: 240, max: 960 }
-export const VM_FLOATING_DEFAULT_WIDTH = 320
+const VM_FLOATING_DEFAULT_WIDTH = 320
 
 function loadStrings(key: string): ReadonlyArray<string> {
   try {
@@ -159,7 +159,7 @@ interface UiState {
   readonly closeThreadSwitcher: () => void
 }
 
-export const selectSidePanelShown = (state: Pick<UiState, "sidePanelOpen" | "sidePanelOverlayOpen">) =>
+const selectSidePanelShown = (state: Pick<UiState, "sidePanelOpen" | "sidePanelOverlayOpen">) =>
   getPanelLayout() === "wide" ? state.sidePanelOpen : state.sidePanelOverlayOpen
 
 export const selectSidePanelView =

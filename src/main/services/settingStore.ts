@@ -11,7 +11,7 @@ export interface SettingStore<A> {
   readonly changes: Effect.Effect<Stream.Stream<A>, never, Scope.Scope>
 }
 
-export interface SettingFiles<A> {
+interface SettingFiles<A> {
   readonly path: string
   readonly own?: { readonly [K in keyof A]?: string }
 }

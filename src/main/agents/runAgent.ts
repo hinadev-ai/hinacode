@@ -22,7 +22,7 @@ export const spawningCallId = (messages: ReadonlyArray<Message>, prompt: string)
         toolArgument(part.input, "prompt") === prompt,
     )?.callId
 
-export type SubagentModel =
+type SubagentModel =
   | { readonly kind: "chosen"; readonly model: string }
   | { readonly kind: "refused"; readonly message: string }
 
@@ -72,7 +72,7 @@ export interface SubagentChoice {
   readonly hidden: number
 }
 
-export const pickedSubagentModels = (
+const pickedSubagentModels = (
   provider: ProviderId,
   listed: ReadonlyArray<ModelInfo> | null,
   picked: ReadonlyArray<string>,

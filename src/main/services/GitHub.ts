@@ -126,7 +126,7 @@ const EDIT_FLAGS = {
 
 const csvField = (value: string) => `"${value.replaceAll('"', '""')}"`
 
-export const editPullRequestArgs = (url: string, { field, add, remove }: PullRequestEdit) => [
+const editPullRequestArgs = (url: string, { field, add, remove }: PullRequestEdit) => [
   "pr",
   "edit",
   url,
@@ -134,7 +134,7 @@ export const editPullRequestArgs = (url: string, { field, add, remove }: PullReq
   ...remove.map((value) => `${EDIT_FLAGS[field].remove}=${csvField(value)}`),
 ]
 
-export const reviewCommentArgs = (url: string, comment: ReviewLineComment) => {
+const reviewCommentArgs = (url: string, comment: ReviewLineComment) => {
   const { pathname } = new URL(url)
   const [, owner, repo, , number] = pathname.split("/")
   const range =
@@ -191,7 +191,7 @@ const RollupEntry = Schema.Struct({
 })
 type RollupEntry = typeof RollupEntry.Type
 
-export const PULL_REQUEST_FIELDS =
+const PULL_REQUEST_FIELDS =
   "url,number,title,state,isDraft,reviewDecision,statusCheckRollup,mergeable,author,headRefName,baseRefName,additions,deletions,mergedAt"
 
 const PullRequestFields = Schema.Struct({
@@ -248,7 +248,7 @@ fragment Comment on Comment {
   id body createdAt viewerDidAuthor author { __typename login }
 }`
 
-export const pullRequestsQuery = (count: number) => {
+const pullRequestsQuery = (count: number) => {
   const aliases = Array.from({ length: count }, (_, index) => index)
   const variables = aliases.map((index) => `$owner${index}: String!, $name${index}: String!, $number${index}: Int!`)
   const reads = aliases.map(
@@ -611,7 +611,7 @@ export const parseApiResponse = (stdout: string): ApiResponse => {
   }
 }
 
-export const rateLimitOf = (headers: ReadonlyMap<string, string>): GitHubRateLimit | null => {
+const rateLimitOf = (headers: ReadonlyMap<string, string>): GitHubRateLimit | null => {
   const header = (name: string) => Number(headers.get(`x-ratelimit-${name}`) ?? Number.NaN)
   const [limit, remaining, used, reset] = [header("limit"), header("remaining"), header("used"), header("reset")]
   if (![limit, remaining, used, reset].every(Number.isFinite)) return null
@@ -655,7 +655,7 @@ const decodeContents = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Struct({ encoding: Schema.String, content: Schema.String })),
 )
 
-export const contentsPath = (url: string, ref: string, path: string) => {
+const contentsPath = (url: string, ref: string, path: string) => {
   const [, owner, repo] = new URL(url).pathname.split("/")
   const file = path.split("/").map(encodeURIComponent).join("/")
   return `repos/${owner}/${repo}/contents/${file}?ref=${encodeURIComponent(ref)}`

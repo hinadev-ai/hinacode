@@ -4,12 +4,12 @@ export const PROTOCOL_VERSION = 1
 
 export const METHOD_NOT_FOUND = -32601
 
-export const AgentCapabilities = Schema.Struct({
+const AgentCapabilities = Schema.Struct({
   loadSession: Schema.optional(Schema.Boolean),
   promptCapabilities: Schema.optional(Schema.Struct({ image: Schema.optional(Schema.Boolean) })),
   sessionCapabilities: Schema.optional(Schema.Struct({ close: Schema.optional(Schema.Unknown) })),
 })
-export type AgentCapabilities = typeof AgentCapabilities.Type
+type AgentCapabilities = typeof AgentCapabilities.Type
 
 export const InitializeResponse = Schema.Struct({
   protocolVersion: Schema.Number,
@@ -35,11 +35,11 @@ export const ConfigOption = Schema.Struct({
 })
 export type ConfigOption = typeof ConfigOption.Type
 
-export const LegacyModels = Schema.Struct({
+const LegacyModels = Schema.Struct({
   currentModelId: Schema.String,
   availableModels: Schema.Array(Schema.Struct({ modelId: Schema.String, name: Schema.String })),
 })
-export type LegacyModels = typeof LegacyModels.Type
+type LegacyModels = typeof LegacyModels.Type
 
 export const SessionSetup = Schema.Struct({
   configOptions: Schema.optional(Schema.NullOr(Schema.Array(ConfigOption))),

@@ -24,12 +24,12 @@ const parseBody = (text: string): unknown => {
   }
 }
 
-export interface WebhookTarget {
+interface WebhookTarget {
   readonly secret: string
   readonly enabled: boolean
 }
 
-export interface WebhookHandlers {
+interface WebhookHandlers {
   readonly target: (automationId: string) => Effect.Effect<WebhookTarget | undefined>
   readonly deliver: (automationId: string, eventKey: string, payload: unknown) => Effect.Effect<AutomationRun>
 }

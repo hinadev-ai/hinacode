@@ -6,7 +6,7 @@ import { tailscaleAddress } from "../../network.ts"
 
 const isWildcard = (host: unknown) => host === "0.0.0.0" || host === "::"
 
-export const pickInterface = (key: string, value: Record<string, unknown>, tailscale: string | null) => {
+const pickInterface = (key: string, value: Record<string, unknown>, tailscale: string | null) => {
   if (!isWildcard(value["bindHost"])) return value
   if (key === "automations") return { ...value, bindHost: tailscale ?? "127.0.0.1" }
   return tailscale === null ? { ...value, enabled: false, bindHost: null } : { ...value, bindHost: tailscale }

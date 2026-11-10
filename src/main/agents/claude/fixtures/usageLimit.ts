@@ -1,6 +1,6 @@
 import type { SDKAssistantMessage, SDKRateLimitEvent, SDKResultSuccess } from "@anthropic-ai/claude-agent-sdk"
 
-export const usageLimitMessage = "You've hit your limit · resets 3pm (Asia/Tokyo)"
+const usageLimitMessage = "You've hit your limit · resets 3pm (Asia/Tokyo)"
 export const orgSpendLimitMessage =
   "You've hit your org's monthly spend limit · run /usage-credits to ask your admin for a higher limit · your session limit resets 2:10pm (Asia/Tokyo)"
 export const usageLimitSessionId = "usage-limit-session"

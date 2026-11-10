@@ -16,7 +16,7 @@ const LINKED_FILES = [
   ["audio", "src"],
 ] as const
 
-export interface ResourceAnswer {
+interface ResourceAnswer {
   readonly status: number
   readonly headers: Record<string, string>
   readonly body: ArrayBuffer | null
@@ -79,7 +79,7 @@ const inlineLinkedFiles = async (bridge: HinacodeBridge, desktop: URL, html: str
   return `<!doctype html>\n${page.documentElement.outerHTML}`
 }
 
-export const resolveResource = async (
+const resolveResource = async (
   bridge: HinacodeBridge,
   url: string,
   destination: RequestDestination,

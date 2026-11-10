@@ -24,16 +24,16 @@ export type VmAction =
   | { readonly type: "type"; readonly text: string }
   | { readonly type: "key"; readonly keys: string }
 
-export type RfbStep = Uint8Array | { readonly pauseMs: number }
+type RfbStep = Uint8Array | { readonly pauseMs: number }
 
-export interface ScreenSize {
+interface ScreenSize {
   readonly width: number
   readonly height: number
 }
 
 export class VmInputError extends Schema.TaggedError<VmInputError>()("VmInputError", { message: Schema.String }) {}
 
-export class RfbError extends Schema.TaggedError<RfbError>()("RfbError", { message: Schema.String }) {}
+class RfbError extends Schema.TaggedError<RfbError>()("RfbError", { message: Schema.String }) {}
 
 const BUTTON_MASKS: Record<MouseButton, number> = { left: 1, middle: 2, right: 4 }
 const WHEEL_MASKS: Record<ScrollDirection, number> = { up: 8, down: 16, left: 32, right: 64 }
@@ -264,7 +264,7 @@ const makeReader = (socket: Socket, head: Uint8Array) => {
 const PROTOCOL_VERSION = "RFB 003.008\n"
 const SECURITY_NONE = 1
 
-export interface RfbConnection extends ScreenSize {
+interface RfbConnection extends ScreenSize {
   readonly socket: Socket
 }
 

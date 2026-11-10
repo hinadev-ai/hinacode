@@ -22,7 +22,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 
 export type AttachmentSource = { readonly path: string } | { readonly dataUrl: string; readonly name: string }
 
-export class AttachmentTooLargeError extends Schema.TaggedError<AttachmentTooLargeError>()("AttachmentTooLargeError", {
+class AttachmentTooLargeError extends Schema.TaggedError<AttachmentTooLargeError>()("AttachmentTooLargeError", {
   name: Schema.String,
   bytes: Schema.Number,
 }) {

@@ -10,14 +10,14 @@ export class PortsError extends Schema.TaggedError<PortsError>()("PortsError", {
   message: Schema.String,
 }) {}
 
-export interface ProcessInfo {
+interface ProcessInfo {
   readonly pid: number
   readonly command: string
   readonly cwd: string | null
   readonly ancestors: ReadonlyArray<number>
 }
 
-export interface ListeningProcess extends ProcessInfo {
+interface ListeningProcess extends ProcessInfo {
   readonly port: number
 }
 

@@ -3,7 +3,7 @@ import { RelayHostList, RelayMachineList } from "../../shared/relayMachines.ts"
 
 export const EXPIRED = "The sign-in link expired. Link this machine again."
 const SIGN_IN_USED = "The sign-in expired or was already used. Sign in again."
-export const DENIED = "The link was denied in the browser."
+const DENIED = "The link was denied in the browser."
 
 const CALL_TIMEOUT = Duration.seconds(30)
 

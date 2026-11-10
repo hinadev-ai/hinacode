@@ -23,7 +23,7 @@ export interface SimhelperSources {
   readonly "hid.swift": string
 }
 
-export interface IosDriverOptions {
+interface IosDriverOptions {
   readonly cacheDir: string
   readonly sources: SimhelperSources
   readonly simslimPath?: string

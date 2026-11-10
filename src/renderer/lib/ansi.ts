@@ -1,7 +1,7 @@
 import Anser from "anser"
 import type { CSSProperties } from "react"
 
-export interface AnsiSegment {
+interface AnsiSegment {
   readonly text: string
   readonly style: CSSProperties
 }

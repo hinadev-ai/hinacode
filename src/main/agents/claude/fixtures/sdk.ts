@@ -11,9 +11,9 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk"
 import { randomUUID } from "node:crypto"
 
-export const mockSessionId = "mock-session"
+const mockSessionId = "mock-session"
 export const mockModel = "claude-sonnet-5-5"
-export const mockContextWindow = 200_000
+const mockContextWindow = 200_000
 
 type Usage = SDKResultSuccess["usage"]
 type ContentBlock = SDKAssistantMessage["message"]["content"][number]

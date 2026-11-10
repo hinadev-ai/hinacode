@@ -205,7 +205,7 @@ export const documentOutline = (markdown: string): DocumentOutline => {
   return { title, lede, blocks }
 }
 
-export const OUTLINE_SHOWN_SECTIONS = 3
+const OUTLINE_SHOWN_SECTIONS = 3
 
 export const outlineSections = (blocks: ReadonlyArray<OutlineBlock>) => {
   const sections = blocks.flatMap((block) =>

@@ -25,7 +25,7 @@ import {
 import { Button } from "./ui/button.tsx"
 import "../lib/codeThemes.ts"
 
-export interface FileMark {
+interface FileMark {
   readonly letter: string
   readonly Glyph: IconComponent | null
   readonly className: string

@@ -32,7 +32,7 @@ export interface Cloudflare {
   deleteTunnel(tunnelId: string): Promise<void>
 }
 
-export interface CloudflareConfig {
+interface CloudflareConfig {
   readonly apiToken: string
   readonly accountId: string
   readonly zoneId: string

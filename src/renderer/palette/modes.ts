@@ -19,7 +19,7 @@ const goTo: PaletteMode = {
   sources: [threadsSource, projectsSource, filesSource],
 }
 
-export const paletteModes: ReadonlyArray<PaletteMode> = [
+const paletteModes: ReadonlyArray<PaletteMode> = [
   { id: "commands", prefix: COMMAND_PREFIX, placeholder: m.palette_commands_placeholder, sources: [commandsSource] },
   {
     id: "search",

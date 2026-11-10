@@ -34,7 +34,7 @@ export const assignGroup = (state: SidebarGroups, rowKey: string, groupId: strin
   return { ...state, groupOf: groupId === null ? rest : { ...rest, [rowKey]: groupId } }
 }
 
-export interface ArrangedRows<Row> {
+interface ArrangedRows<Row> {
   readonly grouped: ReadonlyArray<{ readonly group: SidebarGroup; readonly rows: ReadonlyArray<Row> }>
   readonly ungrouped: ReadonlyArray<Row>
 }

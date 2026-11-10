@@ -13,7 +13,7 @@ import {
   type Size,
 } from "./geometry.ts"
 
-export interface DeviceFrameProps {
+interface DeviceFrameProps {
   readonly model: DeviceModel
   readonly screen: Size
   readonly orientation: Orientation
