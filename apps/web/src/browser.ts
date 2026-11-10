@@ -1,10 +1,12 @@
 import { Option, Schema } from "effect"
 import type { PushEvent, RpcEnvelope, RpcMethod } from "../../../src/shared/contract.ts"
 import {
+  applySettingsPatch,
   ClientSettings,
   defaultClientSettings,
   type EnvironmentStatus,
   type NotificationPermission,
+  type SettingsPatch,
 } from "../../../src/shared/domain.ts"
 import { RelayHostList, type RelayMachine } from "../../../src/shared/relayMachines.ts"
 import { m } from "@/paraglide/messages.js"
@@ -104,8 +106,8 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
       document.title = count > 0 ? `(${count}) ${pageTitle}` : pageTitle
     },
     "clientSettings.get": () => encodeSettings(readSettings()),
-    "clientSettings.set": (patch: Partial<typeof ClientSettings.Encoded>) => {
-      const next = { ...encodeSettings(readSettings()), ...patch }
+    "clientSettings.set": (patch: SettingsPatch<typeof ClientSettings.Encoded>) => {
+      const next = applySettingsPatch(encodeSettings(readSettings()), patch)
       localStorage.setItem(CLIENT_SETTINGS_KEY, JSON.stringify(next))
       return next
     },

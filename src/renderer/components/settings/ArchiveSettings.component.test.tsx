@@ -7,15 +7,15 @@ import { type ArchiveSettings as Archive, defaultSettings } from "../../../share
 import "../../index.css"
 import { ArchiveSettings } from "./ArchiveSettings.tsx"
 
-let saved: Array<Archive> = []
+let saved: Array<Partial<Archive>> = []
 
 const bridge: HinacodeBridge = {
   rpc: async (method, payload) => {
     if (method === "settings.get") return { result: defaultSettings }
     if (method === "settings.set") {
-      const { archive } = payload as { archive: Archive }
+      const { archive } = payload as { archive: Partial<Archive> }
       saved.push(archive)
-      return { result: { ...defaultSettings, archive } }
+      return { result: { ...defaultSettings, archive: { ...defaultSettings.archive, ...archive } } }
     }
     return { error: { tag: "NotStubbed", message: method } }
   },
@@ -45,7 +45,7 @@ test("saves any number of days on Enter", async () => {
   await expect.element(settleDays()).toHaveValue(7)
   await settleDays().fill("10")
   await userEvent.keyboard("{Enter}")
-  await expect.poll(() => saved.at(-1)?.settleAfterIdleDays).toBe(10)
+  await expect.poll(() => saved).toEqual([{ settleAfterIdleDays: 10 }])
 })
 
 test("an empty field means never", async () => {
@@ -53,7 +53,7 @@ test("an empty field means never", async () => {
   await expect.element(archiveDays()).toHaveAttribute("placeholder", "Never")
   await settleDays().fill("")
   await archiveDays().click()
-  await expect.poll(() => saved.at(-1)?.settleAfterIdleDays).toBe(null)
+  await expect.poll(() => saved).toEqual([{ settleAfterIdleDays: null }])
 })
 
 test("a number out of range goes back to the saved value", async () => {
@@ -62,4 +62,16 @@ test("a number out of range goes back to the saved value", async () => {
   await archiveDays().click()
   await expect.element(settleDays()).toHaveValue(7)
   expect(saved).toEqual([])
+})
+
+test("each switch sends only its own field", async () => {
+  await renderSettings()
+  await page.getByRole("switch", { name: "Settle when its pull request merges" }).click()
+  await page.getByRole("switch", { name: "Remove the worktree when archiving" }).click()
+
+  await expect.poll(() => saved.length).toBe(2)
+  expect(saved).toEqual([
+    { whenMerged: !defaultSettings.archive.whenMerged },
+    { removeWorktree: !defaultSettings.archive.removeWorktree },
+  ])
 })

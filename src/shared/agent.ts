@@ -2,6 +2,7 @@ import { Predicate, Schema } from "effect"
 import type { ArtifactKind } from "./artifact.ts"
 import type { AccessMode, Attachment } from "./domain.ts"
 import { PlanLimits, UsageLimit } from "./limits.ts"
+import { ownToolName } from "./toolNames.ts"
 
 export const ProviderId = Schema.Literals(["claude", "codex", "muse", "opencode", "magpie"])
 export type ProviderId = typeof ProviderId.Type
@@ -357,7 +358,7 @@ export const RUN_AGENT_TOOL = "run_agent"
 
 export const WAIT_AGENT_TOOL = "wait_agent"
 
-export const isRunAgentTool = (name: string) => name === RUN_AGENT_TOOL || name === `mcp__hinacode__${RUN_AGENT_TOOL}`
+export const isRunAgentTool = (name: string) => ownToolName(name) === RUN_AGENT_TOOL
 
 export const PUBLISH_ARTIFACT_TOOL = "publish_artifact"
 
@@ -365,22 +366,15 @@ export const PUBLISH_DOCUMENT_TOOL = "publish_document"
 
 export const PUBLISH_WHITEBOARD_TOOL = "publish_whiteboard"
 
-const kindOfPublishTool = new Map<string, ArtifactKind>(
-  (
-    [
-      [PUBLISH_ARTIFACT_TOOL, "page"],
-      [PUBLISH_DOCUMENT_TOOL, "document"],
-      [PUBLISH_WHITEBOARD_TOOL, "whiteboard"],
-    ] as const
-  ).flatMap(([name, kind]) => [
-    [name, kind],
-    [`mcp__hinacode__${name}`, kind],
-  ]),
-)
+const kindOfPublishTool = new Map<string, ArtifactKind>([
+  [PUBLISH_ARTIFACT_TOOL, "page"],
+  [PUBLISH_DOCUMENT_TOOL, "document"],
+  [PUBLISH_WHITEBOARD_TOOL, "whiteboard"],
+])
 
-export const publishedKind = (name: string) => kindOfPublishTool.get(name) ?? null
+export const publishedKind = (name: string) => kindOfPublishTool.get(ownToolName(name)) ?? null
 
-export const isPublishArtifactTool = (name: string) => kindOfPublishTool.has(name)
+export const isPublishArtifactTool = (name: string) => publishedKind(name) !== null
 
 export const isPublishDocumentTool = (name: string) => publishedKind(name) === "document"
 
@@ -400,17 +394,21 @@ const textOfBlock = (block: unknown) =>
     ? String(Reflect.get(block, "text"))
     : ""
 
-export const outputText = (output: unknown): string =>
-  typeof output === "string"
-    ? output
-    : Array.isArray(output)
-      ? output.map(textOfBlock).filter(Boolean).join("\n")
-      : JSON.stringify(output)
+export const outputBlocks = (output: unknown): unknown =>
+  Predicate.isObject(output) && Array.isArray(Reflect.get(output, "content")) ? Reflect.get(output, "content") : output
+
+export const outputText = (output: unknown): string => {
+  const blocks = outputBlocks(output)
+  return typeof blocks === "string"
+    ? blocks
+    : Array.isArray(blocks)
+      ? blocks.map(textOfBlock).filter(Boolean).join("\n")
+      : JSON.stringify(blocks)
+}
 
 export const CREATE_THREAD_TOOL = "create_thread"
 
-export const isCreateThreadTool = (name: string) =>
-  name === CREATE_THREAD_TOOL || name === `mcp__hinacode__${CREATE_THREAD_TOOL}`
+export const isCreateThreadTool = (name: string) => ownToolName(name) === CREATE_THREAD_TOOL
 
 export const createdThreadId = (result: string) => /^Created thread ([\w-]+)/.exec(result)?.[1] ?? null
 

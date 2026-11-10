@@ -4,12 +4,13 @@ import { beforeEach, expect, test } from "vitest"
 import { page } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import type { HinacodeBridge } from "../../../shared/contract.ts"
-import { defaultSettings, type Settings } from "../../../shared/domain.ts"
+import { applySettingsPatch, defaultSettings, type Settings, type SettingsPatch } from "../../../shared/domain.ts"
 import "../../index.css"
 import { ModelSettings } from "./ModelSettings.tsx"
 
 let stored: Settings = defaultSettings
-let sent: Array<Settings["providerEnabled"]> = []
+let sent: Array<Partial<Settings["providerEnabled"]>> = []
+let guideSent: Array<Partial<Settings["pullRequestGuide"]>> = []
 let releaseFirstSave: () => void = () => {}
 let codexAt: string | null = null
 
@@ -26,12 +27,13 @@ const bridge: HinacodeBridge = {
     if (method === "settings.get") return { result: stored }
     if (method === "agents.binaries") return { result: binaries() }
     if (method === "settings.set") {
-      const patch = payload as Partial<Settings>
+      const patch = payload as SettingsPatch<Settings>
       if (patch.providerEnabled !== undefined) sent.push(patch.providerEnabled)
-      if (patch.providerBinary !== undefined) codexAt = patch.providerBinary.codex
+      if (patch.pullRequestGuide !== undefined) guideSent.push(patch.pullRequestGuide)
+      if (patch.providerBinary?.codex !== undefined) codexAt = patch.providerBinary.codex
       if (patch.providerEnabled !== undefined && sent.length === 1)
         await new Promise<void>((resolve) => (releaseFirstSave = resolve))
-      stored = { ...stored, ...patch }
+      stored = applySettingsPatch(stored, patch)
       return { result: stored }
     }
     return { error: { tag: "NotStubbed", message: method } }
@@ -46,6 +48,7 @@ Object.defineProperty(window, "hinacode", { value: bridge })
 beforeEach(() => {
   stored = defaultSettings
   sent = []
+  guideSent = []
   codexAt = "/usr/bin/codex"
 })
 
@@ -68,7 +71,7 @@ test("keeps an earlier agent switch when a second one flips before the first sav
   releaseFirstSave()
 
   await expect.poll(() => sent.length).toBe(2)
-  expect(sent[1]).toMatchObject({ codex: false, muse: false })
+  expect(sent).toEqual([{ codex: false }, { muse: false }])
   await expect.poll(() => stored.providerEnabled).toMatchObject({ codex: false, muse: false })
 })
 
@@ -86,4 +89,12 @@ test("turns off an agent whose CLI is missing until its path is set", async () =
 
   await expect.element(toggle).toBeChecked()
   expect(stored.providerBinary.codex).toBe("/opt/codex/bin/codex")
+})
+
+test("the pull request guide switch sends only whether it is on", async () => {
+  await renderSettings()
+  await page.getByRole("switch", { name: "Pull request guide" }).click()
+
+  await expect.poll(() => guideSent).toEqual([{ enabled: true }])
+  expect(stored.pullRequestGuide).toEqual({ ...defaultSettings.pullRequestGuide, enabled: true })
 })

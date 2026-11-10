@@ -38,7 +38,7 @@ export class MagpieProvider extends Context.Service<MagpieProvider, AgentProvide
         })
 
       const account = () =>
-        Effect.match(connection, {
+        Effect.match(Effect.flatMap(connection, modelsOf), {
           onFailure: (): AgentAccount => ({ type: "signedOut" }),
           onSuccess: (): AgentAccount => ({ type: "external", service: "magpie" }),
         })

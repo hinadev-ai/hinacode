@@ -222,10 +222,12 @@ const handle = (message: Message) => {
       }
       const sessionId = `ses_${createdSessions()}`
       send({ id: message.id, result: { sessionId, ...modelSetup(sessionId) } })
-      return update(sessionId, {
-        sessionUpdate: "available_commands_update",
-        availableCommands: [{ name: "review", description: "Review the diff", input: { hint: "branch" } }],
-      })
+      return setImmediate(() =>
+        update(sessionId, {
+          sessionUpdate: "available_commands_update",
+          availableCommands: [{ name: "review", description: "Review the diff", input: { hint: "branch" } }],
+        }),
+      )
     }
     case "session/load": {
       const sessionId = params["sessionId"] as string

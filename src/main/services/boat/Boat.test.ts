@@ -541,7 +541,12 @@ describe("boatClient", () => {
       const bytes = await runEffect(client.getFiles("sb-1", "Downloads/report.txt"))
       expect(Buffer.from(bytes)).toEqual(TAR_BYTES)
       expect(
-        fake.commands.some((command) => command.includes("tar -cf") && command.includes("'/home/user/Downloads'")),
+        fake.commands.some(
+          (command) =>
+            command.includes("tar -cf") &&
+            command.includes("--format=pax") &&
+            command.includes("'/home/user/Downloads'"),
+        ),
       ).toBe(true)
       const error = await runFlip(client.getFiles("sb-1", "Downloads/report.txt", 10))
       expect(error._tag).toBe("BoatError")

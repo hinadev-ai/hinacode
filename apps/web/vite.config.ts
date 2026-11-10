@@ -7,7 +7,9 @@ import { lazyLocales, paraglide } from "../../vite.paraglide.ts"
 
 const repo = resolve(import.meta.dirname, "../..")
 
-const CLERK_SCRIPT_SOURCES = "https://clerk.hinacode.app https://*.clerk.accounts.dev https://challenges.cloudflare.com"
+const CLERK_SCRIPT_SOURCES =
+  process.env["CLERK_SCRIPT_SOURCES"] ??
+  "https://clerk.hinacode.app https://*.clerk.accounts.dev https://challenges.cloudflare.com"
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",

@@ -165,6 +165,15 @@ export const DeviceFrame = Schema.Struct({
 })
 export type DeviceFrame = typeof DeviceFrame.Type
 
+export const shownScreen = (
+  frame: Pick<DeviceFrame, "orientation" | "screen">,
+  screen: { readonly width: number; readonly height: number },
+) => {
+  const { width, height } = frame.screen ?? screen
+  const wide = frame.orientation === "landscape"
+  return wide === width > height ? { width, height } : { width: height, height: width }
+}
+
 export const DeviceElement = Schema.Struct({
   role: Schema.String.check(Schema.isMaxLength(100)),
   label: Schema.String.check(Schema.isMaxLength(500)),

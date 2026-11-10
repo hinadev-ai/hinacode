@@ -140,6 +140,10 @@ describe("workspaceStatus", () => {
 describe("listener settings", () => {
   const setSettings = Schema.decodeUnknownSync(RpcMethods["settings.set"].request)
 
+  it("accept a change to one field of a settings group", () => {
+    expect(setSettings({ experimental: { devices: true } })).toStrictEqual({ experimental: { devices: true } })
+  })
+
   it("refuse an address that binds every interface", () => {
     for (const bindHost of ["0.0.0.0", "::"]) {
       expect(() => setSettings({ remote: { enabled: true, bindHost, port: 48081 } })).toThrow()

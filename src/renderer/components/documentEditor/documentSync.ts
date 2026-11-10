@@ -31,20 +31,20 @@ export function createDocumentSync(options: {
   let base = initial.revision
   let latest = initial.revision
   let handoff = restored?.saved
+  let draft = restored
   let edits = 0
   let savedEdits = 0
   let saving = false
   let theirs: DocumentContent | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
 
-  const markdown = () =>
-    editor !== null && !editor.isDestroyed ? editor.getMarkdown() : (unsavedDocuments.get(key)?.markdown ?? "")
+  const markdown = () => (editor !== null && !editor.isDestroyed ? editor.getMarkdown() : (draft?.markdown ?? ""))
 
   const clean = () => editor !== null && !editor.isDestroyed && !saving && edits === savedEdits && theirs === null
 
   const settle = () => {
     savedEdits = edits
-    unsavedDocuments.delete(key)
+    if (unsavedDocuments.get(key) === draft) unsavedDocuments.delete(key)
   }
 
   const load = (content: Draft) => {
@@ -141,8 +141,9 @@ export function createDocumentSync(options: {
     },
     flush: () => {
       if (edits === savedEdits) return
-      const draft = { revision: base, markdown: markdown() }
-      unsavedDocuments.set(key, { ...draft, saved: save() })
+      draft = { revision: base, markdown: markdown() }
+      draft = { ...draft, saved: save() }
+      unsavedDocuments.set(key, draft)
     },
     keepMine: async () => {
       if (theirs === null) return

@@ -3,17 +3,33 @@ import { Suspense } from "react"
 import { expect, test } from "vitest"
 import { page } from "vitest/browser"
 import { render } from "vitest-browser-react"
+import type { Artifact } from "../../shared/artifact.ts"
 import { type HinacodeBridge, RpcMethods } from "../../shared/contract.ts"
 import { defaultClientSettings, type Message, type TerminalSession } from "../../shared/domain.ts"
+import { useArtifacts } from "../stores/artifacts.ts"
 import { useTerminals } from "../stores/terminals.ts"
 import "../index.css"
 import { MessageList } from "./MessageList.tsx"
 
+const plan: Artifact = {
+  id: "plan-1",
+  kind: "document",
+  title: "Login plan",
+  entry: "document.md",
+  version: 1,
+  files: [],
+  createdAt: "2026-11-01T00:00:00.000Z",
+  updatedAt: "2026-11-01T00:00:00.000Z",
+  threadId: "t-1",
+}
+
 const bridge: HinacodeBridge = {
-  rpc: async (method) =>
-    method === "clientSettings.get"
-      ? { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
-      : { error: { tag: "NotStubbed", message: method } },
+  rpc: async (method) => {
+    if (method === "clientSettings.get")
+      return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
+    if (method === "artifacts.list") return { result: [plan] }
+    return { error: { tag: "NotStubbed", message: method } }
+  },
   onEvent: () => () => {},
   pathForFile: () => "",
   liquidGlass: false,
@@ -83,4 +99,26 @@ test("a terminal mention opens that terminal, and a closed one shows no id", asy
 
   await page.getByRole("button", { name: "@pnpm dev" }).click()
   expect(useTerminals.getState().byThreadId["t-1"]).toMatchObject({ open: true, activeId: "term-2" })
+})
+
+test("an artifact mention shows its title and opens it beside the thread", async () => {
+  await render(
+    <Suspense>
+      <div style={{ height: 400, display: "flex", flexDirection: "column" }}>
+        <MessageList
+          messages={[
+            sent("follow @artifact:plan-1, not @artifact:gone-1"),
+            sent("I updated @artifact:plan-1.", "assistant"),
+          ]}
+          providerLabel="Claude"
+        />
+      </div>
+    </Suspense>,
+  )
+  await expect
+    .element(page.getByRole("article", { name: "You" }))
+    .toHaveTextContent("follow @Login plan, not @artifact:gone-1")
+
+  await page.getByRole("button", { name: "@Login plan" }).last().click()
+  expect(useArtifacts.getState().selected["t-1"]).toBe("plan-1")
 })

@@ -8,6 +8,7 @@ import {
   type AccountProviderId,
   type Compaction,
   createdThreadId,
+  outputBlocks,
   type ProviderId,
   toolArgument,
 } from "../../shared/agent.ts"
@@ -163,8 +164,7 @@ const field = (value: unknown, key: string): unknown =>
 
 export function formatOutput(output: unknown): string {
   if (typeof output === "string") return decodeUnicodeEscapes(output)
-  // FIXME: Codex wraps an MCP tool's result in `{ content: [...] }`
-  const content = Array.isArray(output) ? output : field(output, "content")
+  const content = outputBlocks(output)
   if (Array.isArray(content)) {
     return content
       .map((block: unknown) => {

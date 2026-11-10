@@ -4,7 +4,9 @@ import { join } from "node:path"
 import { artifactTools, openArtifactStore } from "@hinacode/artifacts"
 import { describe, expect, test } from "vitest"
 import {
+  isCreateThreadTool,
   isPublishArtifactTool,
+  isRunAgentTool,
   publishedArtifact,
   publishedArtifactId,
   publishedKind,
@@ -76,5 +78,14 @@ describe("isPublishArtifactTool", () => {
     expect(publishedKind("mcp__hinacode__publish_document")).toBe("document")
     expect(publishedKind("publish_whiteboard")).toBe("whiteboard")
     expect(publishedKind("mcp__hinacode__comment_on_artifact")).toBe(null)
+  })
+})
+
+describe("opencode tool names", () => {
+  test("recognize HinaCode tools under opencode's hinacode_ prefix", () => {
+    expect(publishedKind("hinacode_publish_document")).toBe("document")
+    expect(isRunAgentTool("hinacode_run_agent")).toBe(true)
+    expect(isCreateThreadTool("hinacode_create_thread")).toBe(true)
+    expect(isRunAgentTool("mcp__other__run_agent")).toBe(false)
   })
 })

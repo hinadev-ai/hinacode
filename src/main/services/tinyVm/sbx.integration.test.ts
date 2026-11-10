@@ -68,3 +68,19 @@ describe("getFiles", () => {
     ),
   )
 })
+
+describe("tunnel", () => {
+  it.effect("a connection reset after the upgrade is not an uncaught exception", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fake = yield* startFakeSbx
+        const sbx = sbxClient({ url: fake.url, token: Redacted.make(fake.token) })
+        const { id } = yield* sbx.create("default")
+        const { socket } = yield* sbx.tunnel(id, 5900)
+        const closed = Effect.callback<void>((resume) => void socket.once("close", () => resume(Effect.void)))
+        socket.destroy(Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }))
+        yield* closed
+      }),
+    ),
+  )
+})

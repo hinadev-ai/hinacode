@@ -1,3 +1,4 @@
+import { outputBlocks } from "@shared/agent.ts"
 import { outputPreview, toolSummary } from "@shared/compactTranscript.ts"
 import { ownToolName, unwrapShell } from "@shared/toolNames.ts"
 import type { IconName } from "@/components/icon"
@@ -104,8 +105,7 @@ const ANSI_ESCAPE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@
 function outputText(output: unknown): string {
   if (output === undefined || output === null) return ""
   if (typeof output === "string") return output
-  // FIXME: Codex wraps an MCP tool's result in `{ content: [...] }`
-  const content = Array.isArray(output) ? output : field(output, "content")
+  const content = outputBlocks(output)
   if (!Array.isArray(content)) return JSON.stringify(output, null, 2)
   return content
     .map((block: unknown) => {

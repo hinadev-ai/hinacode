@@ -122,6 +122,7 @@ export interface FakeSbx {
   readonly fileAt: (sandboxId: string, path: string) => Buffer | undefined
   readonly inputs: Array<{ readonly sandboxId: string; readonly event: RfbEvent }>
   readonly expire: (id: string) => void
+  readonly whenRemoved: (id: string) => Promise<void>
 }
 
 const fileKey = (sandboxId: string, path: string) => `${sandboxId}:${path}`
@@ -150,6 +151,12 @@ export const startFakeSbx = Effect.acquireRelease(
     const createdEnvs: Array<Readonly<Record<string, string>>> = []
     const files = new Map<string, Buffer>()
     const sockets = new Set<Socket>()
+    const removals = new Map<string, PromiseWithResolvers<void>>()
+    const removalOf = (id: string) => {
+      let removal = removals.get(id)
+      if (removal === undefined) removals.set(id, (removal = Promise.withResolvers<void>()))
+      return removal
+    }
     let created = 0
 
     const server = createServer(async (request, response) => {
@@ -200,6 +207,7 @@ export const startFakeSbx = Effect.acquireRelease(
       if (match?.[2] === undefined && request.method === "GET") return json(response, 200, { id, template: "default" })
       if (match?.[2] === undefined && request.method === "DELETE") {
         sandboxes.delete(id)
+        removalOf(id).resolve()
         response.writeHead(204).end()
         return
       }
@@ -267,6 +275,7 @@ export const startFakeSbx = Effect.acquireRelease(
             fileAt: (sandboxId, path) => files.get(fileKey(sandboxId, path)),
             inputs,
             expire: (id) => void sandboxes.delete(id),
+            whenRemoved: (id) => removalOf(id).promise,
           },
           close: () => {
             sockets.forEach((socket) => socket.destroy())

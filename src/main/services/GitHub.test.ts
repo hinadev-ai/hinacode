@@ -1043,6 +1043,19 @@ describe("rate limits", () => {
     }).pipe(Effect.provide(gh.layer))
   })
 
+  it.effect("still reads the sign-in state while GitHub is rate limited", () => {
+    const gh = fakeGh((args) =>
+      args[0] === "auth"
+        ? { stdout: JSON.stringify({ hosts: { "github.com": [account({ login: "me" })] } }) }
+        : primaryLimitHit(3600),
+    )
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      expect(yield* github.auth).toStrictEqual({ type: "signedIn", host: "github.com", login: "me" })
+    }).pipe(Effect.provide(gh.layer))
+  })
+
   it.effect("keeps answering with the last read while GitHub is rate limited", () => {
     let limited = false
     const gh = fakeGh(() => (limited ? primaryLimitHit(3600) : apiReply(graphqlPullRequest("Before the limit"))))

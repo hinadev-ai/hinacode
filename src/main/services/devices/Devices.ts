@@ -14,6 +14,7 @@ import {
   type DevicePlatform,
   type PickedDeviceElement,
   type PrepareStep,
+  shownScreen,
   type SimulatorModelId,
   threadDeviceId,
   type ThreadDevice,
@@ -63,7 +64,10 @@ export class Devices extends Context.Service<
     readonly screenshot: (
       threadId: string,
       device: string | undefined,
-    ) => Effect.Effect<{ readonly frame: DeviceFrame; readonly state: ReadyDevice }, DevicesError>
+    ) => Effect.Effect<
+      { readonly frame: DeviceFrame; readonly state: ReadyDevice; readonly screen: ReturnType<typeof shownScreen> },
+      DevicesError
+    >
     readonly describe: (
       threadId: string,
       device: string | undefined,
@@ -621,20 +625,21 @@ const make = (options: DevicesOptions) =>
         const { state, live } = await chosen(threadId, device)
         const frame = live.latest ?? (await newestFrame(live, 0, 5000))
         if (!frame) throw new DevicesError({ message: "The device has not sent a frame yet. Try again in a moment." })
-        return { frame, state }
+        return { frame, state, screen: shownScreen(frame, state.screen) }
       })
 
     const pick = (input: RpcRequest<"device.pick">) =>
       attempt(async (): Promise<PickedDeviceElement | null> => {
-        const { state } = await ready(input.threadId, input.deviceId)
+        const { state, live } = await ready(input.threadId, input.deviceId)
         const elements = await driverOf(state.device.id).describe(state.device.id)
-        const x = input.x * state.screen.width
-        const y = input.y * state.screen.height
+        const screen = live.latest ? shownScreen(live.latest, state.screen) : state.screen
+        const x = input.x * screen.width
+        const y = input.y * screen.height
         const under = elements
           .filter(
             ({ frame }) => x >= frame.x && x <= frame.x + frame.width && y >= frame.y && y <= frame.y + frame.height,
           )
-          .filter(({ frame }) => frame.width < state.screen.width || frame.height < state.screen.height)
+          .filter(({ frame }) => frame.width < screen.width || frame.height < screen.height)
           .sort((a, b) => a.frame.width * a.frame.height - b.frame.width * b.frame.height)[0]
         return under ? { device: state.device.name, platform: state.device.platform, element: under } : null
       })

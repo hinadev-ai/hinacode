@@ -2,11 +2,12 @@ import { randomUUID } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import { Effect, Exit, Predicate, PubSub, Schema, type Scope, Semaphore, Stream } from "effect"
+import { applySettingsPatch, type SettingsPatch } from "../../shared/domain.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 
 export interface SettingStore<A> {
   readonly get: Effect.Effect<A, PersistenceError>
-  readonly set: (patch: Partial<A>) => Effect.Effect<A, PersistenceError>
+  readonly set: (patch: SettingsPatch<A>) => Effect.Effect<A, PersistenceError>
   readonly changes: Effect.Effect<Stream.Stream<A>, never, Scope.Scope>
 }
 
@@ -81,13 +82,17 @@ export const makeSettingStore = <A extends Record<string, unknown>>(
       return yield* decode(merged).pipe(Effect.mapError(persistence(`decode ${files}`)))
     })
 
-    const set = (patch: Partial<A>) =>
+    const set = (patch: SettingsPatch<A>) =>
       Effect.gen(function* () {
         const entries = Object.entries(patch).filter(([, value]) => value !== undefined)
         const shared = entries.filter(([key]) => !ownKeys.has(key))
         if (shared.length > 0) {
           const stored = yield* readObject(path)
-          yield* writeJson(path, { ...stored, ...Object.fromEntries(shared) })
+          const next: Record<string, unknown> = applySettingsPatch(
+            yield* get,
+            Object.fromEntries(shared) as SettingsPatch<A>,
+          )
+          yield* writeJson(path, { ...stored, ...Object.fromEntries(shared.map(([key]) => [key, next[key]])) })
         }
         for (const [key, file] of ownFiles) {
           if (patch[key] === undefined) continue

@@ -18,7 +18,7 @@ import type {
   Subagent,
 } from "../../shared/agent.ts"
 import { RpcMethods, type TranscriptPush } from "../../shared/contract.ts"
-import type { Message, Thread } from "../../shared/domain.ts"
+import { defaultSettings, type Message, type Settings as SettingsValue, type Thread } from "../../shared/domain.ts"
 import { ClaudeProvider, makeClaudeHarness } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { DOCUMENT_COMMAND, expandDocumentCommand } from "../agents/document.ts"
@@ -64,6 +64,8 @@ interface Probe {
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
   readonly nextTurn: () => Promise<void>
   readonly warms: Array<SessionInput>
+  readonly modelLists: Array<ProviderId>
+  readonly setSettings: (patch: Partial<SettingsValue>) => Promise<void>
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision; readonly note?: string }>
   readonly steers: Array<{ readonly text: string; readonly priority: SteerPriority }>
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
@@ -151,6 +153,7 @@ const withPreparingThread = async (
   const turns: Probe["turns"] = []
   let turnStarted = Promise.withResolvers<void>()
   const warms: Probe["warms"] = []
+  const modelLists: Probe["modelLists"] = []
   const decisions: Probe["decisions"] = []
   const steers: Probe["steers"] = []
   const resolutions = Effect.runSync(Queue.unbounded<AgentEvent>())
@@ -202,7 +205,10 @@ const withPreparingThread = async (
   const domainRuntime = ManagedRuntime.make(domain)
   const provider = (id: ProviderId): AgentProvider => ({
     id,
-    listModels: Effect.succeed([]),
+    listModels: Effect.sync(() => {
+      modelLists.push(id)
+      return []
+    }),
     account: () => Effect.succeed({ type: "apiKey" }),
     planLimits: () => Effect.succeed(null),
     usage: () => Effect.succeed(null),
@@ -503,6 +509,9 @@ const withPreparingThread = async (
         streamed: streamed.promise,
         turns,
         warms,
+        modelLists,
+        setSettings: (patch) =>
+          domainRuntime.runPromise(Settings.Settings.use((settings) => settings.set(patch)).pipe(Effect.asVoid)),
         decisions,
         steers,
         calls,
@@ -798,6 +807,18 @@ it("tells the agent the branch and paths it works in", async () => {
   remote: \`(none)\`
   platform: ${process.platform}
 `)
+  })
+})
+
+it("lists models only for the enabled providers when a turn starts", async () => {
+  await withPreparingThread(async (probe) => {
+    await probe.setSettings({ providerEnabled: { ...defaultSettings.providerEnabled, codex: false, muse: false } })
+    probe.release()
+    await Effect.runPromise(probe.runner.send(probe.thread.id, "accepted input", []))
+    await probe.idle
+
+    expect(probe.modelLists).not.toContain("codex")
+    expect(probe.modelLists).not.toContain("muse")
   })
 })
 

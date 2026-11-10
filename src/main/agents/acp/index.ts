@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { Deferred, Duration, Effect, Exit, Queue, Schema, Scope, Semaphore, Stream } from "effect"
+import { Cache, Deferred, Duration, Effect, Exit, Queue, Schema, Scope, Semaphore, Stream } from "effect"
 import type {
   AgentAccount,
   AgentCommand,
@@ -14,6 +14,7 @@ import type {
 import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { providerInfo } from "../../../shared/providers.ts"
+import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
 import { attachmentContext } from "../elementContext.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
@@ -46,6 +47,7 @@ export interface AcpAgentConfig {
 const CLIENT_VERSION = "0.1.0"
 const INITIALIZE_TIMEOUT = Duration.seconds(30)
 const INTERRUPT_GRACE = Duration.seconds(5)
+const COMMANDS_WAIT = Duration.seconds(5)
 
 const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
 
@@ -84,6 +86,20 @@ type TurnMessage = Incoming | { readonly kind: "prompted"; readonly exit: Exit.E
 const decodeNotification = Schema.decodeUnknownOption(SessionNotification)
 const decodeCommands = Schema.decodeUnknownOption(AvailableCommandsUpdate)
 const decodePermission = Schema.decodeUnknownOption(RequestPermissionParams)
+
+const commandsOf = (message: Incoming) => {
+  if (message.kind !== "notification" || message.method !== "session/update") return undefined
+  const notification = decodeNotification(message.params)
+  if (notification._tag === "None") return undefined
+  const update = decodeCommands(notification.value.update)
+  if (update._tag === "None") return undefined
+  return update.value.availableCommands.map((command): AgentCommand => ({
+    trigger: "/",
+    name: command.name,
+    description: command.description ?? "",
+    argumentHint: command.input?.hint ?? "",
+  }))
+}
 
 const mcpServers = (input: RunTurnInput) => [
   {
@@ -154,20 +170,8 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
     const runOfSession = (sessionId: string) => [...runs.values()].find((run) => run.sessionId === sessionId)
 
     const trackCommands = (threadId: string, message: Incoming) => {
-      if (message.kind !== "notification" || message.method !== "session/update") return
-      const notification = decodeNotification(message.params)
-      if (notification._tag === "None") return
-      const update = decodeCommands(notification.value.update)
-      if (update._tag === "None") return
-      commands.set(
-        threadId,
-        update.value.availableCommands.map((command) => ({
-          trigger: "/",
-          name: command.name,
-          description: command.description ?? "",
-          argumentHint: command.input?.hint ?? "",
-        })),
-      )
+      const announced = commandsOf(message)
+      if (announced !== undefined) commands.set(threadId, announced)
     }
 
     const answerUnowned = (client: AcpClient, message: Incoming) => {
@@ -379,6 +383,10 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
           if (input.home !== null) return yield* agentError(`${name} runs on its CLI login only`)
           accessModes.set(input.threadId, input.accessMode)
           const { client, capabilities } = yield* startAgent
+          yield* Effect.acquireRelease(
+            Effect.sync(() => registerAgentPid(input.threadId, client.pid)),
+            (unregister) => Effect.sync(unregister),
+          )
           yield* client.subscribe((message) => {
             trackCommands(input.threadId, message)
             answerUnowned(client, message)
@@ -447,8 +455,27 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       }).pipe(Effect.scoped),
     )
 
-    const listCommands = ({ threadId }: { readonly threadId: string }) =>
-      Effect.sync(() => commands.get(threadId) ?? [])
+    const probeCommands = (cwd: string) =>
+      Effect.gen(function* () {
+        const { client } = yield* startAgent
+        const announced = yield* Deferred.make<ReadonlyArray<AgentCommand>>()
+        yield* client.subscribe((message) => {
+          const update = commandsOf(message)
+          if (update !== undefined) Deferred.doneUnsafe(announced, Effect.succeed(update))
+        })
+        yield* call(client, "session/new", { cwd, mcpServers: [] }, NewSessionResponse)
+        return yield* Deferred.await(announced).pipe(
+          Effect.timeoutOrElse({ duration: COMMANDS_WAIT, orElse: () => Effect.succeed([]) }),
+        )
+      }).pipe(Effect.scoped)
+
+    const probedCommands = yield* Cache.make({ lookup: probeCommands, capacity: 32, timeToLive: Duration.minutes(1) })
+
+    const listCommands = ({ threadId, cwd }: { readonly threadId: string; readonly cwd: string }) =>
+      Effect.suspend(() => {
+        const tracked = commands.get(threadId)
+        return tracked === undefined ? Cache.get(probedCommands, cwd) : Effect.succeed(tracked)
+      })
 
     const interrupt = (threadId: string) =>
       Effect.suspend(() => {

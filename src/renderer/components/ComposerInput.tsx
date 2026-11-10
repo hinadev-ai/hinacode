@@ -4,6 +4,7 @@ import { Compartment, EditorState, Prec } from "@codemirror/state"
 import { EditorView, keymap, type ViewUpdate } from "@codemirror/view"
 import { type Ref, useEffect, useEffectEvent, useId, useImperativeHandle, useRef, useState } from "react"
 import type { AgentCommand } from "../../shared/agent.ts"
+import type { Artifact } from "../../shared/artifact.ts"
 import type { Thread } from "../../shared/domain.ts"
 import type { MentionableThreads } from "../../shared/mentions.ts"
 import {
@@ -25,6 +26,7 @@ import { usePullRequestSearch } from "../lib/usePullRequestSearch.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { ProviderIcon } from "./ProviderIcon.tsx"
+import { ArtifactKindIcon } from "./sidePanel/ArtifactKindIcon.tsx"
 import { FileIcon, SkillIcon, SlashIcon, TerminalIcon } from "@hinacode/icons"
 import { StatusIcon } from "./ThreadPullRequests.tsx"
 
@@ -43,6 +45,7 @@ interface ComposerInputProps {
   readonly onMentionStart: () => void
   readonly threads: MentionableThreads<Thread>
   readonly terminals: ReadonlyArray<MentionableTerminal>
+  readonly artifacts: ReadonlyArray<Artifact>
   readonly projectId: string
   readonly placeholder: string
   readonly "aria-label": string
@@ -60,6 +63,7 @@ export function ComposerInput({
   onMentionStart,
   threads,
   terminals,
+  artifacts,
   projectId,
   placeholder,
   "aria-label": label,
@@ -79,7 +83,7 @@ export function ComposerInput({
   const completion = completionAt(value, caret)
   const active = completion && completion.start !== dismissedAt ? completion : null
   const pullRequests = usePullRequestSearch(projectId, active?.trigger === "#" ? active.query : null)
-  const suggestions = active ? suggestionsFor(active, commands, files, threads, terminals, pullRequests) : []
+  const suggestions = active ? suggestionsFor(active, commands, files, threads, terminals, artifacts, pullRequests) : []
   const open = completion !== null && suggestions.length > 0
   const activeIndex = completion?.start === selected.start ? Math.min(selected.index, suggestions.length - 1) : 0
   const optionId = (index: number) => `${listId}-${index}`
@@ -243,6 +247,7 @@ export function ComposerInput({
       files,
       threadIds: [...threads.sameMachine, ...threads.otherMachines].map((thread) => thread.id),
       terminalIds: terminals.map((terminal) => terminal.session.id),
+      artifactIds: artifacts.map((artifact) => artifact.id),
       placeholder,
       codeTheme,
       scheme,
@@ -323,6 +328,15 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
         {session.status === "exited" && (
           <span className="ms-auto shrink-0 ps-2 text-xs text-muted-foreground">{m.terminal_tab_exited()}</span>
         )}
+      </>
+    )
+  }
+  if (suggestion.type === "artifact") {
+    const { artifact } = suggestion
+    return (
+      <>
+        <ArtifactKindIcon artifact={artifact} className="size-3.5 shrink-0 self-center text-muted-foreground" />
+        <span className="min-w-0 truncate">{artifact.title}</span>
       </>
     )
   }

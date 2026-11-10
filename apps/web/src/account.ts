@@ -19,11 +19,13 @@ const saveAccount = (account: RelayAccount) => localStorage.setItem(ACCOUNT_KEY,
 
 export const forgetAccount = () => localStorage.removeItem(ACCOUNT_KEY)
 
+const SIGNED_OUT_KEY = "hinacode.signedOut"
+
 export const relayEndpoint = (serviceUrl: string, path: string) => `${serviceUrl.replace(/\/+$/, "")}${path}`
 
 const RELAY_KEY = "hinacode.relayUrl"
 
-export const chosenRelay = () => sessionStorage.getItem(RELAY_KEY) ?? DEFAULT_RELAY_URL
+export const chosenRelay = () => sessionStorage.getItem(RELAY_KEY) ?? storedAccount()?.serviceUrl ?? DEFAULT_RELAY_URL
 
 export const chooseRelay = (serviceUrl: string) => sessionStorage.setItem(RELAY_KEY, serviceUrl)
 
@@ -142,7 +144,17 @@ const openClerk = async (serviceUrl: string): Promise<Answer<Clerk>> => {
 const nextStep = async (serviceUrl: string, onSignedIn: OnSignedIn): Promise<SignInStep> => {
   const clerk = await openClerk(serviceUrl)
   if (clerk._tag === "failed") return clerk
-  if (!clerk.value.isSignedIn) return { _tag: "signIn", clerk: clerk.value }
+  if (clerk.value.isSignedIn && localStorage.getItem(SIGNED_OUT_KEY) !== null) {
+    const ended = await clerk.value.signOut().then(
+      () => true,
+      () => false,
+    )
+    if (!ended) return { _tag: "failed", message: m.web_sign_in_unavailable() }
+  }
+  if (!clerk.value.isSignedIn) {
+    localStorage.removeItem(SIGNED_OUT_KEY)
+    return { _tag: "signIn", clerk: clerk.value }
+  }
   const approval = signInWithClerk(serviceUrl, clerk.value)
   void approval.then((result) => {
     if (result._tag === "signedIn") onSignedIn(result.account, result.machines)
@@ -170,8 +182,8 @@ export const switchAccount = async (clerk: Clerk) => {
 }
 
 export const signOutDevice = async (account: RelayAccount) => {
-  const clerk = await openClerk(account.serviceUrl)
-  if (clerk._tag === "failed") throw new Error(clerk.message)
-  await clerk.value.signOut()
+  localStorage.setItem(SIGNED_OUT_KEY, "true")
   await endDevice(account)
+  const clerk = await openClerk(account.serviceUrl)
+  if (clerk._tag === "ok") await clerk.value.signOut().catch(() => undefined)
 }

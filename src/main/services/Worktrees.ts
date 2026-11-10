@@ -579,10 +579,12 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
     })
 
   const currentBranch = (projectId: string) =>
-    projects.get(projectId).pipe(
-      Effect.flatMap(({ rootPath }) => git.run(rootPath, ["rev-parse", "--abbrev-ref", "HEAD"])),
-      Effect.map((output) => output.trim()),
-    )
+    Effect.gen(function* () {
+      const { rootPath } = yield* projects.get(projectId)
+      const branch = (yield* git.run(rootPath, ["rev-parse", "--abbrev-ref", "HEAD"])).trim()
+      if (branch !== "HEAD") return branch
+      return (yield* git.run(rootPath, ["rev-parse", "HEAD"])).trim()
+    })
 
   const branches = (projectId: string) =>
     projects.get(projectId).pipe(
@@ -616,15 +618,35 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
       ),
     )
 
+  const fastForwardDefaultBranch = (projectId: string, rootPath: string) =>
+    Effect.gen(function* () {
+      const upstream = (yield* git.run(rootPath, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])).trim()
+      const branch = `refs/heads/${upstream.slice("refs/remotes/origin/".length)}`
+      const checkedOut = (yield* registeredCheckouts(rootPath)).find((candidate) => candidate.ref === branch)
+      if (checkedOut === undefined) {
+        yield* git.run(rootPath, ["fetch", "--quiet", ".", `${upstream}:${branch}`])
+        return
+      }
+      if (checkedOut.path !== (yield* resolve(rootPath))) return
+      const users = yield* findRootUsers(projectId).pipe(Effect.mapError(persistence("worktrees.fetch")))
+      if (users.some((thread) => isThreadBusy(thread.status))) return
+      if ((yield* git.run(rootPath, ["status", "--porcelain"])).trim() !== "") return
+      yield* git.run(rootPath, ["merge", "--ff-only", "--quiet", upstream], { timeout: LONG_TIMEOUT })
+    }).pipe(exclusive, Effect.ignore)
+
   const fetches = yield* Cache.make({
-    lookup: (rootPath: string) =>
-      git.remote(rootPath, ["fetch", "--quiet", "origin"]).pipe(Effect.andThen(Clock.currentTimeMillis)),
+    lookup: (projectId: string) =>
+      Effect.gen(function* () {
+        const { rootPath } = yield* projects.get(projectId)
+        yield* git.remote(rootPath, ["fetch", "--quiet", "origin"])
+        yield* fastForwardDefaultBranch(projectId, rootPath)
+        return yield* Clock.currentTimeMillis
+      }),
     capacity: 64,
     timeToLive: FETCH_INTERVAL,
   })
 
-  const fetch = (projectId: string) =>
-    projects.get(projectId).pipe(Effect.flatMap(({ rootPath }) => Cache.get(fetches, rootPath)))
+  const fetch = (projectId: string) => Cache.get(fetches, projectId)
 
   return Worktrees.of({
     list: findAll(undefined).pipe(Effect.mapError(persistence("worktrees.list"))),

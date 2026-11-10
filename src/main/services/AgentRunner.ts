@@ -198,6 +198,7 @@ export class AgentRunner extends Context.Service<
       readonly when: Effect.Effect<boolean, PersistenceError>
     }) => Effect.Effect<boolean, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
+    readonly stop: (threadId: string) => Effect.Effect<void>
     readonly isBusy: (threadId: string) => Effect.Effect<boolean>
     readonly release: <A, E>(threadId: string, whileIdle: Effect.Effect<A, E>) => Effect.Effect<Option.Option<A>, E>
     readonly warm: (threadId: string) => Effect.Effect<void>
@@ -379,15 +380,13 @@ const make = Effect.gen(function* () {
 
   const subagentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment) =>
     Effect.gen(function* () {
-      const [listed, settingsValue] = yield* Effect.all(
-        [Effect.all(Record.map(providers, listedModels), { concurrency: "unbounded" }), settings.get],
+      const settingsValue = yield* settings.get
+      const enabled = enabledProviders(settingsValue)
+      const listed = yield* Effect.all(
+        Record.map(providers, (provider, id) => (enabled.includes(id) ? listedModels(provider) : Effect.succeed(null))),
         { concurrency: "unbounded" },
       )
-      return agentInstructions(
-        experimental,
-        environment,
-        subagentChoices(listed, settingsValue.modelPresets, enabledProviders(settingsValue)),
-      )
+      return agentInstructions(experimental, environment, subagentChoices(listed, settingsValue.modelPresets, enabled))
     })
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
@@ -1683,6 +1682,18 @@ const make = Effect.gen(function* () {
       }).pipe(exclusive(threadId))
     })
 
+  const interrupt = (threadId: string) =>
+    stopBackgroundWork(threadId).pipe(
+      Effect.andThen(
+        Effect.suspend(() => {
+          const turn = activeTurns.get(threadId)
+          if (turn !== undefined) return turn.interrupt
+          const pending = pendingSends.get(threadId)
+          return pending === undefined ? Effect.void : Deferred.succeed(pending, undefined).pipe(Effect.asVoid)
+        }),
+      ),
+    )
+
   const requestSecret = (threadId: string, name: string, description: string) =>
     Effect.gen(function* () {
       const turn = activeTurns.get(threadId)
@@ -1747,16 +1758,12 @@ const make = Effect.gen(function* () {
     steer: (threadId, text, attachments) =>
       steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),
     steerWhen,
-    interrupt: (threadId) =>
-      stopBackgroundWork(threadId).pipe(
-        Effect.andThen(
-          Effect.suspend(() => {
-            const turn = activeTurns.get(threadId)
-            if (turn !== undefined) return turn.interrupt
-            const pending = pendingSends.get(threadId)
-            return pending === undefined ? Effect.void : Deferred.succeed(pending, undefined).pipe(Effect.asVoid)
-          }),
-        ),
+    interrupt,
+    stop: (threadId) =>
+      interrupt(threadId).pipe(
+        Effect.andThen(FiberMap.get(turns, threadId)),
+        Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: Fiber.await })),
+        Effect.asVoid,
       ),
     isBusy: (threadId) => Effect.sync(() => isBusy(threadId)),
     release,

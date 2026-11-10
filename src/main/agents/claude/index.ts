@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { readFile } from "node:fs/promises"
+import { rmSync } from "node:fs"
+import { readFile, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type {
   AccountInfo,
   EffortLevel,
@@ -145,6 +148,7 @@ interface Session extends MapState, ApprovalSession {
   fastMode: boolean
   readonly autoCompactTokens: number | null
   readonly launch: Readonly<Record<string, string>>
+  readonly settingsFile: string
   permissionMode: PermissionMode
   sessionId: string | null
   lastAssistantUuid: string | null
@@ -254,6 +258,16 @@ const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.message
 
 const agentError = (message: string) => (cause: unknown) =>
   new AgentError({ provider: "claude", message: `${message}: ${errorMessage(cause)}` })
+
+const writeSettingsFile = (directory: string | null, settings: object) =>
+  Effect.tryPromise({
+    try: async () => {
+      const path = join(directory ?? tmpdir(), `claude-settings-${randomUUID()}.json`)
+      await writeFile(path, JSON.stringify(settings), { mode: 0o600, flag: "wx" })
+      return path
+    },
+    catch: agentError("Failed to write Claude Code settings"),
+  })
 
 const copySession = (sessionId: string, from: AccountHome | null, to: AccountHome | null) =>
   Effect.tryPromise({
@@ -485,6 +499,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
       Queue.shutdownUnsafe(session.prompts)
       session.abort.abort()
       session.query.close()
+      rmSync(session.settingsFile, { force: true })
     }
 
     const closeSession = (session: Session) => Effect.sync(() => closeSessionUnsafe(session))
@@ -683,6 +698,12 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         const base = yield* baseOptions(input.home)
         const effort = effortLevelOf(input.effort)
         const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"))
+        const settingsFile = yield* writeSettingsFile(input.tmpDirectory, {
+          ...(Object.keys(launch).length > 0 && { env: { ...launch } }),
+          fastMode: input.fastMode,
+          ...(input.autoCompactTokens !== null && { autoCompactWindow: input.autoCompactTokens }),
+          ...(input.effort === ULTRACODE && { ultracode: true }),
+        })
         const handle = yield* Effect.try({
           try: () =>
             query({
@@ -694,12 +715,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
                 cwd: input.cwd,
                 model: input.model,
                 ...(effort === null ? {} : { effort }),
-                settings: {
-                  ...(Object.keys(launch).length > 0 && { env: { ...launch } }),
-                  fastMode: input.fastMode,
-                  ...(input.autoCompactTokens !== null && { autoCompactWindow: input.autoCompactTokens }),
-                  ...(input.effort === ULTRACODE && { ultracode: true }),
-                },
+                settings: settingsFile,
                 ...(resume === undefined ? {} : { resume }),
                 ...(input.forkAt !== null && { forkSession: true, resumeSessionAt: input.forkAt }),
                 includePartialMessages: true,
@@ -734,7 +750,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
               },
             }),
           catch: agentError("Failed to start Claude Code"),
-        })
+        }).pipe(Effect.tapError(() => Effect.sync(() => rmSync(settingsFile, { force: true }))))
         const session: Session = {
           threadId: input.threadId,
           cwd: input.cwd,
@@ -745,6 +761,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           fastMode: input.fastMode,
           autoCompactTokens: input.autoCompactTokens,
           launch,
+          settingsFile,
           permissionMode: mode,
           prompts,
           abort,

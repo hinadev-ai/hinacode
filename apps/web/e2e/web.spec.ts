@@ -10,7 +10,9 @@ import {
   sidebar,
   signIn,
   startThread,
+  stubClerk,
 } from "./support/app.ts"
+import { CLERK_HOST } from "./support/stack.ts"
 import { expect, test } from "./support/fixtures.ts"
 
 const browserCredential = (page: Page) =>
@@ -37,6 +39,20 @@ test("logging out ends this browser's sign-in on the relay and with Clerk", asyn
   await page.getByRole("alertdialog").getByRole("button", { name: "Sign out", exact: true }).click()
   await expect(page.getByRole("button", { name: "Continue with GitHub", exact: true })).toBeVisible()
   expect(web.relay.deviceName(credential)).toBeUndefined()
+})
+
+test("logging out ends this browser's sign-in on the relay when Clerk cannot load", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  const credential = await browserCredential(page)
+  await page.unroute(`https://${CLERK_HOST}/**`)
+  await page.route(`https://${CLERK_HOST}/**`, (route) => route.abort())
+  await page.reload()
+  await page.getByRole("button", { name: "Account", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Logout", exact: true }).click()
+  await page.getByRole("alertdialog").getByRole("button", { name: "Sign out", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Sign in to HinaCode", exact: true })).toBeVisible()
+  expect(web.relay.deviceName(credential)).toBeUndefined()
+  expect(await page.evaluate(() => localStorage.getItem("hinacode.relayAccount"))).toBeNull()
 })
 
 test("a browser the relay signed out signs in again while its Clerk session lasts", async ({ page, web }) => {
@@ -72,6 +88,17 @@ test("retrying at the gate signs in again after the relay signed this browser ou
   await page.getByRole("button", { name: "Retry", exact: true }).click()
   await expect(sidebar(page)).toBeVisible()
   expect(web.relay.deviceName(await browserCredential(page))).toBe("HinaCode in a browser")
+})
+
+test("a new tab signs in again on the relay this browser's account lives on", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  web.relay.signOutEveryDevice()
+  const tab = await page.context().newPage()
+  await stubClerk(tab)
+  await tab.goto(web.appUrl)
+  await tab.getByRole("button", { name: "Continue with GitHub", exact: true }).click()
+  await expect(sidebar(tab)).toBeVisible()
+  expect(web.relay.deviceName(await browserCredential(tab))).toBe("HinaCode in a browser")
 })
 
 test("signing in from a pull request window's link returns to that window", async ({ page, web }) => {

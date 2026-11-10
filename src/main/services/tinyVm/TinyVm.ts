@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { createServer, type Server } from "node:http"
 import type { Socket } from "node:net"
 import { join } from "node:path"
@@ -15,7 +15,7 @@ import {
   type VmProvider,
 } from "../../../shared/domain.ts"
 import { Boat, type BoatClient, BoatError, BoatSnapshotExpiredError } from "../boat/Boat.ts"
-import { Events } from "../Events.ts"
+import { Events, PushBroadcast } from "../Events.ts"
 import { Settings } from "../Settings.ts"
 import { encodeAction, handshake, type VmAction, VmInputError, writeSteps } from "./rfb.ts"
 import {
@@ -163,6 +163,12 @@ interface Screen {
 
 const toVmError = (error: { readonly message: string }) => new VmError({ message: error.message })
 
+const releasedThreadOf = (event: typeof PushEvent.Encoded) => {
+  if (event.type === "thread.removed") return event.id
+  if (event.type === "thread.updated" && event.thread.status === "archived") return event.thread.id
+  return undefined
+}
+
 const endGracefully = (socket: Socket) =>
   Effect.callback<void>((resume) => {
     socket.once("close", () => resume(Effect.void))
@@ -194,6 +200,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
     const events = yield* Events
+    const broadcast = yield* PushBroadcast
     const settings = yield* Settings
     const boatService = yield* Effect.serviceOption(Boat)
 
@@ -1017,7 +1024,6 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         own(owner, streamId)
         buffer(streamId, screen, head)
         socket.on("data", (data: Buffer) => buffer(streamId, screen, data))
-        socket.on("error", () => {})
         socket.once("close", () => screenClosed(streamId, screen, owner))
       }).pipe(Effect.ensuring(Effect.sync(() => openingScreens.delete(streamId))))
 
@@ -1028,6 +1034,17 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
       })
 
     const closeScreen = (streamId: string) => Effect.sync(() => screens.get(streamId)?.socket.destroy())
+
+    const release = (threadId: string) =>
+      Effect.tryPromise(() => rm(join(dataDir, PULLED_DIR, threadId), { recursive: true, force: true })).pipe(
+        Effect.catch((error) => Effect.logWarning("tiny vm: cannot delete pulled files", String(error))),
+        Effect.andThen(stop(threadId)),
+      )
+
+    yield* broadcast.subscribe((event) => {
+      const threadId = releasedThreadOf(event)
+      if (threadId !== undefined) runFork(release(threadId))
+    })
 
     yield* (yield* settings.changes).pipe(
       Stream.runForEach((value) =>

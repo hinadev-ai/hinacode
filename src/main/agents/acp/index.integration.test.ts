@@ -7,6 +7,7 @@ import { Effect, Fiber, PubSub, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode } from "../../../shared/domain.ts"
+import { agentPidsOf } from "../../services/Ports.ts"
 import { makeAcpProvider } from "./index.ts"
 
 const FAKE_AGENT = join(import.meta.dirname, "fakeAgent.ts")
@@ -188,7 +189,6 @@ describe("makeAcpProvider", () => {
       expect(yield* provider.listCommands({ threadId: "t1", cwd: tmpdir(), home: null })).toStrictEqual([
         { trigger: "/", name: "review", description: "Review the diff", argumentHint: "branch" },
       ])
-      expect(yield* provider.listCommands({ threadId: "t2", cwd: tmpdir(), home: null })).toStrictEqual([])
     }).pipe(Effect.scoped),
   )
 
@@ -327,6 +327,20 @@ describe("makeAcpProvider", () => {
     }).pipe(Effect.scoped),
   )
 
+  it.live("lists a new thread's commands from a session opened in its cwd, once per cwd", () =>
+    Effect.gen(function* () {
+      const { provider: make, received } = setup()
+      const provider = yield* make
+      const cwd = mkdtempSync(join(tmpdir(), "kk-acp-project-"))
+      const review = { trigger: "/", name: "review", description: "Review the diff", argumentHint: "branch" }
+      expect(yield* provider.listCommands({ threadId: "t1", cwd, home: null })).toStrictEqual([review])
+      expect(yield* provider.listCommands({ threadId: "t2", cwd, home: null })).toStrictEqual([review])
+      expect(received().filter((message) => message.method === "session/new")).toMatchObject([
+        { params: { cwd, mcpServers: [] } },
+      ])
+    }).pipe(Effect.scoped),
+  )
+
   it.live("sets the effort a turn asks for, and refuses one the model does not offer", () =>
     Effect.gen(function* () {
       const { provider: make, received } = setup()
@@ -460,6 +474,21 @@ describe("an ACP agent that fails", () => {
       yield* provider.interrupt("t1")
       yield* Fiber.join(held.fiber)
       yield* agents.allExited
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("registers the turn's agent process with its thread, so the ports it opens show there", () =>
+    Effect.gen(function* () {
+      const { provider: make } = setup()
+      const provider = yield* make
+      const held = yield* startTurn(provider, input({ threadId: "ports", prompt: "hold" }))
+      yield* held.until((event) => event.type === "tool_call_started")
+      const agentPids = [...agentPidsOf("ports")]
+      expect(agentPids).toHaveLength(1)
+      expect(agentPids[0]).not.toBe(process.pid)
+      yield* provider.interrupt("ports")
+      yield* Fiber.join(held.fiber)
+      expect([...agentPidsOf("ports")]).toStrictEqual([])
     }).pipe(Effect.scoped),
   )
 

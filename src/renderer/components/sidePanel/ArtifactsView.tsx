@@ -19,7 +19,8 @@ import { type Artifact, type ArtifactExportRequest, isDocument } from "../../../
 import { addArtifactProblem, artifactProblemMessage } from "../../../shared/artifactProblems.ts"
 import { artifactUrl } from "../../../shared/channels.ts"
 import type { Thread } from "../../../shared/domain.ts"
-import { environmentName, useClouds } from "../../lib/environments.ts"
+import { artifactMention } from "../../../shared/mentions.ts"
+import { environmentName, useClouds, useThreadEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import { useArtifactTheme } from "../../lib/artifactTheme.ts"
@@ -31,6 +32,8 @@ import { useArtifacts } from "../../stores/artifacts.ts"
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  AtIcon,
+  CopyIcon,
   FileTextIcon,
   FlowIcon,
   PlusIcon,
@@ -65,9 +68,21 @@ function useSelectedArtifact(threadId: string) {
   return artifacts.find((artifact) => artifact.id === id)
 }
 
+const mentionInThread = (threadId: string, artifact: Artifact) => {
+  useDrafts.getState().appendText(threadId, artifactMention(artifact.id))
+  toast(m.artifacts_mentioned({ title: `@${artifact.title}` }))
+}
+
+const copyMention = (artifact: Artifact) =>
+  navigator.clipboard.writeText(artifactMention(artifact.id)).then(() => toast(m.common_copied()))
+
+const useReadableByAgent = (threadId: string, artifact: Artifact | undefined) =>
+  (artifact?.environmentId ?? null) === useThreadEnvironment(threadId)
+
 export function ArtifactsHeader({ thread }: { thread: Thread }) {
   const selected = useSelectedArtifact(thread.id)
   const select = useArtifacts((state) => state.select)
+  const readable = useReadableByAgent(thread.id, selected)
   if (selected === undefined) return <h2 className="truncate pl-2 text-sm font-medium">{m.panel_tab_artifacts()}</h2>
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
@@ -85,6 +100,17 @@ export function ArtifactsHeader({ thread }: { thread: Thread }) {
         {m.artifacts_version({ version: selected.version })}
       </span>
       <span className="flex-1" />
+      {readable && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={m.artifacts_mention()}
+          title={m.artifacts_mention()}
+          action={() => mentionInThread(thread.id, selected)}
+        >
+          <AtIcon aria-hidden />
+        </Button>
+      )}
       {!inBrowser() && exportable(selected) && <ExportMenu artifact={selected} />}
     </div>
   )
@@ -445,6 +471,7 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
     artifact.threadId === undefined || artifact.threadId === threadId ? undefined : state.byId[artifact.threadId],
   )
   const clouds = useClouds()
+  const readable = useReadableByAgent(threadId, artifact)
   const now = useNow()
   const updated = formatRelativeTime(artifact.updatedAt, now, getLocale())
   const remove = () =>
@@ -474,6 +501,16 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
         </button>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        {readable && (
+          <DropdownMenuItem onClick={() => mentionInThread(threadId, artifact)}>
+            <AtIcon aria-hidden />
+            {m.artifacts_mention()}
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onClick={() => void copyMention(artifact)}>
+          <CopyIcon aria-hidden />
+          {m.artifacts_copy_mention()}
+        </DropdownMenuItem>
         {origin !== undefined && (
           <DropdownMenuItem onClick={() => void navigate({ to: "/thread/$threadId", params: { threadId: origin.id } })}>
             <ArrowRightIcon aria-hidden />

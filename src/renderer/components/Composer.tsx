@@ -23,7 +23,8 @@ import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { isThreadBusy, type Project, type Thread, toCheckoutTarget } from "../../shared/domain.ts"
 import { providerInfo } from "../../shared/providers.ts"
-import { mentionableThreads } from "../../shared/mentions.ts"
+import type { Artifact } from "../../shared/artifact.ts"
+import { mentionableArtifacts, mentionableThreads } from "../../shared/mentions.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
 import { mentionableTerminals } from "../lib/terminalLabel.ts"
@@ -35,6 +36,7 @@ import {
   currentBranchAtom,
   filesAtom,
   noFilesAtom,
+  artifactsAtom,
   projectsAtom,
 } from "../lib/rpc.ts"
 import { artifactSkillCommands } from "../lib/artifactSkills.ts"
@@ -143,6 +145,8 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const mentionable = mentionableThreads(thread, Object.values(threadsById), projects)
   const terminalSessions = useTerminals((state) => state.byThreadId[thread.id]?.sessions)
   const terminals = mentionableTerminals(terminalSessions ?? [])
+  const allArtifacts = AsyncResult.getOrElse(useAtomValue(artifactsAtom), (): ReadonlyArray<Artifact> => [])
+  const artifacts = mentionableArtifacts(thread, allArtifacts, projects)
   const refreshCommands = useAtomRefresh(commandsAtom(key))
   const refreshRootBranch = useAtomRefresh(currentBranchAtom(thread.projectId))
   const busy = isThreadBusy(thread.status)
@@ -328,6 +332,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 onMentionStart={refreshFiles}
                 threads={mentionable}
                 terminals={terminals}
+                artifacts={artifacts}
                 projectId={thread.projectId}
                 onEnter={(event) => send(steers ? deliveryOf(event) : "queue")}
                 onPaste={onPaste}

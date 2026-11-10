@@ -87,6 +87,23 @@ describe("setting files", () => {
     ),
   )
 
+  it.effect("keeps both of two quick changes to one settings group", () =>
+    withDataDir(() =>
+      Effect.gen(function* () {
+        const settings = yield* Settings.Settings
+        yield* Effect.all(
+          [settings.set({ experimental: { tinyVm: true } }), settings.set({ experimental: { devices: true } })],
+          { concurrency: "unbounded" },
+        )
+        expect((yield* settings.get).experimental).toEqual({
+          ...defaultSettings.experimental,
+          tinyVm: true,
+          devices: true,
+        })
+      }),
+    ),
+  )
+
   it.effect("defaults the VM provider to boat on a fresh install", () =>
     withDataDir(() =>
       Effect.gen(function* () {

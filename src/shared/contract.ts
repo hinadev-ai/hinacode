@@ -1,4 +1,4 @@
-import { Schema, Struct } from "effect"
+import { Predicate, Schema, Struct } from "effect"
 import {
   Artifact,
   ArtifactExportRequest,
@@ -107,6 +107,7 @@ import {
   WorkspaceChoice,
   OpenPullRequest,
   PullRequestMatch,
+  type SettingsPatch,
 } from "./domain.ts"
 import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } from "./github.ts"
 import { RelayHost } from "./relayMachines.ts"
@@ -138,6 +139,19 @@ const AutomationInput = Schema.Struct({
 export type AutomationInput = typeof AutomationInput.Type
 
 const TerminalSize = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 1000 }))
+
+const groupPatch = (field: Schema.Struct.Fields[string]): Schema.Struct.Fields[string] => {
+  const group = Predicate.hasProperty(field, "to") && Schema.isSchema(field.to) ? field.to : field
+  if (!Predicate.hasProperty(group, "fields")) return field
+  return Schema.Struct(group.fields as Schema.Struct.Fields).mapFields(Struct.map(Schema.optional))
+}
+
+const settingsPatch = <A>(settings: Schema.Codec<A, unknown> & { readonly fields: Schema.Struct.Fields }) =>
+  Schema.Struct(
+    Object.fromEntries(
+      Object.entries(settings.fields).map(([key, field]) => [key, Schema.optional(groupPatch(field))]),
+    ),
+  ) as unknown as Schema.Codec<SettingsPatch<A>, SettingsPatch<A>>
 
 const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, response: Res) => ({ request, response })
 
@@ -362,9 +376,9 @@ export const RpcMethods = {
     Schema.Struct({ title: Schema.String, body: Schema.String }),
     PermissionRequestOutcome,
   ),
-  "settings.set": rpc(Settings.mapFields(Struct.map(Schema.optional)), Settings),
+  "settings.set": rpc(settingsPatch(Settings), Settings),
   "clientSettings.get": rpc(Schema.Void, ClientSettings),
-  "clientSettings.set": rpc(ClientSettings.mapFields(Struct.map(Schema.optional)), ClientSettings),
+  "clientSettings.set": rpc(settingsPatch(ClientSettings), ClientSettings),
 
   "environments.list": rpc(Schema.Void, Environments),
   "machines.list": rpc(Schema.Void, Schema.Array(Machine)),

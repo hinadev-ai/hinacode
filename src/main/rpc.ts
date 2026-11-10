@@ -273,9 +273,10 @@ const handlers: Handlers = {
       Effect.flatMap(
         Option.match({
           onNone: () => Effect.void,
-          onSome: (sidechat) => AgentRunner.use((runner) => runner.interrupt(sidechat.id)),
+          onSome: (sidechat) => AgentRunner.use((runner) => runner.stop(sidechat.id)),
         }),
       ),
+      Effect.andThen(AgentRunner.use((runner) => runner.stop(id))),
       Effect.andThen(closeTerminals(id)),
       Effect.andThen(Threads.use((threads) => threads.remove(id, { removeWorktree }))),
       Effect.andThen(Events.use((events) => events.publish({ type: "thread.removed", id }))),

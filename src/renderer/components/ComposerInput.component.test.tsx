@@ -64,6 +64,7 @@ function Harness({ placeholder: shown = placeholder }: { placeholder?: string })
       }}
       threads={{ sameMachine: [], otherMachines: [] }}
       terminals={terminals}
+      artifacts={[]}
       projectId="project"
       placeholder={shown}
       aria-label="Message"
