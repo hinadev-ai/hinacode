@@ -1,9 +1,12 @@
+import { type IncomingMessage, request as httpRequest, type ServerResponse } from "node:http"
 import type { Socket } from "node:net"
+import { pipeline } from "node:stream"
 import { Cause, Duration, Effect, Fiber, FiberHandle, Layer, Stream } from "effect"
 import type { WebSocket } from "ws"
 import { newNonce } from "../../shared/proof.ts"
 import { PRIVATE_NETWORKS, type Settings as SettingsValue } from "../../shared/domain.ts"
 import { isAddressNotUpYet } from "../../shared/remote.ts"
+import { AppConnections } from "../apps/AppConnections.ts"
 import { isPrivateAddress } from "../network.ts"
 import { dispatch } from "../rpc.ts"
 import { PushBroadcast } from "../services/Events.ts"
@@ -27,8 +30,37 @@ const describeCause = (cause: Cause.Cause<unknown>) => describeError(Cause.squas
 const staysOnPrivateNetworks = (socket: Socket) =>
   [socket.localAddress, socket.remoteAddress].every((address) => address !== undefined && isPrivateAddress(address))
 
+const hostnameOf = (host: string | undefined) =>
+  host !== undefined && URL.canParse(`http://${host}`) ? new URL(`http://${host}`).hostname : null
+
+const ignoreStreamEnd = () => {}
+
+const forward = (port: number, request: IncomingMessage, response: ServerResponse) => {
+  const upstream = httpRequest(
+    {
+      host: "127.0.0.1",
+      port,
+      method: request.method,
+      path: request.url,
+      headers: request.headers,
+      agent: false,
+    },
+    (answer) => {
+      response.writeHead(answer.statusCode ?? 502, answer.headers)
+      pipeline(answer, response, ignoreStreamEnd)
+    },
+  )
+  upstream.on("error", () => {
+    if (response.headersSent) return void response.destroy()
+    response.writeHead(502).end()
+  })
+  response.on("close", () => upstream.destroy())
+  pipeline(request, upstream, ignoreStreamEnd)
+}
+
 const make = Effect.gen(function* () {
   const access = yield* RemoteAccess
+  const apps = yield* AppConnections
   const broadcast = yield* PushBroadcast
   const settings = yield* Settings
   const peers = yield* Peers
@@ -52,6 +84,15 @@ const make = Effect.gen(function* () {
     sessions.attach(socket, { compactEvents, relay, proof, hosts: advertisedHosts(current.bindHost) })
     countConnected()
     socket.on("close", countConnected)
+  }
+
+  const forwardToApps = (request: IncomingMessage, response: ServerResponse) => {
+    const relay = relayHostname(Effect.runSync(access.status).relay)
+    const port = apps.port()
+    if (relay === null || port === null || hostnameOf(request.headers.host) !== relay.toLowerCase()) {
+      return void response.writeHead(404).end()
+    }
+    forward(port, request, response)
   }
 
   const accept = (socket: WebSocket) => {
@@ -108,6 +149,7 @@ const make = Effect.gen(function* () {
       },
       accept,
       perMessageDeflate: true,
+      request: forwardToApps,
     }).pipe(
       Effect.tapError(({ message }) =>
         isAddressNotUpYet(message)
