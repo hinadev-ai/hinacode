@@ -1136,7 +1136,8 @@ export type AppConnection = typeof AppConnection.Type
 
 export const AppConnectionsStatus = Schema.Struct({
   url: Schema.NullOr(Schema.String),
-  approvalCode: Schema.NullOr(Schema.Struct({ code: Schema.String, expiresAt: Timestamp })),
+  waitingUntil: Schema.NullOr(Timestamp),
+  requests: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, redirectHost: Schema.String })),
   connections: Schema.Array(AppConnection),
 })
 export type AppConnectionsStatus = typeof AppConnectionsStatus.Type

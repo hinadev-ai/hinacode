@@ -57,6 +57,7 @@ const EVERY_PATH = [
   "/.well-known/oauth-authorization-server",
   "/oauth/register",
   "/oauth/authorize",
+  "/oauth/wait",
   "/oauth/token",
 ]
 
@@ -121,10 +122,10 @@ const withApp = async (use: (app: App) => Promise<void>) => {
 
 const status = ({ runtime }: App) => runtime.runPromise(AppConnections.use((connections) => connections.status))
 
-const newApprovalCode = async ({ runtime }: App) => {
-  const { approvalCode } = await runtime.runPromise(AppConnections.use((connections) => connections.newApprovalCode))
-  return approvalCode!.code
-}
+const start = ({ runtime }: App) => runtime.runPromise(AppConnections.use((connections) => connections.start))
+
+const answerRequest = ({ runtime }: App, id: string, approve: boolean) =>
+  runtime.runPromise(AppConnections.use((connections) => connections.answer({ id, approve })))
 
 const get = ({ origin }: App, path: string, params: Record<string, string> = {}) =>
   fetch(`${origin}${path}?${new URLSearchParams(params)}`, { redirect: "manual" })
@@ -155,12 +156,19 @@ const authorization = (clientId: string, overrides: Record<string, string> = {})
   ...overrides,
 })
 
-const decide = (app: App, clientId: string, approvalCode: string, decision = "approve") =>
-  postForm(app, "/oauth/authorize", { ...authorization(clientId), decision, approval_code: approvalCode })
+const askToConnect = async (app: App, clientId: string) => {
+  const asked = await get(app, "/oauth/authorize", authorization(clientId))
+  expect(asked.status).toBe(303)
+  const waiting = new URL(asked.headers.get("location")!, app.origin)
+  return { path: waiting.pathname, request: waiting.searchParams.get("request")! }
+}
 
-const authorizationCode = async (app: App, clientId: string, approvalCode?: string) => {
-  const approved = await decide(app, clientId, approvalCode ?? (await newApprovalCode(app)))
-  return new URL(approved.headers.get("location")!).searchParams.get("code")!
+const authorizationCode = async (app: App, clientId: string) => {
+  await start(app)
+  const { path, request } = await askToConnect(app, clientId)
+  await answerRequest(app, request, true)
+  const back = await get(app, path, { request })
+  return new URL(back.headers.get("location")!).searchParams.get("code")!
 }
 
 const exchange = (app: App, clientId: string, code: string, overrides: Record<string, string> = {}) =>
@@ -174,9 +182,9 @@ const exchange = (app: App, clientId: string, code: string, overrides: Record<st
   })
 
 const connect = async (app: App) => {
-  const approvalCode = await newApprovalCode(app)
+  await start(app)
   const clientId = await registered(app)
-  const answer = await exchange(app, clientId, await authorizationCode(app, clientId, approvalCode))
+  const answer = await exchange(app, clientId, await authorizationCode(app, clientId))
   return ((await answer.json()) as { access_token: string }).access_token
 }
 
@@ -223,7 +231,7 @@ const statuses = async (app: App) => {
 describe("app server", () => {
   test("an app registers, is approved, gets a token and drives threads", () =>
     withApp(async (app) => {
-      const approvalCode = await newApprovalCode(app)
+      await start(app)
 
       for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"]) {
         expect(await (await get(app, path)).json()).toMatchObject({
@@ -245,7 +253,11 @@ describe("app server", () => {
       expect(registration.status).toBe(201)
       const { client_id: clientId } = (await registration.json()) as { client_id: string }
 
-      const page = await get(app, "/oauth/authorize", authorization(clientId))
+      const { path, request } = await askToConnect(app, clientId)
+      expect((await status(app)).requests).toEqual([
+        { id: request, name: "Chat <b>app</b>", redirectHost: "chat.example" },
+      ])
+      const page = await get(app, path, { request })
       expect(page.status).toBe(200)
       expect(page.headers.get("x-frame-options")).toBe("DENY")
       expect(page.headers.get("content-security-policy")).toContain("default-src 'none'")
@@ -254,19 +266,23 @@ describe("app server", () => {
       expect(html).not.toContain("<b>app</b>")
       expect(html).toContain("chat.example")
       expect(html).toContain("run code on this machine")
+      expect(html).toContain('<meta http-equiv="refresh" content="2">')
       expect(html).not.toMatch(/<script|src=|href=/)
 
-      const approved = await decide(app, clientId, approvalCode)
+      const answered = await answerRequest(app, request, true)
+      expect(answered.requests).toEqual([])
+      expect(answered.waitingUntil).toBeNull()
+      const approved = await get(app, path, { request })
       expect(approved.status).toBe(302)
       const back = new URL(approved.headers.get("location")!)
       expect(`${back.origin}${back.pathname}`).toBe(REDIRECT)
       expect(back.searchParams.get("state")).toBe("state-1")
-      expect((await status(app)).approvalCode).toBeNull()
+      expect((await get(app, path, { request })).status).toBe(404)
 
-      const answer = await exchange(app, clientId, back.searchParams.get("code")!, { resource: `${ISSUER}/mcp` })
-      expect(answer.status).toBe(200)
-      expect(answer.headers.get("cache-control")).toBe("no-store")
-      const token = (await answer.json()) as { access_token: string }
+      const exchanged = await exchange(app, clientId, back.searchParams.get("code")!, { resource: `${ISSUER}/mcp` })
+      expect(exchanged.status).toBe(200)
+      expect(exchanged.headers.get("cache-control")).toBe("no-store")
+      const token = (await exchanged.json()) as { access_token: string }
       expect(token).toEqual({ access_token: token.access_token, token_type: "Bearer", scope: "hinacode" })
 
       const [connection] = (await status(app)).connections
@@ -350,54 +366,57 @@ describe("app server", () => {
       })
     }))
 
-  test("a wrong approval code shows the page again and the right one still works", () =>
+  test("asking to connect before choosing the app in HinaCode explains where to start", () =>
     withApp(async (app) => {
-      const approvalCode = await newApprovalCode(app)
+      await connect(app)
       const clientId = await registered(app)
-
-      const refused = await decide(app, clientId, "WRONGWRONG")
-      expect(refused.status).toBe(200)
-      expect(refused.headers.get("location")).toBeNull()
-      expect(await refused.text()).toContain("That code is not right")
-      expect((await status(app)).approvalCode?.code).toBe(approvalCode)
-
-      expect((await decide(app, clientId, approvalCode)).status).toBe(302)
+      const early = await get(app, "/oauth/authorize", authorization(clientId))
+      expect(early.status).toBe(409)
+      expect(await early.text()).toContain("Settings &#62; Connections &#62; Apps")
+      expect((await status(app)).requests).toEqual([])
     }))
 
-  test("five wrong approval codes throw the code away", () =>
+  test("denying sends the app back without a code and keeps waiting for another", () =>
     withApp(async (app) => {
-      const approvalCode = await newApprovalCode(app)
+      await start(app)
       const clientId = await registered(app)
-
-      for (let tries = 1; tries <= 4; tries++) {
-        expect(await (await decide(app, clientId, "WRONGWRONG")).text()).toContain("That code is not right")
-      }
-      const last = await decide(app, clientId, "WRONGWRONG")
-      expect(await last.text()).toContain("No approval code is live")
-      expect((await status(app)).approvalCode).toBeNull()
-
-      expect((await decide(app, clientId, approvalCode)).status).toBe(404)
-      expect((await status(app)).connections).toEqual([])
-    }))
-
-  test("denying sends the app back without a code", () =>
-    withApp(async (app) => {
-      const approvalCode = await newApprovalCode(app)
-      const clientId = await registered(app)
-      const denied = await decide(app, clientId, approvalCode, "deny")
+      const { path, request } = await askToConnect(app, clientId)
+      await answerRequest(app, request, false)
+      const denied = await get(app, path, { request })
       expect(denied.status).toBe(302)
       const back = new URL(denied.headers.get("location")!)
       expect(back.searchParams.get("error")).toBe("access_denied")
       expect(back.searchParams.get("state")).toBe("state-1")
       expect(back.searchParams.has("code")).toBe(false)
-      expect((await status(app)).approvalCode?.code).toBe(approvalCode)
+      expect((await status(app)).waitingUntil).not.toBeNull()
+    }))
+
+  test("approving one request turns the others away", () =>
+    withApp(async (app) => {
+      await start(app)
+      const clientId = await registered(app)
+      const first = await askToConnect(app, clientId)
+      const second = await askToConnect(app, clientId)
+      await answerRequest(app, second.request, true)
+      const turnedAway = await get(app, first.path, { request: first.request })
+      expect(new URL(turnedAway.headers.get("location")!).searchParams.get("error")).toBe("access_denied")
+      expect((await get(app, "/oauth/authorize", authorization(clientId))).status).toBe(409)
+    }))
+
+  test("at most five requests wait at once", () =>
+    withApp(async (app) => {
+      await start(app)
+      const clientId = await registered(app)
+      for (let asked = 1; asked <= 5; asked++) await askToConnect(app, clientId)
+      expect((await get(app, "/oauth/authorize", authorization(clientId))).status).toBe(409)
+      expect((await status(app)).requests).toHaveLength(5)
     }))
 
   test("an authorization code is exchanged once", () =>
     withApp(async (app) => {
-      const approvalCode = await newApprovalCode(app)
+      await start(app)
       const clientId = await registered(app)
-      const code = await authorizationCode(app, clientId, approvalCode)
+      const code = await authorizationCode(app, clientId)
       expect((await exchange(app, clientId, code)).status).toBe(200)
 
       const reused = await exchange(app, clientId, code)
@@ -439,7 +458,7 @@ describe("app server", () => {
 
   test("the approval page only opens for a registered client and redirect URI", () =>
     withApp(async (app) => {
-      await newApprovalCode(app)
+      await start(app)
       const clientId = await registered(app)
       const requests = [
         authorization(clientId, { redirect_uri: "https://evil.example/callback" }),
@@ -452,13 +471,8 @@ describe("app server", () => {
         expect(refused.headers.get("location")).toBeNull()
         expect(await refused.text()).toContain("This link does not work")
       }
-      const posted = await postForm(app, "/oauth/authorize", {
-        ...authorization(clientId, { redirect_uri: "https://evil.example/callback" }),
-        decision: "approve",
-        approval_code: "WRONGWRONG",
-      })
-      expect(posted.status).toBe(400)
-      expect((await decide(app, clientId, "WRONGWRONG")).status).toBe(200)
+      expect((await status(app)).requests).toEqual([])
+      expect((await get(app, "/oauth/wait", { request: "made-up" })).status).toBe(404)
 
       const withoutPkce = await get(
         app,
@@ -470,12 +484,12 @@ describe("app server", () => {
 
       const loopback = await registered(app, { redirect_uris: ["http://127.0.0.1:1234/callback"] })
       const anyPort = authorization(loopback, { redirect_uri: "http://127.0.0.1:5678/callback" })
-      expect((await get(app, "/oauth/authorize", anyPort)).status).toBe(200)
+      expect((await get(app, "/oauth/authorize", anyPort)).status).toBe(303)
     }))
 
   test("registration refuses redirect URIs that are not https or loopback", () =>
     withApp(async (app) => {
-      await newApprovalCode(app)
+      await start(app)
       const refusals = [
         [{ redirect_uris: ["http://chat.example/callback"] }, "invalid_redirect_uri"],
         [{ redirect_uris: ["javascript:alert(1)"] }, "invalid_redirect_uri"],
@@ -511,12 +525,12 @@ describe("app server", () => {
       expect((await fetch(`${app.origin}/mcp`, initialize(kept))).status).toBe(404)
     }))
 
-  test("every path is 404 until a code is live or an app is connected", () =>
+  test("every path is 404 until the developer starts connecting or an app is connected", () =>
     withApp(async (app) => {
       expect(await statuses(app)).toEqual(EVERY_PATH.map(() => 404))
       expect((await register(app)).status).toBe(404)
 
-      await newApprovalCode(app)
+      await start(app)
       expect((await get(app, "/.well-known/oauth-authorization-server")).status).toBe(200)
       expect((await get(app, "/mcp")).status).toBe(401)
       expect((await get(app, "/")).status).toBe(404)
@@ -565,7 +579,7 @@ describe("remote listener", () => {
       await vi.waitFor(async () =>
         expect((await app.runtime.runPromise(RemoteAccess.use((remote) => remote.status))).listening).toBe(true),
       )
-      await newApprovalCode(app)
+      await start(app)
       const metadata = "/.well-known/oauth-authorization-server"
       await vi.waitFor(async () => {
         await linkRelay(app)

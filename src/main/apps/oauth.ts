@@ -7,6 +7,7 @@ export const PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource"
 export const AUTHORIZATION_SERVER_PATH = "/.well-known/oauth-authorization-server"
 export const REGISTER_PATH = "/oauth/register"
 export const AUTHORIZE_PATH = "/oauth/authorize"
+export const WAIT_PATH = "/oauth/wait"
 export const TOKEN_PATH = "/oauth/token"
 
 const MAX_NAME_LENGTH = 100
@@ -99,11 +100,7 @@ export const AuthorizationParams = Schema.Struct({
 })
 export type AuthorizationParams = typeof AuthorizationParams.Type
 
-export const ApprovalForm = Schema.Struct({
-  ...AuthorizationParams.fields,
-  decision: Schema.Literals(["approve", "deny"]),
-  approval_code: Schema.optionalKey(Schema.String),
-})
+export const WaitParams = Schema.Struct({ request: Schema.String })
 
 export const TokenRequest = Schema.Struct({
   grant_type: Schema.String,

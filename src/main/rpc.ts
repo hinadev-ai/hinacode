@@ -367,7 +367,8 @@ const handlers: Handlers = {
   "relayAccount.setShown": (input) => RelayAccount.use((account) => account.setShown(input)),
   "relayAccount.removeMachine": (input) => RelayAccount.use((account) => account.removeMachine(input)),
   "appConnections.status": () => AppConnections.use((connections) => connections.status),
-  "appConnections.newApprovalCode": () => AppConnections.use((connections) => connections.newApprovalCode),
+  "appConnections.start": () => AppConnections.use((connections) => connections.start),
+  "appConnections.answer": (input) => AppConnections.use((connections) => connections.answer(input)),
   "appConnections.remove": ({ id }) => AppConnections.use((connections) => connections.remove(id)),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>

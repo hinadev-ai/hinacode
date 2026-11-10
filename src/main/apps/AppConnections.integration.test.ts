@@ -11,14 +11,16 @@ import { layer as remoteAccessLayer, RemoteAccess } from "../remote/access.ts"
 import { Events } from "../services/Events.ts"
 import { layer as secretsLayer, noKeyring } from "../services/Secrets.ts"
 import { layer as settingsLayer } from "../services/Settings.ts"
-import { AppConnections, type Grant, layer as connectionsLayer } from "./AppConnections.ts"
+import { AppConnections, type ConnectRequest, layer as connectionsLayer } from "./AppConnections.ts"
 
-const grant: Grant = {
+const asked: ConnectRequest = {
   clientId: "client",
   name: "Chat app",
   redirectUri: "https://chat.example/callback",
   codeChallenge: "challenge",
+  state: "state-1",
 }
+const { state: _, ...grant } = asked
 
 const withConnections = <A, E>(
   effect: (pushes: Array<PushEvent>) => Effect.Effect<A, E, AppConnections | RemoteAccess>,
@@ -39,9 +41,13 @@ const withConnections = <A, E>(
   )
 }
 
-const liveCode = Effect.gen(function* () {
-  const { approvalCode } = yield* AppConnections.use((connections) => connections.newApprovalCode)
-  return approvalCode!.code
+const approved = Effect.gen(function* () {
+  const connections = yield* AppConnections
+  yield* connections.start
+  const id = Option.getOrThrow(yield* connections.request(asked))
+  yield* connections.answer({ id, approve: true })
+  const outcome = yield* connections.outcome(id)
+  return outcome.type === "approved" ? outcome.authorizationCode : ""
 })
 
 describe("app connections", () => {
@@ -49,7 +55,7 @@ describe("app connections", () => {
     withConnections(() =>
       Effect.gen(function* () {
         const connections = yield* AppConnections
-        expect(yield* connections.status).toEqual({ url: null, approvalCode: null, connections: [] })
+        expect(yield* connections.status).toEqual({ url: null, waitingUntil: null, requests: [], connections: [] })
         yield* RemoteAccess.use((access) =>
           access.report({ relay: { state: "connected", hostname: "desk.relay.example" } }),
         )
@@ -59,65 +65,45 @@ describe("app connections", () => {
     ),
   )
 
-  it.effect("mints an eight letter code that lives ten minutes", () =>
+  it.effect("waits ten minutes for the app the developer chose", () =>
     withConnections((pushes) =>
       Effect.gen(function* () {
         const connections = yield* AppConnections
         expect(yield* connections.inUse).toBe(false)
-        const { approvalCode } = yield* connections.newApprovalCode
-        expect(approvalCode?.code).toMatch(/^[A-HJ-NP-Z2-9]{8}$/)
-        expect(approvalCode?.expiresAt).toBe("1970-01-01T00:10:00.000Z")
+        expect(yield* connections.request(asked)).toEqual(Option.none())
+        expect((yield* connections.start).waitingUntil).toBe("1970-01-01T00:10:00.000Z")
         expect(yield* connections.inUse).toBe(true)
 
         yield* TestClock.adjust("9 minutes")
-        expect((yield* connections.status).approvalCode).toEqual(approvalCode)
+        const id = Option.getOrThrow(yield* connections.request(asked))
+        expect((yield* connections.status).requests).toEqual([{ id, name: "Chat app", redirectHost: "chat.example" }])
+        expect(yield* connections.outcome(id)).toEqual({ type: "waiting", request: asked })
 
         pushes.length = 0
         yield* TestClock.adjust("1 minute")
         expect(pushes).toEqual([
-          { type: "appConnections.changed", status: { url: null, approvalCode: null, connections: [] } },
+          {
+            type: "appConnections.changed",
+            status: { url: null, waitingUntil: null, requests: [], connections: [] },
+          },
         ])
-        expect(yield* connections.approve(approvalCode!.code, grant)).toEqual({ approved: false, codeLive: false })
+        expect(yield* connections.outcome(id)).toEqual({ type: "unknown" })
         expect(yield* connections.inUse).toBe(false)
       }),
     ),
   )
 
-  it.effect("replaces the code when a new one is minted", () =>
+  it.effect("hands the answer to the waiting page once", () =>
     withConnections(() =>
       Effect.gen(function* () {
         const connections = yield* AppConnections
-        const first = yield* liveCode
-        const second = yield* liveCode
-        expect(yield* connections.approve(first, grant)).toEqual({ approved: false, codeLive: true })
-        expect((yield* connections.approve(second, grant)).approved).toBe(true)
-      }),
-    ),
-  )
-
-  it.effect("accepts the code once, however it is typed", () =>
-    withConnections(() =>
-      Effect.gen(function* () {
-        const connections = yield* AppConnections
-        const code = yield* liveCode
-        expect((yield* connections.approve(` ${code.toLowerCase()} `, grant)).approved).toBe(true)
-        expect((yield* connections.status).approvalCode).toBeNull()
-        expect(yield* connections.approve(code, grant)).toEqual({ approved: false, codeLive: false })
-      }),
-    ),
-  )
-
-  it.effect("throws the code away after five wrong tries", () =>
-    withConnections(() =>
-      Effect.gen(function* () {
-        const connections = yield* AppConnections
-        const code = yield* liveCode
-        for (let tries = 1; tries <= 4; tries++) {
-          expect(yield* connections.approve("WRONGWRONG", grant)).toEqual({ approved: false, codeLive: true })
-        }
-        expect(yield* connections.approve("WRONGWRONG", grant)).toEqual({ approved: false, codeLive: false })
-        expect(yield* connections.approve(code, grant)).toEqual({ approved: false, codeLive: false })
-        expect((yield* connections.status).approvalCode).toBeNull()
+        yield* connections.start
+        const id = Option.getOrThrow(yield* connections.request(asked))
+        yield* connections.answer({ id, approve: false })
+        expect(yield* connections.outcome(id)).toEqual({ type: "denied", request: asked })
+        expect(yield* connections.outcome(id)).toEqual({ type: "unknown" })
+        yield* connections.answer({ id, approve: true })
+        expect(yield* connections.outcome(id)).toEqual({ type: "unknown" })
       }),
     ),
   )
@@ -126,18 +112,13 @@ describe("app connections", () => {
     withConnections(() =>
       Effect.gen(function* () {
         const connections = yield* AppConnections
-        const approve = Effect.gen(function* () {
-          const approval = yield* connections.approve(yield* liveCode, grant)
-          return approval.approved ? approval.authorizationCode : ""
-        })
-
-        const used = yield* approve
+        const used = yield* approved
         expect(yield* connections.inUse).toBe(true)
         expect(yield* connections.redeem(used)).toEqual(Option.some(grant))
         expect(yield* connections.redeem(used)).toEqual(Option.none())
         expect(yield* connections.inUse).toBe(false)
 
-        const late = yield* approve
+        const late = yield* approved
         yield* TestClock.adjust("60 seconds")
         expect(yield* connections.inUse).toBe(false)
         expect(yield* connections.redeem(late)).toEqual(Option.none())
@@ -155,7 +136,8 @@ describe("app connections", () => {
           type: "appConnections.changed",
           status: {
             url: null,
-            approvalCode: null,
+            waitingUntil: null,
+            requests: [],
             connections: [{ id, name: "Chat app", createdAt: "1970-01-01T01:00:00.000Z", lastUsedAt: null }],
           },
         })

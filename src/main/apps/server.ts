@@ -6,9 +6,8 @@ import { McpProtocol, McpServer as AiMcpServer } from "effect/ai"
 import { HttpIncomingMessage, HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http"
 import { Secrets } from "../services/Secrets.ts"
 import { AppConnections } from "./AppConnections.ts"
-import { approvalPage, brokenLinkPage } from "./approvalPage.ts"
+import { brokenLinkPage, notStartedPage, waitingPage } from "./approvalPage.ts"
 import {
-  ApprovalForm,
   AUTHORIZATION_SERVER_PATH,
   AUTHORIZE_PATH,
   AuthorizationParams,
@@ -31,6 +30,8 @@ import {
   TOKEN_PATH,
   TokenRequest,
   verifierMatches,
+  WAIT_PATH,
+  WaitParams,
 } from "./oauth.ts"
 import * as Tools from "./tools.ts"
 
@@ -43,6 +44,7 @@ const PUBLIC_PATHS = new Set([
   AUTHORIZATION_SERVER_PATH,
   REGISTER_PATH,
   AUTHORIZE_PATH,
+  WAIT_PATH,
   TOKEN_PATH,
 ])
 
@@ -95,17 +97,6 @@ const gate = HttpRouter.middleware(
   }),
   { global: true },
 )
-
-const askForCode = (params: AuthorizationParams, appName: string, problem?: "wrongCode" | "noCode") =>
-  page(
-    approvalPage({
-      appName,
-      redirectHost: new URL(params.redirect_uri).host,
-      action: AUTHORIZE_PATH,
-      fields: params,
-      ...(problem === undefined ? {} : { problem }),
-    }),
-  )
 
 const routes = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -172,44 +163,50 @@ const routes = Layer.effectDiscard(
       AUTHORIZE_PATH,
       withIssuer((issuer) =>
         HttpServerRequest.schemaSearchParams(AuthorizationParams).pipe(
-          Effect.map((params) => {
-            const checked = authorization(issuer, params)
-            return checked.ok ? askForCode(params, checked.client.name) : checked.response
-          }),
+          Effect.flatMap((params) =>
+            Effect.gen(function* () {
+              const checked = authorization(issuer, params)
+              if (!checked.ok) return checked.response
+              const id = yield* connections.request({
+                clientId: params.client_id,
+                name: checked.client.name,
+                redirectUri: params.redirect_uri,
+                codeChallenge: checked.codeChallenge,
+                state: params.state,
+              })
+              return Option.match(id, {
+                onNone: () => page(notStartedPage(), 409),
+                onSome: (request) =>
+                  HttpServerResponse.redirect(`${WAIT_PATH}?${new URLSearchParams({ request })}`, {
+                    status: 303,
+                    headers: NO_STORE,
+                  }),
+              })
+            }),
+          ),
           Effect.catch(() => Effect.succeed(page(brokenLinkPage(), 400))),
         ),
       ),
     )
 
     yield* router.add(
-      "POST",
-      AUTHORIZE_PATH,
-      withIssuer((issuer) =>
-        HttpServerRequest.schemaBodyUrlParams(ApprovalForm).pipe(
-          Effect.flatMap(({ decision, approval_code: approvalCode, ...params }) =>
-            Effect.gen(function* () {
-              const checked = authorization(issuer, params)
-              if (!checked.ok) return checked.response
-              const goBack = (answer: Record<string, string | undefined>) =>
-                HttpServerResponse.redirect(redirectTo(params.redirect_uri, { ...answer, state: params.state }), {
-                  headers: NO_STORE,
-                })
-              if (decision === "deny") {
-                return goBack({ error: "access_denied", error_description: "The developer denied the connection" })
-              }
-              const approval = yield* connections.approve(approvalCode ?? "", {
-                clientId: params.client_id,
-                name: checked.client.name,
-                redirectUri: params.redirect_uri,
-                codeChallenge: checked.codeChallenge,
-              })
-              return approval.approved
-                ? goBack({ code: approval.authorizationCode })
-                : askForCode(params, checked.client.name, approval.codeLive ? "wrongCode" : "noCode")
-            }),
-          ),
-          Effect.catch(() => Effect.succeed(page(brokenLinkPage(), 400))),
-        ),
+      "GET",
+      WAIT_PATH,
+      HttpServerRequest.schemaSearchParams(WaitParams).pipe(
+        Effect.flatMap(({ request }) => connections.outcome(request)),
+        Effect.map((outcome) => {
+          if (outcome.type === "unknown") return page(brokenLinkPage(), 404)
+          const { name, redirectUri, state } = outcome.request
+          if (outcome.type === "waiting") {
+            return page(waitingPage({ appName: name, redirectHost: new URL(redirectUri).host }))
+          }
+          const answer =
+            outcome.type === "approved"
+              ? { code: outcome.authorizationCode }
+              : { error: "access_denied", error_description: "The developer denied the connection" }
+          return HttpServerResponse.redirect(redirectTo(redirectUri, { ...answer, state }), { headers: NO_STORE })
+        }),
+        Effect.catch(() => Effect.succeed(page(brokenLinkPage(), 400))),
       ),
     )
 
