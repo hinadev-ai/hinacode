@@ -125,6 +125,19 @@ describe("PullRequestLifecycle", () => {
       }),
     )
 
+    it.effect("stops reading a closed pull request on an archived thread", () =>
+      Effect.gen(function* () {
+        const { linked, threadId, url } = yield* linkPullRequest("closed")
+        yield* announce(linked)
+        const sql = yield* SqlClient.SqlClient
+        yield* sql`UPDATE thread SET status = 'archived' WHERE id = ${threadId}`
+        github.reads.length = 0
+        yield* sweep
+        yield* sweep
+        expect(github.reads.filter((read) => read === url)).toEqual([])
+      }),
+    )
+
     it.effect("lets only one observer move a link", () =>
       Effect.gen(function* () {
         const { linked } = yield* linkPullRequest()
