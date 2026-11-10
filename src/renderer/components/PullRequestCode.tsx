@@ -1,7 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { useParams } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { create } from "zustand"
 import type { DiffLineAnnotation } from "@pierre/diffs"
 import { use, useId, useState, useTransition } from "react"
 import type {
@@ -27,6 +26,7 @@ import { callPromise, type EnvironmentId, pullRequestDetailAtom, pullRequestFile
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { loadPullRequestGuideAtom, usePullRequestGuides } from "../stores/pullRequestGuides.ts"
+import { useViewedFiles, useViewedPaths } from "../stores/viewedFiles.ts"
 import { ShimmerText } from "./ShimmerText.tsx"
 import { FileDiffRow, pullRequestFileMark } from "./FilePatch.tsx"
 import {
@@ -193,40 +193,6 @@ function ChangedFiles({ environment, url, head, baseRef, status, comments, view 
     ))
     .orElse(() => <SkeletonList label={m.diff_loading()} rows={4} rowClassName="h-4" />)
 }
-
-const VIEWED_FILES_KEY = "hinacode.viewedPullRequestFiles"
-
-type ViewedFiles = Readonly<Record<string, { readonly head: string; readonly paths: ReadonlyArray<string> }>>
-
-const loadViewedFiles = (): ViewedFiles => {
-  try {
-    return JSON.parse(localStorage.getItem(VIEWED_FILES_KEY) ?? "{}") as ViewedFiles
-  } catch {
-    return {}
-  }
-}
-
-export const useViewedFiles = create<{
-  readonly byUrl: ViewedFiles
-  readonly setViewed: (url: string, head: string, path: string, viewed: boolean) => void
-}>()((set, get) => ({
-  byUrl: loadViewedFiles(),
-  setViewed: (url, head, path, viewed) => {
-    const current = get().byUrl[url]
-    const paths = (current?.head === head ? current.paths : []).filter((other) => other !== path)
-    const byUrl = { ...get().byUrl, [url]: { head, paths: viewed ? [...paths, path] : paths } }
-    localStorage.setItem(VIEWED_FILES_KEY, JSON.stringify(byUrl))
-    set({ byUrl })
-  },
-}))
-
-const NONE_VIEWED: ReadonlyArray<string> = []
-
-export const useViewedPaths = (url: string, head: string) =>
-  useViewedFiles((state) => {
-    const entry = state.byUrl[url]
-    return entry?.head === head ? entry.paths : NONE_VIEWED
-  })
 
 const directoryOf = (path: string) => path.slice(0, path.lastIndexOf("/") + 1)
 const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1)
