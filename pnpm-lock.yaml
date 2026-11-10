@@ -201,6 +201,7 @@ patchedDependencies:
   '@legendapp/list@3.6.0': 426c3a855cb95755b0022f1ffde624d54843b0bfbfe324ef820e6a2343137d28
   '@tiptap/core@3.32.2': e695bb961460b8c5ad4a38461eb3e1a9104fb2b7e2baf37c47190df0ace411e3
   '@tiptap/extension-table@3.32.2': d310a1d5429d15e6dfe5bc6023d0d54b59304dcb915740521c3c431b85ce812a
+  marked@17.0.6: 8fa7a5164c14aa4f41e7bd8971ede0c0faf2a3a2dcf8e75245566970f4fe3802
 
 importers:
 
@@ -464,7 +465,7 @@ importers:
         version: 0.18.15
       marked:
         specifier: 17.0.6
-        version: 17.0.6
+        version: 17.0.6(patch_hash=8fa7a5164c14aa4f41e7bd8971ede0c0faf2a3a2dcf8e75245566970f4fe3802)
       motion:
         specifier: 14.2.0
         version: 14.2.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -574,6 +575,8 @@ importers:
         version: 4.1.4
 
   packages/composer-editor: {}
+
+  packages/document-view: {}
 
   packages/icons: {}
 
@@ -11626,7 +11629,7 @@ snapshots:
     dependencies:
       '@tiptap/core': 3.32.2(patch_hash=e695bb961460b8c5ad4a38461eb3e1a9104fb2b7e2baf37c47190df0ace411e3)(@tiptap/pm@3.32.2)
       '@tiptap/pm': 3.32.2
-      marked: 17.0.6
+      marked: 17.0.6(patch_hash=8fa7a5164c14aa4f41e7bd8971ede0c0faf2a3a2dcf8e75245566970f4fe3802)
 
   '@tiptap/pm@3.32.2':
     dependencies:
@@ -14410,7 +14413,7 @@ snapshots:
 
   marked@16.4.2: {}
 
-  marked@17.0.6: {}
+  marked@17.0.6(patch_hash=8fa7a5164c14aa4f41e7bd8971ede0c0faf2a3a2dcf8e75245566970f4fe3802): {}
 
   matcher@3.0.0:
     dependencies:

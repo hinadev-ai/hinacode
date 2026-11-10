@@ -21,6 +21,7 @@ patchedDependencies:
   "@legendapp/list@3.6.0": patches/@legendapp__list@3.6.0.patch
   "@tiptap/core@3.32.2": patches/@tiptap__core@3.32.2.patch
   "@tiptap/extension-table@3.32.2": patches/@tiptap__extension-table@3.32.2.patch
+  marked@17.0.6: patches/marked@17.0.6.patch
 overrides:
   # The SDK always receives the user's own `claude`, so its bundled binaries never run.
   "@anthropic-ai/claude-agent-sdk>@anthropic-ai/claude-agent-sdk-darwin-arm64": "-"
