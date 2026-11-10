@@ -13,7 +13,7 @@ No scenario in `e2e/features` covers remote mode. `src/main/ipc.integration.test
 - `relay` `Turn on relay` links the machine to the user's HinaCode account through a browser sign-in.
 - `environment-add` a `Pairing URL` from `hinacode serve` adds a cloud whose card reads `Connected`.
 - `cloud-sidebar` the cloud's projects and threads show in the sidebar with a cloud icon named `On <cloud>`; Details shows `On <cloud>` and the cloud's ports.
-- `settings-picker` once a cloud exists, `Editing settings for` shows on `Providers`, `Worktrees`, `Integrations`, `Automations` and `Experimental` and switches them to it. `Connections` has no picker and always edits this machine.
+- `settings-picker` once a cloud exists, `Editing settings for` shows on `Providers`, `Worktrees`, `Integrations`, `Routines` and `Experimental` and switches them to it. `Connections` has no picker and always edits this machine.
 - `environment-remove` `Remove` with confirmation in `Remove <name>?` forgets the cloud.
 
 ## How to get to it (user POV)

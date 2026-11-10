@@ -53,12 +53,12 @@ page_url=$(curl -fs "http://127.0.0.1:$port/json" 2>/dev/null | grep -o '"url": 
 
 if settings=$(node "$here/rpc.ts" "$port" settings.get 2>&1); then
   ok "rpc answers: $(echo "$settings" | tr -d ' \n' | cut -c1-160)"
-  hook_port=$(echo "$settings" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).automations.port))')
+  hook_port=$(echo "$settings" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).routines.port))')
   hook_owner=$(listener "$hook_port")
   if [[ -n "$hook_owner" ]] && in_session "$hook_owner" "$sid"; then
     ok "webhook listener on $hook_port is ours"
   else
-    warn "webhook port $hook_port is not held by this instance (automations will report listenError)"
+    warn "webhook port $hook_port is not held by this instance (routines will report listenError)"
   fi
 else
   bad "rpc settings.get failed: $settings"

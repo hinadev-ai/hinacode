@@ -1,6 +1,6 @@
 # Settings
 
-The settings page has ten pages in one list: `General` (machine setup, language, version and update), `Appearance`, `Notifications`, `Keybindings` (record, reset, conflict warning), `Providers` (accounts, default model, presets and auto-compact per agent, one default access, the text generation model, pull request guide), `Worktrees` (the worktree list, `Worktree root`, the archive switches), `Integrations` (GitHub sign-in state, Linear API key, Slack user token, stored encrypted and never shown again), `Automations` (see `automations.md`), `Connections` (environments and the phone listener, see `remote.md`) and `Experimental` (Tiny VM, Devices). `Providers`, `Worktrees`, `Integrations`, `Automations` and `Experimental` follow the `Editing settings for` picker once a cloud exists. Selects and switches apply at once; text fields apply on `Save` or `Enter`. Everything survives a relaunch. No agent turn is needed.
+The settings page has ten pages in one list: `General` (machine setup, language, version and update), `Appearance`, `Notifications`, `Keybindings` (record, reset, conflict warning), `Providers` (accounts, default model, presets and auto-compact per agent, one default access, the text generation model, pull request guide), `Worktrees` (the worktree list, `Worktree root`, the archive switches), `Integrations` (GitHub sign-in state, Linear API key, stored encrypted and never shown again), `Routines` (see `routines.md`), `Connections` (environments and the phone listener, see `remote.md`) and `Experimental` (Tiny VM, Devices). `Providers`, `Worktrees`, `Integrations`, `Routines` and `Experimental` follow the `Editing settings for` picker once a cloud exists. Selects and switches apply at once; text fields apply on `Save` or `Enter`. Everything survives a relaunch. No agent turn is needed.
 
 ## Automated coverage
 
@@ -17,7 +17,6 @@ The settings page has ten pages in one list: `General` (machine setup, language,
 - `account-claude` (e2e) Providers shows the Claude Code sign-in.
 - `theme` Appearance picks a theme such as `Hina Light`; it is a client setting.
 - `default-model-codex` the same picker for Codex, fed by the live `codex` model list.
-- `secret-slack` the same write-only field for the Slack user token (`slack.token`).
 - `gh-status` the GitHub row reads the `gh` sign-in state; see `mcp-and-pull-requests.md`.
 
 ## How to get to it (user POV)
@@ -33,14 +32,13 @@ Preconditions:
 - `ab() { agent-browser --session kkv-$PORT-settings --cdp $PORT "$@"; }`.
 
 - **Codex default model.** `ab find role button click --name "Providers" --exact`, `ab wait '#default-model-codex'`, `ab click '#default-model-codex'`, `ab wait '[role=option]'`, `ab find role option click --name "<model>" --exact`, `ab wait '#default-model-codex[aria-expanded="false"]'`. `$S/rpc.ts $PORT settings.get` shows it under `defaultModel.codex`, and an automation switched to Codex preselects it. Screenshot `settings-01-codex-default.png`. If `codex` cannot list models the field is a free-text id with a notice; report that instead.
-- **Slack token.** `ab find role button click --name "Integrations" --exact`, `ab fill '#secret-slack-token' xoxp-test-not-real`, `ab press Enter`. The status reads `A key is stored.`, `$S/rpc.ts $PORT secrets.has '{"name":"slack.token"}'` prints `true`. Screenshot `settings-02-slack-stored.png`. Clear it with `ab click 'form:has(#secret-slack-token) button[type=button]'`; it returns to `No key stored.`
 - **Theme.** `Appearance`, then `ab find text "Hina Light" click --exact`. The theme radios are hidden inputs: `find role radio click` reports Done and changes nothing. `$S/rpc.ts $PORT clientSettings.get` shows `"theme": "hina-light"`; `settings.get` does not hold it.
 
 ## Gotchas
 
 - Picking a model or access on a draft thread also sets that agent's default, so `defaultModel` may already be set before you touch Settings.
-- Every per-agent combobox is named `Default model`, and Linear and Slack both have `Save` and `Clear`. Use the ids (`#default-model-<agent>`, `#secret-slack-token`) instead of names.
+- Every per-agent combobox is named `Default model`, and Linear has `Save` and `Clear`. Use the ids (`#default-model-<agent>`, `#secret-linear-apiKey`) instead of names.
 - Shortcuts live in `clientSettings`, stored canonically (`mod` is Ctrl on Linux and Cmd on macOS, recorded keys as `Mod+Shift+[KeyX]`). Assert on `clientSettings.get` and on the effect, not only on the rendered keys.
 - After switching away from English, English accessible names no longer match. Switch back before running other recipes.
 - Unpackaged runs use Chromium's mock keychain, so stored secrets are only obscured. Save dummy values only.
-- Do not paste the user's real Linear or Slack secrets into a verification profile unless they asked for it.
+- Do not paste the user's real Linear secret into a verification profile unless they asked for it.
