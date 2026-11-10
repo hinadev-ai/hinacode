@@ -11,7 +11,7 @@ The web app at `code.hinacode.app` calls the owner routes from the browser, as a
 ## One-time setup
 
 1. Create the database with `pnpm exec wrangler d1 create hinacode-relay`. Put its id in `database_id` in `wrangler.jsonc`, then run `pnpm db:migrate`.
-2. Pick a zone on Cloudflare for the tunnel hostnames. Keep it apart from `hinacode.app`, so a page a machine serves never shares an origin with the site. Set `TUNNEL_ZONE_NAME` to the zone's name and `TUNNEL_ZONE_ID` to its id.
+2. Pick a zone on Cloudflare for the tunnel hostnames. Set `TUNNEL_ZONE_NAME` to the zone's name and `TUNNEL_ZONE_ID` to its id. Production uses `hinacode.app`, so each machine is served at `<host id>.hinacode.app`; see [Tunnel hostnames](#tunnel-hostnames) for what that does and does not isolate.
 3. Set `CLOUDFLARE_ACCOUNT_ID` to the account that owns the zone and the tunnels.
 4. Create an API token with two permissions: Account, Cloudflare Tunnel, Edit, and Zone, DNS, Edit on the tunnel zone. Store it with `pnpm exec wrangler secret put CLOUDFLARE_API_TOKEN`.
 5. Create a Clerk application with Google and GitHub sign-in. Store its keys with `pnpm exec wrangler secret put CLERK_PUBLISHABLE_KEY` and `pnpm exec wrangler secret put CLERK_SECRET_KEY`. A production instance needs its own Google and GitHub OAuth credentials and DNS records, both set in the Clerk dashboard.
@@ -19,6 +19,14 @@ The web app at `code.hinacode.app` calls the owner routes from the browser, as a
 The link page signs in through Clerk. The desktop and phone apps open `GET /sign-in`, which redirects back to them with a code they exchange, with their PKCE verifier, for a credential of their own (`docs/features/2026-11-06-sign-in-redirect.md`). The web app still approves itself on the link page. D1 keeps only the credential's hash. **Sign out all devices** on the page ends every credential on the account.
 
 The variables live in `vars` in `wrangler.jsonc`. The secrets never go in the config. `secrets.required` only names them, so `wrangler types` and `wrangler dev` know about them.
+
+## Tunnel hostnames
+
+Whoever links a machine controls every response served from its hostname. With the tunnels in `hinacode.app`, that hostname is a separate origin on the same site as `code.hinacode.app`, and `relay.hinacode.app`.
+
+- The separate origin protects the product's pages. A machine's page cannot read their DOM or storage, and it cannot call the relay as the user: every relay route takes a bearer token, never a cookie (`src/clerk.ts`).
+- Sharing the site protects nothing about cookies. A machine's page can set or overwrite cookies for `.hinacode.app`, so it can overwrite a sign-in cookie a product page sets there and sign the visitor out or break sign-in. Browsers also treat its requests to those hosts as same-site, so `SameSite` cookies do not stop them.
+- Do not add a cookie-authenticated route on any `hinacode.app` host while tunnels share the zone. To close the gap, move `TUNNEL_ZONE_NAME` and `TUNNEL_ZONE_ID` to a separate registrable domain. Each machine moves to the new zone the next time it calls `PUT /v1/tunnel`. Its old CNAME stays in `hinacode.app` until someone deletes it.
 
 ## Local development
 
