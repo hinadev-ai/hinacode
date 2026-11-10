@@ -141,7 +141,7 @@ describe("linking", () => {
     expect((await call("DELETE", `/v1/links/${link.userCode}`, { bearer: "alice-session" })).status).toBe(404)
   })
 
-  it("needs the owner's bearer to read or approve a link", async () => {
+  it("needs a Clerk session to read or approve a link", async () => {
     const link = await startLink()
     expect((await call("GET", `/v1/links/${link.userCode}`)).status).toBe(401)
     expect((await approve(link.userCode, "forged")).status).toBe(401)
@@ -355,7 +355,7 @@ describe("the web app", () => {
       env,
     )
 
-  it("lets the web app's origin list the machines with the owner token", async () => {
+  it("lets the web app's origin list the machines with a Clerk session", async () => {
     const response = await preflight("https://code.test")
     expect(response.status).toBe(204)
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://code.test")

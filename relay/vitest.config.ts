@@ -14,7 +14,7 @@ export default defineConfig({
           CLOUDFLARE_ACCOUNT_ID: "account",
           TUNNEL_ZONE_ID: "zone",
           TUNNEL_ZONE_NAME: "tunnels.test",
-          WEB_ORIGINS: "https://code.test,http://localhost:5173",
+          WEB_ORIGINS: "https://code.test,http://localhost:4420",
         },
       },
     })),
