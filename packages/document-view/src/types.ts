@@ -1,6 +1,6 @@
 import type { StyleProp, ViewStyle } from "react-native"
 import type { CAPABILITIES } from "./protocol.ts"
-import type { DocumentTheme } from "./blocks.ts"
+import type { CodeToken, DocumentTheme } from "./blocks.ts"
 
 export type Capability = (typeof CAPABILITIES)[number]
 
@@ -49,6 +49,7 @@ export type DocumentEditorProps = {
   readonly document: { readonly revision: number; readonly markdown: string }
   readonly theme: DocumentTheme
   readonly resolveImage: (path: string) => Promise<string>
+  readonly highlightCode?: (code: string, language: string) => ReadonlyArray<CodeToken>
   readonly editable?: boolean
   readonly contentInset?: { readonly top: number; readonly bottom: number }
   readonly onLinkPress?: (href: string) => void

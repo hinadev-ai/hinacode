@@ -5,6 +5,7 @@ import { parseDocument } from "../../../src/shared/document/parse.ts"
 import type { BlockPatch, RenderBlock } from "./blocks.ts"
 import { applyPatch } from "./patch.ts"
 import { renderBlocks } from "./renderBlocks.ts"
+import { drawDiagram } from "./diagram.ts"
 import { createDocumentSession } from "./session.ts"
 
 const manualClock = () => {
@@ -19,7 +20,7 @@ const manualClock = () => {
   }
 }
 
-const open = (markdown: string) => {
+const open = (markdown: string, options: Pick<Parameters<typeof createDocumentSession>[0], "highlight"> = {}) => {
   const clock = manualClock()
   const patches: BlockPatch[] = []
   let shown: RenderBlock[] = []
@@ -31,6 +32,7 @@ const open = (markdown: string) => {
     schedule: clock.schedule,
     now: clock.now,
     sliceMs: 3,
+    ...options,
   })
   session.load(markdown)
   return { session, clock, patches, shown: () => shown }
@@ -135,4 +137,38 @@ test("charts, diagrams, invalid charts and tables become their own blocks", () =
       [[{ text: "x", marks: 1 }], [{ text: "y" }]],
     ],
   })
+})
+
+test("a mermaid block is drawn after load, and only that block is patched", async () => {
+  const clock = manualClock()
+  const patches: BlockPatch[] = []
+  const drawn = Promise.withResolvers<void>()
+  const session = createDocumentSession({
+    send: (patch) => {
+      patches.push(patch)
+      if (patch.insert.some((block) => block.kind === "diagram" && block.drawing !== undefined)) drawn.resolve()
+    },
+    schedule: clock.schedule,
+    now: clock.now,
+    drawDiagram,
+  })
+  session.load("Before.\n\n```mermaid\ngraph TD\n  A[Plan] --> B[Ship]\n```\n\nAfter.")
+  clock.drain()
+  expect(session.blocks.map((block) => block.kind)).toEqual(["paragraph", "diagram", "paragraph"])
+  patches.length = 0
+  await drawn.promise
+  expect(patches).toHaveLength(1)
+  expect(patches[0]).toMatchObject({ start: 1, deleteCount: 1 })
+  const [diagram] = patches[0]!.insert
+  expect(diagram).toMatchObject({ kind: "diagram", source: "graph TD\n  A[Plan] --> B[Ship]" })
+  expect(
+    diagram?.kind === "diagram" &&
+      diagram.drawing?.shapes.some((shape) => shape.kind === "text" && shape.text === "Plan"),
+  ).toBe(true)
+})
+
+test("code blocks carry the highlighter's color ranges", () => {
+  const { clock, shown } = open("```ts\nconst x = 1\n```", { highlight: (text) => [[0, text.indexOf(" "), "#ff0000"]] })
+  clock.drain()
+  expect(shown()).toMatchObject([{ kind: "code", language: "ts", tokens: [[0, 5, "#ff0000"]] }])
 })

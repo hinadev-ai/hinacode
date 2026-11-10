@@ -20,4 +20,6 @@ export const NATIVE_EVENTS = ["ready", "contentSize", "linkPress", "taskToggle",
 
 export const VIEW_FUNCTIONS = ["applyPatch", "scrollToBlock", "provideImage"] as const
 
-export const CAPABILITIES = ["render", "taskToggle", "charts", "images", "highlight"] as const
+export const DIAGRAM_PATH = { move: 0, line: 1, cubic: 2, close: 3 } as const
+
+export const CAPABILITIES = ["render", "taskToggle", "charts", "images", "highlight", "diagrams"] as const

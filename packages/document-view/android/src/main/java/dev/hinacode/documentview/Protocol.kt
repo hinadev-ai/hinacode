@@ -52,7 +52,8 @@ enum class Capability(val wire: String) {
   TASK_TOGGLE("taskToggle"),
   CHARTS("charts"),
   IMAGES("images"),
-  HIGHLIGHT("highlight");
+  HIGHLIGHT("highlight"),
+  DIAGRAMS("diagrams");
 
   companion object {
     fun of(wire: String): Capability? = entries.firstOrNull { it.wire == wire }
@@ -64,4 +65,11 @@ object Marks {
   const val ITALIC = 2
   const val STRIKE = 4
   const val CODE = 8
+}
+
+object DiagramPathOp {
+  const val MOVE = 0
+  const val LINE = 1
+  const val CUBIC = 2
+  const val CLOSE = 3
 }

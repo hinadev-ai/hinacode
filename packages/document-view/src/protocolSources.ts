@@ -2,6 +2,7 @@ import {
   BLOCK_KINDS,
   CAPABILITIES,
   CONTAINER_KINDS,
+  DIAGRAM_PATH,
   MARKS,
   NATIVE_EVENTS,
   NATIVE_VIEW,
@@ -30,6 +31,9 @@ export const swiftProtocol = () =>
     `struct Marks: OptionSet {\n  let rawValue: Int\n${Object.entries(MARKS)
       .map(([name, bit]) => `  static let ${name} = Marks(rawValue: ${bit})`)
       .join("\n")}\n}\n`,
+    `enum DiagramPathOp: Int {\n${Object.entries(DIAGRAM_PATH)
+      .map(([name, code]) => `  case ${name} = ${code}`)
+      .join("\n")}\n}\n`,
   ].join("\n")
 
 export const kotlinProtocol = () =>
@@ -42,6 +46,9 @@ export const kotlinProtocol = () =>
     kotlinEnum("Capability", CAPABILITIES),
     `object Marks {\n${Object.entries(MARKS)
       .map(([name, bit]) => `  const val ${upper(name)} = ${bit}`)
+      .join("\n")}\n}\n`,
+    `object DiagramPathOp {\n${Object.entries(DIAGRAM_PATH)
+      .map(([name, code]) => `  const val ${upper(name)} = ${code}`)
       .join("\n")}\n}\n`,
   ].join("\n")
 

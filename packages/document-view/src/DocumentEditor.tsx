@@ -5,7 +5,9 @@ import { linkHref } from "../../../src/shared/documentLink.ts"
 import { serializeDocument } from "../../../src/shared/document/parse.ts"
 import { isDocumentImagePath } from "../../../src/shared/document/schema.ts"
 import type { BlockPatch } from "./blocks.ts"
+import { drawDiagram } from "./diagram.ts"
 import { decodeNativeEvent } from "./events.ts"
+import { installHtmlParser, mayHoldHtml } from "./html.ts"
 import { NATIVE_VIEW } from "./protocol.ts"
 import { createDocumentSession } from "./session.ts"
 import type { DocumentEditorHandle, DocumentEditorProps } from "./types.ts"
@@ -54,6 +56,7 @@ export function DocumentEditor({
   document,
   theme,
   resolveImage,
+  highlightCode,
   editable = false,
   contentInset = { top: 0, bottom: 0 },
   onLinkPress,
@@ -67,7 +70,13 @@ export function DocumentEditor({
   const native = useRef<NativeHandle>(null)
   const [bridge] = useState(createBridge)
   const [session] = useState(() =>
-    createDocumentSession({ send: bridge.send, schedule: nextTask, now: () => performance.now() }),
+    createDocumentSession({
+      send: bridge.send,
+      schedule: nextTask,
+      now: () => performance.now(),
+      highlight: highlightCode,
+      drawDiagram,
+    }),
   )
 
   const loaded = useEffectEvent(() => {
@@ -75,7 +84,15 @@ export function DocumentEditor({
     if (session.lossy) onError?.({ kind: "lossy", message: "The document has content this editor cannot place." })
   })
   useEffect(() => {
-    session.load(document.markdown, loaded)
+    let live = true
+    const load = () => {
+      if (live) session.load(document.markdown, loaded)
+    }
+    if (mayHoldHtml(document.markdown)) void installHtmlParser().then(load, load)
+    else load()
+    return () => {
+      live = false
+    }
   }, [session, document.markdown])
 
   useImperativeHandle(ref, () => ({

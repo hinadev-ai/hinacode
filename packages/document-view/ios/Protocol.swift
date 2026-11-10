@@ -40,6 +40,7 @@ enum Capability: String, CaseIterable {
   case charts
   case images
   case highlight
+  case diagrams
 }
 
 struct Marks: OptionSet {
@@ -48,4 +49,11 @@ struct Marks: OptionSet {
   static let italic = Marks(rawValue: 2)
   static let strike = Marks(rawValue: 4)
   static let code = Marks(rawValue: 8)
+}
+
+enum DiagramPathOp: Int {
+  case move = 0
+  case line = 1
+  case cubic = 2
+  case close = 3
 }

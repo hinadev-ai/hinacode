@@ -22,6 +22,37 @@ export type CodeToken = readonly [start: number, end: number, color: string]
 
 export type ChartSeries = { readonly label: string; readonly values: ReadonlyArray<number | null> }
 
+export type DiagramRole = "bg" | "fg" | "muted" | "line" | "surface" | "surfaceAlt" | "border" | "accent" | "critical"
+
+export type DiagramPaint = `@${DiagramRole}` | (string & {})
+
+export type DiagramShape =
+  | {
+      readonly kind: "path"
+      readonly data: ReadonlyArray<number>
+      readonly fill: DiagramPaint | null
+      readonly stroke: DiagramPaint | null
+      readonly width: number
+      readonly dash: ReadonlyArray<number> | null
+      readonly opacity: number
+    }
+  | {
+      readonly kind: "text"
+      readonly text: string
+      readonly x: number
+      readonly y: number
+      readonly anchor: "start" | "middle" | "end"
+      readonly size: number
+      readonly weight: number
+      readonly fill: DiagramPaint
+    }
+
+export type DiagramDrawing = {
+  readonly width: number
+  readonly height: number
+  readonly shapes: ReadonlyArray<DiagramShape>
+}
+
 export type TableAlign = "left" | "center" | "right" | null
 
 export type BlockBody =
@@ -44,7 +75,7 @@ export type BlockBody =
       readonly prefix: string
       readonly suffix: string
     }
-  | { readonly kind: "diagram"; readonly source: string }
+  | { readonly kind: "diagram"; readonly source: string; readonly drawing?: DiagramDrawing }
   | {
       readonly kind: "table"
       readonly align: ReadonlyArray<TableAlign>
@@ -82,6 +113,7 @@ export type DocumentTheme = {
   >
   readonly calloutLabels: Readonly<Record<CalloutTone, string>>
   readonly chartLanes: ReadonlyArray<string>
+  readonly diagram: Readonly<Record<DiagramRole, string>>
   readonly fontSize: number
   readonly lineHeight: number
   readonly monoFont: string

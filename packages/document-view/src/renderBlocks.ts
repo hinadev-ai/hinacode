@@ -1,10 +1,17 @@
 import type { Mark, Node } from "@tiptap/pm/model"
 import { calloutTone } from "../../../src/shared/documentCallout.ts"
 import { parseChart } from "../../../src/shared/documentChart.ts"
-import type { BlockBody, Container, RenderBlock, Run, TableAlign } from "./blocks.ts"
+import type { BlockBody, CodeToken, Container, DiagramDrawing, RenderBlock, Run, TableAlign } from "./blocks.ts"
 import { MARKS } from "./protocol.ts"
 
 type Body = BlockBody
+
+export type Decorate = {
+  readonly code?: (text: string, language: string) => ReadonlyArray<CodeToken> | undefined
+  readonly drawing?: (source: string) => DiagramDrawing | undefined
+}
+
+const PLAIN: Decorate = {}
 
 type Frame = { readonly container: Container; readonly owner: number; emitted: number; lastIndex: number }
 
@@ -51,11 +58,19 @@ const alignOf = (cell: Node): TableAlign => {
   return align === "left" || align === "center" || align === "right" ? align : null
 }
 
-const codeBody = (node: Node): Body => {
+const codeBody = (node: Node, decorate: Decorate): Body => {
   const language = typeof node.attrs["language"] === "string" ? node.attrs["language"] : ""
   const text = node.textContent
-  if (language === "mermaid") return { kind: "diagram", source: text }
-  if (language !== "chart") return { kind: "code", language, text }
+  if (language === "mermaid") {
+    const drawing = decorate.drawing?.(text)
+    return drawing === undefined ? { kind: "diagram", source: text } : { kind: "diagram", source: text, drawing }
+  }
+  if (language !== "chart") {
+    const tokens = decorate.code?.(text, language)
+    return tokens === undefined || tokens.length === 0
+      ? { kind: "code", language, text }
+      : { kind: "code", language, text, tokens }
+  }
   const parsed = parseChart(text)
   if (!parsed.ok) return { kind: "code", language, text, error: parsed.message }
   const { spec, labels } = parsed.chart
@@ -94,14 +109,14 @@ const tableBody = (table: Node): Body => {
   return { kind: "table", align, header, rows }
 }
 
-const leafBody = (node: Node): Body | null => {
+const leafBody = (node: Node, decorate: Decorate): Body | null => {
   switch (node.type.name) {
     case "paragraph":
       return { kind: "paragraph", runs: inlineRuns(node) }
     case "heading":
       return { kind: "heading", level: Number(node.attrs["level"] ?? 1), runs: inlineRuns(node) }
     case "codeBlock":
-      return codeBody(node)
+      return codeBody(node, decorate)
     case "table":
       return tableBody(node)
     case "image":
@@ -113,15 +128,19 @@ const leafBody = (node: Node): Body | null => {
   }
 }
 
-const bodies = new WeakMap<Node, Body>()
+const bodies = new WeakMap<Decorate, WeakMap<Node, Body>>()
 const nodeIds = new WeakMap<Node, number>()
 let nextNodeId = 1
 
-const bodyOf = (node: Node): Body => {
-  const cached = bodies.get(node)
+const isDiagram = (node: Node) => node.type.name === "codeBlock" && node.attrs["language"] === "mermaid"
+
+const bodyOf = (node: Node, decorate: Decorate): Body => {
+  let cache = bodies.get(decorate)
+  if (cache === undefined) bodies.set(decorate, (cache = new WeakMap()))
+  const cached = cache.get(node)
   if (cached !== undefined) return cached
-  const body = leafBody(node) ?? { kind: "unsupported", source: node.textContent }
-  bodies.set(node, body)
+  const body = leafBody(node, decorate) ?? { kind: "unsupported", source: node.textContent }
+  if (!isDiagram(node)) cache.set(node, body)
   return body
 }
 
@@ -149,8 +168,10 @@ const signature = (container: Container) => {
   }
 }
 
-const blockId = (node: Node, containers: ReadonlyArray<Container>) =>
-  containers.length === 0 ? String(nodeId(node)) : `${nodeId(node)}:${containers.map(signature).join(".")}`
+const blockId = (node: Node, body: Body, containers: ReadonlyArray<Container>) => {
+  const own = body.kind === "diagram" && body.drawing !== undefined ? `${nodeId(node)}d` : String(nodeId(node))
+  return containers.length === 0 ? own : `${own}:${containers.map(signature).join(".")}`
+}
 
 export type BlockSource = { readonly node: Node; readonly pos: number; readonly owners: ReadonlyArray<number> }
 
@@ -171,7 +192,7 @@ const quoteContainer = (node: Node): Container =>
     ? { kind: "callout", tone: calloutTone(node.attrs["tone"]), first: true, last: false }
     : { kind: "quote" }
 
-export function renderNodes(nodes: ReadonlyArray<Node>, start = 0): RenderedDocument {
+export function renderNodes(nodes: ReadonlyArray<Node>, start = 0, decorate: Decorate = PLAIN): RenderedDocument {
   const blocks: RenderBlock[] = []
   const sources: BlockSource[] = []
   const frames: Frame[] = []
@@ -182,7 +203,8 @@ export function renderNodes(nodes: ReadonlyArray<Node>, start = 0): RenderedDocu
       if (container.kind === "quote") return container
       return { ...container, first: emitted === 0 }
     })
-    const base = blockId(node, containers)
+    const body = bodyOf(node, decorate)
+    const base = blockId(node, body, containers)
     let id = base
     for (let copy = 2; seen.has(id); copy++) id = `${base}#${copy}`
     seen.add(id)
@@ -190,7 +212,7 @@ export function renderNodes(nodes: ReadonlyArray<Node>, start = 0): RenderedDocu
       frame.emitted++
       frame.lastIndex = blocks.length
     }
-    blocks.push({ ...bodyOf(node), id, containers } as RenderBlock)
+    blocks.push({ ...body, id, containers } as RenderBlock)
     sources.push({ node, pos, owners: frames.map((frame) => frame.owner) })
   }
 
@@ -227,8 +249,10 @@ export function renderNodes(nodes: ReadonlyArray<Node>, start = 0): RenderedDocu
   return { blocks, sources }
 }
 
-export const renderBlocks = (doc: Node) => {
+export const topLevelNodes = (doc: Node | null) => {
   const nodes: Node[] = []
-  doc.forEach((node) => void nodes.push(node))
-  return renderNodes(nodes)
+  doc?.forEach((node) => void nodes.push(node))
+  return nodes
 }
+
+export const renderBlocks = (doc: Node, decorate: Decorate = PLAIN) => renderNodes(topLevelNodes(doc), 0, decorate)
