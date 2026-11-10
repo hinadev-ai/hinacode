@@ -389,8 +389,8 @@ async function measure(runLabel: string) {
       await sleep(1000)
     })
     const gfxinfo = device.frameStats?.read() ?? null
-    if ((flung.commits ?? []).length < 2)
-      console.warn("the fling committed nothing; check that a dialog is not covering the document")
+    if (((flung.nativeFrames as number[] | undefined) ?? []).length < 2)
+      console.warn("the fling sampled no native frames; check that a dialog is not covering the document")
     const updated = await send("updateDocument", { artifactId: docs.large }, () => {
       const { revision, markdown } = rpc("artifacts.readDocument", { id: docs.large })
       rpc("artifacts.saveDocument", {
@@ -433,10 +433,10 @@ function documentOpenEntry(size: DocumentSize, opened: Result) {
   return {
     size,
     bytes: Number(opened.bytes),
-    segments: Number(opened.segments),
+    blocks: Number(opened.blocks ?? opened.segments),
     firstContentMs: round1(Number(opened.firstContent) - start),
     interactiveMs: round1(Number(opened.settled) - start),
-    segmentMs: round1(Number(opened.segmentMs)),
+    parseMs: round1(Number(opened.parseMs ?? opened.segmentMs)),
     heapMB: heap === null ? null : round1(heap.heapSize / 1048576),
     allocatedMB: heap === null ? null : round1(heap.allocatedBytes / 1048576),
     ...summarize(opened),
@@ -454,7 +454,7 @@ function documentOpenHeadline(entry: DocumentOpen) {
   return {
     [`${name}: first content ms`]: entry.firstContentMs,
     [`${name}: interactive ms`]: entry.interactiveMs,
-    [`${name}: JS segment ms`]: entry.segmentMs,
+    [`${name}: JS parse ms`]: entry.parseMs ?? (entry as { segmentMs?: number }).segmentMs ?? 0,
     [`${name}: Hermes heap MB`]: entry.heapMB,
     [`${name}: render ms`]: entry.renderMs,
     [`${name}: longest commit render ms`]: entry.renderMsMax,
