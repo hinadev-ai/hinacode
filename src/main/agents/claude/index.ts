@@ -177,6 +177,12 @@ const toContextBreakdown = (usage: SDKControlGetContextUsageResponse): ContextBr
   ),
 })
 
+const BYPASS_REFUSED =
+  "Claude Code refused full access because its settings set disableBypassPermissionsMode. Switch this thread to Auto or Supervised."
+
+const refusedBypass = (session: Session, reported: PermissionMode) =>
+  session.permissionMode === "bypassPermissions" && reported !== "bypassPermissions" && reported !== "plan"
+
 const isIdle = (session: Session) =>
   session.turn === null && session.claims === 0 && session.unanswered.size === 0 && session.tasks.size === 0
 
@@ -622,6 +628,11 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         }
       } else if (stale) return
       if (message.type === "assistant" && message.parent_tool_use_id === null) session.lastAssistantUuid = message.uuid
+      if (message.type === "system" && message.subtype === "init" && refusedBypass(session, message.permissionMode)) {
+        emit(session, { type: "turn_failed", message: BYPASS_REFUSED })
+        closeSessionUnsafe(session)
+        return
+      }
       if (message.type === "system" && message.subtype === "init") {
         session.sessionId = message.session_id
         resumable.set(session.threadId, {
