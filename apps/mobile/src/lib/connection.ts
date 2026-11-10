@@ -302,29 +302,39 @@ async function send(serverId: string, method: RpcMethod, payload: unknown): Prom
   return { result: stampEnvironment(method, envelope.result, serverId) }
 }
 
+const failureOf = (cause: unknown): RpcEnvelope<never> =>
+  cause instanceof RpcError
+    ? { error: { tag: cause.tag, message: cause.message } }
+    : { error: { tag: "Offline", message: String(cause) } }
+
 /**
- * Asks every connected server and concatenates the lists. A server that is not connected, or does not answer
- * within a few seconds, adds its last answer to the same call, so its threads stay listed while it is away.
+ * Asks every connected server and concatenates the lists. A server that is not connected, fails, or does not answer
+ * within a few seconds, adds its last answer to the same call, so its threads stay listed while it is away. When no
+ * server answered and none has a last answer, the call fails with the first server's error.
  */
 async function gather(method: RpcMethod, payload: unknown): Promise<RpcEnvelope<unknown>> {
   const key = JSON.stringify(payload ?? null)
   const answers = await Promise.all(
-    useConnection.getState().servers.map(async (server) => {
+    useConnection.getState().servers.map(async (server): Promise<RpcEnvelope<unknown[]> | undefined> => {
       const last = remembered.get(server.id)?.[method]
-      const fallback = last?.payload === key && Array.isArray(last.result) ? last.result : []
+      const fallback = last?.payload === key && Array.isArray(last.result) ? { result: last.result } : undefined
       if (server.status !== "connected") return fallback
       const envelope = await Promise.race([
-        send(server.id, method, payload).catch(() => undefined),
+        send(server.id, method, payload).catch(failureOf),
         new Promise<undefined>((resolve) => setTimeout(resolve, PROBE_TIMEOUT_MS)),
       ])
-      if (envelope === undefined || "error" in envelope || !Array.isArray(envelope.result)) return fallback
+      if (envelope !== undefined && "error" in envelope) return fallback ?? envelope
+      if (envelope === undefined || !Array.isArray(envelope.result)) return fallback
       const answers = { ...remembered.get(server.id), [method]: { payload: key, result: envelope.result } }
       remembered.set(server.id, answers)
       for (const listener of rememberListeners) listener(server.id, answers)
-      return envelope.result
+      return { result: envelope.result }
     }),
   )
-  return { result: answers.flat() }
+  const lists = answers.filter((answer) => answer !== undefined && "result" in answer)
+  const failure = answers.find((answer) => answer !== undefined && "error" in answer)
+  if (lists.length === 0 && failure !== undefined) return failure
+  return { result: lists.flatMap((answer) => answer.result) }
 }
 
 /** Where a call goes, by the route table the desktop uses (`src/shared/routes.ts`). */
