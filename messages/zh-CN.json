@@ -2380,7 +2380,7 @@
   "sidebar_projects": "项目",
   "sidebar_views": "视图",
   "sidebar_search_placeholder": "搜索",
-  "overview_agents_all": "查看全部 {count} 个",
+  "overview_view_all": "查看全部 {count} 个",
   "action_scope_label": "适用于",
   "action_scope_global": "所有项目",
   "site_meta_title": "HinaCode：并行运行编程智能体",

@@ -27,6 +27,7 @@ import { LineCounts } from "./LineCounts.tsx"
 import {
   BranchIcon,
   ChatNewIcon,
+  ChevronDownIcon,
   ComputerIcon,
   FileDiffIcon,
   FileTextIcon,
@@ -61,6 +62,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 const SUBAGENT_ROWS = 5
+const PULL_REQUEST_ROWS = 10
 
 const useThreadProject = (thread: Thread) =>
   AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []).find((candidate) => candidate.id === thread.projectId)
@@ -326,17 +328,28 @@ function PullRequests({ thread, worktree }: { thread: Thread; worktree: Worktree
   const urls = [
     ...new Set([...(branchPullRequest ? [branchPullRequest.url] : []), ...links.map((link) => link.url).toReversed()]),
   ]
+  const [expanded, setExpanded] = useState(false)
   if (urls.length === 0) return null
+  const shown = expanded ? urls : urls.slice(0, PULL_REQUEST_ROWS)
 
   return (
     <Section title={m.pr_links_title()}>
       <ul className="flex flex-col gap-0.5">
-        {urls.map((url) => (
+        {shown.map((url) => (
           <li key={url}>
             <PullRequestRow thread={thread} url={url} linked={linked.has(url)} />
           </li>
         ))}
       </ul>
+      {urls.length > shown.length && (
+        <RowButton
+          icon={ChevronDownIcon}
+          onClick={() => startTransition(() => setExpanded(true))}
+          iconClassName="text-muted-foreground/70"
+        >
+          <span className="text-muted-foreground">{m.overview_view_all({ count: urls.length })}</span>
+        </RowButton>
+      )}
     </Section>
   )
 }
@@ -646,7 +659,7 @@ function Subagents({ thread }: { thread: Thread }) {
           onClick={() => useUi.getState().showView(thread.id, "agents")}
           iconClassName="text-muted-foreground/70"
         >
-          <span className="text-muted-foreground">{m.overview_agents_all({ count: subagents.length })}</span>
+          <span className="text-muted-foreground">{m.overview_view_all({ count: subagents.length })}</span>
         </RowButton>
       )}
     </Section>
