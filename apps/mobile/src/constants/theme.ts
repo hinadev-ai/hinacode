@@ -170,6 +170,12 @@ export const CalloutColors = {
   },
 } as const satisfies Record<"light" | "dark", Record<CalloutTone, { ink: string; tint: string; label: string }>>
 
+/** A document chart's series colors, the desktop's `--graph-lane-1` to `-5` then `-0`, converted from oklch. */
+export const ChartColors = {
+  light: ["#2a75ba", "#008971", "#b75f0b", "#af467e", "#5d822f", "#717171"],
+  dark: ["#61a3e6", "#57b9a1", "#e29d56", "#da7baa", "#92ba66", "#808080"],
+} as const
+
 export const mono = Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" })
 
 /** Minimum touch target. */

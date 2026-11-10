@@ -7,7 +7,7 @@ export type ParsedDocument = {
   readonly lossy: boolean
 }
 
-type DocumentMarkdown = ReturnType<typeof createDocumentMarkdown>
+export type DocumentMarkdown = ReturnType<typeof createDocumentMarkdown>
 
 const WINDOW = 8192
 const REFERENCE_DEFINITION = /^ {0,3}\[[^\]\n]+\]:/m
@@ -87,7 +87,7 @@ const parseTokens = (manager: DocumentMarkdown, tokens: MarkdownToken[]) =>
     manager.markdown as unknown as { parseTokens: (tokens: MarkdownToken[], implicit: boolean) => JSONContent[] }
   ).parseTokens(tokens, true)
 
-function chunkNodes(manager: DocumentMarkdown, chunk: { source: string; tokens: MarkdownToken[] }) {
+export function chunkNodes(manager: DocumentMarkdown, chunk: { source: string; tokens: MarkdownToken[] }) {
   const toNodes = (content: JSONContent[]) => content.map((node) => manager.schema.nodeFromJSON(node))
   try {
     return { nodes: toNodes(parseTokens(manager, chunk.tokens)), lossy: false }

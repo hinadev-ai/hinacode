@@ -1,0 +1,13 @@
+{
+  "name": "@hinacode/document-view",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A native, recycled view of a HinaCode document artifact, fed by the desktop's own ProseMirror model.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": "./src/index.ts",
+  "scripts": {
+    "protocol": "node scripts/generate-protocol.ts"
+  }
+}

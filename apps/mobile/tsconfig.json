@@ -11,6 +11,7 @@
       "@hinacode/icons": ["../../packages/icons/src/index.ts"],
       "@hinacode/composer-editor": ["../../packages/composer-editor/src/index.ts"],
       "@hinacode/perf-frames": ["../../packages/perf-frames/src/index.ts"],
+      "@hinacode/document-view": ["../../packages/document-view/src/index.ts"],
       "expo": ["./node_modules/expo/build/Expo.d.ts"],
       "react-native": ["./node_modules/react-native/types_generated/index.d.ts"],
       "react-native-svg": ["./node_modules/react-native-svg/lib/typescript/index.d.ts"]
