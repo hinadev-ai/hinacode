@@ -359,10 +359,12 @@ function probeNativeDocument() {
 const nextPatch = () => new Promise<void>((resolve) => patchWaiters.push(resolve))
 
 /** Resolves once no commit and no native patch has landed for `quietMs`, with the time of the last one. */
+const lastCommitThatRendered = () => commits.findLast((commit) => Object.keys(commit.rendered).length > 0)?.at
+
 async function settleWithPatches(quietMs: number, timeoutMs = 15000) {
   const start = performance.now()
   for (;;) {
-    const last = Math.max(commits.at(-1)?.at ?? start, appliedPatches.at(-1) ?? start)
+    const last = Math.max(lastCommitThatRendered() ?? start, appliedPatches.at(-1) ?? start)
     const now = performance.now()
     if (now - last >= quietMs || now - start > timeoutMs) return last
     await sleep(50)
