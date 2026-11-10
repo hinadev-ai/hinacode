@@ -892,10 +892,16 @@ const make = Effect.gen(function* () {
   ): Effect.Effect<{ readonly body: string; readonly errors: NonNullable<ApiErrorBody["errors"]> }, GitHubError> =>
     Effect.gen(function* () {
       yield* failIfPaused
+      let stderr = ""
       // FIXME: gh exits 1 for any error response; the status line and body say which
-      const response = parseApiResponse(
-        yield* ghUnpaused(homedir(), ["api", ...args, "--include"], { okExitCodes: [1] }),
-      )
+      const stdout = yield* ghUnpaused(homedir(), ["api", ...args, "--include"], {
+        okExitCodes: [1],
+        onStderr: (chunk) => Effect.sync(() => void (stderr += chunk)),
+      })
+      const response = parseApiResponse(stdout)
+      if (!Number.isFinite(response.status)) {
+        return yield* new GitHubApiError({ detail: stderr.trim() || "gh api printed no response" })
+      }
       const rateLimit = rateLimitOf(response.headers)
       if (rateLimit !== null) yield* observe(rateLimit)
       const error = decodeApiErrorBody(response.body)
