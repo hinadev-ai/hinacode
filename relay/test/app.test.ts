@@ -171,6 +171,20 @@ describe("linking", () => {
     await linkMachine("env-3")
   })
 
+  it("refuses a sixth machine whose link was approved before the fifth was claimed", async () => {
+    for (const environmentId of ["env-1", "env-2", "env-3", "env-4"]) await linkMachine(environmentId)
+    const fifth = await startLink("env-5")
+    const sixth = await startLink("env-6")
+    expect((await approve(fifth.userCode)).status).toBe(204)
+    expect((await approve(sixth.userCode)).status).toBe(204)
+    expect((await claim(fifth.deviceCode)).status).toBe(200)
+
+    const refused = await claim(sixth.deviceCode)
+    expect(refused.status).toBe(409)
+    expect(((await refused.json()) as { error: string }).error).toContain("5 machines")
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM host").first("count")).toBe(5)
+  })
+
   it("keeps the host id on a re-link and revokes the old credential", async () => {
     const first = await linkMachine()
     expect((await putTunnel(first)).status).toBe(200)
