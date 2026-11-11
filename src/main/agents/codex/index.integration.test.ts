@@ -1043,7 +1043,7 @@ describe("Codex accounts", () => {
 
         yield* provider.interrupt("thread-personal")
         yield* finishesSoon(onPersonal.fiber)
-        expect(countOf("turn/interrupt")).toBe(2)
+        yield* waitFor(() => countOf("turn/interrupt") === 2)
       }),
     ),
   )
