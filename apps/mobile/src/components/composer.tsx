@@ -51,7 +51,7 @@ import { familyOf, beforeFirstHandshake, reportFailure } from "@/lib/remote"
 import { pickImages, stageImage } from "@/lib/stage-images"
 import { type DraftImage, useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
-import { modelsLoadAtom, modelsOn, useModels } from "@/stores/models"
+import { modelsLoadAtom, modelsOn, modelsSheetAtom, useModels } from "@/stores/models"
 import { updateThread, useThreads } from "@/stores/threads"
 
 type OnError = (message: string) => void
@@ -673,7 +673,9 @@ export function SettingsSheet({
   const scheme = useScheme()
   const { models, current } = useThreadModels(thread)
   const unstarted = useUnstarted(thread) || isNew
-  const options = useServerOptions(useThreadServer(thread.id)?.id, open, onError)
+  const server = useThreadServer(thread.id)?.id
+  const options = useServerOptions(server, open, onError)
+  useAtomSubscribe(modelsSheetAtom(server, thread.provider, open), reportFailure(onError))
   const shownModels = presetModels(models, options?.settings.modelPresets[thread.provider] ?? [], thread.model)
   const accounts =
     options === null

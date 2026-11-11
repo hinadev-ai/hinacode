@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { Cache, Deferred, Duration, Effect, Exit, Queue, Schema, Scope, Semaphore, Stream } from "effect"
+import { Cache, Deferred, Duration, Effect, Exit, Queue, Ref, Schema, Scope, Stream } from "effect"
 import type {
   AgentAccount,
   AgentCommand,
@@ -433,27 +433,37 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
         }),
       )
 
-    let probedModels: ReadonlyArray<ModelInfo> | undefined
-    const probeLock = yield* Semaphore.make(1)
-
-    const listModels = Semaphore.withPermit(
-      probeLock,
-      Effect.gen(function* () {
-        if (probedModels !== undefined) return probedModels
-        const { client } = yield* startAgent
-        const probe = yield* call(client, "session/new", { cwd: homedir(), mcpServers: [] }, NewSessionResponse)
-        const selector = modelSelector(probe)
-        const efforts = new Map<string, ReadonlyArray<string>>()
-        if (selector?.via === "config") {
-          for (const { id } of toModelInfos(probe, config.id)) {
-            const selected = yield* setOption(client, probe.sessionId, selector.configId, id).pipe(Effect.option)
-            if (selected._tag === "Some") efforts.set(id, effortLevels(selected.value))
-          }
+    const probeModels = Effect.gen(function* () {
+      const { client } = yield* startAgent
+      const probe = yield* call(client, "session/new", { cwd: homedir(), mcpServers: [] }, NewSessionResponse)
+      const selector = modelSelector(probe)
+      const efforts = new Map<string, ReadonlyArray<string>>()
+      if (selector?.via === "config") {
+        for (const { id } of toModelInfos(probe, config.id)) {
+          const selected = yield* setOption(client, probe.sessionId, selector.configId, id).pipe(Effect.option)
+          if (selected._tag === "Some") efforts.set(id, effortLevels(selected.value))
         }
-        probedModels = toModelInfos(probe, config.id, efforts)
-        return probedModels
-      }).pipe(Effect.scoped),
+      }
+      return toModelInfos(probe, config.id, efforts)
+    }).pipe(Effect.scoped)
+
+    const lastModels = yield* Ref.make<ReadonlyArray<ModelInfo>>([])
+    const freshModels = yield* Effect.cachedWithTTL(
+      probeModels.pipe(
+        Effect.tap((models) => (models.length > 0 ? Ref.set(lastModels, models) : Effect.void)),
+        Effect.tapError((error) => (error === signedOut ? Ref.set(lastModels, []) : Effect.void)),
+      ),
+      (exit) => (Exit.isSuccess(exit) && exit.value.length > 0 ? Duration.minutes(10) : Duration.zero),
     )
+    const listModels = Effect.gen(function* () {
+      const last = yield* Ref.get(lastModels)
+      if (last.length === 0) return yield* freshModels
+      yield* freshModels.pipe(
+        Effect.ignore({ log: "Warn", message: `${name} model refresh failed` }),
+        Effect.forkIn(providerScope),
+      )
+      return last
+    })
 
     const probeCommands = (cwd: string) =>
       Effect.gen(function* () {
