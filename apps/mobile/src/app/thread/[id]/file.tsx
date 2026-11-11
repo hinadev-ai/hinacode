@@ -1,5 +1,8 @@
 import type { RpcResponse } from "@shared/contract.ts"
 import type { FsFileContent, Thread } from "@shared/domain.ts"
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { Effect } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { FlatList, Image, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
@@ -13,11 +16,11 @@ import { cssEase } from "@/constants/motion"
 import { mono, READABLE_WIDTH, SyntaxColors } from "@/constants/theme"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { type CodeLine, codeLines } from "@/lib/code-lines"
-import { call } from "@/lib/connection"
+import type { RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
-import { errorText } from "@/lib/error-text"
 import { basename, dirname, fileKind, svgAspectRatio } from "@/lib/file-kinds"
 import { useHighlight } from "@/lib/highlight"
+import { asLoaded, familyOf, rpcFamily } from "@/lib/remote"
 import { useThreadRoot, useThreads } from "@/stores/threads"
 
 type Params = { id: string; path: string; line?: string }
@@ -84,33 +87,15 @@ function FileBody({ thread, path, line }: { thread: Thread; path: string; line: 
   }
 }
 
-type Loaded<T> = { readonly value: T } | { readonly error: string }
+const fileReads = { "fs.read": rpcFamily("fs.read"), "fs.preview": rpcFamily("fs.preview") }
 
-/** Reads `path` under `root` with `method`, again on `retry`. The result is null while loading. */
-function useFile<M extends "fs.read" | "fs.preview">(method: M, root: string, path: string) {
-  const key = `${method}\0${root}\0${path}`
-  const [result, setResult] = useState<(Loaded<RpcResponse<M>> & { key: string }) | null>(null)
-  const [revision, setRevision] = useState(0)
-  useEffect(() => {
-    let current = true
-    call(method, { root, path }).then(
-      (value) => current && setResult({ key, value }),
-      (cause) => current && setResult({ key, error: errorText(cause) }),
-    )
-    return () => {
-      current = false
-    }
-  }, [key, method, root, path, revision])
-  const retry = () => {
-    setResult(null)
-    setRevision(revision + 1)
-  }
-  return { result: result?.key === key ? result : null, retry }
+function useFile<M extends keyof typeof fileReads>(method: M, root: string, path: string) {
+  const file = fileReads[method]({ root, path }) as Atom.Atom<AsyncResult.AsyncResult<RpcResponse<M>, RpcError>>
+  return { result: asLoaded(useAtomValue(file)), retry: useAtomRefresh(file) }
 }
 
 const useFileText = (root: string, path: string) => useFile("fs.read", root, path)
 
-/** Loading, error and binary states around a file's text. */
 function WithText({
   root,
   path,
@@ -191,7 +176,6 @@ function MarkdownFile({
   )
 }
 
-/** Highlighting a whole megabyte would stall the phone, so only the start is colored. */
 const HIGHLIGHT_LIMIT = 300_000
 const PAGE_PADDING = 16
 const LINE_HEIGHT = 18
@@ -276,7 +260,6 @@ function CodeView({
 
 const fadeOut = { from: { opacity: 1 }, to: { opacity: 0 } }
 
-/** Tints the line a search hit opened at, then fades. Under reduce motion the tint stays briefly and goes. */
 function LineFlash() {
   const theme = useTheme()
   const reduced = useReducedMotion()
@@ -321,22 +304,22 @@ function ImageFile({ root, path }: { root: string; path: string }) {
   )
 }
 
-/** As wide as the screen, or its natural width when narrower, keeping its aspect ratio. */
+// FIXME: `onLoad` reports no size on react-native-web, so the image is measured on its own.
+const imageSize = familyOf((uri: string) =>
+  Atom.make(
+    Effect.callback<{ width: number; height: number } | null>((resume) =>
+      Image.getSize(
+        uri,
+        (width, height) => resume(Effect.succeed(width > 0 && height > 0 ? { width, height } : null)),
+        () => resume(Effect.succeed(null)),
+      ),
+    ),
+  ),
+)
+
 function FittedImage({ uri, label }: { uri: string; label: string }) {
   const theme = useTheme()
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null)
-  // `onLoad` reports no size on react-native-web, so the image is measured on its own.
-  useEffect(() => {
-    let current = true
-    Image.getSize(
-      uri,
-      (width, height) => current && width > 0 && height > 0 && setSize({ width, height }),
-      () => {},
-    )
-    return () => {
-      current = false
-    }
-  }, [uri])
+  const size = AsyncResult.getOrElse(useAtomValue(imageSize(uri)), () => null)
   return (
     <Image
       source={{ uri }}
@@ -380,7 +363,6 @@ function SvgFile({ root, path }: { root: string; path: string }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  // iOS centers the title, Android puts it after the back button.
   title: { alignItems: Platform.OS === "ios" ? "center" : "flex-start" },
   titleName: { fontSize: 16, fontWeight: "600" },
   titleFolder: { fontSize: 12, fontFamily: mono },
@@ -398,7 +380,7 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     fontVariant: ["tabular-nums"],
   },
-  // A browser keeps a flex item as wide as its longest token unless it may shrink, so a long one ran off screen.
+  // FIXME: A browser keeps a flex item as wide as its longest token unless it may shrink, so a long one ran off screen.
   codeText: { flex: 1, minWidth: 0, fontFamily: mono, fontSize: 12, lineHeight: LINE_HEIGHT },
   comment: { fontStyle: "italic" },
   media: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 16 },

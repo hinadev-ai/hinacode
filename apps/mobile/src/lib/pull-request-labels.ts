@@ -16,7 +16,6 @@ export const statusGlyph = (theme: Palette): Record<PullRequestStatus, { name: I
 export const statusLabel = (status: PullRequestStatus) => copy(`mobile_pr_state_${status}`)
 
 export const checksLabel = (checks: ChecksStatus) => copy(`mobile_pr_checks_${checks}`)
-/** Only failing checks need the developer, so only they get a color, as on the desktop. */
 export const checksTone: Record<ChecksStatus, Tone> = { passing: "neutral", failing: "danger", pending: "neutral" }
 export const checksIcon: Record<ChecksStatus, IconName> = {
   passing: "Check",
@@ -36,7 +35,6 @@ export const reviewTone: Record<ReviewStatus, Tone> = {
   reviewRequired: "neutral",
 }
 
-/** "Pull request #123, Open, Checks failing" for screen readers. */
 export function pullRequestLabel(number: string, summary: PullRequestSummary | null) {
   const checks = summary?.checks ?? null
   return [

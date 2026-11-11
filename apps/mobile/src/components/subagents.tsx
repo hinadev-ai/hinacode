@@ -168,10 +168,6 @@ const segmentColor = (theme: Palette, status: SubagentStatus) =>
         ? theme.textMuted
         : theme.border
 
-/**
- * The thread's sub-agents as one line of the activity tray: how many run, how many failed and the newest one, expanding
- * to a row per sub-agent that opens its work.
- */
 export function SubagentActivity({
   threadId,
   subagents,

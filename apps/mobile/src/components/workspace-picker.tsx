@@ -1,35 +1,27 @@
+import { useAtomMount, useAtomSubscribe, useAtomValue } from "@effect/atom-react"
 import type { OpenPullRequest, Thread } from "@shared/domain.ts"
-import { useEffect, useState } from "react"
+import { Effect, Option } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
+import { useState } from "react"
 import { Pressable, StyleSheet, Text, TextInput } from "react-native"
 import { Icon } from "@/components/icon"
 import { OptionRow, Section, Sheet } from "@/components/sheet"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call, useConnection } from "@/lib/connection"
+import { request, type RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
+import { familyOf, beforeFirstHandshake, reportFailure, rpcFamily } from "@/lib/remote"
 import { refIcon } from "@/lib/workspace-ref"
-import { errorText } from "@/lib/error-text"
 import { useDrafts, type Workspace } from "@/stores/drafts"
 
 const CHIP_HEIGHT = 32
 const SUGGESTIONS_PER_GROUP = 20
 
-/** The branch checked out in the project root, which a thread without a picked workspace runs on. */
+const currentBranchAtom = rpcFamily("projects.currentBranch")
+
 function useCurrentBranch(projectId: string) {
-  const connected = useConnection((state) => state.status === "connected")
-  const [branch, setBranch] = useState("")
-  useEffect(() => {
-    if (!connected) return
-    let current = true
-    call("projects.currentBranch", { id: projectId }).then(
-      (next) => current && setBranch(next),
-      () => {},
-    )
-    return () => {
-      current = false
-    }
-  }, [connected, projectId])
-  return branch
+  const result = useAtomValue(currentBranchAtom({ id: projectId }))
+  return Option.getOrElse(AsyncResult.value(result), () => "")
 }
 
 interface Refs {
@@ -40,36 +32,44 @@ interface Refs {
 
 const noRefs: Refs = { branches: [], pullRequests: [], defaultBranch: null }
 
-/** Branches and open pull requests while the sheet is open, listed again once a fetch of `origin` settles. */
-function useRefs(projectId: string, open: boolean, onError: (message: string) => void) {
-  const [refs, setRefs] = useState(noRefs)
-  useEffect(() => {
-    if (!open) return
-    let current = true
-    const update = (patch: Partial<Refs>) => current && setRefs((previous) => ({ ...previous, ...patch }))
-    const fail = (cause: unknown) => current && onError(errorText(cause))
-    const listBranches = () =>
-      Promise.all([call("projects.branches", { id: projectId }), call("projects.defaultBranch", { id: projectId })]).then(
-        ([branches, defaultBranch]) => update({ branches, defaultBranch }),
-      )
-    listBranches().catch(fail)
-    // A repository without a GitHub remote has no pull requests to offer, which is not worth an error.
-    call("projects.pullRequests", { id: projectId }).then(
-      (pullRequests) => update({ pullRequests }),
-      () => {},
-    )
-    // Offline the fetch fails, and the branches already listed are still worth offering.
-    call("projects.fetch", { id: projectId })
-      .then(listBranches)
-      .catch(() => {})
-    return () => {
-      current = false
-    }
-  }, [open, projectId, onError])
-  return refs
+const branchesAtom = familyOf((projectId: string) =>
+  Atom.make((get) => {
+    if (beforeFirstHandshake(get)) return Effect.never
+    return Effect.all({
+      branches: request("projects.branches", { id: projectId }),
+      defaultBranch: request("projects.defaultBranch", { id: projectId }),
+    }, { concurrency: "unbounded" })
+  }),
+)
+
+const fetchOriginAtom = familyOf((projectId: string) =>
+  Atom.make((get) =>
+    request("projects.fetch", { id: projectId }).pipe(
+      Effect.tap(() => Effect.sync(() => get.refresh(branchesAtom(projectId)))),
+    ),
+  ),
+)
+
+const pullRequestsAtom = rpcFamily("projects.pullRequests")
+
+type Listed<A> = Atom.Atom<AsyncResult.AsyncResult<A, RpcError>>
+
+const closedBranchesAtom: Listed<{ readonly branches: readonly string[]; readonly defaultBranch: string }> = Atom.make(
+  AsyncResult.initial(),
+)
+const closedPullRequestsAtom: Listed<readonly OpenPullRequest[]> = Atom.make(AsyncResult.initial())
+const closedFetchAtom: Listed<unknown> = Atom.make(AsyncResult.initial())
+
+function useRefs(projectId: string, open: boolean, onError: (message: string) => void): Refs {
+  const branchesSource = open ? branchesAtom(projectId) : closedBranchesAtom
+  const listed = AsyncResult.value(useAtomValue(branchesSource))
+  const pullRequests = AsyncResult.value(useAtomValue(open ? pullRequestsAtom({ id: projectId }) : closedPullRequestsAtom))
+  useAtomMount<AsyncResult.AsyncResult<unknown, RpcError>>(open ? fetchOriginAtom(projectId) : closedFetchAtom)
+  useAtomSubscribe(branchesSource, reportFailure(onError))
+  const { branches, defaultBranch } = Option.getOrElse(listed, () => noRefs)
+  return { branches, defaultBranch, pullRequests: Option.getOrElse(pullRequests, () => noRefs.pullRequests) }
 }
 
-/** Pull requests, then branches, containing the query. A query that is exactly one of them shows them all. */
 function filterRefs({ branches, pullRequests }: Refs, query: string) {
   const trimmed = query.trim()
   const needle = trimmed.toLowerCase()
@@ -88,7 +88,6 @@ function filterRefs({ branches, pullRequests }: Refs, query: string) {
   }
 }
 
-/** Where the thread's first message will run: the picked workspace, else the branch checked out in the project root. */
 export function useWorkspace(thread: Thread) {
   const workspace = useDrafts((state) => state.workspaces[thread.id])
   const currentBranch = useCurrentBranch(thread.projectId)
@@ -97,10 +96,6 @@ export function useWorkspace(thread: Thread) {
   return { mode, ref, label: ref === "" ? copy("mobile_workspace_project_root") : ref }
 }
 
-/**
- * Where the first turn runs: the project root, switched to a branch or pull request on send, or a new
- * worktree forked from a branch or checked out from a pull request. Shown until the first message.
- */
 export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (message: string) => void }) {
   const theme = useTheme()
   const [open, setOpen] = useState(false)

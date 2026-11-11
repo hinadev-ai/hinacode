@@ -26,7 +26,6 @@ const behaviorCopy: Record<AccessBehavior, { label: string; hint: string }> = {
   unrestricted: { label: copy("access_full_muse"), hint: copy("access_hint_unrestricted") },
 }
 
-/** The access modes as one section of the composer's settings sheet, as the desktop keeps them in its model picker. */
 export function AccessModeSection({
   thread,
   model,

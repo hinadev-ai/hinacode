@@ -1,6 +1,9 @@
+import { useAtomMount, useAtomValue } from "@effect/atom-react"
 import type { PullRequest, PullRequestLink, Thread } from "@shared/domain.ts"
+import { Effect } from "effect"
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity"
 import { router } from "expo-router"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { Icon } from "@/components/icon"
 import { PressableScale, Reveal, Spinner } from "@/components/motion"
@@ -17,14 +20,14 @@ import { PullRequestState } from "@/components/pull-request-state"
 import { Button, EmptyState, Notice, Pill } from "@/components/ui"
 import { mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call, useConnection } from "@/lib/connection"
+import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { pullRequestReference } from "@/lib/overview"
-import { usePullRequests } from "@/stores/pull-requests"
+import { familyOf, beforeFirstHandshake, registry } from "@/lib/remote"
+import { loadPullRequestAtom, usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
-/** Reads the thread's links into the store, and the pull request GitHub has for its worktree branch. */
 async function readPullRequests(threadId: string, worktreeId: string | null) {
   const [error, branch] = await Promise.all([
     usePullRequests
@@ -34,38 +37,33 @@ async function readPullRequests(threadId: string, worktreeId: string | null) {
         () => null,
         (cause: unknown) => errorText(cause),
       ),
-    // Without gh, or without a pull request for the branch, there is simply no branch card.
     worktreeId === null ? null : call("worktrees.pullRequest", { id: worktreeId }).catch(() => null),
   ])
   return { error, branch }
 }
 
-/** Every pull request the thread has: the ones linked to it, plus the one GitHub has for its worktree branch. */
+const NOT_READ: { readonly error: string | null; readonly branch: PullRequest | null } = { error: null, branch: null }
+
+const threadPullRequestsAtom = familyOf((threadId: string, worktreeId: string | null) =>
+  Atom.make((get) => {
+    if (beforeFirstHandshake(get)) return Effect.never
+    return Effect.promise(() => readPullRequests(threadId, worktreeId))
+  }),
+)
+
 export function PullRequests({ thread }: { thread: Thread }) {
   const theme = useTheme()
-  const connected = useConnection((state) => state.status === "connected")
   const links = usePullRequests((state) => state.linksByThread[thread.id])
   const worktreeId = useThreads((state) => {
     const worktree = thread.worktreeId === null ? undefined : state.worktrees[thread.worktreeId]
     return worktree !== undefined && worktree.status !== "removed" ? worktree.id : null
   })
-  const [error, setError] = useState<string | null>(null)
-  const [branchPullRequest, setBranchPullRequest] = useState<PullRequest | null>(null)
+  const read = threadPullRequestsAtom(thread.id, worktreeId)
+  const { error: readError, branch: branchPullRequest } = AsyncResult.getOrElse(useAtomValue(read), () => NOT_READ)
+  const [createError, setCreateError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [creating, setCreating] = useState(false)
-
-  useEffect(() => {
-    if (!connected) return
-    let current = true
-    void readPullRequests(thread.id, worktreeId).then((result) => {
-      if (!current) return
-      setError(result.error)
-      setBranchPullRequest(result.branch)
-    })
-    return () => {
-      current = false
-    }
-  }, [connected, thread.id, worktreeId])
+  const error = createError ?? readError
 
   const linked = new Set((links ?? []).map((link) => link.url))
   const branchUrl = branchPullRequest !== null && !linked.has(branchPullRequest.url) ? branchPullRequest.url : null
@@ -74,25 +72,21 @@ export function PullRequests({ thread }: { thread: Thread }) {
     setRefreshing(true)
     const { loadPullRequest } = usePullRequests.getState()
     const urls = [...linked, ...(branchUrl === null ? [] : [branchUrl])]
-    try {
-      const [result] = await Promise.all([
-        readPullRequests(thread.id, worktreeId),
-        ...urls.map((url) => loadPullRequest(url, { force: true })),
-      ])
-      setError(result.error)
-      setBranchPullRequest(result.branch)
-    } finally {
-      setRefreshing(false)
-    }
+    setCreateError(null)
+    registry.refresh(read)
+    await Promise.all([
+      Effect.runPromise(AtomRegistry.getResult(registry, read, { suspendOnWaiting: true })),
+      ...urls.map((url) => loadPullRequest(url, { force: true })),
+    ]).finally(() => setRefreshing(false))
   }
 
   const create = async () => {
     setCreating(true)
-    setError(null)
+    setCreateError(null)
     try {
       await call("pullRequests.create", { threadId: thread.id })
     } catch (cause) {
-      setError(errorText(cause))
+      setCreateError(errorText(cause))
     }
     setCreating(false)
   }
@@ -152,7 +146,6 @@ function PullRequestCard({
   onPress,
 }: {
   url: string
-  /** Null for the branch's pull request that nobody linked. */
   link: PullRequestLink | null
   onPress: () => void
 }) {
@@ -160,9 +153,7 @@ function PullRequestCard({
   const remote = usePullRequests((state) => state.pullRequests[url])
   const pr = remote?.status === "ready" ? remote.value : null
 
-  useEffect(() => {
-    void usePullRequests.getState().loadPullRequest(url)
-  }, [url])
+  useAtomMount(loadPullRequestAtom(url))
 
   const watching = (link?.watch ?? null) !== null
   const failed = remote?.status === "error" ? remote.message : null
@@ -251,7 +242,6 @@ function PullRequestCard({
 }
 
 const styles = StyleSheet.create({
-  // Capped and centered like the pull request screen, so cards keep a readable width on an iPad.
   list: { padding: 16, gap: 12, flexGrow: 1, width: "100%", maxWidth: 792, alignSelf: "center" },
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 24 },
   card: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.xl, padding: 16, gap: 8 },

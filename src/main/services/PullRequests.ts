@@ -1,14 +1,7 @@
 import { randomUUID } from "node:crypto"
-import { Context, Effect, Layer, PubSub, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
-import {
-  allWatchEventKinds,
-  PullRequestLink,
-  PullRequestStatus,
-  PullRequestWatch,
-  type WatchEventKind,
-} from "../../shared/domain.ts"
-import { EventBus, layer as eventBusLayer } from "./EventBus.ts"
+import { allWatchEventKinds, PullRequestLink, PullRequestWatch, type WatchEventKind } from "../../shared/domain.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import { type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
@@ -30,21 +23,12 @@ const LinkRow = Schema.Struct({
   watch: Schema.NullOr(Schema.fromJsonString(PullRequestWatch)),
 })
 
-const UnsettledLink = Schema.Struct({ id: Schema.String, threadId: Schema.String, url: Schema.String })
-
-const ObservedStatus = Schema.Struct({ observedStatus: Schema.NullOr(PullRequestStatus) })
-
 export class PullRequests extends Context.Service<
   PullRequests,
   {
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<PullRequestLink>, PersistenceError>
     readonly listAll: Effect.Effect<ReadonlyArray<PullRequestLink>, PersistenceError>
     readonly watched: Effect.Effect<ReadonlyArray<PullRequestLink>, PersistenceError>
-    readonly unsettled: Effect.Effect<ReadonlyArray<typeof UnsettledLink.Type>, PersistenceError>
-    readonly observe: (
-      linkId: string,
-      status: PullRequestStatus,
-    ) => Effect.Effect<{ readonly previous: PullRequestStatus | null } | null, PersistenceError>
     readonly find: (linkId: string) => Effect.Effect<PullRequestLink | null, PersistenceError>
     readonly link: (
       threadId: string,
@@ -71,7 +55,6 @@ export class PullRequests extends Context.Service<
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const events = yield* Events
-  const bus = yield* EventBus
   const threads = yield* Threads
   const worktrees = yield* Worktrees
   const git = yield* Git
@@ -101,34 +84,6 @@ const make = Effect.gen(function* () {
     execute: (linkId) => sql`SELECT * FROM pull_request_link WHERE id = ${linkId}`,
   })
 
-  const findUnsettled = SqlSchema.findAll({
-    Request: Schema.Void,
-    Result: UnsettledLink,
-    execute: () => sql`
-      SELECT id, thread_id, url FROM pull_request_link
-      WHERE observed_status IS NULL OR observed_status != 'merged'
-    `,
-  })
-  const findObservedStatus = SqlSchema.findOneOption({
-    Request: Schema.String,
-    Result: ObservedStatus,
-    execute: (linkId) => sql`SELECT observed_status FROM pull_request_link WHERE id = ${linkId}`,
-  })
-
-  const observe = (linkId: string, status: PullRequestStatus) =>
-    sql
-      .withTransaction(
-        Effect.gen(function* () {
-          const current = yield* findObservedStatus(linkId)
-          if (current._tag === "None") return null
-          const previous = current.value.observedStatus
-          if (previous === status || previous === "merged") return null
-          yield* sql`UPDATE pull_request_link SET observed_status = ${status} WHERE id = ${linkId}`
-          return { previous }
-        }),
-      )
-      .pipe(Effect.mapError(persistence("pullRequests.observe")))
-
   const find = (linkId: string) =>
     findById(linkId).pipe(
       Effect.mapError(persistence("pullRequests.find")),
@@ -143,13 +98,10 @@ const make = Effect.gen(function* () {
       const url = yield* requirePullRequestUrl(raw)
       const row: PullRequestLink = { id: randomUUID(), threadId, url, createdAt: yield* nowIso, watch: null }
       const encoded = yield* encodeRow(row).pipe(Effect.mapError(persistence("pullRequests.link")))
-      const inserted = yield* sql`
-        INSERT INTO pull_request_link ${sql.insert(encoded)} ON CONFLICT (thread_id, url) DO NOTHING RETURNING id
-      `.pipe(Effect.mapError(persistence("pullRequests.link")))
+      yield* sql`INSERT INTO pull_request_link ${sql.insert(encoded)} ON CONFLICT (thread_id, url) DO NOTHING`.pipe(
+        Effect.mapError(persistence("pullRequests.link")),
+      )
       yield* broadcast(threadId)
-      if (inserted.length > 0) {
-        yield* PubSub.publish(bus, { topic: "pullRequest.linked" as const, threadId, linkId: row.id, url })
-      }
       return url
     })
 
@@ -235,8 +187,6 @@ const make = Effect.gen(function* () {
     list,
     listAll: findAll(undefined).pipe(Effect.mapError(persistence("pullRequests.listAll"))),
     watched: findWatched(undefined).pipe(Effect.mapError(persistence("pullRequests.watched"))),
-    unsettled: findUnsettled(undefined).pipe(Effect.mapError(persistence("pullRequests.unsettled"))),
-    observe,
     find,
     link,
     unlink,
@@ -247,4 +197,4 @@ const make = Effect.gen(function* () {
   })
 })
 
-export const layer = Layer.effect(PullRequests, make).pipe(Layer.provideMerge(eventBusLayer))
+export const layer = Layer.effect(PullRequests, make)

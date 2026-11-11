@@ -1,3 +1,4 @@
+import { useAtomMount, useAtomSubscribe, useAtomValue } from "@effect/atom-react"
 import {
   type AccountLimits,
   type AgentCommand,
@@ -11,6 +12,8 @@ import { isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@sha
 import { type AccountOption, accountOptions, formatResetIn } from "@shared/planLimits.ts"
 import { providerInfo } from "@shared/providers.ts"
 import { mentionableThreads } from "@shared/mentions.ts"
+import { Effect, Option } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
 import { useEffect, useRef, useState } from "react"
 import {
   Image,
@@ -38,16 +41,17 @@ import { HIT, mono, ProviderColors, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useThreadServer } from "@/hooks/use-server"
 import { useScheme, useTheme } from "@/hooks/use-theme"
-import { call, useConnection } from "@/lib/connection"
+import { call, request, type RpcError, useConnection } from "@/lib/connection"
 import { artifactSkillCommands } from "@/lib/artifact-skills"
 import { keepSkillWhole } from "@/lib/composer-text"
 import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { motion } from "@/lib/motion"
+import { familyOf, beforeFirstHandshake, reportFailure } from "@/lib/remote"
 import { pickImages, stageImage } from "@/lib/stage-images"
 import { type DraftImage, useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
-import { modelsOn, useModels } from "@/stores/models"
+import { modelsLoadAtom, modelsOn, useModels } from "@/stores/models"
 import { updateThread, useThreads } from "@/stores/threads"
 
 type OnError = (message: string) => void
@@ -62,10 +66,7 @@ const IMAGE_SIZE = 56
 const SUGGESTION_HEIGHT = 48
 const VISIBLE_SUGGESTIONS = 4.5
 
-/**
- * Where the caret is after an edit: right after the span that changed. react-native-web fires no selection
- * event while typing, so the edit itself is the only signal there.
- */
+// FIXME: react-native-web fires no selection event while typing, so the caret is derived from the edit.
 const caretAfterEdit = (before: string, after: string) => {
   let prefix = 0
   while (prefix < before.length && before[prefix] === after[prefix]) prefix++
@@ -75,7 +76,6 @@ const caretAfterEdit = (before: string, after: string) => {
   return after.length - suffix
 }
 
-/** Agent and workspace stay open to change until the first message, as on the desktop. */
 function useUnstarted(thread: Thread) {
   return useMessages((state) => {
     const history = state.byThread[thread.id]
@@ -83,44 +83,48 @@ function useUnstarted(thread: Thread) {
   })
 }
 
-/**
- * What the composer completes: HinaCode's artifact skills, the agent's `/commands` and `$skills`, the workspace's files
- * and the project's other threads. Commands are listed again when the agent, account or worktree changes, and after a turn. The file
- * list can run to megabytes in a large repository, so it is fetched only once an `@` asks for it, and again at the
- * next `@` after the workspace changed or a turn ran.
- */
+interface CompletionSource {
+  readonly threadId: string
+  readonly provider: ProviderId
+  readonly accountId: string | null
+  readonly worktreeId: string | null
+  readonly busy: boolean
+}
+
+type FilesSource = Pick<CompletionSource, "threadId" | "worktreeId" | "busy">
+
+const commandsAtom = familyOf((source: CompletionSource) =>
+  Atom.make((get) => {
+    if (beforeFirstHandshake(get)) return Effect.never
+    return request("commands.list", { threadId: source.threadId })
+  }),
+)
+
+const filesAtom = familyOf((source: FilesSource) =>
+  Atom.make(request("files.list", { threadId: source.threadId })).pipe(Atom.setIdleTTL("10 minutes")),
+)
+
+const noFilesAtom: Atom.Atom<AsyncResult.AsyncResult<readonly string[], RpcError>> = Atom.make(AsyncResult.initial())
+
 function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onError: OnError) {
-  const connected = useConnection((state) => state.status === "connected")
-  const [commands, setCommands] = useState<readonly AgentCommand[]>([])
-  const [files, setFiles] = useState<{ readonly key: string; readonly paths: readonly string[] } | null>(null)
   const byId = useThreads((state) => state.byId)
   const projects = useThreads((state) => state.projects)
-  const filesKey = `${thread.id}|${thread.worktreeId}|${busy}`
-  const filesFresh = files?.key === filesKey
-  useEffect(() => {
-    if (!connected) return
-    let current = true
-    call("commands.list", { threadId: thread.id }).then(
-      (next) => current && setCommands(next),
-      (cause: unknown) => current && onError(copy("mobile_composer_commands_failed", { message: errorText(cause) })),
-    )
-    return () => {
-      current = false
-    }
-  }, [connected, thread.id, thread.provider, thread.accountId, thread.worktreeId, busy, onError])
-  useEffect(() => {
-    if (!connected || !wantsFiles || filesFresh) return
-    let current = true
-    call("files.list", { threadId: thread.id }).then(
-      (paths) => current && setFiles({ key: filesKey, paths }),
-      (cause: unknown) => current && onError(copy("mobile_composer_files_failed", { message: errorText(cause) })),
-    )
-    return () => {
-      current = false
-    }
-  }, [connected, wantsFiles, filesFresh, filesKey, thread.id, onError])
+  const commands = commandsAtom({
+    threadId: thread.id,
+    provider: thread.provider,
+    accountId: thread.accountId,
+    worktreeId: thread.worktreeId,
+    busy,
+  })
+  const listedCommands = AsyncResult.getOrElse(useAtomValue(commands), (): readonly AgentCommand[] => [])
+  useAtomSubscribe(commands, reportFailure((message) => onError(copy("mobile_composer_commands_failed", { message }))))
+
+  const files = wantsFiles ? filesAtom({ threadId: thread.id, worktreeId: thread.worktreeId, busy }) : noFilesAtom
+  const listedFiles = Option.getOrElse(AsyncResult.value(useAtomValue(files)), (): readonly string[] => [])
+  useAtomSubscribe(files, reportFailure((message) => onError(copy("mobile_composer_files_failed", { message }))))
+
   const threads = mentionableThreads(thread, Object.values(byId), projects)
-  return { commands: [...artifactSkillCommands, ...commands], files: files?.paths ?? [], threads }
+  return { commands: [...artifactSkillCommands, ...listedCommands], files: listedFiles, threads }
 }
 
 export function Composer({ thread }: { thread: Thread }) {
@@ -132,7 +136,6 @@ export function Composer({ thread }: { thread: Thread }) {
   const connected = useConnection((state) => state.status === "connected")
   const [focused, setFocused] = useState(false)
   const [caret, setCaret] = useState(0)
-  /** Set only right after a pick, to put the caret after the inserted command; any edit or move hands it back. */
   const [placedCaret, setPlacedCaret] = useState<{ start: number } | undefined>()
   const inputRef = useRef<ComposerInputHandle>(null)
   const [error, setError] = useState<string | null>(null)
@@ -152,9 +155,8 @@ export function Composer({ thread }: { thread: Thread }) {
   }
   const hasDraft = text.trim() !== "" || images.length > 0
 
-  useEffect(() => {
-    if (connected) useModels.getState().load(server, thread.provider).catch((cause: unknown) => setError(errorText(cause)))
-  }, [connected, server, thread.provider])
+  useAtomMount(modelsLoadAtom(server, thread.provider))
+  useAtomSubscribe(modelsLoadAtom(server, thread.provider), reportFailure(setError))
 
   useEffect(() => {
     if (Platform.OS !== "android") return
@@ -172,15 +174,17 @@ export function Composer({ thread }: { thread: Thread }) {
   }
 
   const send = async () => {
+    // oxlint-disable-next-line hinacode/no-comments
     // A second tap can land before the re-render that empties the composer, so check the store, not `hasDraft`.
     const sent = useDrafts.getState().take(thread.id)
     const prompt = sent.text.trim()
     if (prompt === "" && sent.images.length === 0) return useDrafts.getState().restore(thread.id, sent)
     const attachments = sent.images.map((image) => image.attachment)
     const workspace = unstarted ? useDrafts.getState().workspaces[thread.id] : undefined
+    const sendingLabel = prompt || attachments.map(({ name }) => name).join(", ")
     setError(null)
     try {
-      await useDrafts.getState().trackSending(thread.id, prompt || attachments.map(({ name }) => name).join(", "), () =>
+      await useDrafts.getState().trackSending(thread.id, sendingLabel, () =>
         busy
           ? call(steers ? "threads.steer" : "threads.queue", { threadId: thread.id, text: prompt, attachments })
           : call("threads.send", {
@@ -196,8 +200,7 @@ export function Composer({ thread }: { thread: Thread }) {
     }
   }
 
-  const attachImages = async () => {
-    const assets = await pickImages()
+  const stageImages = async (assets: readonly Parameters<typeof stageImage>[1][]) => {
     if (assets.length === 0) return
     setError(null)
     setStaging(true)
@@ -208,6 +211,8 @@ export function Composer({ thread }: { thread: Thread }) {
     const failed = results.find((result) => result.status === "rejected")
     if (failed) setError(errorText(failed.reason))
   }
+
+  const attachImages = async () => stageImages(await pickImages())
 
   return (
     <View style={styles.composer}>
@@ -258,7 +263,7 @@ export function Composer({ thread }: { thread: Thread }) {
           onChangeText={(typed) => {
             const next = keepSkillWhole(text, typed, commands)
             const position = caretAfterEdit(text, next)
-            // A skill removed whole leaves the input's caret where the deletion was, so put it back at the start.
+            // FIXME: The native input leaves the caret where a whole-skill deletion happened, so it is put back explicitly.
             setPlacedCaret(next === typed ? undefined : { start: position })
             setCaret(position)
             useDrafts.getState().setText(thread.id, next)
@@ -269,6 +274,7 @@ export function Composer({ thread }: { thread: Thread }) {
           }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          onPasteImages={(pasted) => void stageImages(pasted)}
           placeholder={
             busy
               ? copy(steers ? "mobile_composer_steer_placeholder" : "mobile_composer_queue_placeholder")
@@ -288,7 +294,6 @@ export function Composer({ thread }: { thread: Thread }) {
             <SettingsChip thread={thread} onError={setError} />
           </View>
           <View style={styles.chips}>
-            {focused && <HideKeyboardButton onPress={() => inputRef.current?.blur()} />}
             <SendButton
               busy={busy}
               steers={steers}
@@ -305,21 +310,6 @@ export function Composer({ thread }: { thread: Thread }) {
         </Text>
       )}
     </View>
-  )
-}
-
-function HideKeyboardButton({ onPress }: { onPress: () => void }) {
-  const theme = useTheme()
-  return (
-    <Pressable
-      testID="composer-hide-keyboard"
-      accessibilityRole="button"
-      accessibilityLabel={copy("mobile_composer_hide_keyboard")}
-      onPress={onPress}
-      style={({ pressed }) => [styles.attach, pressed && [styles.pressed, { backgroundColor: theme.inkWash }]]}
-    >
-      <Icon name="ChevronDown" size={20} color={theme.textMuted} />
-    </Pressable>
   )
 }
 
@@ -370,9 +360,6 @@ function DraftImages({ images, onRemove }: { images: readonly DraftImage[]; onRe
   )
 }
 
-/**
- * Completions for the `/command`, `$skill` or `@mention` token at the caret. Picking one replaces the token.
- */
 function Suggestions({
   text,
   caret,
@@ -385,7 +372,7 @@ function Suggestions({
   onPick: (text: string, caret: number) => void
 }) {
   const theme = useTheme()
-  // The selection can arrive before the text it belongs to.
+  // FIXME: React Native can deliver the selection before the text it belongs to.
   const completion = completionAt(text, Math.min(caret, text.length))
   if (completion === null) return null
   const suggestions = suggestionsFor(completion, completions.commands, completions.files, completions.threads, [], [], [])
@@ -477,10 +464,6 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
   }
 }
 
-/**
- * Send, as the desktop's: a turn running with nothing typed turns it into Stop, and typing turns it back into Queue or
- * Steer. The halo shows whenever it has something to do.
- */
 function SendButton({
   busy,
   steers,
@@ -526,10 +509,6 @@ function SendButton({
 
 const spin = { from: { transform: [{ rotate: "0deg" }] }, to: { transform: [{ rotate: "360deg" }] } }
 
-/**
- * The desktop's `send-halo`: a holographic pearl under Perlin grain. React Native has no conic gradient,
- * so a linear one turns instead, once as a draft begins because a phone has no hover.
- */
 function SendHalo() {
   const theme = useTheme()
   const reduced = useReducedMotion()
@@ -560,7 +539,6 @@ function SendHalo() {
   )
 }
 
-/** The agent's listed models, plus the thread's own model when the agent no longer lists it. */
 export function useThreadModels(thread: Thread) {
   const server = useThreadServer(thread.id)?.id
   const listed = useModels((state) => modelsOn(state, server, thread.provider))
@@ -592,34 +570,33 @@ const effortLabel = (effort: string) => effortLabels[effort] ?? effort
 
 const DEFAULT_EFFORT = "default"
 
+const serverOptionsAtom = familyOf((server: string | null) =>
+  Atom.make((get) => {
+    if (beforeFirstHandshake(get)) return Effect.never
+    const on = server === null ? undefined : { server }
+    return Effect.all(
+      {
+        profiles: request("accounts.list", undefined, on),
+        limits: request("limits.list", undefined, on).pipe(Effect.orElseSucceed((): readonly AccountLimits[] => [])),
+        settings: request("settings.get", undefined, on),
+      },
+      { concurrency: "unbounded" },
+    )
+  }),
+)
+
 interface ServerOptions {
   readonly profiles: readonly AgentProfile[]
   readonly limits: readonly AccountLimits[]
   readonly settings: Pick<Settings, "defaultAccountName" | "modelPresets">
 }
 
-/**
- * The accounts, plan limits and model presets of the thread's server, read each time the sheet opens since
- * limits move with every turn. A server that cannot read its limits still lists its accounts.
- */
+const closedOptionsAtom: Atom.Atom<AsyncResult.AsyncResult<ServerOptions, RpcError>> = Atom.make(AsyncResult.initial())
+
 function useServerOptions(server: string | undefined, open: boolean, onError: OnError) {
-  const [options, setOptions] = useState<ServerOptions | null>(null)
-  useEffect(() => {
-    if (!open) return
-    let current = true
-    Promise.all([
-      call("accounts.list", undefined, { server }),
-      call("limits.list", undefined, { server }).catch((): readonly AccountLimits[] => []),
-      call("settings.get", undefined, { server }),
-    ]).then(
-      ([profiles, limits, settings]) => current && setOptions({ profiles, limits, settings }),
-      (cause: unknown) => current && onError(errorText(cause)),
-    )
-    return () => {
-      current = false
-    }
-  }, [server, open, onError])
-  return options
+  const options = open ? serverOptionsAtom(server ?? null) : closedOptionsAtom
+  useAtomSubscribe(options, reportFailure(onError))
+  return AsyncResult.getOrElse(useAtomValue(options), () => null)
 }
 
 const accountHint = (option: AccountOption, now: number) =>
@@ -639,7 +616,6 @@ const switchAccount = async (thread: Thread, accountId: string | null, onError: 
   }
 }
 
-/** The thread's agent, model and effort as words, for a chip or a row that opens `SettingsSheet`. */
 export function useSettingsSummary(thread: Thread) {
   const { models, current } = useThreadModels(thread)
   const modelLabel = models.find((model) => model.id === thread.model)?.label ?? thread.model
@@ -647,10 +623,6 @@ export function useSettingsSummary(thread: Thread) {
   return { providerLabel: providers[thread.provider].label, modelLabel, effortText: effort ? effortLabel(effort) : null }
 }
 
-/**
- * The one chip the narrow toolbar has room for: the agent's mark and the model name. It opens a
- * full-height sheet with every setting the desktop composer spreads across its toolbar.
- */
 function SettingsChip({ thread, onError }: { thread: Thread; onError: OnError }) {
   const theme = useTheme()
   const [open, setOpen] = useState(false)
@@ -684,10 +656,6 @@ function SettingsChip({ thread, onError }: { thread: Thread; onError: OnError })
   )
 }
 
-/**
- * Every setting the desktop composer spreads across its toolbar. The agent can change until the first message;
- * `isNew` says so before the thread's history has loaded, as for a draft the new-thread sheet just opened.
- */
 export function SettingsSheet({
   thread,
   open,
@@ -717,7 +685,6 @@ export function SettingsSheet({
           options.limits,
         )
 
-  // Effort and fast mode the next model cannot honor go back to its defaults.
   const changeModel = (id: string) => {
     const next = models.find((model) => model.id === id)
     if (next === undefined || next.id === thread.model) return
@@ -770,7 +737,6 @@ export function SettingsSheet({
                   label={account.name}
                   hint={accountHint(account, now)}
                   selected={account.id === thread.accountId}
-                  // The running turn is still writing the transcript the switch copies.
                   disabled={isThreadBusy(thread.status)}
                   onPress={() => account.id !== thread.accountId && void switchAccount(thread, account.id, onError)}
                 />
@@ -856,7 +822,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: LINE_HEIGHT,
     textAlignVertical: "top",
-    // react-native-web renders a fixed-height textarea; this lets the browser grow it with its text.
+    // FIXME: react-native-web renders a fixed-height textarea; field-sizing lets the browser grow it with its text.
     ...Platform.select({ web: { fieldSizing: "content", outlineStyle: "none" } as object }),
   },
   toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
@@ -900,7 +866,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
   },
-  // Wider than the button by √2, so its corners stay covered while it turns.
   haloSweep: {
     position: "absolute",
     width: SEND_SIZE * Math.SQRT2,

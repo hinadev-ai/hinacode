@@ -1,3 +1,4 @@
+import { useAtomMount } from "@effect/atom-react"
 import type { Compaction } from "@shared/agent.ts"
 import { collapsedParts } from "@shared/activityFold.ts"
 import { formatWorkDuration } from "@shared/workDuration.ts"
@@ -10,7 +11,7 @@ import {
 } from "@shared/domain.ts"
 import { isOwnPart } from "@shared/subagents.ts"
 import { useFocusEffect } from "expo-router"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { ArtifactCard } from "@/components/artifact-card"
 import { Composer } from "@/components/composer"
@@ -25,48 +26,37 @@ import { Button, Notice } from "@/components/ui"
 import { rise } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { motion } from "@/lib/motion"
 import { ApprovalCard, QuestionCard, UsageLimitCallout } from "@/components/request-cards"
-import { useMessages } from "@/stores/messages"
-import { useSubagents } from "@/stores/subagents"
+import { loadHistoryAtom, useMessages } from "@/stores/messages"
+import { loadSubagentsAtom } from "@/stores/subagents"
 import { useThreadRoot } from "@/stores/threads"
 
-/** Cards hold insets with `radius.sm` corners, so the card's own corners stay concentric with them. */
 const CARD_PADDING = 12
 const TRANSCRIPT_PADDING = 16
 
 type CopyKey = Parameters<typeof copy>[0]
 
-// An inverted list flips each cell with `scaleY: -1`, so a message rises from a negative `y`.
 const risesInFlippedCell = { ...rise.initial, y: -rise.initial.y }
 
 export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
   const theme = useTheme()
-  const connected = useConnection((state) => state.status === "connected")
   const history = useMessages((state) => state.byThread[thread.id])
   const root = useThreadRoot(thread)
 
-  useFocusEffect(
-    useCallback(() => {
-      if (active) return useMessages.getState().watch(thread.id)
-    }, [active, thread.id]),
-  )
-  useEffect(() => {
-    if (connected && history === undefined) void useMessages.getState().load(thread.id)
-  }, [connected, history, thread.id])
-  useEffect(() => {
-    if (connected) void useSubagents.getState().load(thread.id).catch(() => {})
-  }, [connected, thread.id])
+  useFocusEffect(() => {
+    if (active) return useMessages.getState().watch(thread.id)
+  })
+  useAtomMount(loadHistoryAtom(thread.id))
+  useAtomMount(loadSubagentsAtom(thread.id))
 
   const messages = history?.status === "ready" ? history.messages : undefined
   const [openedNewest, setOpenedNewest] = useState<string | null>()
   if (messages !== undefined && openedNewest === undefined) setOpenedNewest(messages.at(-1)?.id ?? null)
   const openedAt = messages?.findIndex((message) => message.id === openedNewest) ?? -1
-  const newestFirst = useMemo(() => (messages === undefined ? [] : [...messages].reverse()), [messages])
+  const newestFirst = messages === undefined ? [] : [...messages].reverse()
   const arrivedAfterOpening = (newestFirstIndex: number) => newestFirst.length - 1 - newestFirstIndex > openedAt
-  // With Liquid Glass the composer floats over the transcript, which pads itself clear of the dock's height.
   const [dockHeight, setDockHeight] = useState(0)
   const hasRequests =
     thread.usageLimit !== null ||
@@ -99,15 +89,12 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
               <MessageView message={item} root={root} />
             </motion.View>
           )}
-          // A rendered reply can hold hundreds of views, so the list mounts a screenful first and the rest in small
-          // batches instead of ten whole messages in one frame.
           initialNumToRender={4}
           maxToRenderPerBatch={2}
           windowSize={9}
           contentContainerStyle={[styles.transcript, liquidGlass && { paddingTop: dockHeight + 16 }]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          // Inverted, so the end is the top: scrolling up to the oldest message reads the page before it.
           onEndReached={() => void useMessages.getState().loadEarlier(thread.id)}
           onEndReachedThreshold={1}
           ListFooterComponent={
@@ -182,7 +169,6 @@ export function AssistantMessage({
   const streaming = completedAt === null
   const durationMs = completedAt === null ? NaN : Date.parse(completedAt) - Date.parse(message.createdAt)
   const folded = foldsActivity && durationMs >= 0
-  // A steer sent before the agent said anything closes an empty assistant message.
   if (!streaming && parts.length === 0) return null
   const writingIndex = streaming && parts.at(-1)?.type === "text" ? parts.length - 1 : undefined
   const collapsed = new Set(collapsedParts(parts.map((part, index) => ({ part, index }))).map(({ index }) => index))
@@ -221,10 +207,6 @@ export function AssistantMessage({
   )
 }
 
-/**
- * Reply text appears whole once the agent has finished it, instead of word by word. Only text that finishes while
- * on screen fades in, so opening a thread or scrolling back does not replay it.
- */
 function ReplyText({
   text,
   done,
@@ -245,7 +227,6 @@ function ReplyText({
   )
 }
 
-/** Elapsed time of a finished response. With `onToggle`, it also shows and hides the response's activity. */
 function WorkedFor({
   durationMs,
   expanded,

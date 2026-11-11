@@ -7,7 +7,6 @@ import { Colors } from "@/constants/theme"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { motion } from "@/lib/motion"
 
-/** Shrinks a little while pressed, like the desktop's `pressable` utility. Reduce motion keeps it still. */
 export function PressableScale(props: Omit<PressableProps, "style"> & { style?: StyleProp<ViewStyle> }) {
   return <motion.Pressable {...props} whileTap={{ scale: PRESSED_SCALE }} transition={pressSpring} />
 }
@@ -17,7 +16,6 @@ const pulse = {
   dark: { "50%": { color: Colors.dark.text } },
 }
 
-/** The desktop's `animate-pulse` line, for something still in progress. Reduce motion holds it still. */
 export function Pulse({ text, style }: { text: string; style?: StyleProp<TextStyle> }) {
   const theme = useTheme()
   const scheme = useScheme()
@@ -42,7 +40,6 @@ export function Pulse({ text, style }: { text: string; style?: StyleProp<TextSty
 
 const spin = { from: { transform: [{ rotate: "0deg" }] }, to: { transform: [{ rotate: "360deg" }] } }
 
-/** The desktop's 0.6 s loader. Reduce motion shows it still. */
 export function Spinner({ size = 16, color }: { size?: number; color: string }) {
   const reduced = useReducedMotion()
   return (
@@ -69,10 +66,6 @@ const ring = {
   to: { transform: [{ scale: 2.5 }], opacity: 0 },
 }
 
-/**
- * Rings out from its parent three times and then rests, like the desktop's `animate-attention`, so a thread
- * that starts waiting catches the eye of someone looking at another one. Reduce motion leaves it out.
- */
 export function AttentionRing({ color }: { color: string }) {
   const reduced = useReducedMotion()
   if (reduced) return null
@@ -94,7 +87,6 @@ export function AttentionRing({ color }: { color: string }) {
   )
 }
 
-/** Loading indicators wait before they fade in, so a fast load never flashes one. */
 export function Reveal({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   return (
     <motion.View
@@ -108,7 +100,6 @@ export function Reveal({ children, style }: { children: ReactNode; style?: Style
   )
 }
 
-/** Fades content in once, when it mounts. Opacity only, so it stays under reduce motion. */
 export function FadeIn({
   children,
   style,
@@ -130,10 +121,6 @@ export function FadeIn({
   )
 }
 
-/**
- * Cross-fades between two icons, shrinking the one that leaves, like the desktop's send and stop button.
- * Reduce motion keeps the cross-fade and drops the scale.
- */
 export function IconSwap({ showSecond, first, second }: { showSecond: boolean; first: ReactNode; second: ReactNode }) {
   const reduced = useReducedMotion()
   const layer = (visible: boolean) => ({ opacity: visible ? 1 : 0, scale: visible || reduced ? 1 : 0.25 })
@@ -150,7 +137,6 @@ export function IconSwap({ showSecond, first, second }: { showSecond: boolean; f
   )
 }
 
-/** Turns a disclosure chevron a quarter turn when it opens. */
 export function Rotate({ turned, children }: { turned: boolean; children: ReactNode }) {
   return (
     <motion.View animate={{ rotate: turned ? 90 : 0 }} transition={{ duration: duration.fast }}>

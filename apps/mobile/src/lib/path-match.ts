@@ -1,6 +1,5 @@
 export interface PathMatch {
   readonly path: string
-  /** Indices into `path` of the characters the query matched, ascending. */
   readonly positions: readonly number[]
   readonly score: number
 }
@@ -18,10 +17,6 @@ const isBoundary = (text: string, index: number) => {
   return before === before.toLowerCase() && char !== char.toLowerCase()
 }
 
-/**
- * The best placement of `query` as a subsequence of `text`, trying every start of its first character and
- * matching the rest greedily. Earlier, consecutive and word-start matches score higher.
- */
 function subsequence(text: string, lower: string, query: string) {
   let best: { positions: number[]; score: number } | null = null
   for (let start = lower.indexOf(query[0]); start !== -1; start = lower.indexOf(query[0], start + 1)) {
@@ -59,11 +54,6 @@ function matchPath(path: string, query: string): PathMatch | null {
   return inPath === null ? null : { path, positions: inPath.positions, score: inPath.score }
 }
 
-/**
- * Ranks `paths` for a "go to file" query: the query's characters must appear in order, case-insensitively.
- * A hit inside the file name ranks above one that needs the folders. Whitespace in the query is ignored.
- * Returns at most 50 matches, best first; ties go to the shorter path.
- */
 export function matchPaths(paths: readonly string[], query: string): PathMatch[] {
   const needle = query.replace(/\s+/g, "").toLowerCase()
   if (needle === "") return []
@@ -78,14 +68,9 @@ export function matchPaths(paths: readonly string[], query: string): PathMatch[]
 
 export interface LineSnippet {
   readonly text: string
-  /** The first case-insensitive occurrence of the query in `text`, as `[start, end)`. */
   readonly match: { readonly start: number; readonly end: number } | null
 }
 
-/**
- * A content search hit's line without its indent. When the match ends past `room` characters, where a row would
- * truncate it, the line starts `lead` characters before the match instead.
- */
 export function lineSnippet(line: string, query: string, { lead = 24, room = 64 } = {}): LineSnippet {
   const text = line.trimStart()
   const lower = text.toLowerCase()

@@ -4,7 +4,6 @@ import { usePreferences } from "@/stores/preferences"
 
 export type Scheme = "light" | "dark"
 
-/** The phone's appearance setting, or the system's when it is set to follow it. */
 export function useScheme(): Scheme {
   const system = useColorScheme()
   const appearance = usePreferences((state) => state.appearance)

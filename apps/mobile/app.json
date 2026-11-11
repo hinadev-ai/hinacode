@@ -31,6 +31,20 @@
     "plugins": [
       "expo-router",
       [
+        "expo-font",
+        {
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "JetBrains Mono",
+                "path": "./assets/fonts/JetBrainsMono.ttf",
+                "fontDefinitions": [{ "weight": 400 }, { "weight": 600 }, { "weight": 700 }]
+              }
+            ]
+          }
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#f7f7f2",

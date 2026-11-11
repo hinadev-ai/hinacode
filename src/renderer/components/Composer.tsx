@@ -49,6 +49,8 @@ import { useMessages } from "../stores/messages.ts"
 import { useTerminals } from "../stores/terminals.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
+import { useImageEditor } from "../stores/imageEditor.ts"
+import { useThreadEnvironment } from "../lib/environments.ts"
 import {
   ComposerActions,
   ComposerAttachButton,
@@ -125,6 +127,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null && !isSidechat
   })
   const isChat = useIsChat(thread.projectId)
+  const environment = useThreadEnvironment(thread.id)
   const [error, setError] = useState<string | null>(null)
   const [isSending, startSending] = useTransition()
   const [isStaging, startStaging] = useTransition()
@@ -315,6 +318,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                     <PendingAttachment
                       attachment={attachment}
                       onRemove={() => useDrafts.getState().removeAttachment(thread.id, attachment.id)}
+                      onEdit={() => useImageEditor.getState().open(thread.id, attachment, environment)}
                     />
                   </li>
                 ))}

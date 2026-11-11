@@ -8,10 +8,6 @@ import { ScopeChips, SearchResults, type SearchScope } from "@/components/thread
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 
-/**
- * Threads and messages that match. On iOS the search tab focuses the header's search bar as it opens. Elsewhere the
- * field sits at the top, where the keyboard cannot cover it.
- */
 export default function SearchScreen() {
   const theme = useTheme()
   const [query, setQuery] = useState("")

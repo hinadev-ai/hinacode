@@ -2,7 +2,6 @@ const fs = require("node:fs")
 const path = require("node:path")
 const { withDangerousMod } = require("expo/config-plugins")
 
-/** Material 3's navigation bar is 80dp tall with 12dp above the icons and 16dp under the labels; ours is 64dp. */
 const dimens = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
   <dimen name="m3_bottom_nav_min_height">64dp</dimen>

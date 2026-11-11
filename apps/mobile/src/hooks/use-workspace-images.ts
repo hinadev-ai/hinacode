@@ -1,26 +1,24 @@
 import { Lexer, type Token, type Tokens } from "marked"
-import { useEffect, useMemo, useState } from "react"
-import { call } from "@/lib/connection"
+import { useAtomValue } from "@effect/atom-react"
+import { AsyncResult, Atom } from "effect/reactivity"
 import { resolveImageSource } from "@/lib/markdown-paths"
+import { familyOf, rpcFamily } from "@/lib/remote"
 
-const CACHE_SIZE = 24
+const previewRead = rpcFamily("fs.preview")
 
-/** Data URLs of workspace images by `root + "\0" + path`, oldest first. */
-const previews = new Map<string, string>()
+const preview = familyOf((root: string, path: string) => previewRead({ root, path }).pipe(Atom.setIdleTTL("5 minutes")))
 
-function rememberPreview(key: string, dataUrl: string) {
-  previews.delete(key)
-  previews.set(key, dataUrl)
-  const oldest = previews.keys().next().value
-  if (previews.size > CACHE_SIZE && oldest !== undefined) previews.delete(oldest)
-}
+const loadedPreviews = familyOf((images: readonly (readonly [root: string, path: string])[]) =>
+  Atom.make((get) =>
+    images.map(([root, path]) => AsyncResult.getOrElse(AsyncResult.map(get(preview(root, path)), (found) => found.dataUrl), () => undefined)),
+  ),
+)
 
 interface WorkspaceImage {
   readonly raw: string
   readonly alt: string
   readonly root: string
   readonly path: string
-  readonly key: string
 }
 
 function imageTokens(tokens: readonly Token[]): Tokens.Image[] {
@@ -41,40 +39,17 @@ function workspaceImages(text: string, root: string | null, folder: string | und
   return imageTokens(Lexer.lex(text, { gfm: true })).flatMap((image) => {
     const source = resolveImageSource(image.href, root, folder)
     if (source.kind !== "file") return []
-    const key = `${source.root}\0${source.path}`
-    return [{ raw: image.raw, alt: image.text, root: source.root, path: source.path, key }]
+    return [{ raw: image.raw, alt: image.text, root: source.root, path: source.path }]
   })
 }
 
 const escapeAlt = (alt: string) => alt.replace(/[[\]\\]/g, "\\$&")
 
-/**
- * `text` with each image that points into the workspace swapped for its data URL once `fs.preview` returns it,
- * since the phone cannot load the desktop's files by path. URLs and images outside `root` stay as written.
- */
 export function useWorkspaceImages(text: string, root: string | null, folder: string | undefined): string {
-  const images = useMemo(() => workspaceImages(text, root, folder), [text, root, folder])
-  const [loaded, setLoaded] = useState<ReadonlyMap<string, string>>(new Map())
-
-  useEffect(() => {
-    let live = true
-    for (const image of images) {
-      if (previews.has(image.key)) continue
-      call("fs.preview", { root: image.root, path: image.path }).then(
-        ({ dataUrl }) => {
-          rememberPreview(image.key, dataUrl)
-          if (live) setLoaded((current) => new Map(current).set(image.key, dataUrl))
-        },
-        () => {},
-      )
-    }
-    return () => {
-      live = false
-    }
-  }, [images])
-
-  return images.reduce((markdown, image) => {
-    const dataUrl = loaded.get(image.key) ?? previews.get(image.key)
+  const images = workspaceImages(text, root, folder)
+  const dataUrls = useAtomValue(loadedPreviews(images.map((image) => [image.root, image.path] as const)))
+  return images.reduce((markdown, image, index) => {
+    const dataUrl = dataUrls[index]
     return dataUrl === undefined ? markdown : markdown.split(image.raw).join(`![${escapeAlt(image.alt)}](${dataUrl})`)
   }, text)
 }

@@ -1,6 +1,9 @@
+import { useAtomValue } from "@effect/atom-react"
 import type { Artifact, ArtifactKind } from "@shared/artifact.ts"
+import { Cause, Effect, Option } from "effect"
+import { AsyncResult, AtomRegistry } from "effect/reactivity"
 import { router, useFocusEffect } from "expo-router"
-import { type Dispatch, type SetStateAction, useCallback, useEffect, useState } from "react"
+import { useState } from "react"
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { GroupedCard } from "@/components/grouped-card"
 import { Icon, type IconName } from "@/components/icon"
@@ -9,10 +12,11 @@ import { EmptyState, Notice } from "@/components/ui"
 import { HIT, READABLE_WIDTH } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useTheme } from "@/hooks/use-theme"
-import { call, onEvent, useConnection } from "@/lib/connection"
+import { type RpcError, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { relativeTime } from "@/lib/relative-time"
+import { registry, rpcFamily } from "@/lib/remote"
 import { useThreads } from "@/stores/threads"
 
 type Loaded =
@@ -37,47 +41,35 @@ const newestFirst = (artifacts: readonly Artifact[]) =>
 const shown = (artifacts: readonly Artifact[], threadId: string | undefined) =>
   threadId === undefined ? artifacts : artifacts.filter((artifact) => artifact.threadId === threadId)
 
-/** Reads every server's artifacts. A failed read keeps the list already shown. */
-async function loadInto(setState: Dispatch<SetStateAction<Loaded>>) {
-  try {
-    const artifacts = newestFirst(await call("artifacts.list", undefined))
-    setState({ status: "ready", artifacts })
-  } catch (cause) {
-    setState((current) => (current.status === "ready" ? current : { status: "error", message: errorText(cause) }))
-  }
+const artifactsAtom = rpcFamily("artifacts.list", {
+  refreshOn: (event) => event.type === "artifact.updated" || event.type === "artifact.removed",
+})
+
+const loaded = (result: AsyncResult.AsyncResult<readonly Artifact[], RpcError>): Loaded => {
+  const artifacts = AsyncResult.value(result)
+  if (Option.isSome(artifacts)) return { status: "ready", artifacts: newestFirst(artifacts.value) }
+  if (AsyncResult.isFailure(result)) return { status: "error", message: errorText(Cause.squash(result.cause)) }
+  return { status: "loading" }
 }
 
-/**
- * The artifacts the paired desktops published, newest first, or only `threadId`'s. Documents open here; pages and
- * whiteboards open on the desktop.
- */
 export function ArtifactList({ threadId }: { threadId?: string }) {
   const theme = useTheme()
   const connected = useConnection((state) => state.status === "connected")
-  const [state, setState] = useState<Loaded>({ status: "loading" })
+  const read = artifactsAtom(undefined)
+  const result = useAtomValue(read)
+  const state = loaded(result)
   const [refreshing, setRefreshing] = useState(false)
 
-  useFocusEffect(
-    useCallback(() => {
-      if (connected) void loadInto(setState)
-    }, [connected]),
-  )
+  useFocusEffect(() => {
+    if (AsyncResult.isNotInitial(registry.get(read))) registry.refresh(read)
+  })
 
-  useEffect(
-    () =>
-      onEvent((event) => {
-        if (event.type === "artifact.updated" || event.type === "artifact.removed") void loadInto(setState)
-      }),
-    [],
-  )
-
-  const refresh = async () => {
+  const refresh = () => {
     setRefreshing(true)
-    try {
-      await loadInto(setState)
-    } finally {
-      setRefreshing(false)
-    }
+    registry.refresh(read)
+    return Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, read, { suspendOnWaiting: true }))).finally(
+      () => setRefreshing(false),
+    )
   }
 
   return (

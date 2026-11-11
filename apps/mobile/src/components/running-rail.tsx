@@ -12,7 +12,6 @@ import { useThreadBranchName, useThreads } from "@/stores/threads"
 
 const CARD_WIDTH = 200
 
-/** Running threads side by side, each with how long it has run. */
 export function RunningRail({ threads }: { threads: readonly Thread[] }) {
   const theme = useTheme()
   return (
@@ -70,7 +69,6 @@ function RunningCard({ thread }: { thread: Thread }) {
 const styles = StyleSheet.create({
   section: { gap: 12, paddingTop: 20 },
   heading: { fontSize: 17, fontWeight: "600", paddingHorizontal: 8 },
-  /** Runs past the list's side padding, so cards scroll in from the screen edge. */
   bleed: { marginHorizontal: -8 },
   rail: { gap: 10, paddingHorizontal: 16 },
   card: { width: CARD_WIDTH, gap: 8, padding: 14, borderWidth: 1, borderRadius: radius.lg },

@@ -15,6 +15,7 @@ class ComposerEditorModule : Module() {
         "onEditorBlur",
         "onEditorContentSize",
         "onEditorFormat",
+        "onEditorPasteImages",
       )
 
       Prop("document") { view: ComposerEditorView, json: String -> view.setDocument(json) }

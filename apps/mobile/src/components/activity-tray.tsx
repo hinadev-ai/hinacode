@@ -12,10 +12,6 @@ import { useThreadSubagents } from "@/stores/subagents"
 
 type Line = "subagents" | "todos"
 
-/**
- * What the agent is doing beside the chat, on top of the composer as on the desktop: a line for its sub-agents and a
- * line for its task list, at most two lines until one is opened.
- */
 export function ActivityTray({ thread, messages }: { thread: Thread; messages: readonly Message[] | undefined }) {
   const theme = useTheme()
   const [open, setOpen] = useState<Line | null>(null)

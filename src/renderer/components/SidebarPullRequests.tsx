@@ -99,7 +99,13 @@ export function SidebarPullRequests({
           </HoverCardContent>
         </HoverCard>
       )}
-      <MergeDialog oldestFirst={merging} environment={environment} open={mergeOpen} onOpenChange={setMergeOpen} />
+      <MergeDialog
+        oldestFirst={merging}
+        environment={environment}
+        open={mergeOpen}
+        onOpenChange={setMergeOpen}
+        onStopped={(unmerged) => startTransition(() => setMerging(unmerged))}
+      />
     </>
   )
 }
@@ -202,11 +208,13 @@ function MergeDialog({
   environment,
   open,
   onOpenChange,
+  onStopped,
 }: {
   oldestFirst: ReadonlyArray<PullRequest>
   environment: EnvironmentId
   open: boolean
   onOpenChange: (open: boolean) => void
+  onStopped: (unmerged: ReadonlyArray<PullRequest>) => void
 }) {
   const mergeMethods = mergeMethodsFor(
     oldestFirst.some((pullRequest) => codeHostOfUrl(pullRequest.url) === "gitlab") ? "gitlab" : "github",
@@ -221,11 +229,12 @@ function MergeDialog({
   const confirm = () =>
     startMerge(async () => {
       setError(null)
-      for (const pullRequest of oldestFirst) {
+      for (const [index, pullRequest] of oldestFirst.entries()) {
         try {
           await callPromise("github.merge", { url: pullRequest.url, method }, { environment })
         } catch (cause) {
           setError(m.sidebar_pr_merge_failed({ number: numberLabel(pullRequest), message: errorMessage(cause) }))
+          onStopped(oldestFirst.slice(index))
           return
         }
       }

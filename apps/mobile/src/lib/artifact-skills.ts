@@ -10,7 +10,6 @@ const texts = {
   },
 } satisfies Record<ArtifactSkill, { description: string; hint: string }>
 
-/** HinaCode's own commands. The server expands them on every agent, so the composer lists them without asking it. */
 export const artifactSkillCommands: readonly AgentCommand[] = ARTIFACT_SKILLS.map((name) => ({
   trigger: "/",
   name,

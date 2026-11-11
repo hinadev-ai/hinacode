@@ -25,10 +25,41 @@ import { createThread } from "@/lib/start-thread"
 import { useDrafts } from "@/stores/drafts"
 import { useThreads } from "@/stores/threads"
 
+const addProject = async ({
+  source,
+  name,
+  repository,
+  cloneFolder,
+  serverId,
+}: {
+  source: string
+  name: string
+  repository: ReturnType<typeof parseGitHubRepository>
+  cloneFolder: string
+  serverId: string | undefined
+}) =>
+  repository === null
+    ? await call(
+        "projects.create",
+        { name: name.trim() || baseName(source), rootPath: source.trim(), setupScript: null },
+        { server: serverId },
+      )
+    : await call(
+        "projects.clone",
+        {
+          cloneId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+          repository,
+          rootPath: cloneFolder.trim(),
+          name: name.trim() || repository.name,
+          setupScript: null,
+        },
+        { server: serverId },
+      )
+
 export default function AddProjectScreen() {
   const theme = useTheme()
   const { draft } = useLocalSearchParams<{ draft?: string }>()
-  // KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
+  // FIXME: KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
   const headerHeight = useHeaderHeight()
   const servers = useConnection((state) => state.servers)
   const [chosen, setChosen] = useState<string | null>(null)
@@ -41,7 +72,6 @@ export default function AddProjectScreen() {
   const [name, setName] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // A project the desktop added before its first thread failed, so trying again only retries the thread.
   const added = useRef<Project | null>(null)
 
   const repository = parseGitHubRepository(source)
@@ -53,26 +83,9 @@ export default function AddProjectScreen() {
     if (!ready || busy) return
     setBusy(true)
     setError(null)
+    const pendingProject = added.current ?? addProject({ source, name, repository, cloneFolder, serverId: server?.id })
     try {
-      const project =
-        added.current ??
-        (repository === null
-          ? await call(
-              "projects.create",
-              { name: name.trim() || baseName(source), rootPath: source.trim(), setupScript: null },
-              { server: server?.id },
-            )
-          : await call(
-              "projects.clone",
-              {
-                cloneId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-                repository,
-                rootPath: cloneFolder.trim(),
-                name: name.trim() || repository.name,
-                setupScript: null,
-              },
-              { server: server?.id },
-            ))
+      const project = await pendingProject
       added.current = project
       useThreads.getState().addProject(project)
       const thread = await createThread(project)
@@ -80,9 +93,8 @@ export default function AddProjectScreen() {
       router.replace({ pathname: "/thread/[id]", params: { id: thread.id } })
     } catch (cause) {
       setError(errorText(cause))
-    } finally {
-      setBusy(false)
     }
+    setBusy(false)
   }
 
   return (

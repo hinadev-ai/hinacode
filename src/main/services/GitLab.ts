@@ -21,7 +21,7 @@ import {
 } from "../../shared/codeHost.ts"
 import { findBinary } from "../agents/binary.ts"
 import { Events } from "./Events.ts"
-import { CommandError, LONG_TIMEOUT, makeExec, type RunOptions } from "./Git.ts"
+import { CommandError, COMMAND_NOT_FOUND_EXIT_CODE, LONG_TIMEOUT, makeExec, type RunOptions } from "./Git.ts"
 import { parseApiResponse, PullRequestUrlInvalidError } from "./GitHub.ts"
 
 export class GitLabCliMissingError extends Schema.TaggedError<GitLabCliMissingError>()("GitLabCliMissingError", {}) {
@@ -270,7 +270,7 @@ export const toPullRequestDetail = (reads: MergeRequestDetailReads): PullRequest
 const GLAB_ERROR = /^glab: (?:(.*\S)\s+\()?HTTP (\d+)\)?/m
 
 export const gitLabErrorOf = (hostname: string, error: CommandError): GitLabError => {
-  if (error.exitCode === -1) return new GitLabCliMissingError()
+  if (error.exitCode === COMMAND_NOT_FOUND_EXIT_CODE) return new GitLabCliMissingError()
   const http = GLAB_ERROR.exec(error.stderr)
   if (!http) return error
   const [, detail, status] = http

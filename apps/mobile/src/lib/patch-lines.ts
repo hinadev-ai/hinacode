@@ -1,4 +1,3 @@
-/** One row of a diff. Hunk headers and notes such as "No newline at end of file" have no line numbers. */
 export interface PatchLine {
   readonly kind: "hunk" | "note" | "context" | "addition" | "deletion"
   readonly text: string
@@ -8,7 +7,6 @@ export interface PatchLine {
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/
 
-/** One file's section of a unified diff as numbered lines, from its first hunk on. */
 export function patchLines(patch: string): PatchLine[] {
   const lines: PatchLine[] = []
   let oldLine = 0

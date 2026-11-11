@@ -1,19 +1,19 @@
+import { Effect } from "effect"
+import { Atom } from "effect/reactivity"
 import { create } from "zustand"
 import type { ModelInfo, ProviderId } from "@shared/agent.ts"
 import { call } from "@/lib/connection"
+import { familyOf, beforeFirstHandshake } from "@/lib/remote"
 
 type ByProvider = Readonly<Partial<Record<ProviderId, readonly ModelInfo[]>>>
 
 interface ModelsState {
-  /** By server id, since each machine has its own agents and accounts. `""` is a call that named no server. */
   readonly byServer: Readonly<Record<string, ByProvider>>
-  /** Fetches a provider's models on `server` once; rejects when the server could not list them. */
   readonly load: (server: string | undefined, provider: ProviderId) => Promise<void>
 }
 
 const inFlight = new Map<string, Promise<void>>()
 
-/** The models each agent offers on each server, cached for the life of the app like the desktop's `modelsAtom`. */
 export const useModels = create<ModelsState>()((set, get) => ({
   byServer: {},
   load: (server, provider) => {
@@ -36,3 +36,15 @@ export const useModels = create<ModelsState>()((set, get) => ({
 
 export const modelsOn = (state: ModelsState, server: string | undefined, provider: ProviderId) =>
   state.byServer[server ?? ""]?.[provider]
+
+const loadAtom = familyOf((server: string | null, provider: ProviderId) =>
+  Atom.make((get) => {
+    if (beforeFirstHandshake(get)) return Effect.never
+    return Effect.tryPromise({
+      try: () => useModels.getState().load(server ?? undefined, provider),
+      catch: (cause) => cause,
+    })
+  }),
+)
+
+export const modelsLoadAtom = (server: string | undefined, provider: ProviderId) => loadAtom(server ?? null, provider)

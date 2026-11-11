@@ -1,7 +1,6 @@
 import type { AgentEvent } from "@shared/agent.ts"
 import { copy } from "@/lib/copy"
 
-/** Matches the keys of the notification preferences, so each kind can be turned off on its own. */
 export type AlertKind = "completed" | "needsInput" | "failed"
 
 export interface ThreadAlert {
@@ -9,7 +8,6 @@ export interface ThreadAlert {
   readonly body: string
 }
 
-/** The notice an agent event raises, the same table as the desktop's. Most events raise none. */
 export function threadAlert(event: AgentEvent): ThreadAlert | null {
   switch (event.type) {
     case "turn_completed":

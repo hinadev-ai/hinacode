@@ -9,10 +9,8 @@ import { useTheme } from "@/hooks/use-theme"
 const ROW_PADDING = 16
 const TILE = 30
 const ROW_GAP = 12
-/** Hairlines start after the icon tile, under the label. */
 const SEPARATOR_INSET = ROW_PADDING + TILE + ROW_GAP
 
-/** A card of rows with a small header above it and an optional footnote under it. */
 export function SettingsGroup({
   title,
   footnote,
@@ -45,7 +43,6 @@ export function Footnote({ text }: { text: ReactNode }) {
   return <Text style={[styles.footnote, { color: theme.textMuted }]}>{text}</Text>
 }
 
-/** A row's icon on a rounded tile, as in iOS Settings. */
 export function IconTile({ icon, color }: { icon: IconName; color?: string }) {
   const theme = useTheme()
   return (
@@ -55,7 +52,6 @@ export function IconTile({ icon, color }: { icon: IconName; color?: string }) {
   )
 }
 
-/** A row with a leading icon, a label and a trailing control or value. Pressable when `onPress` is given. */
 export function SettingsRow({
   icon,
   iconColor,
@@ -68,16 +64,13 @@ export function SettingsRow({
   children,
 }: {
   icon?: IconName
-  /** Tints the icon, such as an agent's brand color. */
   iconColor?: string
   label: string
   labelLines?: number
-  /** Muted text at the trailing edge, such as the current choice. */
   value?: string
   monospace?: boolean
   disabled?: boolean
   onPress?: () => void
-  /** A trailing control such as a `Switch`. */
   children?: ReactNode
 }) {
   const theme = useTheme()
@@ -112,7 +105,6 @@ export function SettingsRow({
   )
 }
 
-/** One choice of several, checked when selected. `hint` reaches screen readers only. */
 export function CheckRow({
   icon,
   label,
@@ -125,7 +117,6 @@ export function CheckRow({
   icon?: IconName
   label: string
   hint?: string
-  /** Tints the icon, such as a choice that lowers a safeguard. */
   color?: string
   selected: boolean
   disabled?: boolean

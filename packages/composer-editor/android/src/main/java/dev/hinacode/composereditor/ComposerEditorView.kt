@@ -13,13 +13,24 @@ import android.text.Spanned
 import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import android.webkit.MimeTypeMap
 import android.widget.EditText
+import androidx.core.util.component1
+import androidx.core.util.component2
+import androidx.core.view.ContentInfoCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.inputmethod.EditorInfoCompat
+import androidx.core.view.inputmethod.InputConnectionCompat
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.util.UUID
 
 private data class Theme(
   val text: Int = Color.BLACK,
@@ -58,6 +69,7 @@ class ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(co
   private val onEditorBlur by EventDispatcher()
   private val onEditorContentSize by EventDispatcher()
   private val onEditorFormat by EventDispatcher()
+  private val onEditorPasteImages by EventDispatcher()
 
   private var theme = Theme()
   private var icons: Map<String, ChipIcon> = emptyMap()
@@ -100,6 +112,28 @@ class ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(co
 
   init {
     addView(editor, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    ViewCompat.setOnReceiveContentListener(editor, arrayOf("image/*")) { _, payload -> receiveImages(payload) }
+  }
+
+  /**
+   * Copies pasted or keyboard-inserted images into the cache before handing them to JS, because the keyboard's
+   * read grant on its content URI can end once the insert returns.
+   */
+  private fun receiveImages(payload: ContentInfoCompat): ContentInfoCompat? {
+    val resolver = context.contentResolver
+    val (images, rest) = payload.partition { item -> item.uri?.let { resolver.getType(it)?.startsWith("image/") } == true }
+    if (images == null) return rest
+    val copied = (0 until images.clip.itemCount).mapNotNull { index ->
+      val uri = images.clip.getItemAt(index).uri
+      val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(resolver.getType(uri)) ?: "png"
+      val file = File(context.cacheDir, "pasted-${UUID.randomUUID()}.$extension")
+      runCatching {
+        resolver.openInputStream(uri)!!.use { input -> file.outputStream().use { input.copyTo(it) } }
+        mapOf("uri" to file.toURI().toString(), "fileName" to file.name)
+      }.getOrNull()
+    }
+    if (copied.isNotEmpty()) onEditorPasteImages(mapOf("images" to copied))
+    return rest
   }
 
   private fun dp(value: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, resources.displayMetrics)
@@ -287,6 +321,15 @@ class DecoratedEditText(context: Context) : EditText(context) {
   private val bounds = RectF()
   private val radius = 4 * resources.displayMetrics.density
   private val inset = 2 * resources.displayMetrics.density
+
+  /** API 31+ advertises the receive listener's MIME types to the keyboard itself; older versions need this wrapper. */
+  override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
+    val connection = super.onCreateInputConnection(outAttrs) ?: return null
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return connection
+    val mimeTypes = ViewCompat.getOnReceiveContentMimeTypes(this) ?: return connection
+    EditorInfoCompat.setContentMimeTypes(outAttrs, mimeTypes)
+    return InputConnectionCompat.createWrapper(this, connection, outAttrs)
+  }
 
   override fun onSelectionChanged(selStart: Int, selEnd: Int) {
     super.onSelectionChanged(selStart, selEnd)

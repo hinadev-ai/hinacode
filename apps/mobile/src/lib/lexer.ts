@@ -3,24 +3,17 @@ import type { SyntaxClass, SyntaxSpan } from "@/lib/highlight"
 
 const KEYWORDS = new Set(
   (
-    // TypeScript and JavaScript
     "abstract as async await break case catch class const continue debugger declare default delete do else enum " +
     "export extends finally for from function get if implements import in infer instanceof interface is keyof let " +
     "namespace new of private protected public readonly return satisfies set static switch throw try type typeof " +
     "var void while with yield " +
-    // Python
     "and def del elif except global lambda nonlocal not or pass raise assert " +
-    // Go
     "chan defer fallthrough func go goto map range select struct package " +
-    // Rust
     "crate dyn fn impl loop match mod move mut pub ref trait unsafe use where " +
-    // Java, Kotlin, Swift and C#
     "final native synchronized throws transient volatile fun val when object sealed override open internal " +
     "lateinit companion guard init deinit extension protocol inout subscript fileprivate using virtual operator " +
     "out params event lock " +
-    // C
     "auto char double float int long short signed unsigned sizeof typedef union extern register inline bool string " +
-    // Ruby, PHP and shell
     "begin end ensure rescue unless until module then elsif echo foreach fi esac done local"
   ).split(" "),
 )
@@ -37,7 +30,6 @@ const CONSTANTS = new Set(
   "true false True False null nil None undefined NaN Infinity self this super".split(" "),
 )
 
-/** Extensions, or lowercased names of files without one, whose language starts a line comment with `#`. */
 const HASH_COMMENT_LANGUAGES = new Set(
   (
     "sh bash zsh fish ps1 py rb pl r jl ex exs nix tf yaml yml toml ini cfg conf properties graphql gql cmake mk " +
@@ -58,11 +50,6 @@ const isIdentPart = (c: string) => isIdentStart(c) || isDigit(c)
 const isUpper = (c: string) => c >= "A" && c <= "Z"
 const isAllCaps = (word: string) => /^[A-Z][A-Z0-9_]+$/.test(word)
 
-/**
- * Labels `code` with the nine classes `gpu-lexer` uses. Only the file name at `path` hints at the language, to
- * tell whether `#` starts a comment. The spans cover the whole source in order, and adjacent spans never share a
- * class. Runs in linear time.
- */
 export function lex(code: string, path: string): SyntaxSpan[] {
   const hashComments = startsCommentWithHash(path)
   const spans: SyntaxSpan[] = []
@@ -89,7 +76,6 @@ export function lex(code: string, path: string): SyntaxSpan[] {
   const followsSpace = (at: number) => at === 0 || isSpace(code[at - 1])
   const endsWord = (at: number) => at >= length || isSpace(code[at])
 
-  /** Where a comment starting at `at` ends, or -1 when none starts there. */
   const commentEnd = (at: number) => {
     const c = code[at]
     const next = code[at + 1]
@@ -101,18 +87,15 @@ export function lex(code: string, path: string): SyntaxSpan[] {
     return -1
   }
 
-  // A quote with no closing partner on its line marks everything up to the line end as failed, so a line
-  // full of stray quotes is scanned once, not once per quote.
-  const noCloseBefore: Record<string, number> = { "'": -1, '"': -1 }
+  const quoteUnclosedUntilLineEnd: Record<string, number> = { "'": -1, '"': -1 }
 
-  /** Where a string starting at `at` ends, or -1 when the quote is stray. */
   const stringEnd = (at: number) => {
     const quote = code[at]
     if ((quote === '"' || quote === "'") && code[at + 1] === quote && code[at + 2] === quote) {
       return until(at + 3, quote.repeat(3))
     }
     const multiline = quote === "`"
-    if (!multiline && at < noCloseBefore[quote]) return -1
+    if (!multiline && at < quoteUnclosedUntilLineEnd[quote]) return -1
     let j = at + 1
     while (j < length) {
       const c = code[j]
@@ -122,7 +105,7 @@ export function lex(code: string, path: string): SyntaxSpan[] {
       else j++
     }
     if (multiline) return length
-    noCloseBefore[quote] = j
+    quoteUnclosedUntilLineEnd[quote] = j
     return -1
   }
 

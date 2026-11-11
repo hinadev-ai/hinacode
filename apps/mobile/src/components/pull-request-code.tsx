@@ -1,3 +1,4 @@
+import { useAtomMount } from "@effect/atom-react"
 import type {
   GuideCategory,
   GuideFileNote,
@@ -14,7 +15,7 @@ import {
   type ResolvedGroup,
   resolveGuide,
 } from "@shared/pullRequestGuide.ts"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
@@ -22,14 +23,13 @@ import { PressableScale, Reveal, Rotate, Spinner } from "@/components/motion"
 import { Button, Notice, SegmentedControl } from "@/components/ui"
 import { HIT, mono, type Palette, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call, useConnection } from "@/lib/connection"
+import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { type PatchLine, patchLines } from "@/lib/patch-lines"
-import { type CodeView, filesKey, usePullRequests } from "@/stores/pull-requests"
+import { type CodeView, filesKey, loadFilesAtom, loadGuideAtom, usePullRequests } from "@/stores/pull-requests"
 import { splitPath } from "@/lib/path-match"
 
-/** Lines a diff shows before it asks, so opening a generated file does not stall the screen. */
 const FIRST_LINES = 300
 
 const categoryIcon: Record<GuideCategory, IconName> = {
@@ -55,7 +55,6 @@ const fileMark = (theme: Palette): Record<PullRequestFileStatus, { letter: strin
   added: { letter: "A", color: theme.running },
   removed: { letter: "D", color: theme.danger },
   modified: { letter: "M", color: theme.attention },
-  // As on the desktop: the brand coral is kept for focus and the primary action.
   renamed: { letter: "R", color: theme.attention },
   copied: { letter: "C", color: theme.running },
 })
@@ -70,17 +69,9 @@ const viewSegments = [
   { value: "guide", label: copy("mobile_pr_code_guide"), icon: "Guide" },
 ] as const
 
-/** The Code tab: the pull request's changed files, listed by path or in the order its guide reads them. */
 export function PullRequestCode({ detail }: { detail: PullRequestDetail }) {
   const theme = useTheme()
-  const connected = useConnection((state) => state.status === "connected")
   const view = usePullRequests((state) => state.codeView)
-  const remote = usePullRequests((state) => state.files[filesKey(detail.url, detail.head)])
-  const tooLarge = diffTooLarge(detail)
-
-  useEffect(() => {
-    if (connected && !tooLarge) void usePullRequests.getState().loadFiles(detail.url, detail.head)
-  }, [connected, tooLarge, detail.url, detail.head])
 
   return (
     <View style={styles.code}>
@@ -90,42 +81,50 @@ export function PullRequestCode({ detail }: { detail: PullRequestDetail }) {
         onChange={(next) => usePullRequests.getState().setCodeView(next)}
         accessibilityLabel={copy("mobile_pr_code_view_label")}
       />
-      {tooLarge ? (
+      {diffTooLarge(detail) ? (
         <Text style={[styles.muted, { color: theme.textMuted }]}>
           {copy("mobile_pr_code_too_large")}
         </Text>
-      ) : remote === undefined || remote.status === "loading" ? (
-        <Loading label={copy("mobile_pr_code_loading")} />
-      ) : remote.status === "error" ? (
-        <View style={styles.stack}>
-          <Notice tone="danger" text={copy("mobile_pr_code_failed", { message: remote.message })} />
-          <Button
-            label={copy("mobile_pr_retry")}
-            icon="Refresh"
-            style={styles.start}
-            onPress={() => void usePullRequests.getState().loadFiles(detail.url, detail.head, { force: true })}
-          />
-        </View>
-      ) : remote.value.length === 0 ? (
-        <Text style={[styles.muted, { color: theme.textMuted }]}>{copy("mobile_pr_code_empty")}</Text>
       ) : (
-        <>
-          <DiffSummary files={remote.value} />
-          {view === "files" ? (
-            <View>
-              {remote.value.map((file) => (
-                <FileRow
-                  key={file.path}
-                  entry={{ file, fileNotes: [], lineNotesInHunks: [], lineNotesOutsideHunks: [] }}
-                />
-              ))}
-            </View>
-          ) : (
-            <GuideView detail={detail} files={remote.value} />
-          )}
-        </>
+        <ChangedFiles detail={detail} view={view} />
       )}
     </View>
+  )
+}
+
+function ChangedFiles({ detail, view }: { detail: PullRequestDetail; view: CodeView }) {
+  const theme = useTheme()
+  const remote = usePullRequests((state) => state.files[filesKey(detail.url, detail.head)])
+  useAtomMount(loadFilesAtom(detail.url, detail.head))
+
+  if (remote === undefined || remote.status === "loading") return <Loading label={copy("mobile_pr_code_loading")} />
+  if (remote.status === "error")
+    return (
+      <View style={styles.stack}>
+        <Notice tone="danger" text={copy("mobile_pr_code_failed", { message: remote.message })} />
+        <Button
+          label={copy("mobile_pr_retry")}
+          icon="Refresh"
+          style={styles.start}
+          onPress={() => void usePullRequests.getState().loadFiles(detail.url, detail.head, { force: true })}
+        />
+      </View>
+    )
+  if (remote.value.length === 0)
+    return <Text style={[styles.muted, { color: theme.textMuted }]}>{copy("mobile_pr_code_empty")}</Text>
+  return (
+    <>
+      <DiffSummary files={remote.value} />
+      {view === "files" ? (
+        <View>
+          {remote.value.map((file) => (
+            <FileRow key={file.path} entry={{ file, fileNotes: [], lineNotesInHunks: [], lineNotesOutsideHunks: [] }} />
+          ))}
+        </View>
+      ) : (
+        <GuideView detail={detail} files={remote.value} />
+      )}
+    </>
   )
 }
 
@@ -166,7 +165,6 @@ function DiffSummary({ files }: { files: readonly PullRequestFile[] }) {
   )
 }
 
-/** A file's change as one outlined letter, such as M or A, in the change's color. */
 export function FileBadge({ letter, color }: { letter: string; color: string }) {
   return (
     <View style={[styles.badge, { borderColor: color }]}>
@@ -206,7 +204,6 @@ function FileRow({ entry }: { entry: GuideFile }) {
             {name}
           </Text>
           {folder !== "" && (
-            // The end of a folder tells files apart better than its start.
             <Text numberOfLines={1} ellipsizeMode="head" style={[styles.renamed, { color: theme.textMuted }]}>
               {folder}
             </Text>
@@ -245,7 +242,6 @@ function FileRow({ entry }: { entry: GuideFile }) {
 const notesOn = (notes: readonly GuideLineNote[], line: PatchLine) =>
   notes.filter((note) => (note.side === "additions" ? line.newLine : line.oldLine) === note.line)
 
-/** A unified diff whose long lines wrap, since a phone has no width for a split one or for scrolling sideways. */
 export function Patch({ patch, notes = [] }: { patch: string; notes?: readonly GuideLineNote[] }) {
   const theme = useTheme()
   const [showAll, setShowAll] = useState(false)
@@ -281,7 +277,6 @@ export function Patch({ patch, notes = [] }: { patch: string; notes?: readonly G
           <View key={index}>
             <View style={[styles.line, { backgroundColor: tint[line.kind] }]}>
               <Text style={[styles.gutter, { color: theme.textMuted }]}>{line.newLine ?? line.oldLine ?? ""}</Text>
-              {/* Its own column, so a wrapped line hangs under its code instead of under the sign. */}
               <Text style={[styles.sign, { color: sign[line.kind].color }]}>{sign[line.kind].text}</Text>
               <Text selectable style={[styles.lineText, { color: code ? theme.text : theme.textMuted }]}>
                 {code ? line.text.replace(/\t/g, "  ") : line.text}
@@ -340,12 +335,8 @@ function NoteCard({ note, showLine = false }: { note: GuideFileNote | GuideLineN
 
 function GuideView({ detail, files }: { detail: PullRequestDetail; files: readonly PullRequestFile[] }) {
   const theme = useTheme()
-  const connected = useConnection((state) => state.status === "connected")
   const remote = usePullRequests((state) => state.guides[detail.url])
-
-  useEffect(() => {
-    if (connected) void usePullRequests.getState().loadGuide(detail.url)
-  }, [connected, detail.url])
+  useAtomMount(loadGuideAtom(detail.url))
 
   if (remote === undefined || remote.status === "loading") return <Loading label={copy("mobile_pr_guide_loading")} />
   if (remote.status === "error") {
@@ -448,7 +439,6 @@ function GuideGroup({ group }: { group: ResolvedGroup }) {
   )
 }
 
-/** Where the guide for the latest commit stands: being written, failed, or not started. */
 function GuideJob({ detail, state }: { detail: PullRequestDetail; state: PullRequestGuideState }) {
   const theme = useTheme()
   const job = state.job?.head === detail.head ? state.job : null
@@ -499,7 +489,6 @@ function GuideJob({ detail, state }: { detail: PullRequestDetail; state: PullReq
   )
 }
 
-/** Asks the desktop to write the guide again. The new state arrives as a push. */
 function RetryGuide({ url }: { url: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -564,7 +553,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   sign: { width: 14, flexShrink: 0, fontFamily: mono, fontSize: 12, lineHeight: 18, textAlign: "center" },
-  // A browser keeps a flex item as wide as its longest token unless it may shrink, so a long one ran off screen.
+  // FIXME: A browser keeps a flex item as wide as its longest token unless it may shrink.
   lineText: { flex: 1, minWidth: 0, fontFamily: mono, fontSize: 12, lineHeight: 18 },
   lineNotes: { gap: 6, padding: 8 },
   noteCard: {

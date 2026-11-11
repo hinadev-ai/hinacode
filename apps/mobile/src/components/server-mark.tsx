@@ -11,7 +11,6 @@ const statusLabel = {
   unauthorized: copy("mobile_connection_unauthorized"),
 } as const
 
-/** Where something lives, for a screen reader: `On studio`, or `On studio, Reconnecting` while it is away. */
 export function serverLabel(server: Server) {
   const name = serverName(server)
   return server.status === "connected"
@@ -19,10 +18,6 @@ export function serverLabel(server: Server) {
     : copy("mobile_server_mark_away", { server: name, status: statusLabel[server.status] })
 }
 
-/**
- * The server something lives on, as a muted icon and name for a meta line. The icon turns into a dropped link
- * while the server is not connected. Renders nothing while only one server is paired.
- */
 export function ServerMark({ server }: { server: Server | undefined }) {
   const theme = useTheme()
   const several = useSeveralServers()

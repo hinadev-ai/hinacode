@@ -1,3 +1,4 @@
+import { useAtomMount } from "@effect/atom-react"
 import type {
   CheckRun,
   CheckRunStatus,
@@ -10,7 +11,7 @@ import { linearReviewUrl } from "@shared/github.ts"
 import { providerInfo } from "@shared/providers.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "@shared/pullRequestPrompts.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
-import { type ReactNode, useEffect, useState } from "react"
+import { type ReactNode, useState } from "react"
 import { Alert, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
@@ -22,12 +23,12 @@ import { OptionRow, Sheet } from "@/components/sheet"
 import { Button, IconButton, Notice, Pill, Toggle, UnderlineTabs } from "@/components/ui"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call, useConnection } from "@/lib/connection"
+import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { openWebUrl } from "@/lib/open-url"
 import { reviewLabel, reviewTone, statusGlyph, statusLabel } from "@/lib/pull-request-labels"
-import { filesKey, pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
+import { filesKey, loadDetailAtom, pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
 type Tab = "info" | "code"
@@ -39,7 +40,6 @@ const tabs = [
 
 type WebLink = { readonly href: string; readonly label: string }
 
-/** Where the thread's pull request links open: GitHub, or linear.review when its project turned that on. */
 function useWebLink(threadId: string, url: string): WebLink {
   const linearReview = useThreads((state) => {
     const projectId = state.byId[threadId]?.projectId
@@ -50,37 +50,35 @@ function useWebLink(threadId: string, url: string): WebLink {
     : { href: url, label: copy("mobile_pr_open_github") }
 }
 
+const reloadWithCode = async (reload: () => Promise<unknown>, url: string, withCode: boolean) => {
+  await reload()
+  const { details, files, guides, loadFiles, loadGuide } = usePullRequests.getState()
+  const detail = details[url]
+  if (withCode && detail?.status === "ready") {
+    const { head } = detail.value
+    await Promise.all([
+      files[filesKey(url, head)] === undefined ? null : loadFiles(url, head, { force: true }),
+      guides[url] === undefined ? null : loadGuide(url, { force: true }),
+    ])
+  }
+}
+
 export default function PullRequestScreen() {
   const theme = useTheme()
   const { id, url } = useLocalSearchParams<{ id: string; url: string }>()
-  const connected = useConnection((state) => state.status === "connected")
   const remote = usePullRequests((state) => state.details[url])
   const link = usePullRequests((state) => state.linksByThread[id]?.find((existing) => existing.url === url) ?? null)
   const [refreshing, setRefreshing] = useState(false)
   const [tab, setTab] = useState<Tab>("info")
+  const [barHeight, setBarHeight] = useState(0)
   const web = useWebLink(id, url)
 
-  useEffect(() => {
-    if (connected) void usePullRequests.getState().loadDetail(url)
-  }, [connected, url])
+  useAtomMount(loadDetailAtom(url))
 
   const reload = () => usePullRequests.getState().loadDetail(url, { force: true })
   const refresh = async () => {
     setRefreshing(true)
-    try {
-      await reload()
-      const { details, files, guides, loadFiles, loadGuide } = usePullRequests.getState()
-      const detail = details[url]
-      if (tab === "code" && detail?.status === "ready") {
-        const { head } = detail.value
-        await Promise.all([
-          files[filesKey(url, head)] === undefined ? null : loadFiles(url, head, { force: true }),
-          guides[url] === undefined ? null : loadGuide(url, { force: true }),
-        ])
-      }
-    } finally {
-      setRefreshing(false)
-    }
+    await reloadWithCode(reload, url, tab === "code").finally(() => setRefreshing(false))
   }
 
   const number = remote?.status === "ready" ? String(remote.value.number) : pullRequestNumber(url)
@@ -89,7 +87,8 @@ export default function PullRequestScreen() {
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ title: number === null ? "" : `#${number}` }} />
       <ScrollView
-        contentContainerStyle={styles.page}
+        contentContainerStyle={[styles.page, { paddingBottom: 16 + barHeight }]}
+        scrollIndicatorInsets={{ bottom: barHeight }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={theme.textMuted} />
         }
@@ -117,14 +116,19 @@ export default function PullRequestScreen() {
           )}
         </View>
       </ScrollView>
-      <ActionBar web={web} detail={remote?.status === "ready" ? remote.value : null} onChanged={reload} />
+      <View
+        pointerEvents="box-none"
+        style={styles.floating}
+        onLayout={(event) => setBarHeight(event.nativeEvent.layout.height)}
+      >
+        <ActionBar web={web} detail={remote?.status === "ready" ? remote.value : null} onChanged={reload} />
+      </View>
     </View>
   )
 }
 
 const isOpen = (detail: PullRequestDetail) => detail.status === "open" || detail.status === "draft"
 
-/** The pull request's state filled with its color, as GitHub heads a pull request. */
 function StatePill({ status }: { status: PullRequestStatus }) {
   const theme = useTheme()
   const glyph = statusGlyph(theme)[status]
@@ -248,7 +252,6 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-/** A row of the status card: a round icon, a title over a detail, and whatever ends the row. */
 function StatusRow({
   icon,
   title,
@@ -273,7 +276,6 @@ function StatusRow({
   )
 }
 
-/** Sends the prompt into the thread: steers the running turn, queues it for agents that can't steer, or starts one. */
 function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt: string; label: string }) {
   const theme = useTheme()
   const steers = useThreads((state) => {
@@ -286,8 +288,9 @@ function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt:
 
   const send = async () => {
     setState({ type: "sending" })
+    const method = steers ? "threads.steer" : "threads.queue"
     try {
-      await call(steers ? "threads.steer" : "threads.queue", { threadId, text: prompt })
+      await call(method, { threadId, text: prompt })
       setState({ type: "sent" })
     } catch (cause) {
       setState({ type: "failed", message: errorText(cause) })
@@ -319,7 +322,6 @@ const runOrder: Record<CheckRunStatus, number> = { failing: 0, pending: 1, passi
 const countOf = (runs: readonly CheckRun[], status: CheckRunStatus) =>
   runs.filter((run) => run.status === status).length
 
-/** The checks folded into one row of counts. Failing or running checks open the row, so they are seen at once. */
 function Checks({ detail }: { detail: PullRequestDetail }) {
   const theme = useTheme()
   const runs = [...detail.checkRuns].sort((a, b) => runOrder[a.status] - runOrder[b.status])
@@ -431,7 +433,6 @@ function CheckRow({ run }: { run: CheckRun }) {
   )
 }
 
-/** Whether GitHub can merge it: no conflicts, conflicts with the base, or a draft that must be marked ready first. */
 function MergeState({ detail }: { detail: PullRequestDetail }) {
   const theme = useTheme()
   if (detail.status === "draft") {
@@ -462,7 +463,6 @@ function MergeState({ detail }: { detail: PullRequestDetail }) {
   )
 }
 
-/** A setting more than an action, so it is a switch. It shows the new value at once while the server catches up. */
 function WatchRow({
   url,
   threadId,
@@ -480,8 +480,9 @@ function WatchRow({
   const change = async (watch: boolean) => {
     setPending(watch)
     onError(null)
+    const method = watch ? "pullRequests.watch" : "pullRequests.unwatch"
     try {
-      await (watch ? call("pullRequests.watch", { threadId, url }) : call("pullRequests.unwatch", { threadId, url }))
+      await call(method, { threadId, url })
     } catch (cause) {
       onError(errorText(cause))
     }
@@ -506,7 +507,7 @@ function WatchRow({
   )
 }
 
-/** Alert.alert has no buttons on react-native-web. */
+// FIXME: Alert.alert has no buttons on react-native-web.
 function confirm(title: string, message: string, action: string, destructive: boolean, onConfirm: () => void) {
   if (Platform.OS === "web") {
     if (window.confirm(`${title}\n\n${message}`)) onConfirm()
@@ -521,7 +522,6 @@ function confirm(title: string, message: string, action: string, destructive: bo
 const mergeLabel = (method: MergeMethod) => copy(`mobile_pr_merge_${method === "merge" ? "commit" : method}`)
 const mergeMethods: readonly MergeMethod[] = ["squash", "merge", "rebase"]
 
-/** Runs a change to the pull request on GitHub, then reads it again, keeping the error when GitHub refuses. */
 function useGitHubAction(url: string, onChanged: () => Promise<void>) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -539,10 +539,6 @@ function useGitHubAction(url: string, onChanged: () => Promise<void>) {
   return { busy, error, run }
 }
 
-/**
- * Under the page: open on the web, then, while GitHub can merge it, merge with the picked method and a round button
- * that picks another. Merging asks first.
- */
 function ActionBar({
   web,
   detail,
@@ -576,9 +572,9 @@ function ActionBar({
   }
 
   return (
-    <View style={[styles.bar, { paddingBottom: 8 + insets.bottom }]}>
+    <View pointerEvents="box-none" style={[styles.bar, { paddingBottom: 8 + insets.bottom }]}>
       {error !== null && <Notice tone="danger" text={error} />}
-      <View style={styles.barRow}>
+      <View pointerEvents="box-none" style={styles.barRow}>
         <IconButton
           icon="External"
           accessibilityLabel={web.label}
@@ -627,7 +623,6 @@ function ActionBar({
   )
 }
 
-/** Rare and destructive, so it waits at the end of the page, away from Merge. */
 function CloseButton({ detail, onChanged }: { detail: PullRequestDetail; onChanged: () => Promise<void> }) {
   const { busy, error, run } = useGitHubAction(detail.url, onChanged)
   const close = () =>
@@ -656,7 +651,6 @@ function CloseButton({ detail, onChanged }: { detail: PullRequestDetail; onChang
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   page: { padding: 16, flexGrow: 1 },
-  /** A readable measure when the screen is wide, as in an iPad pane. */
   column: { width: "100%", maxWidth: 760, alignSelf: "center", gap: 20 },
   tabs: { borderBottomWidth: StyleSheet.hairlineWidth, marginTop: -8 },
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 32 },
@@ -689,6 +683,7 @@ const styles = StyleSheet.create({
   runs: { paddingHorizontal: 14, paddingBottom: 6 },
   run: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 10, paddingLeft: 10 },
   runName: { flex: 1, fontSize: 14, lineHeight: 19, paddingVertical: 6 },
+  floating: { position: "absolute", left: 0, right: 0, bottom: 0 },
   bar: { gap: 8, paddingHorizontal: 16, paddingTop: 8, width: "100%", maxWidth: 792, alignSelf: "center" },
   barRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   round: { width: HIT + 8, height: HIT + 8, borderRadius: radius.full, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)" },
