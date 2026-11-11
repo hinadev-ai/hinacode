@@ -99,6 +99,7 @@ export function createDocumentSession({
   let lossy = false
   let revision = 0
   let eventCount = 0
+  let selectionQueued = false
   const drawings = new Map<string, DiagramDrawing | null>()
   const decorate: Decorate = { code: highlight, drawing: (source) => drawings.get(source) ?? undefined }
 
@@ -239,6 +240,15 @@ export function createDocumentSession({
     step()
   }
 
+  const selectionMoved = () => {
+    if (onSelection === undefined || selectionQueued) return
+    selectionQueued = true
+    schedule(() => {
+      selectionQueued = false
+      onSelection(selectionState(editor))
+    })
+  }
+
   const selectionRange = (): TextRange | undefined => {
     const { anchor, head } = editor.state.selection
     const anchorPoint = pointOf(sources, anchor)
@@ -263,7 +273,7 @@ export function createDocumentSession({
       const selection = selectionRange()
       if (selection !== undefined) show({ revision, eventCount, start: 0, deleteCount: 0, insert: [], selection })
     }
-    onSelection?.(selectionState(editor))
+    selectionMoved()
     return result !== false
   }
 
@@ -304,7 +314,7 @@ export function createDocumentSession({
       const to = positionAt(head)
       if (!loaded || from === null || to === null) return
       engine.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)))
-      onSelection?.(selectionState(editor))
+      selectionMoved()
     },
     press: (key: StructuralKey, shift: boolean, count: number) => {
       eventCount = Math.max(eventCount, count)
