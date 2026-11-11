@@ -31,6 +31,19 @@ mac:
   icon: assets/icon.png
   hardenedRuntime: true
   notarize: true
+# The background's size sets the window size. electron-builder picks up dmg-background@2x.png for Retina.
+# Redraw both PNGs from the SVG with rsvg-convert at 540x380 and 1080x760. Both icons sit inside its track.
+dmg:
+  background: assets/dmg-background.png
+  iconSize: 96
+  contents:
+    - x: 140
+      y: 180
+      type: file
+    - x: 400
+      y: 180
+      type: link
+      path: /Applications
 win:
   files:
     - out/**
