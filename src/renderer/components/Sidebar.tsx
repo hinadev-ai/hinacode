@@ -754,7 +754,9 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
     conductors.find((row) => row.key === group.id && shownKeys.includes(row.key))
   const groupItems = (group: SidebarGroup, rows: ReadonlyArray<Group>) => {
     const open = !group.collapsed || query !== ""
-    const header = <GroupHeader key={group.id} group={group} open={open} focusAfterDelete={focusAfterDelete} />
+    const header = (
+      <GroupHeader key={`${group.id}-header`} group={group} open={open} focusAfterDelete={focusAfterDelete} />
+    )
     if (!open) return [header]
     const conductor = conductorOf(group)
     const conductorRow = conductor === undefined ? [] : [projectRow(conductor, true)]
