@@ -74,3 +74,18 @@ it("reads again after a matching push and ignores others", async () => {
   await flush()
   expect(read(registry, atom)).toBe(2)
 })
+
+it("holds a read made before the first handshake and sends it once after", async () => {
+  const setGeneration = (generation: number) =>
+    (useConnection as unknown as { setState: (state: object) => void }).setState({ generation })
+  setGeneration(0)
+  const registry = AtomRegistry.make()
+  const atom = filesAtom({ threadId: "t6" })
+  registry.mount(atom)
+  const sentForT6 = () => mocks.requests.filter((sent) => JSON.stringify(sent.payload) === '{"threadId":"t6"}')
+  expect(sentForT6()).toEqual([])
+  setGeneration(1)
+  await flush()
+  expect(sentForT6()).toHaveLength(1)
+  expect(read(registry, atom)).toBe(1)
+})
