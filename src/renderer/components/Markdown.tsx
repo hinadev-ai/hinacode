@@ -28,7 +28,7 @@ import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Mention } from "./Mention.tsx"
 import { MentionThread } from "./MentionThread.ts"
 import { type DiagramFailure, MermaidDiagram } from "./MermaidDiagram.tsx"
-import { isWebUrl, WebLink } from "./WebLink.tsx"
+import { isWebUrl, PullRequestReference, WebLink } from "./WebLink.tsx"
 import { resourceSrcSet, resourceUrl } from "../lib/resourceUrl.ts"
 
 const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
@@ -153,7 +153,11 @@ const components: Components = {
   ),
   span: ({ node: _node, ...props }) => {
     const mention = props["data-mention" as keyof typeof props]
-    return typeof mention === "string" ? <Mention token={mention} /> : <span {...props} />
+    if (typeof mention === "string") return <Mention token={mention} />
+    const pullRequest = props["data-pull-request" as keyof typeof props]
+    if (typeof pullRequest === "string")
+      return <PullRequestReference href={pullRequest}>{props.children}</PullRequestReference>
+    return <span {...props} />
   },
   td: ({ children, style }) => (
     <td style={style} className={isShortCell(children) ? "whitespace-nowrap" : undefined}>

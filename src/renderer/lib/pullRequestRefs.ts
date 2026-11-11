@@ -37,7 +37,7 @@ export const linkPullRequestNumbers = (text: string, repository: GitHubRepositor
   let last = 0
   for (const match of text.matchAll(NUMBER_REFERENCE)) {
     if (match.index > last) segments.push({ type: "text", text: text.slice(last, match.index) })
-    segments.push({ type: "link", text: match[0], href: pullRequestUrl(repository, match[1] ?? "") })
+    segments.push({ type: "reference", text: match[0], href: pullRequestUrl(repository, match[1] ?? "") })
     last = match.index + match[0].length
   }
   if (last < text.length) segments.push({ type: "text", text: text.slice(last) })

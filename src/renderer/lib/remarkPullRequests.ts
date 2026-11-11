@@ -4,8 +4,8 @@ import { linkPullRequestNumbers } from "./pullRequestRefs.ts"
 interface MdastNode {
   type: string
   value?: string
-  url?: string
   children?: Array<MdastNode>
+  data?: { hName: string; hProperties: Record<string, string> }
 }
 
 const LINKED = new Set(["link", "linkReference", "definition"])
@@ -22,7 +22,11 @@ const linkNumbers = (node: MdastNode, repository: GitHubRepository) => {
     return segments.map((segment) =>
       segment.type === "text"
         ? { type: "text", value: segment.text }
-        : { type: "link", url: segment.href, children: [{ type: "text", value: segment.text }] },
+        : {
+            type: "pullRequestReference",
+            data: { hName: "span", hProperties: { dataPullRequest: segment.href } },
+            children: [{ type: "text", value: segment.text }],
+          },
     )
   })
 }

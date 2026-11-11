@@ -4,6 +4,7 @@ import { linkPullRequestNumbers } from "./pullRequestRefs.ts"
 export type Segment =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "link"; readonly text: string; readonly href: string }
+  | { readonly type: "reference"; readonly text: string; readonly href: string }
 
 const URL_PATTERN = /(?<![\p{L}\p{N}])https?:\/\/[^\s<>]+/giu
 const TRAILING_PUNCTUATION = /[.,;:!?*_~'"]$/
