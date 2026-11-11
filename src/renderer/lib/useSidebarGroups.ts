@@ -12,8 +12,10 @@ export function useSidebarGroups() {
   const update = async (change: (state: SidebarGroups) => SidebarGroups) => {
     try {
       await save({ sidebarGroups: change(sidebarGroups) })
+      return true
     } catch (cause) {
       toast.error(m.sidebar_group_save_failed({ message: errorMessage(cause) }))
+      return false
     }
   }
   return [sidebarGroups, update] as const

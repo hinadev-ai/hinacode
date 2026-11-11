@@ -702,6 +702,7 @@
   "sidebar_conductor": "指揮",
   "sidebar_group_delete": "刪除群組",
   "sidebar_group_empty": "從專案的選單把它移到這裡。",
+  "sidebar_group_delete_failed": "無法刪除「{group}」：{message}",
   "sidebar_group_save_failed": "無法儲存群組：{message}",
   "sidebar_project_move_to_group": "移至群組",
   "sidebar_project_new_group": "新增群組…",

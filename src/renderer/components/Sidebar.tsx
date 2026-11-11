@@ -5,9 +5,8 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { Link, useRouter, useNavigate } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react"
+import { type ReactNode, type RefObject, startTransition, useEffect, useId, useRef, useState } from "react"
 import { RiInbox2Line, RiPulseLine } from "react-icons/ri"
-import { toast } from "sonner"
 import { useShallow } from "zustand/react/shallow"
 import type { Project, SidebarGroup, Thread } from "../../shared/domain.ts"
 import { pickedEnvironmentIds, pickEnvironment } from "../../shared/environmentFilter.ts"
@@ -24,9 +23,8 @@ import {
   pickProjectGroup,
   type ProjectGroup as Group,
 } from "../../shared/projectGroups.ts"
-import { callPromise, projectsAtom } from "../lib/rpc.ts"
-import { errorMessage } from "../lib/errorMessage.ts"
-import { arrangeRows, deleteGroup, moveGroup, renameGroup, setGroupCollapsed } from "../lib/sidebarGroups.ts"
+import { projectsAtom } from "../lib/rpc.ts"
+import { arrangeRows, moveGroup, renameGroup, setGroupCollapsed } from "../lib/sidebarGroups.ts"
 import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
 import { type InboxGroup, inboxGroup, rowState } from "../../shared/threadStatus.ts"
 import { pullRequestAttentionsAtom } from "../lib/rpc.ts"
@@ -81,7 +79,7 @@ import {
   TrashIcon,
 } from "@hinacode/icons"
 import { ProjectMenu } from "./ProjectMenu.tsx"
-import { DeleteProjectDialog } from "./DeleteProjectDialog.tsx"
+import { DeleteGroupDialog, useConductorThreadCount, useDeleteGroup } from "./DeleteGroupDialog.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { useAttentionCount } from "./DockBadge.tsx"
 import {
@@ -866,26 +864,8 @@ function GroupMenu({ group, open, onOpenChange, focusAfterDelete }: GroupMenuPro
   const index = state.groups.findIndex((candidate) => candidate.id === group.id)
   const [dialog, setDialog] = useState<GroupDialog | null>(null)
   const [queued, setQueued] = useState<GroupDialog | null>(null)
-  const conductor = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []).find(
-    (project) => project.kind === "group" && project.id === group.id,
-  )
-  const hasConductorThreads = useThreads((threads) =>
-    Object.values(threads.byId).some((thread) => thread.projectId === group.id),
-  )
-  const refreshProjects = useAtomRefresh(projectsAtom)
-  const removeGroup = () => update((next) => deleteGroup(next, group.id))
-  const deleteEmptyGroup = async () => {
-    if (conductor !== undefined) {
-      try {
-        await callPromise("projects.delete", { id: conductor.id })
-      } catch (cause) {
-        toast.error(m.sidebar_group_save_failed({ message: errorMessage(cause) }))
-        return
-      }
-      refreshProjects()
-    }
-    await removeGroup()
-  }
+  const conductorThreads = useConductorThreadCount(group.id)
+  const removeGroup = useDeleteGroup(group, focusAfterDelete)
   const closeDialog = (dialogOpen: boolean) => {
     if (!dialogOpen) setDialog(null)
   }
@@ -914,7 +894,7 @@ function GroupMenu({ group, open, onOpenChange, focusAfterDelete }: GroupMenuPro
           <MoreIcon aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem onClick={() => setQueued("rename")}>
+          <DropdownMenuItem onClick={() => startTransition(() => setQueued("rename"))}>
             <PencilIcon aria-hidden />
             {m.sidebar_group_rename()}
           </DropdownMenuItem>
@@ -932,7 +912,7 @@ function GroupMenu({ group, open, onOpenChange, focusAfterDelete }: GroupMenuPro
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
-            onClick={() => (hasConductorThreads ? setQueued("delete") : void deleteEmptyGroup())}
+            onClick={() => (conductorThreads > 0 ? startTransition(() => setQueued("delete")) : void removeGroup())}
           >
             <TrashIcon aria-hidden />
             {m.sidebar_group_delete()}
@@ -945,16 +925,13 @@ function GroupMenu({ group, open, onOpenChange, focusAfterDelete }: GroupMenuPro
         onOpenChange={closeDialog}
         onSubmit={(name) => void update((next) => renameGroup(next, group.id, name))}
       />
-      {conductor !== undefined && (
-        <DeleteProjectDialog
-          project={conductor}
-          open={dialog === "delete"}
-          onOpenChange={closeDialog}
-          focusAfterDelete={focusAfterDelete}
-          confirmLabel={m.sidebar_group_delete()}
-          onDeleted={() => void removeGroup()}
-        />
-      )}
+      <DeleteGroupDialog
+        name={group.name}
+        threadCount={conductorThreads}
+        open={dialog === "delete"}
+        onOpenChange={closeDialog}
+        onConfirm={removeGroup}
+      />
     </>
   )
 }

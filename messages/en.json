@@ -702,6 +702,7 @@
   "sidebar_conductor": "Conductor",
   "sidebar_group_delete": "Delete group",
   "sidebar_group_empty": "Move a project here from its menu.",
+  "sidebar_group_delete_failed": "Could not delete {group}: {message}",
   "sidebar_group_save_failed": "Could not save groups: {message}",
   "sidebar_project_move_to_group": "Move to group",
   "sidebar_project_new_group": "New group…",
