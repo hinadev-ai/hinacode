@@ -125,7 +125,7 @@ test("charts, diagrams, invalid charts and tables become their own blocks", () =
     kind: "chart",
     type: "bar",
     x: ["mon", "tue"],
-    series: [{ label: "A", values: [3, null] }],
+    series: [{ label: "A", values: [3, 0] }],
   })
   expect(blocks[1]).toMatchObject({ kind: "code", language: "chart" })
   expect(blocks[1]).toHaveProperty("error")

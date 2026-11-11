@@ -11,7 +11,7 @@ export type DocumentMarkdown = ReturnType<typeof createDocumentMarkdown>
 
 const FIRST_WINDOW = 2048
 const WINDOW = 8192
-const REFERENCE_DEFINITION = /^ {0,3}\[[^\]\n]+\]:/m
+const REFERENCE_DEFINITION = /^[ \t>*+\-\d.)]*\[[^\]\n]+\]:/m
 
 let shared: DocumentMarkdown | null = null
 export const documentMarkdownManager = () => (shared ??= createDocumentMarkdown())
@@ -98,11 +98,15 @@ const shifted = (chunk: DocumentChunk, delta: number): DocumentChunk => ({
   seen: chunk.seen + delta,
 })
 
+const withLineFeeds = (text: string) => text.replace(/\r\n?/g, "\n")
+
 export function* documentChunks(
   { markdown }: DocumentMarkdown,
-  source: string,
-  previous?: PreviousChunks,
+  raw: string,
+  previousRaw?: PreviousChunks,
 ): Generator<ChunkStep> {
+  const source = withLineFeeds(raw)
+  const previous = previousRaw === undefined ? undefined : { ...previousRaw, source: withLineFeeds(previousRaw.source) }
   const lex = (text: string) => markdown.instance.lexer(text)
   if (REFERENCE_DEFINITION.test(source)) {
     yield {

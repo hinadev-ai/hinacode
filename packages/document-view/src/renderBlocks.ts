@@ -80,7 +80,7 @@ const codeBody = (node: Node, decorate: Decorate): Body => {
   }
   const parsed = parseChart(text)
   if (!parsed.ok) return { kind: "code", language, text, error: parsed.message }
-  const { spec, labels } = parsed.chart
+  const { spec, labels, points } = parsed.chart
   return {
     kind: "chart",
     source: text,
@@ -90,10 +90,7 @@ const codeBody = (node: Node, decorate: Decorate): Body => {
     x: spec.rows.map((row) => String(row[spec.x] ?? "")),
     series: spec.series.map(({ key }, index) => ({
       label: labels[index] ?? key,
-      values: spec.rows.map((row) => {
-        const value = row[key]
-        return typeof value === "number" ? value : null
-      }),
+      values: spec.rows.map((_, row) => points[row * spec.series.length + index]?.value ?? 0),
     })),
     prefix: spec.unit?.prefix ?? "",
     suffix: spec.unit?.suffix ?? "",
