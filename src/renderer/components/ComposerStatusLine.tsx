@@ -8,7 +8,7 @@ import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { useUi } from "../stores/ui.ts"
-import { useWorktrees } from "../stores/worktrees.ts"
+import { useActiveWorktree } from "./ArchiveDialog.tsx"
 import { StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
 import { BranchIcon, CloudIcon, LaptopIcon, StackIcon } from "@hinacode/icons"
 
@@ -24,7 +24,7 @@ const noLinks: ReadonlyArray<never> = []
 export function ComposerStatusLine({ thread }: { thread: Thread }) {
   const environment = useThreadEnvironment(thread.id)
   const clouds = useClouds()
-  const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
+  const worktree = useActiveWorktree(thread)
   const rootBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => "")
   const links = usePullRequests((state) => state.byThreadId[thread.id] ?? noLinks)
   const urls = links.map((link) => link.url)
