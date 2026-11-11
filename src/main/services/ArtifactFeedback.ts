@@ -213,12 +213,13 @@ const make = Effect.gen(function* () {
     }).pipe(Effect.catch(() => Effect.succeed(false)))
 
   const undelivered = Effect.promise(async () => {
-    const found: Array<Undelivered> = []
-    for (const artifact of await store.list()) {
-      const feedback = await store.feedback(artifact.id)
-      if (feedback !== null) found.push(...undeliveredIn(artifact, feedback))
-    }
-    return found
+    const found = await Promise.all(
+      (await store.list()).map(async (artifact) => {
+        const saved = await store.feedback(artifact.id)
+        return saved === null ? [] : undeliveredIn(artifact, saved)
+      }),
+    )
+    return found.flat()
   })
 
   yield* Effect.forEach(yield* undelivered, (pending) =>
