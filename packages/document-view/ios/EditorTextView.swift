@@ -73,22 +73,22 @@ struct TextDiff: Equatable {
   let to: Int
   let text: String
 
-  /// The one replacement that turns `old` into `new`, in UTF-16 units, never splitting a surrogate pair.
-  static func between(_ old: NSString, _ new: NSString) -> TextDiff? {
+  /// The one replacement that turns `old` into `new`, in UTF-16 units, never splitting a surrogate pair. The text after
+  /// `caret` in `new` is matched first, so a repeated character is reported where the caret put it.
+  static func between(_ old: NSString, _ new: NSString, caret: Int) -> TextDiff? {
     if old.isEqual(to: new as String) { return nil }
     let oldLength = old.length
     let newLength = new.length
     let shorter = min(oldLength, newLength)
-    var prefix = 0
-    while prefix < shorter, old.character(at: prefix) == new.character(at: prefix) { prefix += 1 }
-    if prefix > 0, UTF16.isLeadSurrogate(old.character(at: prefix - 1)) { prefix -= 1 }
     var suffix = 0
-    while suffix < shorter - prefix,
-      old.character(at: oldLength - 1 - suffix) == new.character(at: newLength - 1 - suffix)
-    {
+    let suffixLimit = min(shorter, newLength - min(max(caret, 0), newLength))
+    while suffix < suffixLimit, old.character(at: oldLength - 1 - suffix) == new.character(at: newLength - 1 - suffix) {
       suffix += 1
     }
     if suffix > 0, UTF16.isTrailSurrogate(new.character(at: newLength - suffix)) { suffix -= 1 }
+    var prefix = 0
+    while prefix < shorter - suffix, old.character(at: prefix) == new.character(at: prefix) { prefix += 1 }
+    if prefix > 0, UTF16.isLeadSurrogate(new.character(at: prefix - 1)) { prefix -= 1 }
     return TextDiff(
       from: prefix, to: oldLength - suffix,
       text: new.substring(with: NSRange(location: prefix, length: newLength - suffix - prefix)))

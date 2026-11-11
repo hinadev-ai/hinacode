@@ -433,7 +433,7 @@ extension DocumentBlocksView: UITextViewDelegate, UIGestureRecognizerDelegate {
   private func sendText() {
     guard let place = point(0) else { return }
     let now = NSString(string: editing.editor.textStorage.string)
-    guard let diff = TextDiff.between(editing.shown, now) else { return }
+    guard let diff = TextDiff.between(editing.shown, now, caret: editing.editor.selectedRange.upperBound) else { return }
     editing.shown = now
     editing.eventCount += 1
     var payload = place.payload
