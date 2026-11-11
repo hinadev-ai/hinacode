@@ -128,6 +128,14 @@ internal class BlockEditText(context: Context, private val listener: EditorListe
     quietly { restyle(styled) }
   }
 
+  /** Puts back [before], dropping what was typed since without reporting it, and the caret at [caret]. */
+  fun revert(before: String, caret: Int) = quietly {
+    val editable = text ?: return@quietly
+    val change = textChange(editable.toString(), before)
+    editable.replace(change.from, change.to, change.text)
+    setSelection(caret.coerceIn(0, length()))
+  }
+
   fun select(anchor: Int, head: Int) = quietly {
     val length = length()
     setSelection(anchor.coerceIn(0, length), head.coerceIn(0, length))

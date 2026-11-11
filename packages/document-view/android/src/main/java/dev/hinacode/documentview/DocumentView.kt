@@ -92,6 +92,8 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
   private var lastFocus: Focus? = null
   private var staleEditorRow: String? = null
   private val held = ArrayDeque<Patch>()
+  private var awaiting: Awaiting? = null
+  private var pendingReplay: String? = null
 
   private val images: Images = Images(
     maxWidth = { width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels },
@@ -103,6 +105,7 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
     override val formatActions get() = this@DocumentView.formatActions
 
     override fun edited(editor: BlockEditText, from: Int, to: Int, text: String) {
+      if (awaiting != null) return
       val focus = adapter.focus?.takeIf { editor === activeEditor } ?: return
       eventCount++
       send(
@@ -114,12 +117,16 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
         "to" to to,
         "text" to text,
       )
+      if ('\n' in text) awaitModel(editor)
     }
 
     override fun selected(editor: BlockEditText) {
+      if (awaiting != null) return
       val focus = adapter.focus?.takeIf { editor === activeEditor } ?: return
+      eventCount++
       send(
         NativeEventType.SELECT,
+        "eventCount" to eventCount,
         "anchor" to point(focus, editor.selectionStart),
         "head" to point(focus, editor.selectionEnd),
       )
@@ -129,6 +136,7 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
       if (editor !== activeEditor) return
       eventCount++
       send(NativeEventType.KEY, "eventCount" to eventCount, "key" to key.wire, "shift" to shift)
+      awaitModel(editor)
     }
 
     override fun inputSettled(editor: BlockEditText) {
@@ -165,6 +173,7 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
     override fun link(href: String) = send(NativeEventType.LINK_PRESS, "href" to href)
 
     override fun tap(view: View, cell: Cell?, offset: Int, long: Boolean) {
+      flushAwaited()
       val index = positionOf(view) ?: return
       val text = adapter.blocks[index].textAt(cell) ?: return
       editing = true
@@ -313,7 +322,50 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
     return patch.head != null || (patch.deleteCount > 0 && focus.index in patch.start until patch.start + patch.deleteCount)
   }
 
+  /**
+   * Holds what the user types next until the model's caret for this event arrives, so it lands where the model put the
+   * caret instead of in the block the view still shows.
+   */
+  private fun awaitModel(editor: BlockEditText) {
+    val count = eventCount
+    awaiting = awaiting?.copy(count = count)
+      ?: Awaiting(count, editor.text?.toString().orEmpty(), editor.selectionEnd.coerceAtLeast(0), editor)
+    postDelayed({ if (awaiting?.count == count) flushAwaited() }, 500)
+  }
+
+  /** Sends what was held as it is. Used when the model's answer never comes or the user moves on first. */
+  private fun flushAwaited() {
+    val waiting = awaiting ?: return
+    awaiting = null
+    val now = waiting.editor.text?.toString() ?: return
+    if (now == waiting.text) return
+    val change = textChange(waiting.text, now, waiting.editor.selectionEnd)
+    editorListener.edited(waiting.editor, change.from, change.to, change.text)
+  }
+
+  /**
+   * When [patch] is the first answer to the awaited event, puts back the text the model last heard, so the patch applies
+   * as if nothing had been typed, and keeps what was typed at the old caret to type again once a patch places the caret.
+   */
+  private fun takeAwaited(patch: Patch) {
+    val waiting = awaiting ?: return
+    if (patch.eventCount < waiting.count) return
+    awaiting = null
+    val now = waiting.editor.text?.toString() ?: return
+    if (now == waiting.text) return
+    val typed = textChange(waiting.text, now, waiting.editor.selectionEnd)
+    waiting.editor.revert(waiting.text, waiting.caret)
+    if (typed.from == waiting.caret && typed.to == waiting.caret) pendingReplay = typed.text
+  }
+
+  private fun replayTyped(editor: BlockEditText) {
+    val typed = pendingReplay ?: return
+    pendingReplay = null
+    editor.post { editor.text?.let { it.insert(editor.selectionEnd.coerceIn(0, it.length), typed) } }
+  }
+
   private fun apply(patch: Patch) {
+    takeAwaited(patch)
     val start = patch.start.coerceIn(0, adapter.blocks.size)
     val deleteCount = patch.deleteCount.coerceIn(0, adapter.blocks.size - start)
     var keep: Int? = null
@@ -355,6 +407,7 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
     if (current == target && editor != null && editor.isAttachedToWindow) {
       editor.select(selection.anchor, selection.head)
       if (selection.report) editorListener.selected(editor)
+      replayTyped(editor)
       if (!editor.hasFocus()) editor.post { claimFocus(editor) }
       post { revealCaret() }
       return
@@ -382,6 +435,7 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
       pendingSelection = null
       editor.select(selection.anchor, selection.head)
       if (selection.report) editor.post { editorListener.selected(editor) }
+      replayTyped(editor)
     }
     if (editing && !editor.hasFocus()) editor.post { claimFocus(editor) }
   }
@@ -412,6 +466,8 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
    * its read-only kind would make RecyclerView recycle a view that is still attached and crash.
    */
   private fun endEditing(rebind: Boolean = true) {
+    flushAwaited()
+    pendingReplay = null
     val editor = activeEditor
     val focus = adapter.focus
     editing = false
@@ -463,3 +519,5 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
   private fun send(type: NativeEventType, vararg fields: Pair<String, Any?>) =
     onDocumentEvent(mapOf("type" to type.wire, *fields))
 }
+
+private data class Awaiting(val count: Int, val text: String, val caret: Int, val editor: BlockEditText)

@@ -203,7 +203,7 @@ test("typing in the middle of a large document patches only that block and echoe
 test("Enter in a list item makes a new item and places the caret in it", () => {
   const { session, patches, shown, indexOf } = editable("- one two\n- three")
   const block = indexOf("one two")
-  session.select({ anchor: { block, cell: null, offset: 3 }, head: { block, cell: null, offset: 3 } })
+  session.select({ anchor: { block, cell: null, offset: 3 }, head: { block, cell: null, offset: 3 }, eventCount: 0 })
   session.press("Enter", false, 1)
   expect(
     shown()
@@ -231,7 +231,7 @@ test("a selection across blocks maps to the document and back", () => {
   const { session, indexOf } = editable("First paragraph.\n\n## Heading\n\nLast one.")
   const anchor = { block: indexOf("First"), cell: null, offset: 6 }
   const head = { block: indexOf("Last"), cell: null, offset: 4 }
-  session.select({ anchor, head })
+  session.select({ anchor, head, eventCount: 0 })
   const { from, to } = session.editor.state.selection
   expect(session.editor.state.doc.textBetween(from, to, "|")).toBe("paragraph.|Heading|Last")
   session.run(() => session.editor.commands.toggleBold())
@@ -259,7 +259,7 @@ test("text typed after toggling a mark at the caret carries that mark", () => {
   const { session, indexOf } = editable("Plain text")
   const block = indexOf("Plain")
   const caret = { block, cell: null, offset: 5 }
-  session.select({ anchor: caret, head: caret })
+  session.select({ anchor: caret, head: caret, eventCount: 0 })
   session.run(() => session.editor.commands.toggleBold())
   session.edit({ eventCount: 1, block, cell: null, from: 5, to: 5, text: "BOLD" })
   expect(session.markdown().trimEnd()).toBe("Plain**BOLD** text")

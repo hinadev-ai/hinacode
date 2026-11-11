@@ -106,6 +106,8 @@ final class DocumentBlocksView: ExpoView {
   }
 
   func apply(_ patch: BlockPatch) {
+    takeAwaited(patch)
+    defer { replayAwaited(after: patch) }
     let focusedBefore = focusedIndex()
     let start = min(max(0, patch.start), items.count)
     let range = start..<(start + min(max(0, patch.deleteCount), items.count - start))

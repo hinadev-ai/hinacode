@@ -23,7 +23,7 @@ export const NativeDocumentEvent = Schema.Union([
     to: Schema.Int,
     text: Schema.String,
   }),
-  Schema.Struct({ type: Schema.Literal("select"), anchor: TextPoint, head: TextPoint }),
+  Schema.Struct({ type: Schema.Literal("select"), eventCount: Schema.Int, anchor: TextPoint, head: TextPoint }),
   Schema.Struct({
     type: Schema.Literal("key"),
     eventCount: Schema.Int,

@@ -298,7 +298,8 @@ export function createDocumentSession({
       if (!applied) resend(block)
       return applied
     },
-    select: ({ anchor, head }: TextRange) => {
+    select: ({ anchor, head, eventCount: count }: TextRange & { readonly eventCount: number }) => {
+      eventCount = Math.max(eventCount, count)
       const from = positionAt(anchor)
       const to = positionAt(head)
       if (!loaded || from === null || to === null) return

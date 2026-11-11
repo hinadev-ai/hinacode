@@ -13,6 +13,13 @@ struct EditingContent {
   let background: UIColor
 }
 
+/// Input typed after a structural key or a multi-line paste, before the model's answer to it arrives.
+struct Awaiting {
+  var count: Int
+  let text: NSString
+  let caret: Int
+}
+
 final class EditingState {
   var editable = false
   var formatActions: [(id: String, label: String)] = []
@@ -25,6 +32,8 @@ final class EditingState {
   /// The model's selection in the focused block's offsets, as far as this view knows.
   var modelSelection: NSRange?
   var held: [BlockPatch] = []
+  var awaiting: Awaiting?
+  var replay: String?
   var applyingModel = false
   var lostFocusedBlock = false
   var keyboardOverlap: CGFloat = 0
@@ -390,6 +399,7 @@ extension DocumentBlocksView: UITextViewDelegate, UIGestureRecognizerDelegate {
   // MARK: Input
 
   @objc private func tapped(_ gesture: UITapGestureRecognizer) {
+    flushAwaited()
     let point = gesture.location(in: collectionView)
     guard let indexPath = collectionView.indexPathForItem(at: point), indexPath.item < items.count,
       let cell = collectionView.cellForItem(at: indexPath) as? BlockCell
@@ -423,6 +433,56 @@ extension DocumentBlocksView: UITextViewDelegate, UIGestureRecognizerDelegate {
     reportSelection()
     editing.eventCount += 1
     send(.key, ["eventCount": editing.eventCount, "key": key.rawValue, "shift": shift])
+    awaitModel()
+  }
+
+  /// Holds what the user types next until the model's caret for this event arrives, so it lands where the model put
+  /// the caret instead of in the block the view still shows.
+  private func awaitModel() {
+    let count = editing.eventCount
+    if editing.awaiting == nil {
+      editing.awaiting = Awaiting(count: count, text: editing.shown, caret: editing.editor.selectedRange.upperBound)
+    } else {
+      editing.awaiting?.count = count
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+      guard let self, editing.awaiting?.count == count else { return }
+      flushAwaited()
+      reportSelection()
+    }
+  }
+
+  /// Sends what was held as it is. Used when the model's answer never comes or the user moves on first.
+  func flushAwaited() {
+    guard editing.awaiting != nil else { return }
+    editing.awaiting = nil
+    sendText()
+  }
+
+  /// When `patch` is the first answer to the awaited event, puts back the text the model last heard, so the patch
+  /// applies as if nothing had been typed, and keeps what was typed at the old caret to type again once a patch
+  /// places the caret.
+  func takeAwaited(_ patch: BlockPatch) {
+    guard let awaiting = editing.awaiting, patch.eventCount >= awaiting.count else { return }
+    editing.awaiting = nil
+    let editor = editing.editor
+    let now = NSString(string: editor.textStorage.string)
+    guard let typed = TextDiff.between(awaiting.text, now, caret: editor.selectedRange.upperBound) else { return }
+    editing.applyingModel = true
+    defer { editing.applyingModel = false }
+    let typedLength = (typed.text as NSString).length
+    editor.textStorage.replaceCharacters(
+      in: NSRange(location: typed.from, length: typedLength),
+      with: awaiting.text.substring(with: NSRange(location: typed.from, length: typed.to - typed.from)))
+    editor.selectedRange = NSRange(location: min(awaiting.caret, editor.textStorage.length), length: 0)
+    editing.shown = awaiting.text
+    if typed.from == awaiting.caret, typed.to == awaiting.caret { editing.replay = typed.text }
+  }
+
+  func replayAwaited(after patch: BlockPatch) {
+    guard patch.selection != nil, let typed = editing.replay else { return }
+    editing.replay = nil
+    if !typed.isEmpty, isEditing { editing.editor.insertText(typed) }
   }
 
   private func point(_ offset: Int) -> TextPoint? {
@@ -432,7 +492,7 @@ extension DocumentBlocksView: UITextViewDelegate, UIGestureRecognizerDelegate {
 
   /// Sends what changed in the focused text since the model last heard, as one replacement.
   private func sendText() {
-    guard let place = point(0) else { return }
+    guard editing.awaiting == nil, let place = point(0) else { return }
     let now = NSString(string: editing.editor.textStorage.string)
     guard let diff = TextDiff.between(editing.shown, now, caret: editing.editor.selectedRange.upperBound) else { return }
     editing.shown = now
@@ -441,6 +501,7 @@ extension DocumentBlocksView: UITextViewDelegate, UIGestureRecognizerDelegate {
     payload.removeValue(forKey: "offset")
     payload.merge(["eventCount": editing.eventCount, "from": diff.from, "to": diff.to, "text": diff.text]) { $1 }
     send(.edit, payload)
+    if diff.text.contains("\n") { awaitModel() }
     if let selection = editing.modelSelection {
       let start = diff.map(selection.location)
       editing.modelSelection = NSRange(location: start, length: max(0, diff.map(selection.upperBound) - start))
@@ -449,10 +510,12 @@ extension DocumentBlocksView: UITextViewDelegate, UIGestureRecognizerDelegate {
 
   private func reportSelection(force: Bool = false) {
     let range = editing.editor.selectedRange
-    guard force || range != editing.modelSelection, let anchor = point(range.location), let head = point(range.upperBound)
+    guard editing.awaiting == nil, force || range != editing.modelSelection, let anchor = point(range.location),
+      let head = point(range.upperBound)
     else { return }
     editing.modelSelection = range
-    send(.select, ["anchor": anchor.payload, "head": head.payload])
+    editing.eventCount += 1
+    send(.select, ["eventCount": editing.eventCount, "anchor": anchor.payload, "head": head.payload])
   }
 
   func textViewDidBeginEditing(_ textView: UITextView) {
@@ -460,6 +523,8 @@ extension DocumentBlocksView: UITextViewDelegate, UIGestureRecognizerDelegate {
   }
 
   func textViewDidEndEditing(_ textView: UITextView) {
+    editing.awaiting = nil
+    editing.replay = nil
     sendText()
     flushHeldPatches()
     unfocus()
