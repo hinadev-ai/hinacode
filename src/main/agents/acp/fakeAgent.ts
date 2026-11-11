@@ -14,6 +14,7 @@ type Message = {
 const logPath = process.env["FAKE_ACP_LOG"]
 const legacyModels = process.env["FAKE_ACP_MODELS"] === "legacy"
 const signedInAfterFirstSession = process.env["FAKE_ACP_MODELS"] === "after-first-session"
+const stallAfterFirstSession = process.env["FAKE_ACP_MODELS"] === "stall-after-first-session"
 const authRequired = process.env["FAKE_ACP_AUTH"] === "required"
 const silentInitialize = process.env["FAKE_ACP_SILENT_INITIALIZE"] === "1"
 const lifeline = process.env["FAKE_ACP_LIFELINE"]
@@ -253,6 +254,7 @@ const handle = (message: Message) => {
           },
         })
       }
+      if (stallAfterFirstSession && createdSessions() > 1) return
       const sessionId = `ses_${createdSessions()}`
       send({ id: message.id, result: { sessionId, ...modelSetup(sessionId) } })
       return setImmediate(() =>
