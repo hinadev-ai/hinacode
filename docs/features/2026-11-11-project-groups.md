@@ -35,6 +35,8 @@ A developer who works on several related repositories, such as a web app, its AP
 - Turning installed skills off per group. The group adds skills; it does not filter the developer's own.
 - Native skill loading. Claude's SDK can load a plugin folder, but the instructions block works on every provider. Revisit if agents skip skills they should use.
 - A conductor that acts without being asked. Routines can start one later.
+- Updating a running opencode session. ACP takes instructions only when a session starts, so an opencode thread picks up changed group rules in its next session.
+- Re-reading a project's Git origin before the conductor's tools check it. Membership uses the cached repository until the project is edited or the app restarts.
 
 ## Verification
 
