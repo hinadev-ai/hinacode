@@ -1,8 +1,11 @@
-import type { DocumentContent } from "@shared/artifact.ts"
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import type { PushEvent } from "@shared/contract.ts"
+import { Cause, Option } from "effect"
+import { AsyncResult } from "effect/reactivity"
 import type { CalloutTone } from "@shared/documentCallout.ts"
 import type { Thread } from "@shared/domain.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
-import { useEffect, useEffectEvent, useRef, useState } from "react"
+import { useEffect, useEffectEvent, useState } from "react"
 import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, useWindowDimensions, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Failure } from "@/components/files"
@@ -12,7 +15,8 @@ import { EmptyState, Notice } from "@/components/ui"
 import { CalloutColors, READABLE_WIDTH, radius } from "@/constants/theme"
 import { useThreadConnection, useThreadServer } from "@/hooks/use-server"
 import { useScheme, useTheme } from "@/hooks/use-theme"
-import { call, onEvent } from "@/lib/connection"
+import { onEvent } from "@/lib/connection"
+import { rpcFamily } from "@/lib/remote"
 import { copy } from "@/lib/copy"
 import { type DocumentSegment, documentSegments } from "@/lib/document-segments"
 import { errorText } from "@/lib/error-text"
@@ -33,10 +37,9 @@ const calloutCopy = {
   caution: { label: "mobile_document_callout_caution", icon: "RiSpam2Line" },
 } as const satisfies Record<CalloutTone, { label: Parameters<typeof copy>[0]; icon: IconName }>
 
-type Loaded =
-  | { readonly status: "loading" }
-  | { readonly status: "ready"; readonly document: DocumentContent }
-  | { readonly status: "error"; readonly message: string }
+const documentAtom = rpcFamily("artifacts.readDocument", {
+  refreshOn: (event, { id }) => event.type === "artifact.updated" && event.artifact.id === id,
+})
 
 export default function DocumentScreen() {
   const theme = useTheme()
@@ -69,40 +72,36 @@ function DocumentBody({
   const server = useThreadServer(thread.id)?.id
   const connected = connection === "connected"
   const [title, setTitle] = useState(initialTitle)
-  const [state, setState] = useState<Loaded>({ status: "loading" })
-  const latestRead = useRef(0)
+  const [removal, setRemoval] = useState<"none" | "removed" | "retrying">("none")
+  const read = documentAtom({ id: artifactId }, server)
+  const result = useAtomValue(read)
+  const refresh = useAtomRefresh(read)
+  const settled = !result.waiting
+  const content =
+    removal === "none"
+      ? Option.getOrUndefined(AsyncResult.value(result))
+      : removal === "retrying" && settled && AsyncResult.isSuccess(result)
+        ? result.value
+        : undefined
+  const failure =
+    removal === "removed"
+      ? copy("mobile_document_removed")
+      : content === undefined && settled && AsyncResult.isFailure(result)
+        ? errorText(Cause.squash(result.cause))
+        : null
 
-  const read = async () => {
-    const attempt = ++latestRead.current
-    try {
-      const document = await call("artifacts.readDocument", { id: artifactId }, { server })
-      if (latestRead.current === attempt) setState({ status: "ready", document })
-    } catch (cause) {
-      if (latestRead.current !== attempt) return
-      setState((current) => (current.status === "ready" ? current : { status: "error", message: errorText(cause) }))
-    }
-  }
-
-  const readOnConnect = useEffectEvent(() => void read())
-  useEffect(() => {
-    if (connected) readOnConnect()
-  }, [connected])
-
-  const onPush = useEffectEvent((event: Parameters<Parameters<typeof onEvent>[0]>[0]) => {
+  const onPush = useEffectEvent((event: PushEvent) => {
     if (event.type === "artifact.updated" && event.artifact.id === artifactId) {
       setTitle(event.artifact.title)
-      void read()
+      setRemoval("none")
     }
-    if (event.type === "artifact.removed" && event.id === artifactId) {
-      latestRead.current++
-      setState({ status: "error", message: copy("mobile_document_removed") })
-    }
+    if (event.type === "artifact.removed" && event.id === artifactId) setRemoval("removed")
   })
   useEffect(() => onEvent(onPush), [])
 
   const retry = () => {
-    setState({ status: "loading" })
-    void read()
+    if (removal === "removed") setRemoval("retrying")
+    refresh()
   }
 
   return (
@@ -111,7 +110,7 @@ function DocumentBody({
         options={{
           title,
           headerTitle: () => (
-            <DocumentTitle title={title} version={state.status === "ready" ? state.document.version : null} />
+            <DocumentTitle title={title} version={content?.version ?? null} />
           ),
         }}
       />
@@ -120,12 +119,12 @@ function DocumentBody({
           <Notice text={copy("mobile_reconnecting_banner")} tone="attention" />
         </View>
       )}
-      {state.status === "error" ? (
-        <Failure message={state.message} onRetry={retry} />
-      ) : state.status === "loading" ? (
+      {failure !== null ? (
+        <Failure message={failure} onRetry={retry} />
+      ) : content === undefined ? (
         <Loading />
       ) : (
-        <DocumentText thread={thread} markdown={state.document.markdown} />
+        <DocumentText thread={thread} markdown={content.markdown} />
       )}
     </>
   )

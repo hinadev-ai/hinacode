@@ -1,5 +1,6 @@
+import { useAtomMount } from "@effect/atom-react"
 import type { MessagePart, ToolCallStatus } from "@shared/domain.ts"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon } from "@/components/icon"
 import { FadeIn, Rotate, Spinner } from "@/components/motion"
@@ -8,7 +9,7 @@ import { mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { describeToolCall, toolIcon } from "@/lib/tool-call"
-import { toolOutputKey, useToolOutputs } from "@/stores/tool-outputs"
+import { loadToolOutputAtom, toolOutputKey, useToolOutputs } from "@/stores/tool-outputs"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
@@ -111,9 +112,7 @@ function ToolOutput({ call, threadId }: { call: ToolCall; threadId: string }) {
   const theme = useTheme()
   const output = useToolOutputs((state) => state.byCall[toolOutputKey(threadId, call.callId)])
   const load = () => void useToolOutputs.getState().load(threadId, call.callId)
-  useEffect(() => {
-    if (output === undefined) void useToolOutputs.getState().load(threadId, call.callId)
-  }, [output, threadId, call.callId])
+  useAtomMount(loadToolOutputAtom(threadId, call.callId))
 
   if (output === undefined || output.status === "loading")
     return (

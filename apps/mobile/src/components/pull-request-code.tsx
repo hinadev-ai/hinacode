@@ -1,3 +1,4 @@
+import { useAtomMount } from "@effect/atom-react"
 import type {
   GuideCategory,
   GuideFileNote,
@@ -14,7 +15,7 @@ import {
   type ResolvedGroup,
   resolveGuide,
 } from "@shared/pullRequestGuide.ts"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
@@ -22,11 +23,11 @@ import { PressableScale, Reveal, Rotate, Spinner } from "@/components/motion"
 import { Button, Notice, SegmentedControl } from "@/components/ui"
 import { HIT, mono, type Palette, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call, useConnection } from "@/lib/connection"
+import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { type PatchLine, patchLines } from "@/lib/patch-lines"
-import { type CodeView, filesKey, usePullRequests } from "@/stores/pull-requests"
+import { type CodeView, filesKey, loadFilesAtom, loadGuideAtom, usePullRequests } from "@/stores/pull-requests"
 import { splitPath } from "@/lib/path-match"
 
 /** Lines a diff shows before it asks, so opening a generated file does not stall the screen. */
@@ -73,14 +74,7 @@ const viewSegments = [
 /** The Code tab: the pull request's changed files, listed by path or in the order its guide reads them. */
 export function PullRequestCode({ detail }: { detail: PullRequestDetail }) {
   const theme = useTheme()
-  const connected = useConnection((state) => state.status === "connected")
   const view = usePullRequests((state) => state.codeView)
-  const remote = usePullRequests((state) => state.files[filesKey(detail.url, detail.head)])
-  const tooLarge = diffTooLarge(detail)
-
-  useEffect(() => {
-    if (connected && !tooLarge) void usePullRequests.getState().loadFiles(detail.url, detail.head)
-  }, [connected, tooLarge, detail.url, detail.head])
 
   return (
     <View style={styles.code}>
@@ -90,42 +84,50 @@ export function PullRequestCode({ detail }: { detail: PullRequestDetail }) {
         onChange={(next) => usePullRequests.getState().setCodeView(next)}
         accessibilityLabel={copy("mobile_pr_code_view_label")}
       />
-      {tooLarge ? (
+      {diffTooLarge(detail) ? (
         <Text style={[styles.muted, { color: theme.textMuted }]}>
           {copy("mobile_pr_code_too_large")}
         </Text>
-      ) : remote === undefined || remote.status === "loading" ? (
-        <Loading label={copy("mobile_pr_code_loading")} />
-      ) : remote.status === "error" ? (
-        <View style={styles.stack}>
-          <Notice tone="danger" text={copy("mobile_pr_code_failed", { message: remote.message })} />
-          <Button
-            label={copy("mobile_pr_retry")}
-            icon="Refresh"
-            style={styles.start}
-            onPress={() => void usePullRequests.getState().loadFiles(detail.url, detail.head, { force: true })}
-          />
-        </View>
-      ) : remote.value.length === 0 ? (
-        <Text style={[styles.muted, { color: theme.textMuted }]}>{copy("mobile_pr_code_empty")}</Text>
       ) : (
-        <>
-          <DiffSummary files={remote.value} />
-          {view === "files" ? (
-            <View>
-              {remote.value.map((file) => (
-                <FileRow
-                  key={file.path}
-                  entry={{ file, fileNotes: [], lineNotesInHunks: [], lineNotesOutsideHunks: [] }}
-                />
-              ))}
-            </View>
-          ) : (
-            <GuideView detail={detail} files={remote.value} />
-          )}
-        </>
+        <ChangedFiles detail={detail} view={view} />
       )}
     </View>
+  )
+}
+
+function ChangedFiles({ detail, view }: { detail: PullRequestDetail; view: CodeView }) {
+  const theme = useTheme()
+  const remote = usePullRequests((state) => state.files[filesKey(detail.url, detail.head)])
+  useAtomMount(loadFilesAtom(detail.url, detail.head))
+
+  if (remote === undefined || remote.status === "loading") return <Loading label={copy("mobile_pr_code_loading")} />
+  if (remote.status === "error")
+    return (
+      <View style={styles.stack}>
+        <Notice tone="danger" text={copy("mobile_pr_code_failed", { message: remote.message })} />
+        <Button
+          label={copy("mobile_pr_retry")}
+          icon="Refresh"
+          style={styles.start}
+          onPress={() => void usePullRequests.getState().loadFiles(detail.url, detail.head, { force: true })}
+        />
+      </View>
+    )
+  if (remote.value.length === 0)
+    return <Text style={[styles.muted, { color: theme.textMuted }]}>{copy("mobile_pr_code_empty")}</Text>
+  return (
+    <>
+      <DiffSummary files={remote.value} />
+      {view === "files" ? (
+        <View>
+          {remote.value.map((file) => (
+            <FileRow key={file.path} entry={{ file, fileNotes: [], lineNotesInHunks: [], lineNotesOutsideHunks: [] }} />
+          ))}
+        </View>
+      ) : (
+        <GuideView detail={detail} files={remote.value} />
+      )}
+    </>
   )
 }
 
@@ -340,12 +342,8 @@ function NoteCard({ note, showLine = false }: { note: GuideFileNote | GuideLineN
 
 function GuideView({ detail, files }: { detail: PullRequestDetail; files: readonly PullRequestFile[] }) {
   const theme = useTheme()
-  const connected = useConnection((state) => state.status === "connected")
   const remote = usePullRequests((state) => state.guides[detail.url])
-
-  useEffect(() => {
-    if (connected) void usePullRequests.getState().loadGuide(detail.url)
-  }, [connected, detail.url])
+  useAtomMount(loadGuideAtom(detail.url))
 
   if (remote === undefined || remote.status === "loading") return <Loading label={copy("mobile_pr_guide_loading")} />
   if (remote.status === "error") {

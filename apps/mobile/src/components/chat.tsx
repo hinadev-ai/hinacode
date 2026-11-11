@@ -1,3 +1,4 @@
+import { useAtomMount } from "@effect/atom-react"
 import type { Compaction } from "@shared/agent.ts"
 import { collapsedParts } from "@shared/activityFold.ts"
 import { formatWorkDuration } from "@shared/workDuration.ts"
@@ -10,7 +11,7 @@ import {
 } from "@shared/domain.ts"
 import { isOwnPart } from "@shared/subagents.ts"
 import { useFocusEffect } from "expo-router"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { ArtifactCard } from "@/components/artifact-card"
 import { Composer } from "@/components/composer"
@@ -25,12 +26,11 @@ import { Button, Notice } from "@/components/ui"
 import { rise } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { motion } from "@/lib/motion"
 import { ApprovalCard, QuestionCard, UsageLimitCallout } from "@/components/request-cards"
-import { useMessages } from "@/stores/messages"
-import { useSubagents } from "@/stores/subagents"
+import { loadHistoryAtom, useMessages } from "@/stores/messages"
+import { loadSubagentsAtom } from "@/stores/subagents"
 import { useThreadRoot } from "@/stores/threads"
 
 /** Cards hold insets with `radius.sm` corners, so the card's own corners stay concentric with them. */
@@ -44,7 +44,6 @@ const risesInFlippedCell = { ...rise.initial, y: -rise.initial.y }
 
 export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
   const theme = useTheme()
-  const connected = useConnection((state) => state.status === "connected")
   const history = useMessages((state) => state.byThread[thread.id])
   const root = useThreadRoot(thread)
 
@@ -53,12 +52,8 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
       if (active) return useMessages.getState().watch(thread.id)
     }, [active, thread.id]),
   )
-  useEffect(() => {
-    if (connected && history === undefined) void useMessages.getState().load(thread.id)
-  }, [connected, history, thread.id])
-  useEffect(() => {
-    if (connected) void useSubagents.getState().load(thread.id).catch(() => {})
-  }, [connected, thread.id])
+  useAtomMount(loadHistoryAtom(thread.id))
+  useAtomMount(loadSubagentsAtom(thread.id))
 
   const messages = history?.status === "ready" ? history.messages : undefined
   const [openedNewest, setOpenedNewest] = useState<string | null>()
