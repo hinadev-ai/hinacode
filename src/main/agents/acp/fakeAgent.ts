@@ -13,6 +13,7 @@ type Message = {
 
 const logPath = process.env["FAKE_ACP_LOG"]
 const legacyModels = process.env["FAKE_ACP_MODELS"] === "legacy"
+const signedInAfterFirstSession = process.env["FAKE_ACP_MODELS"] === "after-first-session"
 const authRequired = process.env["FAKE_ACP_AUTH"] === "required"
 const silentInitialize = process.env["FAKE_ACP_SILENT_INITIALIZE"] === "1"
 const lifeline = process.env["FAKE_ACP_LIFELINE"]
@@ -74,17 +75,19 @@ const configFor = (sessionId: string) => {
 }
 
 const modelSetup = (sessionId: string) =>
-  legacyModels
-    ? {
-        models: {
-          currentModelId: "legacy-default",
-          availableModels: [
-            { modelId: "legacy-other", name: "Legacy Other" },
-            { modelId: "legacy-default", name: "Legacy Default" },
-          ],
-        },
-      }
-    : { configOptions: configFor(sessionId) }
+  signedInAfterFirstSession && sessionId === "ses_1"
+    ? {}
+    : legacyModels
+      ? {
+          models: {
+            currentModelId: "legacy-default",
+            availableModels: [
+              { modelId: "legacy-other", name: "Legacy Other" },
+              { modelId: "legacy-default", name: "Legacy Default" },
+            ],
+          },
+        }
+      : { configOptions: configFor(sessionId) }
 
 const writeTool = async (sessionId: string, cwd: string) => {
   const path = `${cwd}/hello.txt`

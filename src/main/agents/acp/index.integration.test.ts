@@ -363,6 +363,31 @@ describe("makeAcpProvider", () => {
     }).pipe(Effect.scoped),
   )
 
+  it.effect("probes models again after an empty list, then once per ten minutes, for all pickers at once", () =>
+    Effect.gen(function* () {
+      const { provider: make, received } = setup({ FAKE_ACP_MODELS: "after-first-session" })
+      const provider = yield* make
+      const probes = () => received().filter((message) => message.method === "session/new").length
+      const ids = (models: ReadonlyArray<{ readonly id: string }>) => models.map((model) => model.id)
+
+      expect(yield* provider.listModels).toStrictEqual([])
+      const [first, second] = yield* Effect.all([provider.listModels, provider.listModels], { concurrency: 2 })
+      expect([ids(first), ids(second)]).toStrictEqual([
+        ["fake/default", "fake/other"],
+        ["fake/default", "fake/other"],
+      ])
+      expect(probes()).toBe(2)
+
+      yield* TestClock.adjust("9 minutes")
+      yield* provider.listModels
+      expect(probes()).toBe(2)
+
+      yield* TestClock.adjust("2 minutes")
+      expect(ids(yield* provider.listModels)).toStrictEqual(["fake/default", "fake/other"])
+      expect(probes()).toBe(3)
+    }).pipe(Effect.scoped),
+  )
+
   it.live("lists a new thread's commands from a session opened in its cwd, once per cwd", () =>
     Effect.gen(function* () {
       const { provider: make, received } = setup()
