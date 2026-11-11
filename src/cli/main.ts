@@ -1,9 +1,9 @@
-import { createRequire } from "node:module"
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Cause, Effect, Exit } from "effect"
 import { CliConfig, CliError, Command, GlobalFlag } from "effect/cli"
 import { getErrorExitCode } from "effect/Runtime"
+import packageJson from "../../package.json" with { type: "json" }
 import { inbox } from "./commands/inbox.ts"
 import { routines } from "./commands/routines.ts"
 import { run } from "./commands/run.ts"
@@ -14,7 +14,7 @@ import { RpcError } from "./client.ts"
 import { cloudCommands } from "./serve.ts"
 import { DataDir } from "./session.ts"
 
-const { version } = createRequire(import.meta.url)("../../package.json") as { version: string }
+const { version } = packageJson
 
 const hinacode = Command.make("hinacode").pipe(
   Command.withDescription(

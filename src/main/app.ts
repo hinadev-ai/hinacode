@@ -35,9 +35,7 @@ import * as Browser from "./services/Browser.ts"
 import * as Routines from "./services/routines/Routines.ts"
 import * as Scheduler from "./services/Scheduler.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
-import * as Conductor from "./services/Conductor.ts"
 import * as Environments from "./services/Environments.ts"
-import * as EventBus from "./services/EventBus.ts"
 import { type Events, makeEventsLayer } from "./services/Events.ts"
 import * as Favicons from "./services/Favicons.ts"
 import * as Files from "./services/Files.ts"
@@ -49,7 +47,6 @@ import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
-import * as PullRequestLifecycle from "./services/PullRequestLifecycle.ts"
 import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
 import * as RelayAccount from "./services/RelayAccount.ts"
 import * as Scratch from "./services/Scratch.ts"
@@ -230,7 +227,6 @@ export const makeAppLayer = ({
     Settle.layer,
     ArtifactFeedback.layer,
     PullRequestWatcher.layer,
-    PullRequestLifecycle.layer,
     providers.simulated ? PullRequestGuides.idleLayer : PullRequestGuides.layer,
     updates,
     Mcp.serverLayer,
@@ -240,13 +236,13 @@ export const makeAppLayer = ({
     AppConnections.followRelayLayer,
     AppServer.layer.pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
-  return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer, Conductor.layer).pipe(
+  return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
     Layer.provide(providers.layer.pipe(Layer.provide(Layer.mergeAll(settings, Secrets.layer, binaries)))),
     Layer.provideMerge(binaries),
     Layer.provideMerge(SourceControl.layer),
-    Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer, EventBus.layer)),
+    Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provideMerge(makeEventsLayer(toWindows)),
     Layer.provide(Layer.mergeAll(Db.layer(join(userData, "hinacode.sqlite")), keyring)),
     Layer.provide(NodeServices.layer),

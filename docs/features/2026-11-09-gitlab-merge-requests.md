@@ -39,7 +39,7 @@ The probe result is cached per hostname for the life of the process.
 
 `GitLab.ts` is a service beside `GitHub.ts`. It shells out to `glab api --hostname <host>`, the way `GitHub.ts` shells out to `gh`, so authentication, self-hosted hosts and tokens stay in `glab`'s config and HinaCode stores no GitLab secret. Every response is decoded with a schema.
 
-`SourceControl.ts` is the only thing the rest of main calls for the operations both hosts share: `pullRequest`, `pullRequestDetail`, `pullRequestOpenedAt`, `merge`, `close`, `comment`, `branchPullRequest` and `createPullRequest`. It routes by URL or by `origin` as above. `PullRequests`, `PullRequestWatcher`, `PullRequestLifecycle`, `AutoSettle`, `Worktrees` and the `github.*` rpc handlers move from `GitHub` to `SourceControl` for those calls. GitHub-only features keep calling `GitHub` directly.
+`SourceControl.ts` is the only thing the rest of main calls for the operations both hosts share: `pullRequest`, `pullRequestDetail`, `pullRequestOpenedAt`, `merge`, `close`, `comment`, `branchPullRequest` and `createPullRequest`. It routes by URL or by `origin` as above. `PullRequests`, `PullRequestWatcher`, `AutoSettle`, `Worktrees` and the `github.*` rpc handlers move from `GitHub` to `SourceControl` for those calls. GitHub-only features keep calling `GitHub` directly.
 
 The rpc method names stay `github.pullRequest`, `github.merge` and so on. The mobile app calls them by name over the relay, and renaming them would break every installed phone for a cosmetic gain.
 

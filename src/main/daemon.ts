@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { createRequire } from "node:module"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { isSea } from "node:sea"
 import { fileURLToPath } from "node:url"
 import { Effect, Layer, ManagedRuntime, References } from "effect"
 import QRCode from "qrcode"
+import packageJson from "../../package.json" with { type: "json" }
 import type { RemotePairing } from "../shared/domain.ts"
 import { isAddressNotUpYet, isPortInUse, pairingUrl } from "../shared/remote.ts"
 import { makeAppLayer } from "./app.ts"
@@ -30,8 +31,8 @@ import { hydratePath } from "./shellPath.ts"
 const QUIT_TIMEOUT_MS = 5000
 const LISTEN_TIMEOUT_MS = 5000
 
-const { version } = createRequire(import.meta.url)("../../package.json") as { version: string }
-const packageRoot = fileURLToPath(new URL("../..", import.meta.url))
+const { version } = packageJson
+const packageRoot = isSea() ? undefined : fileURLToPath(new URL("../..", import.meta.url))
 
 const appData = () =>
   process.platform === "darwin"
