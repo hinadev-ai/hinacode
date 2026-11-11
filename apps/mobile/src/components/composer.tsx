@@ -288,7 +288,6 @@ export function Composer({ thread }: { thread: Thread }) {
             <SettingsChip thread={thread} onError={setError} />
           </View>
           <View style={styles.chips}>
-            {focused && <HideKeyboardButton onPress={() => inputRef.current?.blur()} />}
             <SendButton
               busy={busy}
               steers={steers}
@@ -305,21 +304,6 @@ export function Composer({ thread }: { thread: Thread }) {
         </Text>
       )}
     </View>
-  )
-}
-
-function HideKeyboardButton({ onPress }: { onPress: () => void }) {
-  const theme = useTheme()
-  return (
-    <Pressable
-      testID="composer-hide-keyboard"
-      accessibilityRole="button"
-      accessibilityLabel={copy("mobile_composer_hide_keyboard")}
-      onPress={onPress}
-      style={({ pressed }) => [styles.attach, pressed && [styles.pressed, { backgroundColor: theme.inkWash }]]}
-    >
-      <Icon name="ChevronDown" size={20} color={theme.textMuted} />
-    </Pressable>
   )
 }
 
