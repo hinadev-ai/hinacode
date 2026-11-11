@@ -249,7 +249,12 @@ export function createDocumentSession({
   const change = (run: () => unknown, placeSelection: boolean) => {
     if (!loaded) return false
     const before = editor.state.doc
-    const result = run()
+    let result: unknown
+    try {
+      result = run()
+    } catch {
+      return false
+    }
     const after = editor.state.doc
     if (after !== before) {
       rerender(before, after, placeSelection ? selectionRange : undefined)
@@ -260,6 +265,11 @@ export function createDocumentSession({
     }
     onSelection?.(selectionState(editor))
     return result !== false
+  }
+
+  const resend = (index: number) => {
+    const block = blocks[index]
+    if (block !== undefined) show({ revision, eventCount, start: index, deleteCount: 1, insert: [block] })
   }
 
   const positionAt = (point: TextPoint) => {
@@ -274,17 +284,19 @@ export function createDocumentSession({
       const start = positionAt({ block, cell, offset: from })
       const end = positionAt({ block, cell, offset: to })
       if (start === null || end === null) return false
-      if (/[\r\n]/.test(text))
-        return change(() => {
-          engine.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start, end)))
-          engine.paste(text)
-        }, true)
-      return change(() => {
-        const tr = editor.state.tr
-        if (text === "") tr.delete(start, end)
-        else tr.insertText(text, start, end)
-        engine.dispatch(tr)
-      }, false)
+      const applied = /[\r\n]/.test(text)
+        ? change(() => {
+            engine.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start, end)))
+            engine.paste(text)
+          }, true)
+        : change(() => {
+            const tr = editor.state.tr
+            if (text === "") tr.delete(start, end)
+            else tr.insertText(text, start, end)
+            engine.dispatch(tr)
+          }, false)
+      if (!applied) resend(block)
+      return applied
     },
     select: ({ anchor, head }: TextRange) => {
       const from = positionAt(anchor)
