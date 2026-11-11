@@ -305,20 +305,25 @@ const make = Effect.gen(function* () {
       const rootPath = join(groupsDir, id)
       yield* makeDirectory(join(rootPath, "skills"))
       yield* writeMissingFile(join(rootPath, "AGENTS.md"))
+      const existing = yield* findById(id).pipe(Effect.mapError(persistence("projects.ensureGroups")))
+      if (Option.isSome(existing) && existing.value.name === name && existing.value.rootPath === rootPath) return false
       const now = yield* nowIso
       const row = { id, name, rootPath, setupScript: null, kind: "group", createdAt: now, updatedAt: now }
       yield* sql`
         INSERT INTO project ${sql.insert(row)}
         ON CONFLICT (id) DO UPDATE SET name = excluded.name, root_path = excluded.root_path, updated_at = excluded.updated_at
-        WHERE name != excluded.name OR root_path != excluded.root_path
       `.pipe(Effect.mapError(persistence("projects.ensureGroups")))
+      return true
     })
 
   const ensureGroups = (groups: ReadonlyArray<GroupProject>, groupsDir: string) =>
     Effect.forEach(
       groups.filter(({ id }) => /^[\w-]+$/.test(id)),
       (group) => ensureGroup(group, groupsDir),
-      { discard: true },
+    ).pipe(
+      Effect.flatMap((changed) =>
+        changed.includes(true) ? events.publish({ type: "projects.changed" }) : Effect.void,
+      ),
     )
 
   const update = (input: UpdateProject) =>

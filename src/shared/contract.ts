@@ -1104,6 +1104,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("update.changed") }),
   Schema.Struct({ type: Schema.Literal("environment.status"), id: Schema.String, status: EnvironmentStatus }),
   Schema.Struct({ type: Schema.Literal("environments.changed") }),
+  Schema.Struct({ type: Schema.Literal("projects.changed") }),
   Schema.Struct({ type: Schema.Literal("appConnections.changed"), status: AppConnectionsStatus }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   Schema.Struct({ type: Schema.Literal("device.updated"), threadId: Schema.String, devices: ThreadDevices }),
