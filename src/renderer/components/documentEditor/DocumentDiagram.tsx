@@ -20,7 +20,7 @@ export function DiagramBlock({ node, updateAttributes }: ReactNodeViewProps) {
   const [sourceOpen, setSourceOpen] = useState(false)
   const settled = useSettledDiagram(node.textContent)
   const failed = AsyncResult.isFailure(useAtomValue(diagramAtom(settled.code, settled.uiFont)))
-  if (failed && !sourceOpen) setSourceOpen(true)
+  const sourceShown = failed || sourceOpen
   return (
     <NodeViewWrapper data-diagram className="not-prose my-6 overflow-hidden rounded-[10px] bg-muted">
       <div contentEditable={false} data-node-control>
@@ -29,7 +29,8 @@ export function DiagramBlock({ node, updateAttributes }: ReactNodeViewProps) {
             variant="ghost"
             size="xs"
             className={surfaceControl}
-            aria-pressed={sourceOpen}
+            aria-pressed={sourceShown}
+            disabled={failed}
             action={() => setSourceOpen((open) => !open)}
           >
             {m.documents_chart_source()}
@@ -37,7 +38,7 @@ export function DiagramBlock({ node, updateAttributes }: ReactNodeViewProps) {
         </div>
         <DiagramView code={settled.code} uiFont={settled.uiFont} className="px-4 pb-4" failed={failedInDocument} />
       </div>
-      <div hidden={!sourceOpen}>
+      <div hidden={!sourceShown}>
         <CodeSource language={DIAGRAM_LANGUAGE} updateAttributes={updateAttributes} />
       </div>
     </NodeViewWrapper>
