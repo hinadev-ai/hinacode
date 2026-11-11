@@ -893,6 +893,28 @@ describe("projects, threads and settings over rpc", () => {
     expect(result(await invoke("terminal.list", { threadId: thread.id }))).toStrictEqual([])
   })
 
+  test("deleting a project stops its running threads before it removes them", async () => {
+    heldTurn = Promise.withResolvers()
+    const root = join(dir, "running-project")
+    execFileSync("git", ["init", "-q", "-b", "main", root])
+    const project = result(await invoke("projects.create", { name: "running", rootPath: root, setupScript: null }))
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held turn" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("running")
+
+    let deleted = false
+    const deleting = invoke("projects.delete", { id: project.id }).then((response) => {
+      deleted = true
+      return response
+    })
+    await expect.poll(() => interruptedThreads).toContain(thread.id)
+    expect(deleted).toBe(false)
+    heldTurn.resolve()
+
+    result(await deleting)
+    expect(result(await invoke("projects.list", undefined)).map((item) => item.id)).not.toContain(project.id)
+  })
+
   test("deleting a project tells every window its threads are gone", async () => {
     const root = join(dir, "removed-with-threads")
     execFileSync("git", ["init", "-q", "-b", "main", root])
