@@ -56,6 +56,14 @@ const WHOLE_NAME = new RegExp(`^${NAME}$`)
 export const isUnorderedBullet = (marker: string) => /^[-*+]$/.test(marker)
 
 export const isCommandName = (name: string) => WHOLE_NAME.test(name)
+
+export const commandNames = (text: string, trigger: AgentCommand["trigger"]) =>
+  new Set(
+    Array.from(text.matchAll(INLINE), ([token]) => token)
+      .filter((token) => token.startsWith(trigger))
+      .map((token) => token.slice(trigger.length)),
+  )
+
 const TRAILING_PUNCTUATION = /[,.;:!?)\]]+$/
 
 const knownIds = (known: KnownTokens) =>
