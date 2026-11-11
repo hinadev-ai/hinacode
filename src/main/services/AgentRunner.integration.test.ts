@@ -72,6 +72,7 @@ interface Probe {
   readonly stops: Array<string>
   readonly setBackgroundTasks: (tasks: ReadonlyArray<BackgroundTask>) => void
   readonly reportSubagent: (subagent: Subagent) => void
+  readonly hitLimit: () => void
   readonly transcript: Array<TranscriptPush>
   readonly wake: (agent: ProviderId, sessionId: string, events?: ReadonlyArray<AgentEvent>) => Promise<void>
   readonly failClose: () => void
@@ -158,6 +159,7 @@ const withPreparingThread = async (
   const steers: Probe["steers"] = []
   const resolutions = Effect.runSync(Queue.unbounded<AgentEvent>())
   const interruptions = Effect.runSync(Queue.unbounded<AgentEvent>())
+  const limits = Effect.runSync(Queue.unbounded<AgentEvent>())
   const calls: Probe["calls"] = []
   const stops: Probe["stops"] = []
   const subagentChanges = Effect.runSync(Queue.unbounded<{ readonly threadId: string; readonly subagent: Subagent }>())
@@ -297,7 +299,8 @@ const withPreparingThread = async (
         if (
           input.prompt !== "needs approval" &&
           input.prompt !== "needs two approvals" &&
-          input.prompt !== "needs approval, then ends silently"
+          input.prompt !== "needs approval, then ends silently" &&
+          input.prompt !== "needs approval, then hits its limit"
         )
           return Stream.never
         const approval = (requestId: string): AgentEvent => ({
@@ -318,6 +321,8 @@ const withPreparingThread = async (
             Stream.make(approval("approval-1"), approval("approval-2")),
             Stream.fromQueue(resolutions),
           )
+        if (input.prompt === "needs approval, then hits its limit")
+          return Stream.concat(Stream.make(approval("approval-1")), Stream.take(Stream.fromQueue(limits), 1))
         return input.prompt === "needs approval"
           ? Stream.concat(Stream.make(approval("approval-1")), Stream.fromQueue(resolutions))
           : Stream.make(approval("approval-1"))
@@ -519,6 +524,11 @@ const withPreparingThread = async (
         stops,
         setBackgroundTasks: (tasks) => Queue.offerUnsafe(backgroundTaskChanges, { threadId: thread.id, tasks }),
         reportSubagent: (subagent) => Queue.offerUnsafe(subagentChanges, { threadId: thread.id, subagent }),
+        hitLimit: () =>
+          Queue.offerUnsafe(limits, {
+            type: "turn_limited",
+            limit: { kind: "org_spend", message: "Usage exhausted", reset: null },
+          }),
         transcript,
         wake: (agent, sessionId, events) => {
           const discarded = Promise.withResolvers<void>()
@@ -1516,6 +1526,30 @@ it("withdraws the requests a turn leaves unanswered when its stream ends without
         event: { type: "approval_resolved", requestId: "approval-1" },
       }),
     )
+  })
+})
+
+it("withdraws the approval and secret requests a usage-limited turn leaves unanswered", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, transcript, hitLimit }) => {
+    const pushed = (event: AgentEvent["type"]) =>
+      transcript.some((push) => push.type === "thread.event" && push.event.type === event)
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs approval, then hits its limit", []))
+    await vi.waitFor(() => expect(pushed("approval_requested")).toBe(true))
+    const secret = Effect.runPromise(Effect.flip(runner.requestSecret(thread.id, "demo.token", "Demo token")))
+    await vi.waitFor(() => expect(pushed("secret_requested")).toBe(true))
+
+    hitLimit()
+
+    expect((await secret).message).toBe("The turn ended before the user answered.")
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("limited"))
+    const snapshot = await Effect.runPromise(runner.transcript(thread.id))
+    expect(snapshot.approvals).toEqual([])
+    expect(snapshot.secretRequests).toEqual([])
+    expect(transcript).toContainEqual(
+      expect.objectContaining({ event: { type: "approval_resolved", requestId: "approval-1" } }),
+    )
+    expect(pushed("secret_resolved")).toBe(true)
   })
 })
 
