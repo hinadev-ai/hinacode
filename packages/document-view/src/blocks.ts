@@ -68,6 +68,7 @@ export type BlockBody =
     }
   | {
       readonly kind: "chart"
+      readonly source: string
       readonly type: "bar" | "line"
       readonly title: string
       readonly notes: string

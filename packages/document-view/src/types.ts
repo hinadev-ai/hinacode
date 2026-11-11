@@ -1,6 +1,6 @@
 import type { StyleProp, ViewStyle } from "react-native"
 import type { CAPABILITIES } from "./protocol.ts"
-import type { DocumentAction, SelectionState } from "./actions.ts"
+import type { DocumentAction, DocumentActionType, SelectionState } from "./actions.ts"
 import type { CodeToken, DocumentTheme } from "./blocks.ts"
 
 export type Capability = (typeof CAPABILITIES)[number]
@@ -38,6 +38,8 @@ export type DocumentEditorProps = {
   readonly onSelectionChange?: (selection: SelectionState) => void
   readonly onFocus?: () => void
   readonly onBlur?: () => void
+  readonly formatActions?: ReadonlyArray<{ readonly id: DocumentActionType; readonly label: string }>
+  readonly onFormat?: (action: DocumentActionType) => void
   readonly style?: StyleProp<ViewStyle>
   readonly testID?: string
 }

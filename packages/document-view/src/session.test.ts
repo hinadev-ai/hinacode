@@ -254,3 +254,13 @@ test("two quotes in a row stay two quotes", () => {
     [{ kind: "quote", first: true, last: true }],
   ])
 })
+
+test("text typed after toggling a mark at the caret carries that mark", () => {
+  const { session, indexOf } = editable("Plain text")
+  const block = indexOf("Plain")
+  const caret = { block, cell: null, offset: 5 }
+  session.select({ anchor: caret, head: caret })
+  session.run(() => session.editor.commands.toggleBold())
+  session.edit({ eventCount: 1, block, cell: null, from: 5, to: 5, text: "BOLD" })
+  expect(session.markdown().trimEnd()).toBe("Plain**BOLD** text")
+})

@@ -83,6 +83,7 @@ const codeBody = (node: Node, decorate: Decorate): Body => {
   const { spec, labels } = parsed.chart
   return {
     kind: "chart",
+    source: text,
     type: spec.type,
     title: spec.title ?? "",
     notes: spec.notes ?? "",

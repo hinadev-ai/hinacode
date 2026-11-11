@@ -45,7 +45,8 @@ enum class NativeEventType(val wire: String) {
   SELECT("select"),
   KEY("key"),
   FOCUS("focus"),
-  BLUR("blur");
+  BLUR("blur"),
+  FORMAT("format");
 
   companion object {
     fun of(wire: String): NativeEventType? = entries.firstOrNull { it.wire == wire }

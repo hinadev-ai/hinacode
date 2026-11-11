@@ -24,6 +24,7 @@ type NativeProps = {
   readonly ref: Ref<NativeHandle>
   readonly theme: string
   readonly editable: boolean
+  readonly formatActions: string
   readonly contentInsetTop: number
   readonly contentInsetBottom: number
   readonly style?: StyleProp<ViewStyle>
@@ -81,6 +82,8 @@ export function DocumentEditor({
   onSelectionChange,
   onFocus,
   onBlur,
+  formatActions = [],
+  onFormat,
   style,
   testID,
 }: DocumentEditorProps & { readonly ref?: Ref<DocumentEditorHandle> }) {
@@ -175,6 +178,11 @@ export function DocumentEditor({
       case "blur":
         onBlur?.()
         return
+      case "format": {
+        const action = formatActions.find((candidate) => candidate.id === event.action)
+        if (action !== undefined) onFormat?.(action.id)
+        return
+      }
     }
     if (!editable) return
     switch (event.type) {
@@ -197,6 +205,7 @@ export function DocumentEditor({
       ref={native}
       theme={JSON.stringify(theme)}
       editable={editable}
+      formatActions={JSON.stringify(formatActions)}
       contentInsetTop={contentInset.top}
       contentInsetBottom={contentInset.bottom}
       style={style}

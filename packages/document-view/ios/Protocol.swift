@@ -37,6 +37,7 @@ enum NativeEventType: String, CaseIterable {
   case key
   case focus
   case blur
+  case format
 }
 
 enum Capability: String, CaseIterable {

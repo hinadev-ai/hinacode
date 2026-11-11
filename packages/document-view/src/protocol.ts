@@ -28,6 +28,7 @@ export const NATIVE_EVENTS = [
   "key",
   "focus",
   "blur",
+  "format",
 ] as const
 
 export const VIEW_FUNCTIONS = ["applyPatch", "scrollToBlock", "provideImage", "focus", "blur"] as const

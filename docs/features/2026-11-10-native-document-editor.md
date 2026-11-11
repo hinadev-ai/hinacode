@@ -140,6 +140,15 @@ The native text view of the focused block owns its text while the user types. It
 - Marks at boundaries are explicit. Typing after a mark change uses `storedMarks`, and links are not inclusive (#2571, #5849), as on the desktop.
 - Enter, Backspace at the start of a block and Tab in a list are commands on the model, never text edits. The view intercepts them and calls `splitListItem`, `liftListItem`, `sinkListItem`, `joinBackward` and the rest, the same functions the desktop's keymap calls. Nested list backspace and task item edges (#2493, #3367, #4268) get one command test each, written first, with the desktop's result as the expected tree.
 
+How the native view does it, the same on iOS and Android:
+
+- When `editable` is true, a tap on a text block (paragraph, heading, code, a table cell, or a chart or diagram, which edits as its source) makes that block the focused one, and only it holds an editable text view. The view reports `select { anchor, head }` as `{ block, cell, offset }` points in UTF-16 offsets into the block's text. A hard break is `\n` and an inline image is one `\uFFFC`, the same one-unit size they have in the model, so offsets map to positions by addition.
+- Every change to the focused text, whatever caused it, is reported as one `edit { eventCount, block, cell, from, to, text }`, computed by diffing the text before and after. The view raises its event count first. It reports during a composition too, so the model always holds what is on screen.
+- A patch that replaces the focused block is held while a composition is active and applied when it ends. Otherwise it is applied only when its `eventCount` is at least the view's own. If its text equals what the view shows, the view keeps its text, caret and composition and only restyles and takes the new id.
+- Enter (Shift-Enter for a hard break), Backspace or Delete with an empty selection at the block's start or end, and Tab from a hardware keyboard are sent as `key { eventCount, key, shift }` and never change the text view. A patch that follows carries `selection`, and the view moves focus and caret there.
+- The text view's own undo stays off. Undo and redo are toolbar actions on the model, so they undo the same steps the desktop would.
+- A task checkbox tap sends `taskToggle`. The selection menu adds the items in `formatActions` and sends `format { action }`.
+
 Selection that spans blocks is the risk in a view-per-block design. Checkpoint 8 prototypes it on both platforms before the editing slice: a drag that starts in one block extends a selection drawn by our own overlay across blocks, with the system handles inside one block. If it cannot be made to feel native, the alternative is one text view per run of contiguous text blocks, with tables, charts and images as separate views, and the recording goes into this doc.
 
 ### Saving

@@ -32,6 +32,7 @@ export const NativeDocumentEvent = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("focus") }),
   Schema.Struct({ type: Schema.Literal("blur") }),
+  Schema.Struct({ type: Schema.Literal("format"), action: Schema.String }),
 ])
 export type NativeDocumentEvent = typeof NativeDocumentEvent.Type
 
