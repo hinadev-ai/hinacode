@@ -921,6 +921,25 @@ test("shows the error and the source of a chart that cannot be drawn", async () 
   await expect.element(editor.getByRole("code")).toBeVisible()
   expect(saves).toEqual([])
 })
+
+test("keeps a chart's source open while the developer fixes it", async () => {
+  stored = { ...stored, markdown: `# Release plan\n\n${CHART.replace(/\n}\n```$/, "\n```")}\n` }
+  const editor = await openDocument()
+  await expect.element(editor.getByRole("code")).toBeVisible()
+
+  await editor.getByRole("code").click()
+  const code = editor.getByRole("code").element()
+  getSelection()?.collapse(code, code.childNodes.length)
+  await userEvent.keyboard("{Enter}}")
+
+  await expect
+    .poll(() => editor.element().querySelector("[data-chart-title]")?.textContent, { timeout: 10_000 })
+    .toBe("Saves peaked on Wednesday")
+  const source = editor.element().querySelector("[data-chart] pre")
+  expect(source?.textContent).toMatch(/\n}$/)
+  expect(shown(source)).toBe(true)
+  await expect.element(editor.getByRole("button", { name: "Source" })).toHaveAttribute("aria-pressed", "true")
+})
 test("lays out a right-to-left paragraph from the right", async () => {
   stored = { ...stored, markdown: "# Release plan\n\nהעורך נשלח קודם.\n\n- المحرر أولاً.\n\nShip the editor first.\n" }
   const editor = await openDocument()
