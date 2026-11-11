@@ -2,7 +2,7 @@ import type { NonEmptyReadonlyArray } from "effect/Array"
 import { createServer, type RequestListener, type Server } from "node:http"
 import { Clock, Duration, Effect, Fiber, Option, Schedule, Schema, type Scope } from "effect"
 import { WebSocket, WebSocketServer } from "ws"
-import { compactPush } from "../../shared/compactTranscript.ts"
+import { compactPushes } from "../../shared/compactTranscript.ts"
 import {
   desktopOnlyMethods,
   desktopOnlyPushes,
@@ -103,11 +103,13 @@ export const makeSessions = <R>({ call, subscribe, environment, features }: Sess
       socket.on("pong", () => {
         peer.awaitingPong = false
       })
+      const compactPush = compactPushes()
       const subscription = runFork(
         Effect.scoped(
           subscribe((event) => {
             if (desktopOnlyPushes.has(event.type) || !reachesPhone(event, peer.watching)) return
-            send(socket, { type: "event", event: compactEvents ? compactPush(event) : event })
+            const outgoing = compactEvents ? compactPush(event) : event
+            if (outgoing !== null) send(socket, { type: "event", event: outgoing })
           }).pipe(Effect.andThen(Effect.never)),
         ),
       )

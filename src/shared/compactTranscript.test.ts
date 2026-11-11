@@ -3,7 +3,7 @@ import type { AgentEvent } from "./agent.ts"
 import type { Message, MessagePart } from "./domain.ts"
 import {
   compactMessage,
-  compactPush,
+  compactPushes,
   previewMessage,
   publishPreview,
   previewPush,
@@ -113,7 +113,7 @@ describe("compactMessage", () => {
       },
     ]
     expect(latestTodos([compactMessage(message(parts))])).toStrictEqual([{ text: "Ship it", status: "completed" }])
-    const finished = compactPush({
+    const finished = compactPushes()({
       type: "thread.event",
       threadId: "t",
       messageId: "m",
@@ -142,6 +142,11 @@ describe("toolSummary", () => {
   })
 })
 
+const fold = (agentEvents: ReadonlyArray<AgentEvent>) =>
+  agentEvents.reduce((folded, event) => foldEvent(folded, event, "2026-10-18T00:00:00.000Z"), message([]))
+const calls = (folded: Message) =>
+  folded.parts.flatMap((part) => (part.type === "tool_call" ? [{ callId: part.callId, input: part.input }] : []))
+
 describe("a compact transcript", () => {
   const events: ReadonlyArray<AgentEvent> = [
     { type: "tool_call_started", callId: "agent", name: "Agent", input: { description: "Explore" } },
@@ -151,12 +156,9 @@ describe("a compact transcript", () => {
     { type: "tool_call_started", callId: "search", name: "WebSearch", input: { query: "effect schema" } },
     { type: "tool_call_finished", callId: "search", output: "results", isError: false },
   ]
-  const fold = (events: ReadonlyArray<AgentEvent>) =>
-    events.reduce((folded, event) => foldEvent(folded, event, "2026-10-18T00:00:00.000Z"), message([]))
-  const calls = (folded: Message) =>
-    folded.parts.flatMap((part) => (part.type === "tool_call" ? [{ callId: part.callId, input: part.input }] : []))
+  const compactPush = compactPushes()
   const pushed = events.map((event, seq) => compactPush({ type: "thread.event", seq, threadId: "t", event }))
-  const live = pushed.flatMap((push) => (push.type === "thread.event" ? [push.event as AgentEvent] : []))
+  const live = pushed.flatMap((push) => (push?.type === "thread.event" ? [push.event as AgentEvent] : []))
 
   test("shows the same calls live as after reload", () => {
     expect(calls(fold(live))).toStrictEqual(calls(compactMessage(fold(events))))
@@ -286,7 +288,7 @@ describe("previewPush", () => {
 const compacted = (part: MessagePart) =>
   compactMessage(message([part])).parts[0] as Extract<MessagePart, { type: "tool_call" }>
 const finished = (output: unknown, isError = false) =>
-  compactPush({
+  compactPushes()({
     type: "thread.event",
     seq: 1,
     threadId: "t",
@@ -377,7 +379,7 @@ describe("a publish call when compact", () => {
       { type: "tool_call" }
     >
     expect(compacted(running).output).toBeUndefined()
-    const started = compactPush({
+    const started = compactPushes()({
       type: "thread.event",
       seq: 1,
       threadId: "t",

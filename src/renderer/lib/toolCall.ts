@@ -1,16 +1,15 @@
 import { Schema } from "effect"
 import { type AgentCommand, outputBlocks } from "../../shared/agent.ts"
+import { TOOL_SUMMARY_KEYS } from "../../shared/compactTranscript.ts"
 import { Attachment, type MessagePart, createsThread, publishesArtifact, spawnsSubagent } from "../../shared/domain.ts"
 import { type Todo, todosInCall } from "../../shared/todos.ts"
 import { ownToolName, unwrapShell } from "../../shared/toolNames.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 
-const SUMMARY_KEYS = ["command", "file_path", "notebook_path", "pattern", "path", "url", "query", "description"]
-
 function summarizeInput(input: unknown): string {
   if (typeof input !== "object" || input === null) return ""
-  for (const key of SUMMARY_KEYS) {
+  for (const key of TOOL_SUMMARY_KEYS) {
     const value: unknown = Reflect.get(input, key)
     if (typeof value === "string") return value
   }
