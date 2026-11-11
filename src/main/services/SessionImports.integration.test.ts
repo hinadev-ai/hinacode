@@ -214,6 +214,31 @@ describe("session import", () => {
     }).pipe(Effect.provide(layer))
   })
 
+  it.effect("titles the thread with the first prompt's first line that has text", () => {
+    const { layer, project } = setup({
+      history: {
+        title: null,
+        model: null,
+        messages: [
+          {
+            role: "user",
+            parts: [{ type: "text", text: "\n  Fix the login page\nIt 500s on submit" }],
+            createdAt: "2026-10-01T00:00:00.000Z",
+            completedAt: null,
+            forkPoint: null,
+          },
+        ],
+      },
+    })
+    return Effect.gen(function* () {
+      const { id } = yield* project
+      const thread = yield* SessionImports.use((imports) =>
+        imports.import({ projectId: id, provider: "claude", sessionId: fixtureId, accountId: null }),
+      )
+      expect(thread.title).toBe("Fix the login page")
+    }).pipe(Effect.provide(layer))
+  })
+
   const imagePrompt = (images: NonNullable<ImportedMessage["images"]>): SessionHistory => ({
     title: "Shapes",
     model: "claude-opus-5-5",

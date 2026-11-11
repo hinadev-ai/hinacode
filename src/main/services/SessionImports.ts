@@ -33,6 +33,13 @@ interface ImportSession {
 
 const providerNames: Record<AccountProviderId, string> = { claude: "Claude Code", codex: "Codex" }
 
+const firstLineOf = (text: string) =>
+  text
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line !== "")
+    ?.slice(0, 80)
+
 export class SessionImports extends Context.Service<
   SessionImports,
   {
@@ -167,7 +174,8 @@ const make = Effect.gen(function* () {
         ?.parts.find((part) => part.type === "text")
       const title =
         history.title ??
-        (firstPrompt?.type === "text" ? firstPrompt.text.split("\n")[0]!.slice(0, 80) : "Imported session")
+        (firstPrompt?.type === "text" ? firstLineOf(firstPrompt.text) : undefined) ??
+        "Imported session"
 
       return yield* sql
         .withTransaction(

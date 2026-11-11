@@ -208,7 +208,7 @@ const make = Effect.gen(function* () {
     git.run(rootPath, ["remote", "get-url", "origin"]).pipe(
       Effect.map((url) => {
         const origin = parseGitHubRepository(url)
-        return origin?.owner.toLowerCase() === owner.toLowerCase() && origin.name === name
+        return origin !== null && `${origin.owner}/${origin.name}`.toLowerCase() === `${owner}/${name}`.toLowerCase()
       }),
       Effect.orElseSucceed(() => false),
     )
@@ -288,13 +288,12 @@ const make = Effect.gen(function* () {
   const update = (input: UpdateProject) =>
     Effect.gen(function* () {
       const current = yield* get(input.id)
-      if (input.rootPath !== undefined && input.rootPath !== current.rootPath) {
-        yield* ensureDirectory(input.rootPath)
-      }
+      const rootPath = input.rootPath === undefined ? current.rootPath : yield* resolveRoot(input.rootPath)
+      if (rootPath !== current.rootPath) yield* ensureDirectory(rootPath)
       const next: Project = {
         ...current,
         name: input.name ?? current.name,
-        rootPath: input.rootPath ?? current.rootPath,
+        rootPath,
         setupScript: input.setupScript === undefined ? current.setupScript : input.setupScript,
         linearReview: input.linearReview ?? current.linearReview,
         actions: input.actions ?? current.actions,
