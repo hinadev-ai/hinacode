@@ -3,10 +3,11 @@ import { Image, type ImageOptions } from "@tiptap/extension-image"
 import type { Node } from "@tiptap/pm/model"
 import { artifactUrl } from "../../../shared/channels.ts"
 import { resourceUrl } from "../../lib/resourceUrl.ts"
+import { isDocumentImagePath } from "../../../shared/document/schema.ts"
+
+export { isDocumentImagePath }
 
 type DocumentImageOptions = ImageOptions & { readonly artifactId: string }
-
-export const isDocumentImagePath = (src: string) => /^images\/[^/]+$/.test(src)
 
 export const DocumentImage = Image.extend<DocumentImageOptions>({
   addOptions() {

@@ -144,6 +144,11 @@ export const CalloutColors = {
   },
 } as const satisfies Record<"light" | "dark", Record<CalloutTone, { ink: string; tint: string; label: string }>>
 
+export const ChartColors = {
+  light: ["#2a75ba", "#008971", "#b75f0b", "#af467e", "#5d822f", "#717171"],
+  dark: ["#61a3e6", "#57b9a1", "#e29d56", "#da7baa", "#92ba66", "#808080"],
+} as const
+
 export const mono = Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" })
 
 export const HIT = 44

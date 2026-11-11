@@ -27,6 +27,7 @@ interface DraftsState {
   readonly appendMention: (threadId: string, path: string) => void
   readonly addAttachments: (threadId: string, attachments: ReadonlyArray<Attachment>) => void
   readonly removeAttachment: (threadId: string, attachmentId: string) => void
+  readonly replaceAttachment: (threadId: string, attachmentId: string, next: Attachment) => void
   readonly setWorkspace: (threadId: string, workspace: Draft["workspace"]) => void
   readonly addComment: (threadId: string, comment: LineComment) => void
   readonly updateComment: (threadId: string, commentId: string, body: string) => void
@@ -71,6 +72,11 @@ export const useDrafts = create<DraftsState>()(
           update(threadId, (draft) => ({
             ...draft,
             attachments: draft.attachments.filter((attachment) => attachment.id !== attachmentId),
+          })),
+        replaceAttachment: (threadId, attachmentId, next) =>
+          update(threadId, (draft) => ({
+            ...draft,
+            attachments: draft.attachments.map((attachment) => (attachment.id === attachmentId ? next : attachment)),
           })),
         setWorkspace: (threadId, workspace) => update(threadId, (draft) => ({ ...draft, workspace })),
         addComment: (threadId, comment) =>

@@ -58,7 +58,7 @@ const encode = async (asset: ImagePickerAsset): Promise<{ base64: string; format
   return { base64, format: fit.format }
 }
 
-export const stageImage = async (threadId: string, asset: ImagePickerAsset): Promise<DraftImage> => {
+export const imageDataUrl = async (asset: ImagePickerAsset) => {
   const { base64, format } = await encode(asset).catch(() => {
     throw new Error(copy("mobile_composer_image_unreadable", { name: attachmentStem(asset.fileName) }))
   })
@@ -66,7 +66,11 @@ export const stageImage = async (threadId: string, asset: ImagePickerAsset): Pro
   if (base64Bytes(base64) > AGENT_IMAGE_MAX_BYTES) {
     throw new Error(copy("mobile_composer_image_too_large", { name }))
   }
-  const dataUrl = `data:image/${format};base64,${base64}`
-  const attachment = await call("attachments.stage", { threadId, source: { dataUrl, name } })
+  return { dataUrl: `data:image/${format};base64,${base64}`, name }
+}
+
+export const stageImage = async (threadId: string, asset: ImagePickerAsset): Promise<DraftImage> => {
+  const source = await imageDataUrl(asset)
+  const attachment = await call("attachments.stage", { threadId, source })
   return { attachment, preview: asset.uri }
 }

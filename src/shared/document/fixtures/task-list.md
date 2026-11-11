@@ -1,0 +1,4 @@
+- [ ] Open task
+- [x] Done task
+- [X] Done with a capital X
+- [ ] Task with `code` and a [link](https://example.com)
