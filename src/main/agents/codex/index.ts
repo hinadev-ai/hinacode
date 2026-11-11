@@ -229,6 +229,10 @@ const make = Effect.gen(function* () {
     return undefined
   }
 
+  const applyChildMessage = (subagents: Subagents, childThreadId: string, method: string, params: unknown) =>
+    applyChildTurn(subagents, childThreadId, method, params, new Date().toISOString()) ??
+    applyChildNotification(subagents, childThreadId, method, params, toolName)
+
   const reportSubagentsOfIdleThreads = (client: CodexClient) => (message: Incoming) => {
     if (message.kind !== "notification") return
     const childThreadId = (message.params as { threadId?: string } | undefined)?.threadId
@@ -238,9 +242,7 @@ const make = Effect.gen(function* () {
     const childScope = message.params as { turnId?: string; turn?: { id: string } }
     const childTurnId = childScope.turnId ?? childScope.turn?.id
     if (childTurnId !== undefined) subagentTurns.set(childThreadId, childTurnId)
-    const changed =
-      applyChildTurn(parent.subagents, childThreadId, message.method, message.params, new Date().toISOString()) ??
-      applyChildNotification(parent.subagents, childThreadId, message.method, message.params, toolName)
+    const changed = applyChildMessage(parent.subagents, childThreadId, message.method, message.params)
     if (changed) Queue.offerUnsafe(subagentChanges, { threadId: parent.threadId, subagent: changed })
   }
 
@@ -593,7 +595,7 @@ const make = Effect.gen(function* () {
           const startedTools = new Set<string>()
           const openTools = new Set<string>()
           const backgroundable = new Set<string>()
-          const approvalIdByRpcId = new Map<string | number, string>()
+          const pendingApprovals = new Map<string | number, { approvalId: string; cancel: Effect.Effect<void> }>()
           const questionIdByRpcId = new Map<string | number, string>()
           let subagents = subagentsByThread.get(input.threadId)
           if (subagents === undefined) subagentsByThread.set(input.threadId, (subagents = new Map()))
@@ -613,8 +615,8 @@ const make = Effect.gen(function* () {
 
           yield* Effect.addFinalizer(() =>
             Effect.gen(function* () {
-              for (const [rpcId, approvalId] of approvalIdByRpcId) {
-                if (approvals.delete(approvalId)) yield* client.respond(rpcId, { decision: "cancel" })
+              for (const { approvalId, cancel } of pendingApprovals.values()) {
+                if (approvals.delete(approvalId)) yield* cancel
               }
               for (const [rpcId, questionId] of questionIdByRpcId) {
                 if (questions.delete(questionId)) yield* client.respond(rpcId, userInputResponse({}))
@@ -687,7 +689,10 @@ const make = Effect.gen(function* () {
               const approvalId = randomUUID()
               const decision = yield* Deferred.make<ApprovalDecision>()
               approvals.set(approvalId, decision)
-              approvalIdByRpcId.set(rpcId, approvalId)
+              pendingApprovals.set(rpcId, {
+                approvalId,
+                cancel: client.respond(rpcId, { action: "cancel", content: null, _meta: null }),
+              })
               yield* emit({
                 type: "approval_requested",
                 request: {
@@ -721,7 +726,7 @@ const make = Effect.gen(function* () {
               const approvalId = randomUUID()
               const decision = yield* Deferred.make<ApprovalDecision>()
               approvals.set(approvalId, decision)
-              approvalIdByRpcId.set(rpcId, approvalId)
+              pendingApprovals.set(rpcId, { approvalId, cancel: client.respond(rpcId, { decision: "cancel" }) })
               const isCommand = method === "item/commandExecution/requestApproval"
               const command = isCommand
                 ? (params as ServerRequestParams["item/commandExecution/requestApproval"])
@@ -778,13 +783,7 @@ const make = Effect.gen(function* () {
                 const childTurnId = childScope.turnId ?? childScope.turn?.id
                 if (childTurnId !== undefined) subagentTurns.set(childThreadId, childTurnId)
                 yield* handleChildTool(childThreadId, message.method, message.params)
-                const changed = applyChildNotification(
-                  subagents,
-                  childThreadId,
-                  message.method,
-                  message.params,
-                  toolName,
-                )
+                const changed = applyChildMessage(subagents, childThreadId, message.method, message.params)
                 if (changed) yield* emitSubagents([changed])
                 return false
               }
@@ -926,8 +925,8 @@ const make = Effect.gen(function* () {
                 default: {
                   if (message.method === "serverRequest/resolved") {
                     const { requestId } = message.params as { requestId: string | number }
-                    const approvalId = approvalIdByRpcId.get(requestId)
-                    if (approvalId) yield* resolveApproval(approvalId)
+                    const approval = pendingApprovals.get(requestId)
+                    if (approval) yield* resolveApproval(approval.approvalId)
                     const questionId = questionIdByRpcId.get(requestId)
                     if (questionId) yield* resolveQuestion(questionId)
                   }

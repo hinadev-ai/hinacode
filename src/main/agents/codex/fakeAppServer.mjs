@@ -76,13 +76,13 @@ const held = []
 const terminals = new Map()
 const loadedSandboxes = new Map()
 let turns = 0
-let activeQuestion = null
+let activeRequest = null
 
 const reply = ({ id, method, params }) => {
   if (method === undefined) {
-    if (id === activeQuestion?.id) {
-      completeTurn(activeQuestion.threadId, activeQuestion.turnId, "completed")
-      activeQuestion = null
+    if (id === activeRequest?.id) {
+      completeTurn(activeRequest.threadId, activeRequest.turnId, "completed")
+      activeRequest = null
     }
     return
   }
@@ -160,11 +160,25 @@ const reply = ({ id, method, params }) => {
         return completeTurn(params.threadId, turnId, "failed")
       }
       if (question) {
-        activeQuestion = { id: 900 + turns, threadId: params.threadId, turnId }
+        activeRequest = { id: 900 + turns, threadId: params.threadId, turnId }
         return send({
-          id: activeQuestion.id,
+          id: activeRequest.id,
           method: "item/tool/requestUserInput",
           params: { threadId: params.threadId, turnId, itemId: "question-tool", questions: question },
+        })
+      }
+      if (control().mcpToolApproval) {
+        activeRequest = { id: 950 + turns, threadId: params.threadId, turnId }
+        return send({
+          id: activeRequest.id,
+          method: "mcpServer/elicitation/request",
+          params: {
+            threadId: params.threadId,
+            turnId,
+            serverName: "linear",
+            message: "Allow linear to run create_issue?",
+            _meta: { codex_approval_kind: "mcp_tool_call" },
+          },
         })
       }
       if (postedQuestions) {
@@ -254,6 +268,7 @@ const reply = ({ id, method, params }) => {
       return completeTurn(params.threadId, turnId, "completed")
     }
     case "turn/interrupt":
+      activeRequest = null
       send({ id, result: {} })
       return completeTurn(params.threadId, params.turnId, "interrupted")
     default:
@@ -272,13 +287,13 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 })
 
 watch(process.env.FAKE_CODEX_CONTROL, () => {
-  if (activeQuestion && control().cancelQuestion) {
+  if (activeRequest && control().cancelQuestion) {
     send({
       method: "serverRequest/resolved",
-      params: { threadId: activeQuestion.threadId, requestId: activeQuestion.id },
+      params: { threadId: activeRequest.threadId, requestId: activeRequest.id },
     })
-    completeTurn(activeQuestion.threadId, activeQuestion.turnId, "completed")
-    activeQuestion = null
+    completeTurn(activeRequest.threadId, activeRequest.turnId, "completed")
+    activeRequest = null
   }
   if (held.length > 0 && control().release) held.splice(0).forEach(reply)
   if (control().finishSubagent && !subagentFinished) {

@@ -35,6 +35,7 @@ type Control = {
   question?: Array<import("./protocol.ts").ToolRequestUserInputQuestion>
   postedQuestions?: Array<import("./protocol.ts").AsyncUserInputQuestion>
   cancelQuestion?: boolean
+  mcpToolApproval?: boolean
   accountFromHome?: boolean
   unauthorized?: boolean
   subagent?: boolean
@@ -682,6 +683,27 @@ describe("Codex sub-agents", () => {
     ),
   )
 
+  it.live("marks a sub-agent completed when its turn ends during the parent turn", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ subagent: true, holdTurn: true })
+        const turn = yield* startTurn("subagent-thread")
+        yield* untilEvent(turn, (event) => event.type === "tool_call_finished")
+
+        setControl({ subagent: true, holdTurn: true, finishSubagent: true })
+        yield* untilEvent(turn, (event) => event.type === "subagent_updated" && event.subagent.summary === "218 lines")
+        yield* provider.interrupt("subagent-thread")
+        yield* finishesSoon(turn.fiber)
+
+        const statuses = turn.events.flatMap((event) =>
+          event.type === "subagent_updated" ? [event.subagent.status] : [],
+        )
+        expect(statuses.at(-1)).toBe("completed")
+      }),
+    ),
+  )
+
   it.live("stops one sub-agent by interrupting its own turn, and keeps the parent's", () =>
     withProvider(
       Effect.gen(function* () {
@@ -900,6 +922,26 @@ describe("Codex questions", () => {
           type: "questions_posted",
           text: "Posted question",
           questions: [{ id: "Which color?", allowsText: true }],
+        })
+      }),
+    ),
+  )
+})
+
+describe("Codex MCP tool approvals", () => {
+  it.live("Stop cancels a pending MCP tool approval with an elicitation reply", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ mcpToolApproval: true })
+        const turn = yield* startTurn("mcp-approval-thread")
+        yield* untilEvent(turn, (event) => event.type === "approval_requested")
+        yield* provider.interrupt("mcp-approval-thread")
+        yield* finishesSoon(turn.fiber)
+        yield* waitFor(() => received().some((message) => message.id === 951))
+        expect(received().find((message) => message.id === 951)).toStrictEqual({
+          id: 951,
+          result: { action: "cancel", content: null, _meta: null },
         })
       }),
     ),

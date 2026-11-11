@@ -33,4 +33,21 @@ describe("skillInputs", () => {
     ])
     expect(skillInputs("no skill here", [createPr])).toStrictEqual([])
   })
+
+  test("leaves out a skill whose $name is only the start of a longer name", () => {
+    const review = { ...createPr, name: "review", path: "/home/u/.agents/skills/review/SKILL.md" }
+    expect(skillInputs("run $review-pr and $reviewer", [review])).toStrictEqual([])
+    expect(skillInputs("run $review, then stop", [review])).toStrictEqual([
+      { type: "skill", name: "review", path: review.path },
+    ])
+  })
+
+  test("reads $names the way the composer highlights them", () => {
+    const review = { ...createPr, name: "review", path: "/home/u/.agents/skills/review/SKILL.md" }
+    const deep = { ...createPr, name: "review:deep", path: "/home/u/.agents/skills/review-deep/SKILL.md" }
+    expect(skillInputs("run $review:deep", [review, deep])).toStrictEqual([
+      { type: "skill", name: "review:deep", path: deep.path },
+    ])
+    expect(skillInputs("x$review", [review])).toStrictEqual([])
+  })
 })
