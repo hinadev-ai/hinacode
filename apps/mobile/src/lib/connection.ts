@@ -173,7 +173,7 @@ function open(server: StoredServer) {
     },
     onEvent: (event) => {
       learnFromPush(owners, server.id, event)
-      for (const listener of listeners) listener(event)
+      for (const listener of [...listeners]) listener(event)
     },
   })
   transports.set(server.id, transport)
@@ -364,25 +364,27 @@ async function dispatch(method: RpcMethod, payload: unknown, named: string | und
  * call waits and is sent after its next handshake, so it runs once. Rejects with `RpcError` carrying the
  * handler's error tag, or `Timeout` after a minute offline.
  */
-export function call<M extends RpcMethod>(
+export function request<M extends RpcMethod>(
   method: M,
   payload: RpcRequest<M>,
   options?: { readonly server?: string },
-): Promise<RpcResponse<M>> {
+): Effect.Effect<RpcResponse<M>, RpcError> {
   const spec = RpcMethods[method]
   const encodeRequest = Schema.encodeEffect(spec.request)
   const decodeResponse = Schema.decodeUnknownEffect(spec.response)
-  return Effect.runPromise(
-    Effect.gen(function* () {
-      const encoded = yield* encodeRequest(payload)
-      const envelope = yield* Effect.tryPromise({
-        try: () => dispatch(method, encoded, options?.server),
-        catch: (cause) => (cause instanceof RpcError ? cause : new RpcError("Offline", String(cause))),
-      })
-      if ("error" in envelope) return yield* Effect.fail(new RpcError(envelope.error.tag, envelope.error.message))
-      return yield* decodeResponse(envelope.result)
-    }).pipe(
-      Effect.catchTag("SchemaError", (error) => Effect.fail(new RpcError(error._tag, error.message))),
-    ) as Effect.Effect<RpcResponse<M>, RpcError>,
-  )
+  return Effect.gen(function* () {
+    const encoded = yield* encodeRequest(payload)
+    const envelope = yield* Effect.tryPromise({
+      try: () => dispatch(method, encoded, options?.server),
+      catch: (cause) => (cause instanceof RpcError ? cause : new RpcError("Offline", String(cause))),
+    })
+    if ("error" in envelope) return yield* Effect.fail(new RpcError(envelope.error.tag, envelope.error.message))
+    return yield* decodeResponse(envelope.result)
+  }).pipe(
+    Effect.catchTag("SchemaError", (error) => Effect.fail(new RpcError(error._tag, error.message))),
+  ) as Effect.Effect<RpcResponse<M>, RpcError>
 }
+
+/** `request` as a promise, for event handlers and stores. */
+export const call = <M extends RpcMethod>(method: M, payload: RpcRequest<M>, options?: { readonly server?: string }) =>
+  Effect.runPromise(request(method, payload, options))
