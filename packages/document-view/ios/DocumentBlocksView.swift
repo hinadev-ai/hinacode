@@ -1,19 +1,30 @@
 import ExpoModulesCore
 import UIKit
 
-private struct Item {
+struct Item {
   let key: String
   let block: Block
+}
+
+/// Calls `onLayout` after each layout pass, so views laid over a row can follow it.
+final class BlockCollectionView: UICollectionView {
+  var onLayout: () -> Void = {}
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    onLayout()
+  }
 }
 
 final class DocumentBlocksView: ExpoView {
   let onDocumentEvent = EventDispatcher()
 
-  private let layout = BlockListLayout()
-  private let collectionView: UICollectionView
-  private var dataSource: UICollectionViewDiffableDataSource<Int, String>!
-  private var style = DocumentStyle()
-  private var items: [Item] = []
+  let layout = BlockListLayout()
+  let collectionView: BlockCollectionView
+  private(set) var dataSource: UICollectionViewDiffableDataSource<Int, String>!
+  private(set) var style = DocumentStyle()
+  private(set) var items: [Item] = []
+  let editing = EditingState()
   private var placements: [Placement] = []
   private var keys = Set<String>()
   private var images: [String: ImageState] = [:]
@@ -24,7 +35,7 @@ final class DocumentBlocksView: ExpoView {
   private var announcedReady = false
 
   required init(appContext: AppContext? = nil) {
-    collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+    collectionView = BlockCollectionView(frame: .zero, collectionViewLayout: layout)
     super.init(appContext: appContext)
     renders.countLimit = 400
     collectionView.contentInsetAdjustmentBehavior = .never
@@ -38,6 +49,7 @@ final class DocumentBlocksView: ExpoView {
     contentSizeObservation = collectionView.observe(\.contentSize, options: [.new]) { [weak self] view, _ in
       DispatchQueue.main.async { self?.reportContentSize(view.contentSize.height) }
     }
+    setUpEditing()
   }
 
   override func layoutSubviews() {
@@ -56,7 +68,7 @@ final class DocumentBlocksView: ExpoView {
     super.didMoveToSuperview()
     guard superview != nil, !announcedReady else { return }
     announcedReady = true
-    let capabilities: [Capability] = [.render, .charts, .images, .highlight, .diagrams]
+    let capabilities: [Capability] = [.render, .taskToggle, .charts, .images, .highlight, .diagrams]
     send(.ready, ["capabilities": capabilities.map(\.rawValue)])
   }
 
@@ -74,6 +86,7 @@ final class DocumentBlocksView: ExpoView {
     if let bottom { inset.bottom = bottom }
     collectionView.contentInset = inset
     collectionView.verticalScrollIndicatorInsets = inset
+    if bottom != nil { revealCaret() }
   }
 
   func applyPatch(_ json: String) {
@@ -84,6 +97,16 @@ final class DocumentBlocksView: ExpoView {
       send(.error, ["message": "\(error)"])
       return
     }
+    flushHeldPatches()
+    if holds(patch) {
+      editing.held.append(patch)
+      return
+    }
+    apply(patch)
+  }
+
+  func apply(_ patch: BlockPatch) {
+    let focusedBefore = focusedIndex()
     let start = min(max(0, patch.start), items.count)
     let range = start..<(start + min(max(0, patch.deleteCount), items.count - start))
     let removed = items[range]
@@ -101,6 +124,9 @@ final class DocumentBlocksView: ExpoView {
     }
     items.replaceSubrange(range, with: inserted)
     layout.replace(range, count: inserted.count)
+    if let focusedBefore, range.contains(focusedBefore) {
+      followFocus(into: inserted, at: focusedBefore - start, fresh: patch.eventCount >= editing.eventCount)
+    }
     let previousPlacements = Array(placements[range])
     let insertedPlacements = inserted.indices.map { offset in
       Placement.between(start + offset > 0 ? items[start + offset - 1].block : nil, items[start + offset].block)
@@ -134,6 +160,7 @@ final class DocumentBlocksView: ExpoView {
     let present = Set(changed).subtracting(previousBlocks.keys.filter { !keys.contains($0) })
     snapshot.reconfigureItems(changed.filter { present.contains($0) })
     dataSource.apply(snapshot, animatingDifferences: false)
+    finish(patch)
   }
 
   func scrollToBlock(_ index: Int) {
@@ -165,8 +192,9 @@ final class DocumentBlocksView: ExpoView {
     let text = UICollectionView.CellRegistration<TextBlockCell, String> { [unowned self] cell, indexPath, key in
       guard let (item, placement) = model(key, indexPath) else { return }
       cell.configure(
-        item.block, placement: placement, style: style, text: attributedText(item),
+        item.block, placement: placement, style: style, text: attributedText(item), interactive: !editing.editable,
         onLink: { [weak self] href in self?.send(.linkPress, ["href": href]) })
+      host(cell, key)
     }
     let code = UICollectionView.CellRegistration<CodeBlockCell, String> { [unowned self] cell, indexPath, key in
       guard let (item, placement) = model(key, indexPath) else { return }
@@ -179,22 +207,32 @@ final class DocumentBlocksView: ExpoView {
         cell.configure(
           item.block, placement: placement, style: style, label: "Mermaid",
           code: cached(item.key) { CodeLinesPainter(text: source, tokens: [], style: style) }, error: nil)
+      case .chart(let chart):
+        cell.configure(
+          item.block, placement: placement, style: style, label: "Chart",
+          code: CodeLinesPainter(text: chart.source, tokens: [], style: style), error: nil)
       default: break
       }
+      host(cell, key)
     }
     let diagram = UICollectionView.CellRegistration<DiagramCell, String> { [unowned self] cell, indexPath, key in
       guard let (item, placement) = model(key, indexPath), case .diagram(_, let drawing?) = item.block.body else { return }
       cell.configure(
         item.block, placement: placement, style: style, shapes: cached(item.key) { DiagramShapes(drawing: drawing, style: style) })
+      host(cell, key)
     }
     let chart = UICollectionView.CellRegistration<ChartCell, String> { [unowned self] cell, indexPath, key in
       guard let (item, placement) = model(key, indexPath), case .chart(let chart) = item.block.body else { return }
       cell.configure(item.block, placement: placement, style: style, chart: chart)
+      host(cell, key)
     }
     let table = UICollectionView.CellRegistration<TableCell, String> { [unowned self] cell, indexPath, key in
       guard let (item, placement) = model(key, indexPath), case .table(let table) = item.block.body else { return }
       cell.configure(
-        item.block, placement: placement, style: style, table: cached(item.key) { TablePainter(table: table, style: style) })
+        item.block, placement: placement, style: style, table: cached(item.key) { TablePainter(table: table, style: style) },
+        interactive: !editing.editable, onLink: { [weak self] href in self?.send(.linkPress, ["href": href]) })
+      cell.onScroll = { [weak self] in self?.collectionView.setNeedsLayout() }
+      host(cell, key)
     }
     let image = UICollectionView.CellRegistration<ImageCell, String> { [unowned self] cell, indexPath, key in
       guard let (item, placement) = model(key, indexPath), case .image(let src, let alt) = item.block.body else { return }
@@ -208,6 +246,9 @@ final class DocumentBlocksView: ExpoView {
 
     return UICollectionViewDiffableDataSource(collectionView: collectionView) { [unowned self] view, indexPath, key in
       let kind = indexPath.item < items.count && items[indexPath.item].key == key ? items[indexPath.item].block.body : .rule
+      if editing.focus?.key == key, items[indexPath.item].block.isSource {
+        return view.dequeueConfiguredReusableCell(using: code, for: indexPath, item: key)
+      }
       switch kind {
       case .paragraph, .heading, .unsupported:
         return view.dequeueConfiguredReusableCell(using: text, for: indexPath, item: key)
@@ -227,12 +268,12 @@ final class DocumentBlocksView: ExpoView {
     }
   }
 
-  private func model(_ key: String, _ indexPath: IndexPath) -> (Item, Placement)? {
+  func model(_ key: String, _ indexPath: IndexPath) -> (Item, Placement)? {
     guard indexPath.item < items.count, items[indexPath.item].key == key else { return nil }
     return (items[indexPath.item], placements[indexPath.item])
   }
 
-  private func cached<Value: AnyObject>(_ key: String, _ make: () -> Value) -> Value {
+  func cached<Value: AnyObject>(_ key: String, _ make: () -> Value) -> Value {
     if let value = renders.object(forKey: key as NSString) as? Value { return value }
     let value = make()
     renders.setObject(value, forKey: key as NSString)
@@ -256,12 +297,14 @@ final class DocumentBlocksView: ExpoView {
     }
   }
 
-  private func inlineImage(_ run: Run, for key: String) -> NSAttributedString? {
+  /// `keepsLength` keeps a failed image as its one attachment character, where the read-only view shows its alt text,
+  /// so the editor's offsets stay the model's.
+  func inlineImage(_ run: Run, for key: String, keepsLength: Bool = false) -> NSAttributedString? {
     guard let src = run.image else { return nil }
     let attachment = NSTextAttachment()
     let height = style.lineHeight - 4
     let state = imageState(src, for: key)
-    if case .failed = state, let alt = run.alt, !alt.isEmpty {
+    if case .failed = state, !keepsLength, let alt = run.alt, !alt.isEmpty {
       return style.plain(alt, font: .italicSystemFont(ofSize: style.fontSize), color: style.muted, lineHeight: style.lineHeight)
     }
     if case .loaded(let image) = state, image.size.height > 0 {
@@ -275,7 +318,7 @@ final class DocumentBlocksView: ExpoView {
     return NSAttributedString(attachment: attachment)
   }
 
-  private func reconfigure(_ keys: [String]) {
+  func reconfigure(_ keys: [String]) {
     var snapshot = dataSource.snapshot()
     let present = keys.filter { snapshot.indexOfItem($0) != nil }
     guard !present.isEmpty else { return }
@@ -323,7 +366,7 @@ final class DocumentBlocksView: ExpoView {
   }
 
 
-  private func send(_ type: NativeEventType, _ payload: [String: Any] = [:]) {
+  func send(_ type: NativeEventType, _ payload: [String: Any] = [:]) {
     var event = payload
     event["type"] = type.rawValue
     onDocumentEvent(event)

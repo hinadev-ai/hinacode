@@ -84,6 +84,8 @@ class BlockCell: UICollectionViewCell {
   private var rightToLeft = false
   private let decoration = DecorationView()
   private var measured: (width: CGFloat, geometry: BlockGeometry)?
+  /// Set while this row holds the editor: measures the editor's text at a content width.
+  private(set) var editorHeight: ((CGFloat) -> CGFloat)?
 
   override init(frame: CGRect) {
     super.init(frame: frame)
@@ -101,6 +103,32 @@ class BlockCell: UICollectionViewCell {
     rightToLeft = block.isRightToLeft
     decoration.isHidden = block.containers.isEmpty
     invalidateMeasure()
+  }
+
+  func hostEditor(_ height: ((CGFloat) -> CGFloat)?) {
+    editorHeight = height
+    editorHostingChanged()
+    invalidateMeasure()
+  }
+
+  func editorHostingChanged() {}
+
+  /// Where the editor sits for `cell`, in this cell's coordinates.
+  func editorFrame(cell: TableCellIndex?) -> CGRect? { nil }
+
+  var contentFrame: CGRect { geometry(width: bounds.width).content }
+
+  func height(width: CGFloat) -> CGFloat { geometry(width: width).height }
+
+  func isCheckbox(at point: CGPoint) -> Bool {
+    let geometry = geometry(width: bounds.width)
+    let center = geometry.content.minY + style.lineHeight / 2
+    return geometry.marks.contains { mark in
+      guard case .checkbox(let x, _) = mark else { return false }
+      let box = CGRect(x: x - 8, y: center - 16, width: 34, height: 32)
+      let placed = geometry.rightToLeft ? CGRect(x: bounds.width - box.maxX, y: box.minY, width: box.width, height: box.height) : box
+      return placed.contains(point)
+    }
   }
 
   func invalidateMeasure() {

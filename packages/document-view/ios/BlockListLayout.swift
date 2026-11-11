@@ -21,6 +21,14 @@ final class BlockListLayout: UICollectionViewLayout {
     validOrigins = min(validOrigins, range.lowerBound + 1)
   }
 
+  /// Sets a row's height when its content changes without a new cell, as the focused row's does while it is edited.
+  func setHeight(_ index: Int, _ height: CGFloat) {
+    guard index < heights.count, abs(heights[index] - height) >= 0.5 else { return }
+    heights[index] = height
+    validOrigins = min(validOrigins, index + 1)
+    invalidateLayout()
+  }
+
   override func prepare() {
     super.prepare()
     if let collectionView { width = collectionView.bounds.width }

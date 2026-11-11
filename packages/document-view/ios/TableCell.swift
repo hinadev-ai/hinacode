@@ -55,6 +55,51 @@ final class TablePainter: CanvasPainter {
     size = CGSize(width: columns.reduce(0, +) + 1, height: rowTops.last! + 1)
   }
 
+  func text(_ cell: TableCellIndex) -> NSAttributedString? {
+    guard cell.row < cells.count, cell.column < cells[cell.row].count else { return nil }
+    return cells[cell.row][cell.column]
+  }
+
+  /// The text area of a cell, inside its padding, in the grid's coordinates.
+  func textRect(_ cell: TableCellIndex) -> CGRect? {
+    guard cell.row < cells.count, cell.column < columns.count else { return nil }
+    let x = columns[..<cell.column].reduce(0, +)
+    return CGRect(
+      x: x + Self.padding.left, y: rowTops[cell.row] + Self.padding.top,
+      width: columns[cell.column] - Self.padding.left - Self.padding.right,
+      height: rowTops[cell.row + 1] - rowTops[cell.row] - Self.padding.top - Self.padding.bottom)
+  }
+
+  func cell(at point: CGPoint) -> TableCellIndex? {
+    guard point.y >= 0, point.x >= 0, let row = rowTops.lastIndex(where: { $0 <= point.y }), row < cells.count else {
+      return nil
+    }
+    var right: CGFloat = 0
+    for (column, width) in columns.enumerated() {
+      right += width
+      if point.x < right { return TableCellIndex(row: row, column: column) }
+    }
+    return nil
+  }
+
+  func isHeader(_ cell: TableCellIndex) -> Bool { header && cell.row == 0 }
+
+  /// The link under a point in the grid, laid out the way `paint` draws the cell's text.
+  func href(at point: CGPoint) -> String? {
+    guard let cell = cell(at: point), let rect = textRect(cell), let text = text(cell), text.length > 0 else { return nil }
+    let storage = NSTextStorage(attributedString: text)
+    let manager = NSLayoutManager()
+    storage.addLayoutManager(manager)
+    let container = NSTextContainer(size: CGSize(width: rect.width, height: .greatestFiniteMagnitude))
+    container.lineFragmentPadding = 0
+    manager.addTextContainer(container)
+    let local = CGPoint(x: point.x - rect.minX, y: point.y - rect.minY)
+    let glyph = manager.glyphIndex(for: local, in: container)
+    let bounds = manager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+    guard bounds.insetBy(dx: -6, dy: -6).contains(local) else { return nil }
+    return text.attribute(.documentHref, at: manager.characterIndexForGlyph(at: glyph), effectiveRange: nil) as? String
+  }
+
   func paint(_ rect: CGRect) {
     guard let context = UIGraphicsGetCurrentContext(), !cells.isEmpty else { return }
     if header {
@@ -90,13 +135,19 @@ final class TablePainter: CanvasPainter {
   }
 }
 
-final class TableCell: BlockCell {
+final class TableCell: BlockCell, UIScrollViewDelegate {
   private let scroller = UIScrollView()
   private let grid = CanvasHost()
-  private var table: TablePainter?
+  private(set) var table: TablePainter?
+  var onScroll: () -> Void = {}
+  private var onLink: (String) -> Void = { _ in }
+  private let linkTap = UITapGestureRecognizer()
 
   override init(frame: CGRect) {
     super.init(frame: frame)
+    linkTap.addTarget(self, action: #selector(tapped(_:)))
+    scroller.addGestureRecognizer(linkTap)
+    scroller.delegate = self
     scroller.showsVerticalScrollIndicator = false
     scroller.alwaysBounceVertical = false
     scroller.addSubview(grid)
@@ -105,8 +156,14 @@ final class TableCell: BlockCell {
 
   required init?(coder: NSCoder) { nil }
 
-  func configure(_ block: Block, placement: Placement, style: DocumentStyle, table: TablePainter) {
+  /// `interactive` is false while the document is editable: a tap then focuses a cell instead of opening its link.
+  func configure(
+    _ block: Block, placement: Placement, style: DocumentStyle, table: TablePainter, interactive: Bool,
+    onLink: @escaping (String) -> Void
+  ) {
     super.configure(block, placement: placement, style: style)
+    self.onLink = onLink
+    linkTap.isEnabled = interactive
     self.table = table
     grid.show(table)
     grid.frame = CGRect(origin: .zero, size: table.size)
@@ -115,6 +172,31 @@ final class TableCell: BlockCell {
   }
 
   override func contentHeight(width: CGFloat) -> CGFloat { table?.size.height ?? 0 }
+
+  func scrollViewDidScroll(_ scrollView: UIScrollView) { onScroll() }
+
+  @objc private func tapped(_ gesture: UITapGestureRecognizer) {
+    if let href = table?.href(at: gesture.location(in: grid)) { onLink(href) }
+  }
+
+  private var gridOrigin: CGPoint {
+    CGPoint(x: scroller.frame.minX - scroller.contentOffset.x, y: scroller.frame.minY - scroller.contentOffset.y)
+  }
+
+  func tableCell(at point: CGPoint) -> TableCellIndex? {
+    guard scroller.frame.contains(point) else { return nil }
+    return table?.cell(at: CGPoint(x: point.x - gridOrigin.x, y: point.y - gridOrigin.y))
+  }
+
+  override func editorFrame(cell: TableCellIndex?) -> CGRect? {
+    guard let cell, let rect = table?.textRect(cell) else { return nil }
+    return rect.offsetBy(dx: gridOrigin.x, dy: gridOrigin.y)
+  }
+
+  func reveal(_ cell: TableCellIndex) {
+    guard let rect = table?.textRect(cell) else { return }
+    scroller.scrollRectToVisible(rect.insetBy(dx: -12, dy: 0), animated: false)
+  }
 
   override func layoutContent(in frame: CGRect) {
     scroller.frame = frame

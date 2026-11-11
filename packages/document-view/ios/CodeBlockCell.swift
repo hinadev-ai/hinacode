@@ -97,12 +97,28 @@ final class CodeBlockCell: BlockCell {
     error.isHidden ? 0 : 6 + ceil(error.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
   }
 
+  override func editorHostingChanged() {
+    scroller.isHidden = editorHeight != nil
+  }
+
+  private func codeHeight(width: CGFloat) -> CGFloat {
+    if let editorHeight { return editorHeight(width - Self.padding * 2) }
+    return code?.size.height ?? 0
+  }
+
+  override func editorFrame(cell: TableCellIndex?) -> CGRect? {
+    let frame = contentFrame
+    return CGRect(
+      x: frame.minX + Self.padding, y: frame.minY + Self.padding + headerSpace, width: frame.width - Self.padding * 2,
+      height: codeHeight(width: frame.width))
+  }
+
   override func contentHeight(width: CGFloat) -> CGFloat {
-    Self.padding * 2 + headerSpace + (code?.size.height ?? 0) + errorHeight(width: width)
+    Self.padding * 2 + headerSpace + codeHeight(width: width) + errorHeight(width: width)
   }
 
   override func layoutContent(in frame: CGRect) {
-    let codeHeight = code?.size.height ?? 0
+    let codeHeight = codeHeight(width: frame.width)
     let boxHeight = Self.padding * 2 + headerSpace + codeHeight
     box.frame = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: boxHeight)
     header.frame = CGRect(x: Self.padding, y: Self.padding - 2, width: frame.width - Self.padding * 2, height: 16)

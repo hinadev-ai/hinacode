@@ -40,6 +40,7 @@ struct ChartSeries: Equatable {
 }
 
 struct Chart: Equatable {
+  let source: String
   let isLine: Bool
   let title: String
   let notes: String
@@ -101,15 +102,62 @@ struct Block: Equatable {
     }
   }
 
+  var isTextBlock: Bool {
+    switch body {
+    case .paragraph, .heading: return true
+    default: return false
+    }
+  }
+
+  /// Blocks whose text the editor edits as source: code, and charts and diagrams while focused.
+  var isSource: Bool {
+    switch body {
+    case .code, .chart, .diagram: return true
+    default: return false
+    }
+  }
+
+  /// The text the model counts offsets in, or nil when the block (or the cell) cannot be edited as text.
+  func editableText(cell: TableCellIndex?) -> String? {
+    switch body {
+    case .paragraph(let runs), .heading(_, let runs): return runs.map(\.text).joined()
+    case .code(_, let text, _, _): return text
+    case .chart(let chart): return chart.source
+    case .diagram(let source, _): return source
+    case .table(let table):
+      guard let cell, cell.row < table.rows.count, cell.column < table.rows[cell.row].count else { return nil }
+      return table.rows[cell.row][cell.column].map(\.text).joined()
+    case .image, .rule, .unsupported: return nil
+    }
+  }
+
   private static let rightToLeftScalars: [ClosedRange<UInt32>] = [
     0x0590...0x08FF, 0xFB1D...0xFDFF, 0xFE70...0xFEFF, 0x10800...0x10FFF, 0x1E800...0x1EFFF,
   ]
 }
 
+/// A caret end in the model's terms: a block index, the table cell for a table, and a UTF-16 offset into the text.
+struct TextPoint: Equatable {
+  let block: Int
+  let cell: TableCellIndex?
+  let offset: Int
+
+  var payload: [String: Any] {
+    ["block": block, "cell": cell.map { [$0.row, $0.column] as Any } ?? NSNull(), "offset": offset]
+  }
+}
+
+struct TableCellIndex: Equatable {
+  let row: Int
+  let column: Int
+}
+
 struct BlockPatch {
+  let eventCount: Int
   let start: Int
   let deleteCount: Int
   let insert: [Block]
+  let selection: (anchor: TextPoint, head: TextPoint)?
 }
 
 enum PatchError: Error, CustomStringConvertible {
@@ -131,7 +179,20 @@ enum BlockDecoder {
       let deleteCount = object["deleteCount"] as? Int,
       let insert = object["insert"] as? [[String: Any]]
     else { throw PatchError.malformed("expected {start, deleteCount, insert}") }
-    return BlockPatch(start: start, deleteCount: deleteCount, insert: insert.enumerated().map { block($0.element, at: $0.offset) })
+    let selection = object["selection"] as? [String: Any]
+    let anchor = point(selection?["anchor"])
+    let head = point(selection?["head"])
+    return BlockPatch(
+      eventCount: object["eventCount"] as? Int ?? 0, start: start, deleteCount: deleteCount,
+      insert: insert.enumerated().map { block($0.element, at: $0.offset) },
+      selection: anchor.flatMap { anchor in head.map { (anchor, $0) } })
+  }
+
+  private static func point(_ value: Any?) -> TextPoint? {
+    guard let object = value as? [String: Any], let block = object["block"] as? Int, let offset = object["offset"] as? Int
+    else { return nil }
+    let cell = (object["cell"] as? [Int]).flatMap { $0.count == 2 ? TableCellIndex(row: $0[0], column: $0[1]) : nil }
+    return TextPoint(block: block, cell: cell, offset: offset)
   }
 
   static func block(_ object: [String: Any], at index: Int) -> Block {
@@ -228,6 +289,7 @@ enum BlockDecoder {
   private static func chart(_ object: [String: Any]) -> Chart? {
     guard let x = object["x"] as? [Any], let series = object["series"] as? [[String: Any]] else { return nil }
     return Chart(
+      source: object["source"] as? String ?? "",
       isLine: object["type"] as? String == "line",
       title: object["title"] as? String ?? "",
       notes: object["notes"] as? String ?? "",

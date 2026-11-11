@@ -19,17 +19,28 @@ final class TextBlockCell: BlockCell, UITextViewDelegate {
 
   required init?(coder: NSCoder) { nil }
 
+  /// `interactive` is false while the document is editable: a tap then focuses the block instead of selecting or
+  /// following a link in this read-only text.
   func configure(
-    _ block: Block, placement: Placement, style: DocumentStyle, text: NSAttributedString,
+    _ block: Block, placement: Placement, style: DocumentStyle, text: NSAttributedString, interactive: Bool,
     onLink: @escaping (String) -> Void
   ) {
     super.configure(block, placement: placement, style: style)
     self.onLink = onLink
+    textView.isSelectable = interactive
+    textView.isUserInteractionEnabled = interactive
     textView.attributedText = text
   }
 
+  override func editorHostingChanged() {
+    textView.isHidden = editorHeight != nil
+  }
+
+  override func editorFrame(cell: TableCellIndex?) -> CGRect? { contentFrame }
+
   override func contentHeight(width: CGFloat) -> CGFloat {
-    textView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
+    if let editorHeight { return editorHeight(width) }
+    return textView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
   }
 
   override func layoutContent(in frame: CGRect) {
