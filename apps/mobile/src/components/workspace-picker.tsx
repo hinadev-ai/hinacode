@@ -10,7 +10,7 @@ import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { request, type RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
-import { familyOf, handshakes, reportFailure, rpcFamily } from "@/lib/remote"
+import { familyOf, beforeFirstHandshake, reportFailure, rpcFamily } from "@/lib/remote"
 import { refIcon } from "@/lib/workspace-ref"
 import { useDrafts, type Workspace } from "@/stores/drafts"
 
@@ -35,7 +35,7 @@ const noRefs: Refs = { branches: [], pullRequests: [], defaultBranch: null }
 
 const branchesAtom = familyOf((projectId: string) =>
   Atom.make((get) => {
-    get(handshakes)
+    if (beforeFirstHandshake(get)) return Effect.never
     return Effect.all({
       branches: request("projects.branches", { id: projectId }),
       defaultBranch: request("projects.defaultBranch", { id: projectId }),

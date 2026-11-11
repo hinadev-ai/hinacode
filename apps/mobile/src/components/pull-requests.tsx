@@ -24,7 +24,7 @@ import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { pullRequestReference } from "@/lib/overview"
-import { familyOf, handshakes, registry } from "@/lib/remote"
+import { familyOf, beforeFirstHandshake, registry } from "@/lib/remote"
 import { loadPullRequestAtom, usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
@@ -48,7 +48,7 @@ const NOT_READ: { readonly error: string | null; readonly branch: PullRequest | 
 
 const threadPullRequestsAtom = familyOf((threadId: string, worktreeId: string | null) =>
   Atom.make((get) => {
-    get(handshakes)
+    if (beforeFirstHandshake(get)) return Effect.never
     return Effect.promise(() => readPullRequests(threadId, worktreeId))
   }),
 )

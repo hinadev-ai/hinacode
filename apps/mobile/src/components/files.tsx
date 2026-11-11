@@ -30,7 +30,7 @@ import { basename, dirname, entryIcon } from "@/lib/file-kinds"
 import { confirmDestructive } from "@/lib/confirm"
 import { type FilePatch, filePatches } from "@/lib/file-patches"
 import { lineSnippet, matchPaths, type PathMatch, splitPath } from "@/lib/path-match"
-import { asLoaded, failureOf, familyOf, handshakes, rpcFamily } from "@/lib/remote"
+import { asLoaded, failureOf, familyOf, beforeFirstHandshake, rpcFamily } from "@/lib/remote"
 import { useThreadRoot, useThreads } from "@/stores/threads"
 
 type GitStatus = NonNullable<FsEntry["gitStatus"]>
@@ -83,7 +83,7 @@ const threadBusy = familyOf((threadId: string) =>
 
 const changesRead = familyOf((threadId: string) =>
   Atom.make((get) => {
-    get(handshakes)
+    if (beforeFirstHandshake(get)) return Effect.never
     if (get(threadBusy(threadId))) return Effect.never
     return Effect.all({
       worktree: request("threads.changes", { threadId, scope: "worktree" }),
@@ -94,7 +94,7 @@ const changesRead = familyOf((threadId: string) =>
 
 const contentSearch = familyOf((threadId: string, query: string) =>
   Atom.make((get) => {
-    get(handshakes)
+    if (beforeFirstHandshake(get)) return Effect.never
     return Effect.sleep("300 millis").pipe(Effect.andThen(request("search.files", { threadId, query, limit: 100 })))
   }),
 )

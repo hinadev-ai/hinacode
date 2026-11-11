@@ -21,7 +21,7 @@ import { refIcon } from "@/lib/workspace-ref"
 import { errorText } from "@/lib/error-text"
 import { openThread } from "@/lib/navigation"
 import { projectsByActivity } from "@/lib/projects"
-import { familyOf, handshakes, reportFailure } from "@/lib/remote"
+import { familyOf, beforeFirstHandshake, reportFailure } from "@/lib/remote"
 import { createThread } from "@/lib/start-thread"
 import { useDrafts } from "@/stores/drafts"
 import { modelsLoadAtom } from "@/stores/models"
@@ -35,7 +35,7 @@ type Picking = "environment" | "project" | null
  */
 const projectDraftAtom = familyOf((project: Project) =>
   Atom.make((get) => {
-    get(handshakes)
+    if (beforeFirstHandshake(get)) return Effect.never
     return Effect.tryPromise({ try: () => createThread(project), catch: (cause) => cause })
   }),
 )

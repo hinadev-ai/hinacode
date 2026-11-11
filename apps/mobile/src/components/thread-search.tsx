@@ -19,7 +19,7 @@ import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { matchParts } from "@/lib/match-parts"
 import { openThread } from "@/lib/navigation"
-import { familyOf, handshakes } from "@/lib/remote"
+import { familyOf, beforeFirstHandshake } from "@/lib/remote"
 import { relativeTime } from "@/lib/relative-time"
 import { hitsWithinFilter, withinFilter } from "@/lib/thread-filter"
 import { listedThreads, matchThreads, useThreads } from "@/stores/threads"
@@ -37,7 +37,7 @@ type MessageSearch =
 
 const messageSearch = familyOf((query: string) =>
   Atom.make((get) => {
-    get(handshakes)
+    if (beforeFirstHandshake(get)) return Effect.never
     return Effect.sleep(DEBOUNCE_MS).pipe(Effect.andThen(request("search.threads", { query, limit: MESSAGE_LIMIT })))
   }),
 )

@@ -2,15 +2,22 @@ import { useAtomValue } from "@effect/atom-react"
 import { useState } from "react"
 import { Image, Platform } from "react-native"
 import { SvgXml } from "react-native-svg"
+import { Effect, Option } from "effect"
 import { Atom, AsyncResult } from "effect/reactivity"
 import { Icon } from "@/components/icon"
 import { useTheme } from "@/hooks/use-theme"
-import { familyOf, rpcFamily } from "@/lib/remote"
-
-const projectIconRead = rpcFamily("projects.icon")
+import { request, type RpcError } from "@/lib/connection"
+import { beforeFirstHandshake, familyOf } from "@/lib/remote"
 
 /** Favicon data URLs by project id, null when the project has none. Every row of a project shares one read. */
-const projectIcon = familyOf((projectId: string) => Atom.keepAlive(projectIconRead({ id: projectId })))
+const projectIcon = familyOf((projectId: string) =>
+  Atom.make((get) => {
+    const shown = get.self<AsyncResult.AsyncResult<string | null, RpcError>>().pipe(Option.filter(AsyncResult.isSuccess))
+    if (Option.isSome(shown)) return Effect.succeed(shown.value.value)
+    if (beforeFirstHandshake(get)) return Effect.never
+    return request("projects.icon", { id: projectId })
+  }).pipe(Atom.keepAlive),
+)
 
 const useProjectIcon = (projectId: string): string | null =>
   AsyncResult.getOrElse(useAtomValue(projectIcon(projectId)), () => null)
