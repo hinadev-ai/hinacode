@@ -271,3 +271,12 @@ test("a chart's missing and null values draw as zero, as on the desktop", () => 
   const { blocks } = renderBlocks(parseDocument(chart).doc)
   expect(blocks[0]).toMatchObject({ kind: "chart", series: [{ values: [5, 0, 0, 7] }] })
 })
+
+test("an edit the model rejects is dropped and its block is sent again instead of throwing", () => {
+  const { session, patches, shown } = editable("Inline ![dot](images/a.png) image.\n\nNext.")
+  const before = session.markdown()
+  expect(session.edit({ eventCount: 3, block: 0, cell: null, from: 2, to: 2, text: "X" })).toBe(false)
+  expect(session.markdown()).toBe(before)
+  expect(patches.at(-1)).toMatchObject({ start: 0, deleteCount: 1, eventCount: 3 })
+  expect(shown()[0]).toEqual(session.blocks[0])
+})
