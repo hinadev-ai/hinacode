@@ -383,11 +383,9 @@ function DocumentEditing({
   const insertImages = async () => {
     setImageError(null)
     setImageBusy(true)
-    await insertPickedImages(artifactId, server, (src) => editor.current?.run({ type: "insertImage", src, alt: "" })).then(
-      () => undefined,
-      (cause: unknown) => setImageError(copy("mobile_document_image_failed", { message: errorText(cause) })),
-    )
-    setImageBusy(false)
+    await insertPickedImages(artifactId, server, (src) => editor.current?.run({ type: "insertImage", src, alt: "" }))
+      .catch((cause: unknown) => setImageError(copy("mobile_document_image_failed", { message: errorText(cause) })))
+      .finally(() => setImageBusy(false))
   }
 
   return (
