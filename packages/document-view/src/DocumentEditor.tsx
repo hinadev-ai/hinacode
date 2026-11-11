@@ -92,7 +92,10 @@ export function DocumentEditor({
 }: DocumentEditorProps & { readonly ref?: Ref<DocumentEditorHandle> }) {
   const native = useRef<NativeHandle>(null)
   const [bridge] = useState(createBridge)
-  useEffect(() => bridge.listen({ onChange, onSelectionChange }))
+  useEffect(() => {
+    const stopListening = bridge.listen({ onChange, onSelectionChange })
+    return stopListening
+  })
   const [session] = useState(() =>
     createDocumentSession({
       send: bridge.send,
