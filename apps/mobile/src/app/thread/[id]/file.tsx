@@ -9,7 +9,7 @@ import { FlatList, Image, Platform, ScrollView, StyleSheet, Text, useWindowDimen
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { SvgXml } from "react-native-svg"
-import { asLoaded, Failure, Loading } from "@/components/files"
+import { Failure, Loading } from "@/components/files"
 import { Markdown } from "@/components/markdown"
 import { EmptyState, Notice, type Segment, SegmentedControl } from "@/components/ui"
 import { cssEase } from "@/constants/motion"
@@ -20,7 +20,7 @@ import type { RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { basename, dirname, fileKind, svgAspectRatio } from "@/lib/file-kinds"
 import { useHighlight } from "@/lib/highlight"
-import { familyOf, rpcFamily } from "@/lib/remote"
+import { asLoaded, familyOf, rpcFamily } from "@/lib/remote"
 import { useThreadRoot, useThreads } from "@/stores/threads"
 
 type Params = { id: string; path: string; line?: string }

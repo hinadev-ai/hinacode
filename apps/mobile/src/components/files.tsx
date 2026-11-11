@@ -1,6 +1,6 @@
 import { type FileSearchHit, type FsEntry, isThreadBusy, type Thread } from "@shared/domain.ts"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
-import { Cause, Effect } from "effect"
+import { Effect } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
 import { router } from "expo-router"
 import { type ReactNode, useRef, useState } from "react"
@@ -23,14 +23,14 @@ import { SearchField } from "@/components/search-field"
 import { Button, EmptyState, Notice } from "@/components/ui"
 import { HIT, type Palette, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call, request, RpcError } from "@/lib/connection"
+import { call, request } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { basename, dirname, entryIcon } from "@/lib/file-kinds"
 import { confirmDestructive } from "@/lib/confirm"
 import { type FilePatch, filePatches } from "@/lib/file-patches"
 import { lineSnippet, matchPaths, type PathMatch, splitPath } from "@/lib/path-match"
-import { familyOf, handshakes, rpcFamily } from "@/lib/remote"
+import { asLoaded, failureOf, familyOf, handshakes, rpcFamily } from "@/lib/remote"
 import { useThreadRoot, useThreads } from "@/stores/threads"
 
 type GitStatus = NonNullable<FsEntry["gitStatus"]>
@@ -65,19 +65,6 @@ const openFile = (threadId: string, path: string, line?: number) =>
     pathname: "/thread/[id]/file",
     params: line === undefined ? { id: threadId, path } : { id: threadId, path, line: String(line) },
   })
-
-type Loaded<T> = { readonly value: T } | { readonly error: string; readonly tag?: string }
-
-const failureOf = (cause: Cause.Cause<unknown>) => {
-  const error = Cause.squash(cause)
-  return { error: errorText(error), tag: error instanceof RpcError ? error.tag : undefined }
-}
-
-export function asLoaded<T>(result: AsyncResult.AsyncResult<T, RpcError>): Loaded<T> | null {
-  if (AsyncResult.isSuccess(result)) return { value: result.value }
-  if (AsyncResult.isInitial(result) || result.waiting) return null
-  return failureOf(result.cause)
-}
 
 const workspaceFiles = rpcFamily("files.list")
 const folderListing = rpcFamily("fs.list")
