@@ -268,6 +268,7 @@ const reply = ({ id, method, params }) => {
       return completeTurn(params.threadId, turnId, "completed")
     }
     case "turn/interrupt":
+      activeRequest = null
       send({ id, result: {} })
       return completeTurn(params.threadId, params.turnId, "interrupted")
     default:
