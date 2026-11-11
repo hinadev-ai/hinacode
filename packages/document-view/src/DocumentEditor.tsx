@@ -66,7 +66,7 @@ function createBridge() {
   }
 }
 
-const nextTask = (run: () => void) => void setTimeout(run, 0)
+const nextTask = (run: () => void) => void requestIdleCallback(run)
 
 export function DocumentEditor({
   ref,
