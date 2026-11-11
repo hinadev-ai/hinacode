@@ -1,6 +1,9 @@
+import { Effect } from "effect"
+import { Atom } from "effect/reactivity"
 import { create } from "zustand"
 import type { ModelInfo, ProviderId } from "@shared/agent.ts"
 import { call } from "@/lib/connection"
+import { familyOf, handshakes } from "@/lib/remote"
 
 type ByProvider = Readonly<Partial<Record<ProviderId, readonly ModelInfo[]>>>
 
@@ -36,3 +39,15 @@ export const useModels = create<ModelsState>()((set, get) => ({
 
 export const modelsOn = (state: ModelsState, server: string | undefined, provider: ProviderId) =>
   state.byServer[server ?? ""]?.[provider]
+
+const loadAtom = familyOf((server: string | null, provider: ProviderId) =>
+  Atom.make((get) => {
+    get(handshakes)
+    return Effect.tryPromise({
+      try: () => useModels.getState().load(server ?? undefined, provider),
+      catch: (cause) => cause,
+    })
+  }),
+)
+
+export const modelsLoadAtom = (server: string | undefined, provider: ProviderId) => loadAtom(server ?? null, provider)

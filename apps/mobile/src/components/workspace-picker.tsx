@@ -1,35 +1,28 @@
+import { useAtomMount, useAtomSubscribe, useAtomValue } from "@effect/atom-react"
 import type { OpenPullRequest, Thread } from "@shared/domain.ts"
-import { useEffect, useState } from "react"
+import { Effect, Option } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
+import { useState } from "react"
 import { Pressable, StyleSheet, Text, TextInput } from "react-native"
 import { Icon } from "@/components/icon"
 import { OptionRow, Section, Sheet } from "@/components/sheet"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call, useConnection } from "@/lib/connection"
+import { request, type RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
+import { familyOf, handshakes, reportFailure, rpcFamily } from "@/lib/remote"
 import { refIcon } from "@/lib/workspace-ref"
-import { errorText } from "@/lib/error-text"
 import { useDrafts, type Workspace } from "@/stores/drafts"
 
 const CHIP_HEIGHT = 32
 const SUGGESTIONS_PER_GROUP = 20
 
+const currentBranchAtom = rpcFamily("projects.currentBranch")
+
 /** The branch checked out in the project root, which a thread without a picked workspace runs on. */
 function useCurrentBranch(projectId: string) {
-  const connected = useConnection((state) => state.status === "connected")
-  const [branch, setBranch] = useState("")
-  useEffect(() => {
-    if (!connected) return
-    let current = true
-    call("projects.currentBranch", { id: projectId }).then(
-      (next) => current && setBranch(next),
-      () => {},
-    )
-    return () => {
-      current = false
-    }
-  }, [connected, projectId])
-  return branch
+  const result = useAtomValue(currentBranchAtom({ id: projectId }))
+  return Option.getOrElse(AsyncResult.value(result), () => "")
 }
 
 interface Refs {
@@ -40,33 +33,43 @@ interface Refs {
 
 const noRefs: Refs = { branches: [], pullRequests: [], defaultBranch: null }
 
+const branchesAtom = familyOf((projectId: string) =>
+  Atom.make((get) => {
+    get(handshakes)
+    return Effect.all({
+      branches: request("projects.branches", { id: projectId }),
+      defaultBranch: request("projects.defaultBranch", { id: projectId }),
+    }, { concurrency: "unbounded" })
+  }),
+)
+
+const fetchOriginAtom = familyOf((projectId: string) =>
+  Atom.make((get) =>
+    request("projects.fetch", { id: projectId }).pipe(
+      Effect.tap(() => Effect.sync(() => get.refresh(branchesAtom(projectId)))),
+    ),
+  ),
+)
+
+const pullRequestsAtom = rpcFamily("projects.pullRequests")
+
+type Listed<A> = Atom.Atom<AsyncResult.AsyncResult<A, RpcError>>
+
+const closedBranchesAtom: Listed<{ readonly branches: readonly string[]; readonly defaultBranch: string }> = Atom.make(
+  AsyncResult.initial(),
+)
+const closedPullRequestsAtom: Listed<readonly OpenPullRequest[]> = Atom.make(AsyncResult.initial())
+const closedFetchAtom: Listed<unknown> = Atom.make(AsyncResult.initial())
+
 /** Branches and open pull requests while the sheet is open, listed again once a fetch of `origin` settles. */
-function useRefs(projectId: string, open: boolean, onError: (message: string) => void) {
-  const [refs, setRefs] = useState(noRefs)
-  useEffect(() => {
-    if (!open) return
-    let current = true
-    const update = (patch: Partial<Refs>) => current && setRefs((previous) => ({ ...previous, ...patch }))
-    const fail = (cause: unknown) => current && onError(errorText(cause))
-    const listBranches = () =>
-      Promise.all([call("projects.branches", { id: projectId }), call("projects.defaultBranch", { id: projectId })]).then(
-        ([branches, defaultBranch]) => update({ branches, defaultBranch }),
-      )
-    listBranches().catch(fail)
-    // A repository without a GitHub remote has no pull requests to offer, which is not worth an error.
-    call("projects.pullRequests", { id: projectId }).then(
-      (pullRequests) => update({ pullRequests }),
-      () => {},
-    )
-    // Offline the fetch fails, and the branches already listed are still worth offering.
-    call("projects.fetch", { id: projectId })
-      .then(listBranches)
-      .catch(() => {})
-    return () => {
-      current = false
-    }
-  }, [open, projectId, onError])
-  return refs
+function useRefs(projectId: string, open: boolean, onError: (message: string) => void): Refs {
+  const branchesSource = open ? branchesAtom(projectId) : closedBranchesAtom
+  const listed = AsyncResult.value(useAtomValue(branchesSource))
+  const pullRequests = AsyncResult.value(useAtomValue(open ? pullRequestsAtom({ id: projectId }) : closedPullRequestsAtom))
+  useAtomMount<AsyncResult.AsyncResult<unknown, RpcError>>(open ? fetchOriginAtom(projectId) : closedFetchAtom)
+  useAtomSubscribe(branchesSource, reportFailure(onError))
+  const { branches, defaultBranch } = Option.getOrElse(listed, () => noRefs)
+  return { branches, defaultBranch, pullRequests: Option.getOrElse(pullRequests, () => noRefs.pullRequests) }
 }
 
 /** Pull requests, then branches, containing the query. A query that is exactly one of them shows them all. */

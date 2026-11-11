@@ -1,7 +1,8 @@
-import { Effect } from "effect"
-import { Atom, AtomRegistry } from "effect/reactivity"
+import { Cause, Effect } from "effect"
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity"
 import type { PushEvent, RpcMethod, RpcRequest } from "@shared/contract.ts"
 import { onEvent, request, useConnection } from "./connection"
+import { errorText } from "./error-text"
 
 export const registry = AtomRegistry.make()
 
@@ -40,3 +41,8 @@ export const rpcFamily =<M extends RpcMethod>(
       return request(method, payload, server ? { server } : undefined)
     }),
   )
+
+export const reportFailure =
+  (report: (message: string) => void) => (result: AsyncResult.AsyncResult<unknown, unknown>) => {
+    if (AsyncResult.isFailure(result) && !result.waiting) report(errorText(Cause.squash(result.cause)))
+  }

@@ -1,8 +1,11 @@
 import type { ModelInfo, ProviderId } from "@shared/agent.ts"
 import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, applySettingsPatch, type Settings } from "@shared/domain.ts"
+import { useAtomMount, useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { Cause, Effect, Option } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
 import Constants from "expo-constants"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { router } from "expo-router"
 import { AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { forgetServer } from "@/lib/start-app"
@@ -23,7 +26,7 @@ import { Button, ConnectionBadge, Notice, SegmentedControl, type Segment } from 
 import { serverName } from "@/hooks/use-server"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { HIT, mono, type Palette, ProviderColors, radius } from "@/constants/theme"
-import { call, type ConnectionStatus, reconnectNow, type Server, useConnection } from "@/lib/connection"
+import { call, type ConnectionStatus, reconnectNow, type RpcError, type Server, useConnection } from "@/lib/connection"
 import { confirmDestructive } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
@@ -33,7 +36,8 @@ import {
   requestNotificationPermission,
 } from "@/lib/notifications"
 import type { Appearance, Preferences } from "@/lib/preferences"
-import { modelsOn, useModels } from "@/stores/models"
+import { rpcFamily } from "@/lib/remote"
+import { modelsLoadAtom, modelsOn, useModels } from "@/stores/models"
 import { usePreferences } from "@/stores/preferences"
 
 export default function SettingsScreen() {
@@ -92,7 +96,8 @@ function AppearanceSetting() {
 function NotificationSettings() {
   const notifications = usePreferences((state) => state.notifications)
   const set = usePreferences((state) => state.set)
-  const [permission, setPermission] = useNotificationPermission()
+  const permission = Option.getOrNull(AsyncResult.value(useAtomValue(notificationPermissionAtom)))
+  const readPermission = useAtomRefresh(notificationPermissionAtom)
   return (
     <SettingsGroup
       title={copy("mobile_settings_notifications")}
@@ -108,38 +113,31 @@ function NotificationSettings() {
         />
       ))}
       {permission !== null && permission !== "granted" && (
-        <NotificationPermissionRow permission={permission} onChange={setPermission} />
+        <NotificationPermissionRow permission={permission} onAnswered={readPermission} />
       )}
     </SettingsGroup>
   )
 }
 
-/** The system permission, read again on every return to the foreground, since it changes in system settings. */
-function useNotificationPermission() {
-  const [permission, setPermission] = useState<NotificationPermission | null>(null)
-  useEffect(() => {
-    const read = () => void getNotificationPermission().then(setPermission)
-    read()
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") read()
-    })
-    return () => subscription.remove()
-  }, [])
-  return [permission, setPermission] as const
-}
+const notificationPermissionAtom = Atom.make((get) => {
+  const foreground = AppState.addEventListener("change", (state) => state === "active" && get.refreshSelf())
+  get.addFinalizer(() => foreground.remove())
+  return Effect.promise(getNotificationPermission)
+})
 
 function NotificationPermissionRow({
   permission,
-  onChange,
+  onAnswered,
 }: {
   permission: Exclude<NotificationPermission, "granted">
-  onChange: (permission: NotificationPermission) => void
+  onAnswered: () => void
 }) {
   const [asking, setAsking] = useState(false)
   const ask = async () => {
     setAsking(true)
     try {
-      onChange(await requestNotificationPermission())
+      await requestNotificationPermission()
+      onAnswered()
     } finally {
       setAsking(false)
     }
@@ -203,43 +201,25 @@ const agents: readonly { provider: ProviderId; label: string; icon: IconName }[]
   { provider: "magpie", label: copy("mobile_settings_agent_magpie"), icon: "MagpieMark" },
 ]
 
-/**
- * One server's settings, loaded once per handshake with it. Writes show at once and roll back when the server
- * refuses them.
- */
+const settingsAtom = rpcFamily("settings.get")
+const noServerAtom = Atom.make(AsyncResult.initial<Settings, RpcError>())
+
 function useDesktopSettings(server: string | undefined) {
-  const generation = useConnection((state) => state.servers.find((entry) => entry.id === server)?.generation ?? 0)
-  const [attempt, setAttempt] = useState(0)
-  const [settings, setSettings] = useState<Settings | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const atom = server === undefined ? noServerAtom : settingsAtom(undefined, server)
+  const result = useAtomValue(atom)
+  const retry = useAtomRefresh(atom)
+  const loaded = Option.getOrNull(AsyncResult.value(result))
+  const loadError = AsyncResult.isFailure(result) && !result.waiting ? errorText(Cause.squash(result.cause)) : null
+  const [written, setWritten] = useState<{ readonly over: Settings | null; readonly settings: Settings } | null>(null)
   const [writeError, setWriteError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (server === undefined) return
-    let current = true
-    call("settings.get", undefined, { server }).then(
-      (loaded) => {
-        if (!current) return
-        setSettings(loaded)
-        setLoadError(null)
-      },
-      (cause) => current && setLoadError(errorText(cause)),
-    )
-    return () => {
-      current = false
-    }
-  }, [server, generation, attempt])
-
-  const retry = () => {
-    setLoadError(null)
-    setAttempt((value) => value + 1)
-  }
+  const settings = written !== null && written.over === loaded ? written.settings : loaded
+  const show = (next: Settings) => setWritten({ over: loaded, settings: next })
 
   const write = (previous: Settings, patch: SettingsPatch) => {
-    setSettings(applySettingsPatch(previous, patch))
+    show(applySettingsPatch(previous, patch))
     setWriteError(null)
-    call("settings.set", patch, { server }).then(setSettings, (cause) => {
-      setSettings(previous)
+    call("settings.set", patch, { server }).then(show, (cause) => {
+      show(previous)
       setWriteError(errorText(cause))
     })
   }
@@ -381,6 +361,8 @@ function LoadFailed({ text, onRetry }: { text: string; onRetry: () => void }) {
   )
 }
 
+const noModelToLabelAtom = Atom.make(AsyncResult.initial<void, unknown>())
+
 const modelLabel = (models: readonly ModelInfo[] | undefined, id: string | null) =>
   id === null ? copy("mobile_settings_agent_default") : (models?.find((model) => model.id === id)?.label ?? id)
 
@@ -403,11 +385,7 @@ function DefaultModelRow({
 }) {
   const scheme = useScheme()
   const models = useModels((state) => modelsOn(state, server, provider))
-  const load = useModels((state) => state.load)
-  // Only to turn a stored id into its label; the id stays readable if the agent cannot list its models.
-  useEffect(() => {
-    if (model !== null) load(server, provider).catch(() => undefined)
-  }, [model, server, provider, load])
+  useAtomMount(model === null ? noModelToLabelAtom : modelsLoadAtom(server, provider))
   return (
     <SettingsRow
       icon={icon}
@@ -436,16 +414,10 @@ function ModelSheet({
 }) {
   const theme = useTheme()
   const models = useModels((state) => modelsOn(state, server, provider))
-  const load = useModels((state) => state.load)
-  const [attempt, setAttempt] = useState(0)
-  const [error, setError] = useState<{ attempt: number; message: string } | null>(null)
+  const loading = useAtomValue(modelsLoadAtom(server, provider))
+  const retry = useAtomRefresh(modelsLoadAtom(server, provider))
   const agent = agents.find((entry) => entry.provider === provider)?.label ?? provider
-
-  useEffect(() => {
-    load(server, provider).catch((cause) => setError({ attempt, message: errorText(cause) }))
-  }, [load, server, provider, attempt])
-
-  const failure = error?.attempt === attempt ? error.message : null
+  const failure = AsyncResult.isFailure(loading) && !loading.waiting ? errorText(Cause.squash(loading.cause)) : null
   return (
     <Sheet title={copy("mobile_settings_model_sheet_title", { agent })} open onClose={onClose} fit>
       <View>
@@ -467,7 +439,7 @@ function ModelSheet({
       {failure !== null ? (
         <LoadFailed
           text={copy("mobile_settings_models_failed", { message: failure })}
-          onRetry={() => setAttempt((value) => value + 1)}
+          onRetry={retry}
         />
       ) : (
         models === undefined && (

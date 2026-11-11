@@ -1,6 +1,9 @@
+import { useAtomMount, useAtomSubscribe, useAtomValue } from "@effect/atom-react"
 import type { Project, Thread } from "@shared/domain.ts"
+import { Effect } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
 import { router } from "expo-router"
-import { type ReactNode, useEffect, useState } from "react"
+import { type ReactNode, useState } from "react"
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { SettingsSheet, useSettingsSummary } from "@/components/composer"
 import { Icon, type IconName } from "@/components/icon"
@@ -18,9 +21,10 @@ import { refIcon } from "@/lib/workspace-ref"
 import { errorText } from "@/lib/error-text"
 import { openThread } from "@/lib/navigation"
 import { projectsByActivity } from "@/lib/projects"
+import { familyOf, handshakes, reportFailure } from "@/lib/remote"
 import { createThread } from "@/lib/start-thread"
 import { useDrafts } from "@/stores/drafts"
-import { useModels } from "@/stores/models"
+import { modelsLoadAtom } from "@/stores/models"
 import { draftThread, listedThreads, useThreads } from "@/stores/threads"
 
 type Picking = "environment" | "project" | null
@@ -29,37 +33,20 @@ type Picking = "environment" | "project" | null
  * The picked project's draft, opened as soon as the sheet shows it so the agent, model and branch can be set before
  * Start. The server keeps one draft per project, so opening it again returns the same thread.
  */
+const projectDraftAtom = familyOf((project: Project) =>
+  Atom.make((get) => {
+    get(handshakes)
+    return Effect.tryPromise({ try: () => createThread(project), catch: (cause) => cause })
+  }),
+)
+
+const noDraftAtom: Atom.Atom<AsyncResult.AsyncResult<Thread, unknown>> = Atom.make(AsyncResult.initial())
+
 function useProjectDraft(project: Project | undefined, open: boolean, onError: (message: string) => void) {
-  const connected = useConnection((state) => state.status === "connected")
-  const [draftIds, setDraftIds] = useState<Record<string, string>>({})
-  const projectId = project?.id
-  const draftId = projectId === undefined ? undefined : draftIds[projectId]
-  const draft = useThreads((state) => draftThread(state.byId, draftId))
-  const hasDraft = draft !== undefined
-
-  useEffect(() => {
-    if (!open || !connected || project === undefined || hasDraft) return
-    let current = true
-    createThread(project).then(
-      (thread) => current && setDraftIds((ids) => ({ ...ids, [project.id]: thread.id })),
-      (cause: unknown) => current && onError(errorText(cause)),
-    )
-    return () => {
-      current = false
-    }
-  }, [open, connected, project, hasDraft, onError])
-
-  const server = project?.environmentId
-  const provider = draft?.provider
-  useEffect(() => {
-    if (!connected || provider === undefined) return
-    useModels
-      .getState()
-      .load(server, provider)
-      .catch((cause: unknown) => onError(errorText(cause)))
-  }, [connected, server, provider, onError])
-
-  return draft
+  const draftAtom = open && project !== undefined ? projectDraftAtom(project) : noDraftAtom
+  const draftId = AsyncResult.getOrElse(useAtomValue(draftAtom), () => undefined)?.id
+  useAtomSubscribe(draftAtom, reportFailure(onError))
+  return useThreads((state) => draftThread(state.byId, draftId))
 }
 
 /**
@@ -275,14 +262,26 @@ export function NewThreadSheet({
           />
         )}
       </GroupedCard>
-      {projectDraft !== undefined && <DraftSettings thread={projectDraft} onError={setError} />}
+      {projectDraft !== undefined && (
+        <DraftSettings thread={projectDraft} server={project?.environmentId} onError={setError} />
+      )}
     </Sheet>
   )
 }
 
 /** The draft's agent and model, and the branch its first message runs on, each opening the composer's own picker. */
-function DraftSettings({ thread, onError }: { thread: Thread; onError: (message: string) => void }) {
+function DraftSettings({
+  thread,
+  server,
+  onError,
+}: {
+  thread: Thread
+  server: string | undefined
+  onError: (message: string) => void
+}) {
   const [open, setOpen] = useState<"settings" | "workspace" | null>(null)
+  useAtomMount(modelsLoadAtom(server, thread.provider))
+  useAtomSubscribe(modelsLoadAtom(server, thread.provider), reportFailure(onError))
   const { providerLabel, modelLabel, effortText } = useSettingsSummary(thread)
   const workspace = useWorkspace(thread)
   const close = () => setOpen(null)

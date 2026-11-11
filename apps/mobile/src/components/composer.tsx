@@ -1,3 +1,4 @@
+import { useAtomMount, useAtomSubscribe, useAtomValue } from "@effect/atom-react"
 import {
   type AccountLimits,
   type AgentCommand,
@@ -11,6 +12,8 @@ import { isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@sha
 import { type AccountOption, accountOptions, formatResetIn } from "@shared/planLimits.ts"
 import { providerInfo } from "@shared/providers.ts"
 import { mentionableThreads } from "@shared/mentions.ts"
+import { Effect, Option } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
 import { useEffect, useRef, useState } from "react"
 import {
   Image,
@@ -38,16 +41,17 @@ import { HIT, mono, ProviderColors, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useThreadServer } from "@/hooks/use-server"
 import { useScheme, useTheme } from "@/hooks/use-theme"
-import { call, useConnection } from "@/lib/connection"
+import { call, request, type RpcError, useConnection } from "@/lib/connection"
 import { artifactSkillCommands } from "@/lib/artifact-skills"
 import { keepSkillWhole } from "@/lib/composer-text"
 import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { motion } from "@/lib/motion"
+import { familyOf, handshakes, reportFailure } from "@/lib/remote"
 import { pickImages, stageImage } from "@/lib/stage-images"
 import { type DraftImage, useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
-import { modelsOn, useModels } from "@/stores/models"
+import { modelsLoadAtom, modelsOn, useModels } from "@/stores/models"
 import { updateThread, useThreads } from "@/stores/threads"
 
 type OnError = (message: string) => void
@@ -83,6 +87,29 @@ function useUnstarted(thread: Thread) {
   })
 }
 
+interface CompletionSource {
+  readonly threadId: string
+  readonly provider: ProviderId
+  readonly accountId: string | null
+  readonly worktreeId: string | null
+  readonly busy: boolean
+}
+
+type FilesSource = Pick<CompletionSource, "threadId" | "worktreeId" | "busy">
+
+const commandsAtom = familyOf((source: CompletionSource) =>
+  Atom.make((get) => {
+    get(handshakes)
+    return request("commands.list", { threadId: source.threadId })
+  }),
+)
+
+const filesAtom = familyOf((source: FilesSource) =>
+  Atom.make(request("files.list", { threadId: source.threadId })).pipe(Atom.setIdleTTL("10 minutes")),
+)
+
+const noFilesAtom: Atom.Atom<AsyncResult.AsyncResult<readonly string[], RpcError>> = Atom.make(AsyncResult.initial())
+
 /**
  * What the composer completes: HinaCode's artifact skills, the agent's `/commands` and `$skills`, the workspace's files
  * and the project's other threads. Commands are listed again when the agent, account or worktree changes, and after a turn. The file
@@ -90,37 +117,24 @@ function useUnstarted(thread: Thread) {
  * next `@` after the workspace changed or a turn ran.
  */
 function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onError: OnError) {
-  const connected = useConnection((state) => state.status === "connected")
-  const [commands, setCommands] = useState<readonly AgentCommand[]>([])
-  const [files, setFiles] = useState<{ readonly key: string; readonly paths: readonly string[] } | null>(null)
   const byId = useThreads((state) => state.byId)
   const projects = useThreads((state) => state.projects)
-  const filesKey = `${thread.id}|${thread.worktreeId}|${busy}`
-  const filesFresh = files?.key === filesKey
-  useEffect(() => {
-    if (!connected) return
-    let current = true
-    call("commands.list", { threadId: thread.id }).then(
-      (next) => current && setCommands(next),
-      (cause: unknown) => current && onError(copy("mobile_composer_commands_failed", { message: errorText(cause) })),
-    )
-    return () => {
-      current = false
-    }
-  }, [connected, thread.id, thread.provider, thread.accountId, thread.worktreeId, busy, onError])
-  useEffect(() => {
-    if (!connected || !wantsFiles || filesFresh) return
-    let current = true
-    call("files.list", { threadId: thread.id }).then(
-      (paths) => current && setFiles({ key: filesKey, paths }),
-      (cause: unknown) => current && onError(copy("mobile_composer_files_failed", { message: errorText(cause) })),
-    )
-    return () => {
-      current = false
-    }
-  }, [connected, wantsFiles, filesFresh, filesKey, thread.id, onError])
+  const commands = commandsAtom({
+    threadId: thread.id,
+    provider: thread.provider,
+    accountId: thread.accountId,
+    worktreeId: thread.worktreeId,
+    busy,
+  })
+  const listedCommands = AsyncResult.getOrElse(useAtomValue(commands), (): readonly AgentCommand[] => [])
+  useAtomSubscribe(commands, reportFailure((message) => onError(copy("mobile_composer_commands_failed", { message }))))
+
+  const files = wantsFiles ? filesAtom({ threadId: thread.id, worktreeId: thread.worktreeId, busy }) : noFilesAtom
+  const listedFiles = Option.getOrElse(AsyncResult.value(useAtomValue(files)), (): readonly string[] => [])
+  useAtomSubscribe(files, reportFailure((message) => onError(copy("mobile_composer_files_failed", { message }))))
+
   const threads = mentionableThreads(thread, Object.values(byId), projects)
-  return { commands: [...artifactSkillCommands, ...commands], files: files?.paths ?? [], threads }
+  return { commands: [...artifactSkillCommands, ...listedCommands], files: listedFiles, threads }
 }
 
 export function Composer({ thread }: { thread: Thread }) {
@@ -152,9 +166,8 @@ export function Composer({ thread }: { thread: Thread }) {
   }
   const hasDraft = text.trim() !== "" || images.length > 0
 
-  useEffect(() => {
-    if (connected) useModels.getState().load(server, thread.provider).catch((cause: unknown) => setError(errorText(cause)))
-  }, [connected, server, thread.provider])
+  useAtomMount(modelsLoadAtom(server, thread.provider))
+  useAtomSubscribe(modelsLoadAtom(server, thread.provider), reportFailure(setError))
 
   useEffect(() => {
     if (Platform.OS !== "android") return
@@ -592,34 +605,37 @@ const effortLabel = (effort: string) => effortLabels[effort] ?? effort
 
 const DEFAULT_EFFORT = "default"
 
+const serverOptionsAtom = familyOf((server: string | null) =>
+  Atom.make((get) => {
+    get(handshakes)
+    const on = server === null ? undefined : { server }
+    return Effect.all(
+      {
+        profiles: request("accounts.list", undefined, on),
+        limits: request("limits.list", undefined, on).pipe(Effect.orElseSucceed((): readonly AccountLimits[] => [])),
+        settings: request("settings.get", undefined, on),
+      },
+      { concurrency: "unbounded" },
+    )
+  }),
+)
+
 interface ServerOptions {
   readonly profiles: readonly AgentProfile[]
   readonly limits: readonly AccountLimits[]
   readonly settings: Pick<Settings, "defaultAccountName" | "modelPresets">
 }
 
+const closedOptionsAtom: Atom.Atom<AsyncResult.AsyncResult<ServerOptions, RpcError>> = Atom.make(AsyncResult.initial())
+
 /**
  * The accounts, plan limits and model presets of the thread's server, read each time the sheet opens since
  * limits move with every turn. A server that cannot read its limits still lists its accounts.
  */
 function useServerOptions(server: string | undefined, open: boolean, onError: OnError) {
-  const [options, setOptions] = useState<ServerOptions | null>(null)
-  useEffect(() => {
-    if (!open) return
-    let current = true
-    Promise.all([
-      call("accounts.list", undefined, { server }),
-      call("limits.list", undefined, { server }).catch((): readonly AccountLimits[] => []),
-      call("settings.get", undefined, { server }),
-    ]).then(
-      ([profiles, limits, settings]) => current && setOptions({ profiles, limits, settings }),
-      (cause: unknown) => current && onError(errorText(cause)),
-    )
-    return () => {
-      current = false
-    }
-  }, [server, open, onError])
-  return options
+  const options = open ? serverOptionsAtom(server ?? null) : closedOptionsAtom
+  useAtomSubscribe(options, reportFailure(onError))
+  return AsyncResult.getOrElse(useAtomValue(options), () => null)
 }
 
 const accountHint = (option: AccountOption, now: number) =>
