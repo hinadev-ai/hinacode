@@ -126,7 +126,7 @@ export function DocumentEditor({
     return () => {
       live = false
     }
-  }, [session, document.markdown])
+  }, [session, document])
 
   useImperativeHandle(ref, () => ({
     getMarkdown: () => (session.loaded ? session.markdown() : document.markdown),
