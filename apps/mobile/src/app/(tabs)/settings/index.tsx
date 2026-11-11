@@ -37,7 +37,7 @@ import {
 } from "@/lib/notifications"
 import type { Appearance, Preferences } from "@/lib/preferences"
 import { rpcFamily } from "@/lib/remote"
-import { modelsLoadAtom, modelsOn, useModels } from "@/stores/models"
+import { modelsLoadAtom, modelsOn, modelsRelistAtom, useModels } from "@/stores/models"
 import { usePreferences } from "@/stores/preferences"
 
 export default function SettingsScreen() {
@@ -410,8 +410,8 @@ function ModelSheet({
 }) {
   const theme = useTheme()
   const models = useModels((state) => modelsOn(state, server, provider))
-  const loading = useAtomValue(modelsLoadAtom(server, provider))
-  const retry = useAtomRefresh(modelsLoadAtom(server, provider))
+  const loading = useAtomValue(modelsRelistAtom(server, provider))
+  const retry = useAtomRefresh(modelsRelistAtom(server, provider))
   const agent = agents.find((entry) => entry.provider === provider)?.label ?? provider
   const failure = AsyncResult.isFailure(loading) && !loading.waiting ? errorText(Cause.squash(loading.cause)) : null
   return (

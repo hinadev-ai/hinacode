@@ -9,16 +9,20 @@ type ByProvider = Readonly<Partial<Record<ProviderId, readonly ModelInfo[]>>>
 
 interface ModelsState {
   readonly byServer: Readonly<Record<string, ByProvider>>
-  readonly load: (server: string | undefined, provider: ProviderId) => Promise<void>
+  readonly load: (
+    server: string | undefined,
+    provider: ProviderId,
+    options?: { readonly force?: boolean },
+  ) => Promise<void>
 }
 
 const inFlight = new Map<string, Promise<void>>()
 
 export const useModels = create<ModelsState>()((set, get) => ({
   byServer: {},
-  load: (server, provider) => {
+  load: (server, provider, options) => {
     const serverKey = server ?? ""
-    if (get().byServer[serverKey]?.[provider] !== undefined) return Promise.resolve()
+    if (options?.force !== true && get().byServer[serverKey]?.[provider] !== undefined) return Promise.resolve()
     const key = `${serverKey}:${provider}`
     const pending =
       inFlight.get(key) ??
@@ -37,14 +41,18 @@ export const useModels = create<ModelsState>()((set, get) => ({
 export const modelsOn = (state: ModelsState, server: string | undefined, provider: ProviderId) =>
   state.byServer[server ?? ""]?.[provider]
 
-const loadAtom = familyOf((server: string | null, provider: ProviderId) =>
+const loadAtom = familyOf((server: string | null, provider: ProviderId, force: boolean) =>
   Atom.make((get) => {
     if (beforeFirstHandshake(get)) return Effect.never
     return Effect.tryPromise({
-      try: () => useModels.getState().load(server ?? undefined, provider),
+      try: () => useModels.getState().load(server ?? undefined, provider, { force }),
       catch: (cause) => cause,
     })
   }),
 )
 
-export const modelsLoadAtom = (server: string | undefined, provider: ProviderId) => loadAtom(server ?? null, provider)
+export const modelsLoadAtom = (server: string | undefined, provider: ProviderId) =>
+  loadAtom(server ?? null, provider, false)
+
+export const modelsRelistAtom = (server: string | undefined, provider: ProviderId) =>
+  loadAtom(server ?? null, provider, true)

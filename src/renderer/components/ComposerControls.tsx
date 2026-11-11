@@ -3,7 +3,7 @@ import { Autocomplete } from "@base-ui/react/autocomplete"
 import { Combobox } from "@base-ui/react/combobox"
 import { Toggle } from "@base-ui/react/toggle"
 import { ToggleGroup } from "@base-ui/react/toggle-group"
-import { useAtomValue } from "@effect/atom-react"
+import { RegistryContext, useAtomValue } from "@effect/atom-react"
 import { formatForDisplay } from "@tanstack/react-hotkeys"
 import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
@@ -13,7 +13,9 @@ import {
   type KeyboardEvent,
   type ReactNode,
   startTransition,
+  use,
   useEffect,
+  useEffectEvent,
   useId,
   useRef,
   useState,
@@ -259,8 +261,14 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const models = usePickerModels(environment, tab.provider, tab.provider === thread.provider ? thread.model : null)
   const ownModels = usePickerModels(environment, thread.provider, null)
   const set = (patch: Omit<RpcRequest<"threads.update">, "id">) => void update({ ...patch, id: thread.id }, onError)
+  const registry = use(RegistryContext)
+  const tabProviders = [...new Set(tabs.map((candidate) => candidate.provider))]
+  const refreshModels = () => {
+    for (const provider of tabProviders) registry.refresh(modelsAtom(environment, provider))
+  }
 
   const show = (picker: ComposerPicker) => {
+    refreshModels()
     closedWithEnter.current = false
     setFocus(picker)
     setTabValue(threadTab)
@@ -268,20 +276,20 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     setOpen(true)
   }
 
+  const showFromShortcut = useEffectEvent((picker: ComposerPicker) => {
+    openedByShortcut.current = true
+    show(picker)
+  })
+
   const isSidechat = thread.sideOf !== null
   useEffect(
     () =>
       useUi.subscribe((state, previous) => {
         const request = state.pickerRequest
         if (request === previous.pickerRequest || request === null || request.inSidechat !== isSidechat) return
-        openedByShortcut.current = true
-        closedWithEnter.current = false
-        setFocus(request.picker)
-        setTabValue(threadTab)
-        setQuery("")
-        setOpen(true)
+        showFromShortcut(request.picker)
       }),
-    [threadTab, isSidechat],
+    [isSidechat],
   )
 
   const pick = async (next: ModelInfo, target: AgentTab = tab) => {
