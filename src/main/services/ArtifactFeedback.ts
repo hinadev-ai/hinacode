@@ -137,7 +137,9 @@ const make = Effect.gen(function* () {
           .pipe(Effect.catchTag("AgentError", () => runner.queue(threadId, prompt, attachments, { messageId, when }))),
       ),
       Effect.as(true),
-      Effect.catchTag("NotFoundError", () => Effect.succeed(true)),
+      Effect.catchTag("NotFoundError", (error) =>
+        error.entity === "thread" ? Effect.succeed(true) : Effect.fail(error),
+      ),
       Effect.catchCause((cause) =>
         Effect.logWarning("artifact feedback did not reach a thread", threadId, cause).pipe(
           Effect.andThen(archivedByDeveloper(threadId)),
