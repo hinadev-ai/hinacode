@@ -115,6 +115,11 @@ interface AgentRequest {
   readonly effort?: string | undefined
 }
 
+interface QueueOptions {
+  readonly messageId?: string | undefined
+  readonly when?: Effect.Effect<boolean, PersistenceError> | undefined
+}
+
 interface SendOptions {
   readonly workspace?: WorkspaceChoice | undefined
   readonly scheduledId?: string | undefined
@@ -174,13 +179,12 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       text: string,
       attachments: ReadonlyArray<Attachment>,
-      messageId?: string,
     ) => Effect.Effect<void, SendError>
     readonly queue: (
       threadId: string,
       text: string,
       attachments: ReadonlyArray<Attachment>,
-      messageId?: string,
+      options?: QueueOptions,
     ) => Effect.Effect<void, SendError>
     readonly unqueue: (
       threadId: string,
@@ -1235,7 +1239,7 @@ const make = Effect.gen(function* () {
     threadId: string,
     text: string,
     attachments: ReadonlyArray<Attachment>,
-    messageId: string = randomUUID(),
+    { messageId = randomUUID(), when = Effect.succeed(true) }: QueueOptions = {},
   ) =>
     Effect.gen(function* () {
       const queued = yield* Effect.gen(function* () {
@@ -1244,7 +1248,7 @@ const make = Effect.gen(function* () {
         yield* updateThread({ id: threadId, queue: [...thread.queue, { id: messageId, text, attachments }] })
         return true
       }).pipe(exclusive(threadId))
-      if (!queued) yield* send(threadId, text, attachments, { messageId })
+      if (!queued) yield* sendWhen(threadId, text, attachments, { messageId }, when)
     })
 
   const unqueue = (threadId: string, id: string) =>
@@ -1283,7 +1287,7 @@ const make = Effect.gen(function* () {
         )
       }
       return Effect.flatMap(when, (ready) =>
-        ready ? Effect.as(queue(threadId, text, attachments, messageId), true) : Effect.succeed(false),
+        ready ? Effect.as(queue(threadId, text, attachments, { messageId, when }), true) : Effect.succeed(false),
       )
     })
 
@@ -1797,8 +1801,8 @@ const make = Effect.gen(function* () {
     switchAccount,
     removeAccount,
     switchAgent,
-    steer: (threadId, text, attachments, messageId) =>
-      steerWhen({ threadId, text, attachments, messageId, when: Effect.succeed(true) }).pipe(Effect.asVoid),
+    steer: (threadId, text, attachments) =>
+      steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),
     steerWhen,
     interrupt,
     stop: (threadId) =>

@@ -115,19 +115,26 @@ const make = Effect.gen(function* () {
           .pipe(Effect.flatMap((reopened) => events.publish({ type: "thread.updated", thread: reopened })))
       : Effect.void
 
+  const handedOver = (threadId: string, messageId: string) =>
+    Effect.gen(function* () {
+      const { queue } = yield* threads.get(threadId)
+      return queue.some((queued) => queued.id === messageId) || (yield* messages.has(messageId))
+    }).pipe(Effect.catch(() => Effect.succeed(false)))
+
   const archivedByDeveloper = (threadId: string) =>
     threads.get(threadId).pipe(
       Effect.map((thread) => thread.status === "archived"),
       Effect.catch(() => Effect.succeed(false)),
     )
 
-  const deliver = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>, messageId: string) =>
-    threads.get(threadId).pipe(
+  const deliver = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>, messageId: string) => {
+    const when = Effect.map(handedOver(threadId, messageId), (done) => !done)
+    return threads.get(threadId).pipe(
       Effect.flatMap(reopenArchived),
       Effect.andThen(
         runner
-          .steer(threadId, prompt, attachments, messageId)
-          .pipe(Effect.catchTag("AgentError", () => runner.queue(threadId, prompt, attachments, messageId))),
+          .steerWhen({ threadId, text: prompt, attachments, messageId, when })
+          .pipe(Effect.catchTag("AgentError", () => runner.queue(threadId, prompt, attachments, { messageId, when }))),
       ),
       Effect.as(true),
       Effect.catchTag("NotFoundError", () => Effect.succeed(true)),
@@ -137,6 +144,7 @@ const make = Effect.gen(function* () {
         ),
       ),
     )
+  }
 
   const inProject = (projectId: string | undefined) => (threadId: string) =>
     threads.get(threadId).pipe(
@@ -161,11 +169,7 @@ const make = Effect.gen(function* () {
       (found) => (found === null ? Effect.fail(new NotFoundError({ entity: "artifact", id })) : Effect.succeed(found)),
     )
 
-  const handOver = (
-    { artifact, comment, message }: Undelivered,
-    attachments: ReadonlyArray<Attachment>,
-    alreadyHandedOver: (threadId: string, messageId: string) => Effect.Effect<boolean>,
-  ) =>
+  const handOver = ({ artifact, comment, message }: Undelivered, attachments: ReadonlyArray<Attachment>) =>
     Effect.gen(function* () {
       const anchor = comment.anchor
       const elements =
@@ -180,7 +184,7 @@ const make = Effect.gen(function* () {
           mentioned: threadId !== artifact.threadId,
           ...(elements === undefined ? {} : { elements }),
         })
-        return Effect.flatMap(alreadyHandedOver(threadId, messageId), (done) =>
+        return Effect.flatMap(handedOver(threadId, messageId), (done) =>
           done ? Effect.succeed(true) : deliver(threadId, prompt, attachments, messageId),
         )
       })
@@ -203,7 +207,6 @@ const make = Effect.gen(function* () {
       const delivered = yield* handOver(
         { artifact, comment: saved.comment, message: saved.comment.messages.at(-1)! },
         attachments,
-        () => Effect.succeed(false),
       )
       return delivered ?? saved.feedback
     })
@@ -213,12 +216,6 @@ const make = Effect.gen(function* () {
       existing(id),
       attempt(() => store.resolveComment(id, commentId, resolved)),
     )
-
-  const handedOver = (threadId: string, messageId: string) =>
-    Effect.gen(function* () {
-      const { queue } = yield* threads.get(threadId)
-      return queue.some((queued) => queued.id === messageId) || (yield* messages.has(messageId))
-    }).pipe(Effect.catch(() => Effect.succeed(false)))
 
   const undeliveredOf = (artifact: Artifact) =>
     Effect.tryPromise(() => store.feedback(artifact.id)).pipe(
@@ -234,7 +231,7 @@ const make = Effect.gen(function* () {
     yield* Effect.forEach(
       pending.flat(),
       (undelivered) =>
-        handOver(undelivered, [], handedOver).pipe(
+        handOver(undelivered, []).pipe(
           Effect.catchCause((cause) => Effect.logWarning("artifact feedback was not redelivered", cause)),
         ),
       { discard: true },
