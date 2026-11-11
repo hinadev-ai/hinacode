@@ -36,3 +36,21 @@ test("a background turn notifies through the service worker, and the notificatio
   await worker!.evaluate(clickFirstNotification)
   await expect(page.getByText("Show me some Markdown", { exact: true })).toBeVisible()
 })
+
+test("a background turn without notification permission still alerts with a toast", async ({
+  page,
+  web,
+  repo,
+  uniqueName,
+}) => {
+  const project = uniqueName("notify-denied")
+  await openSignedIn(page, web)
+  await addProject(page, repo, project)
+  await startThread(page, web, project)
+  expect(await page.evaluate(() => Notification.permission)).not.toBe("granted")
+  await page.evaluate(() => {
+    document.hasFocus = () => false
+  })
+  await sendMessage(page, "Show me some Markdown")
+  await expect(page.locator("[data-sonner-toast]").getByText("Finished")).toBeVisible()
+})
