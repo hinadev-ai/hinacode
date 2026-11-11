@@ -84,7 +84,8 @@ function PullRequestSummary({
       className="flex shrink-0 items-center gap-1.5 rounded-sm tabular-nums underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className={cn("flex items-center gap-1", status && statusIndicator[status].className)}>
-        <StatusIcon status={status} className="size-3" />{pullRequestNumberLabelOfUrl(url)}
+        <StatusIcon status={status} className="size-3" />
+        {pullRequestNumberLabelOfUrl(url)}
         {status && <span className="sr-only">{statusLabel[status]()}</span>}
       </span>
       {pullRequest && (
