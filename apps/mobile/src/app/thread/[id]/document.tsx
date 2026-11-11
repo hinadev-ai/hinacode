@@ -236,22 +236,9 @@ function ConflictBanner({ sync }: { sync: DocumentSync }) {
   )
 }
 
-const statusText = (status: SaveStatus) => {
-  switch (status.type) {
-    case "saved":
-      return null
-    case "saving":
-      return copy("mobile_document_saving")
-    case "conflict":
-    case "failed":
-      return copy("mobile_document_not_saved")
-  }
-}
-
 function DocumentTitle({ title, version, status }: { title: string; version: number | null; status: SaveStatus }) {
   const theme = useTheme()
   const { width } = useWindowDimensions()
-  const saveText = statusText(status)
   return (
     <View style={[styles.titleRow, { maxWidth: width - TITLE_INSET }]}>
       <Text accessibilityRole="header" numberOfLines={1} style={[styles.title, { color: theme.text }]}>
@@ -262,13 +249,23 @@ function DocumentTitle({ title, version, status }: { title: string; version: num
           {copy("mobile_artifact_card_version", { version: String(version) })}
         </Text>
       )}
-      {saveText !== null && (
+      <View style={styles.savingSlot}>
+        {status.type === "saving" && (
+          <ActivityIndicator
+            testID="document-saving"
+            size="small"
+            color={theme.textMuted}
+            accessibilityLabel={copy("mobile_document_saving")}
+          />
+        )}
+      </View>
+      {(status.type === "conflict" || status.type === "failed") && (
         <Text
           testID="document-save-status"
           accessibilityLiveRegion="polite"
-          style={[styles.version, { color: status.type === "saving" ? theme.textMuted : theme.danger }]}
+          style={[styles.version, { color: theme.danger }]}
         >
-          {saveText}
+          {copy("mobile_document_not_saved")}
         </Text>
       )}
     </View>
@@ -484,4 +481,5 @@ const styles = StyleSheet.create({
   },
   title: { flexShrink: 1, fontSize: 16, fontWeight: "600" },
   version: { fontSize: 13, fontVariant: ["tabular-nums"] },
+  savingSlot: { width: 20, height: 20, alignSelf: "center", alignItems: "center", justifyContent: "center" },
 })
