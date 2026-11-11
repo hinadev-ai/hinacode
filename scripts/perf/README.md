@@ -102,24 +102,31 @@ finishes, and mermaid layout.
 
 ### 2026-11-11 capture
 
-Same setup as above: Xvfb, `CPU_THROTTLE=4`, 85 threads, three interleaved runs per build. Base is `bff862f5`. The
-candidate passes `presenceAffectsLayout={false}` to the sidebar's `AnimatePresence`, so a turn starting or ending no
-longer re-renders every row's motion wrapper, and moves `useAtomValue` out of the array literal that builds the
-transcript's `commands`, which the React Compiler could not memoize while a hook sat inside it.
+Xvfb, `CPU_THROTTLE=4`, 85 threads, five interleaved runs per build. Base is `bff862f5`. The candidate passes
+`presenceAffectsLayout={false}` to the sidebar's `AnimatePresence`, so a turn starting or ending no longer re-renders
+every row's motion wrapper, and moves `useAtomValue` out of the array literal that builds the transcript's `commands`,
+which the React Compiler could not memoize while a hook sat inside it. Medians, with the range over five runs:
 
-| Measurement                        | 2026-10-22 candidate |    Base | Candidate |
-| ---------------------------------- | -------------------: | ------: | --------: |
-| Typing, key to next paint p95      |              19.4 ms | 25.5 ms |   25.9 ms |
-| Typing mid-reply, key to paint p95 |              28.1 ms | 48.1 ms |   58.4 ms |
-| Thread switch, warm open           |               177 ms |  259 ms |    261 ms |
-| Thread switch, long tasks          |                 0 ms |   85 ms |    116 ms |
-| Reply, frame p95                   |               9.6 ms | 33.3 ms |   33.3 ms |
-| Reply, component renders           |                 1801 |    4396 |      2958 |
-| Reply, `MessageBody` renders       |                      |     323 |        61 |
+| Measurement                  | Base                   | Candidate              |
+| ---------------------------- | ---------------------- | ---------------------- |
+| Reply, component renders     | 4396 (4205 to 4398)    | 3150 (3101 to 3263)    |
+| Reply, `MessageBody` renders | 321 (321 to 333)       | 59 (58 to 61)          |
+| Reply, script                | 815 ms (795 to 935)    | 751 ms (726 to 794)    |
+| Reply, all main-thread tasks | 2496 ms (2446 to 2960) | 2464 ms (2215 to 2540) |
+| Reply, frames over 33 ms     | 15 (14 to 19)          | 16 (12 to 19)          |
 
-The candidate removes work but no latency: its timings stay inside the spread of four base captures that day
-(typing mid-reply p95 48 to 61 ms, warm open 259 to 307 ms). Everything is slower than on 2026-10-22, and nobody has
-bisected why.
+The candidate removes work but no latency. Renders and script time do not overlap between builds; task time, frames,
+typing, typing mid-reply and thread switches do. Typing mid-reply p95 is the third slowest of 55 keys, so it moves by
+20 ms between runs of one build: 47 to 70 ms on base and 44 to 56 ms on the candidate, over six runs each.
+
+What bounds a reply's frames: in a `TRACE=1` capture, every task over 33 ms falls at the start of the turn or in the
+second after the reply completes, where the finished Markdown mounts in one 134 ms task. While the reply streams, no
+task reaches 33 ms, and that is where most of the removed renders were. The root layer also repaints the whole
+viewport on 228 frames of a reply, about 270 ms of paint and 420 ms of layerize. Giving the `text-shimmer` band its
+own layer did not change that count, so something else invalidates the root layer.
+
+These numbers do not compare with the 2026-10-22 table. Since then `measure.ts` fixed the viewport at 1280 by 820,
+times a switch until the transcript is visible, and detects a reply by its `aria-busy` article.
 
 ## Time to first response
 
@@ -438,8 +445,10 @@ per network. Slow 3G is the Toxiproxy setup under "Slow network".
 | Typing, key to paint p95          |   18 ms |   18 ms |
 | Reply, longest commit             |   31 ms |   28 ms |
 
-The thread list paints from the cache, so the network does not reach cold start. Opening the 200-turn thread costs
-about two round trips. A reply still re-renders all 86 `HomeRow`s twice, in commits of about 780 renders and up to
+Cold start times painting the cached thread list. Over Slow 3G each launch's connection sent about 260 bytes before
+the next launch killed it, so no fresh list arrived inside the timed region. Opening the 200-turn thread costs one
+400 ms round trip plus its first page: about 61 KB of JSON that deflates to 11 KB, 230 ms at 50 KB/s. Each network ran
+once, not alternated, but the open times do not overlap (54 to 77 ms against 678 to 704 ms). A reply still re-renders all 86 `HomeRow`s twice, in commits of about 780 renders and up to
 31 ms. Giving each unchanged thread a stable list item did not change that count, so the cells re-render for another
 reason.
 
