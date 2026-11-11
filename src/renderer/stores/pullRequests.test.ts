@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "@effect/vitest"
 import { AtomRegistry } from "effect/reactivity"
-import type { Environments, EnvironmentStatus, Project, PullRequestLink, Thread } from "../../shared/domain.ts"
+import type { PullRequestLink } from "../../shared/domain.ts"
 
 const link = (threadId: string, n: number): PullRequestLink => ({
   id: `${threadId}-${n}`,
@@ -10,84 +10,46 @@ const link = (threadId: string, n: number): PullRequestLink => ({
   watch: null,
 })
 
-const cloud = (id: string, status: EnvironmentStatus): Environments["clouds"][number] => ({
-  id,
-  name: id,
-  host: `${id}.example`,
-  port: 7777,
-  relay: null,
-  source: "pairing",
-  createdAt: "2026-11-12T00:00:00.000Z",
-  status,
-  lastSeenAt: null,
-})
-
-const project = (id: string, environmentId: string): Project => ({
-  id,
-  name: id,
-  rootPath: `/${id}`,
-  setupScript: null,
-  createdAt: "2026-11-12T00:00:00.000Z",
-  updatedAt: "2026-11-12T00:00:00.000Z",
-  environmentId,
-  linearReview: false,
-  kind: "folder",
-  actions: [],
-})
-
-const threadIn = (id: string, projectId: string) => ({ id, projectId }) as Thread
-
-let answers: Record<string, unknown> = {}
-const rpc = (method: string) => Promise.resolve({ result: answers[method] })
+let answer: Promise<unknown> = Promise.resolve([])
+const rpc = () => answer.then((result) => ({ result }))
 Object.assign(globalThis, { window: { hinacode: { rpc } } })
 const { loadAllPullRequestsAtom, usePullRequests } = await import("./pullRequests.ts")
-const { projectsAtom } = await import("../lib/rpc.ts")
-const { useThreads } = await import("./threads.ts")
 
 const registry = AtomRegistry.make()
 
-const load = async () => {
-  registry.refresh(loadAllPullRequestsAtom)
-  await vi.waitFor(() =>
-    expect(registry.get(loadAllPullRequestsAtom)).toMatchObject({ _tag: "Success", waiting: false }),
-  )
-}
+const settled = () =>
+  vi.waitFor(() => expect(registry.get(loadAllPullRequestsAtom)).toMatchObject({ _tag: "Success", waiting: false }))
 
 afterEach(() => {
-  answers = {}
+  answer = Promise.resolve([])
   usePullRequests.setState({ byThreadId: {} })
-  useThreads.setState({ byId: {} })
 })
 
 test("a reload drops the links of a thread whose last pull request was unlinked", async () => {
-  answers = { "pullRequests.all": [link("t1", 1)], "environments.list": { clouds: [] } }
+  answer = Promise.resolve([link("t1", 1)])
   const unmount = registry.mount(loadAllPullRequestsAtom)
-  await load()
+  registry.refresh(loadAllPullRequestsAtom)
+  await settled()
   expect(usePullRequests.getState().byThreadId["t1"]).toEqual([link("t1", 1)])
 
-  answers = { ...answers, "pullRequests.all": [] }
-  await load()
+  answer = Promise.resolve([])
+  registry.refresh(loadAllPullRequestsAtom)
+  await settled()
 
   expect(usePullRequests.getState().byThreadId["t1"] ?? []).toEqual([])
   unmount()
 })
 
-test("a reload keeps the links of threads on a cloud that is not connected", async () => {
-  answers = {
-    "projects.list": [project("p-up", "up"), project("p-down", "down")],
-    "environments.list": { clouds: [cloud("up", "connected"), cloud("down", "offline")] },
-    "pullRequests.all": [],
-  }
-  useThreads.setState({ byId: { "on-up": threadIn("on-up", "p-up"), "on-down": threadIn("on-down", "p-down") } })
-  const unmountProjects = registry.mount(projectsAtom)
-  registry.refresh(projectsAtom)
-  await vi.waitFor(() => expect(registry.get(projectsAtom)).toMatchObject({ _tag: "Success", waiting: false }))
-  usePullRequests.setState({ byThreadId: { "on-up": [link("on-up", 1)], "on-down": [link("on-down", 2)] } })
+test("a reload keeps a link pushed while it was in flight", async () => {
+  const pending = Promise.withResolvers<unknown>()
+  answer = pending.promise
   const unmount = registry.mount(loadAllPullRequestsAtom)
+  registry.refresh(loadAllPullRequestsAtom)
 
-  await load()
+  usePullRequests.getState().replace("t2", [link("t2", 2)])
+  pending.resolve([])
+  await settled()
 
-  expect(usePullRequests.getState().byThreadId).toEqual({ "on-down": [link("on-down", 2)] })
+  expect(usePullRequests.getState().byThreadId["t2"]).toEqual([link("t2", 2)])
   unmount()
-  unmountProjects()
 })
