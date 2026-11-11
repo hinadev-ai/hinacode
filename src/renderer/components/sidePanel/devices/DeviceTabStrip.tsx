@@ -76,9 +76,10 @@ export function DeviceTabStrip({ thread }: { thread: Thread }) {
       close(entry)
       return
     }
+    const focused = Math.max(index, 0)
     const target = {
-      ArrowRight: devices[(index + 1) % devices.length],
-      ArrowLeft: devices.at(index - 1),
+      ArrowRight: devices[(focused + 1) % devices.length],
+      ArrowLeft: devices.at(focused - 1),
       Home: devices[0],
       End: devices.at(-1),
     }[event.key]
