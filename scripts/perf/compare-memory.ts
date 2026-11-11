@@ -20,7 +20,7 @@ type Capture = {
 }
 
 const [beforeLabel, afterLabel, scenario = "history"] = process.argv.slice(2)
-if (!beforeLabel || !afterLabel)
+if (!beforeLabel || !afterLabel || !["history", "claude", "footprint"].includes(scenario))
   throw new Error("usage: compare-memory.ts <before-label> <after-label> [history|claude|footprint]")
 const directory = join(process.cwd(), ".context/perf")
 const median = (values: number[]) => {

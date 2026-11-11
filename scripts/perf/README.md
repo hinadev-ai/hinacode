@@ -119,12 +119,15 @@ node scripts/perf/first-response.ts summary before after   # medians per provide
 (`warm`). After 70 seconds, when Claude has closed its idle CLIs, it sends to each thread again (`cold-idle`). Set
 `PROMPT` to change the prompt. It costs real tokens, so keep it short.
 
-| Milestone              | Meaning                                                         |
-| ---------------------- | --------------------------------------------------------------- |
-| user message on screen | The sent message renders, after admission in `AgentRunner`      |
-| provider bound         | `session_bound`, the provider's first event: the CLI has booted |
-| first text delta       | The first reply text reaches the renderer                       |
-| reply text on screen   | The reply's text is visible, which `ReplyText` holds until done |
+| Milestone               | Meaning                                                         |
+| ----------------------- | --------------------------------------------------------------- |
+| user message on screen  | The sent message renders, after admission in `AgentRunner`      |
+| Thinking… shimmer       | The assistant's message renders, before it has any content      |
+| provider bound          | `session_bound`, the provider's first event: the CLI has booted |
+| first agent event       | Any event of the turn reaches the renderer                      |
+| first content on screen | The assistant's message shows its first visible text            |
+| first text delta        | The first reply text reaches the renderer                       |
+| reply text on screen    | The reply's text is visible, which `ReplyText` holds until done |
 
 Model time to first token moves by about a second between runs, so judge a change to session startup by
 `provider bound` first.

@@ -10,7 +10,7 @@ import { compactMessage, compactPushes, transcriptPage } from "../../src/shared/
 import { PushEvent, RpcMethods, type RpcResponse } from "../../src/shared/contract.ts"
 import type { Message } from "../../src/shared/domain.ts"
 import { clientProof, serverProof } from "../../src/shared/proof.ts"
-import { ClientFrame, ServerFrame } from "../../src/shared/remote.ts"
+import { ClientFrame, RemoteFeature, ServerFrame } from "../../src/shared/remote.ts"
 import * as Db from "../../src/main/db/client.ts"
 import { seedThread } from "../../src/main/db/testing.ts"
 import { Events, makeEventsLayer, PushBroadcast } from "../../src/main/services/Events.ts"
@@ -246,7 +246,7 @@ const handshakeFrames = [
     type: "ready",
     version: 1,
     environment: { id: "synthetic", name: "Synthetic desktop" },
-    features: ["heartbeat", "call-keys", "terminal-attach", "asks"],
+    features: [...RemoteFeature],
     proof: serverProof(token, nonceB, nonceA),
   } satisfies ServerFrame,
 ]
