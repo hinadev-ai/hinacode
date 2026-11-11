@@ -100,6 +100,27 @@ Deferring transcript updates with `useDeferredValue` was measured and left out. 
 because what still blocks a key then is commit work: LegendList measuring rows, the Markdown mount when the reply
 finishes, and mermaid layout.
 
+### 2026-11-11 capture
+
+Same setup as above: Xvfb, `CPU_THROTTLE=4`, 85 threads, three interleaved runs per build. Base is `bff862f5`. The
+candidate passes `presenceAffectsLayout={false}` to the sidebar's `AnimatePresence`, so a turn starting or ending no
+longer re-renders every row's motion wrapper, and moves `useAtomValue` out of the array literal that builds the
+transcript's `commands`, which the React Compiler could not memoize while a hook sat inside it.
+
+| Measurement                        | 2026-10-22 candidate |    Base | Candidate |
+| ---------------------------------- | -------------------: | ------: | --------: |
+| Typing, key to next paint p95      |              19.4 ms | 25.5 ms |   25.9 ms |
+| Typing mid-reply, key to paint p95 |              28.1 ms | 48.1 ms |   58.4 ms |
+| Thread switch, warm open           |               177 ms |  259 ms |    261 ms |
+| Thread switch, long tasks          |                 0 ms |   85 ms |    116 ms |
+| Reply, frame p95                   |               9.6 ms | 33.3 ms |   33.3 ms |
+| Reply, component renders           |                 1801 |    4396 |      2958 |
+| Reply, `MessageBody` renders       |                      |     323 |        61 |
+
+The candidate removes work but no latency: its timings stay inside the spread of four base captures that day
+(typing mid-reply p95 48 to 61 ms, warm open 259 to 307 ms). Everything is slower than on 2026-10-22, and nobody has
+bisected why.
+
 ## Time to first response
 
 `first-response.ts` times one send from the Enter key to the reply on screen, through the real composer and real
@@ -276,11 +297,30 @@ cold starts and three rounds of the other workloads (`PERF_ROUNDS` changes that)
 
 | Measurement      | How it is taken                                                                                                                                             |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cold start       | `simctl launch` to the first React commit, and to the frame after the thread list has projects. Includes launching the process, with a warm file cache      |
+| Cold start       | Launch to the first React commit, and to the frame after the thread list has projects. Includes launching the process, with a warm file cache               |
 | Open long thread | Clears the transcript cache, pushes the route, then times the fetch, the first paint after it, and the last commit that mounted a component                 |
 | Scroll           | Moves the list by a fixed offset every frame from JS (`scrollToOffset`). It measures the JS and React cost of new rows, not native scrolling                |
 | Typing           | Calls the composer's `onChangeText` once per character, 50 ms apart, and times each key to its commit and to the next frame. Native text input is not in it |
 | Reply            | Sends "go" to the desktop's paced mock reply and records until the reply completes and paints                                                               |
+
+### Slow network
+
+`PERF_REMOTE_PORT` pairs the phone with another port in place of the desktop's remote port. Put
+[Toxiproxy](https://github.com/Shopify/toxiproxy) there to shape the link. Only the phone's connection to the desktop
+goes through it; the harness's own channel stays fast. These settings give 400 ms round trips and 400 kbit/s each way:
+
+```sh
+toxiproxy-server -host 127.0.0.1 -port 8474 &
+toxiproxy-cli create -l 127.0.0.1:48205 -u 127.0.0.1:48105 slow3g
+for s in u d; do
+  toxiproxy-cli toxic add -n latency-$s -t latency -a latency=200 -$s slow3g
+  toxiproxy-cli toxic add -n bandwidth-$s -t bandwidth -a rate=50 -$s slow3g
+done
+PERF_REMOTE_PORT=48205 node scripts/perf/mobile.ts run base-3g-1
+```
+
+The Android emulator's `network speed` and `network delay` console commands do not shape this traffic, through
+`adb reverse` or through `10.0.2.2`: a 1 MB download took the same 0.6 s with them on.
 
 ### Documents
 
@@ -299,7 +339,10 @@ PERF_PLATFORM=android PERF_SERIAL=emulator-5554 PERF_APK=.context/perf/base.apk 
   node scripts/perf/mobile.ts run base-doc-android-1
 ```
 
-On Android, `run` forwards `PERF_PORT` and the desktop's remote port with `adb reverse`. Native frame times come
+On Android, `run` clears the app's data after installing it, so it pairs with this desktop rather than a server an
+earlier session saved, and forwards `PERF_PORT` and the desktop's remote port with `adb reverse`. Cold start is timed on
+the desktop's clock, from the launch command to the app's first `/hello`, because the emulator's wall clock drifts
+from the host's. Native frame times come
 from `packages/perf-frames`, a small Expo module that records `CADisplayLink` or `Choreographer` timestamps on the
 main thread, only between `start()` and `stop()`. Xcode's Hitches and Core Animation FPS instruments do not run on
 the simulator, so the app records them itself.
@@ -380,6 +423,25 @@ Top costs, largest first:
    and 263 ms to mount the visible messages, after a 44 ms first paint.
 5. **Typing** costs two commits per key. One re-renders `InternalTextInput`, the other `Composer` and `Suggestions`
    (`src/components/composer.tsx`). That is about 1 ms per key, the smallest cost here.
+
+### 2026-11-11 Android capture
+
+Release build of `bff862f5` on the `hina35` emulator (Android 15, x86_64, SwiftShader) on the Linux VM, five rounds
+per network. Slow 3G is the Toxiproxy setup under "Slow network".
+
+| Measurement                       |     LAN | Slow 3G |
+| --------------------------------- | ------: | ------: |
+| Cold start, launch to thread list | 1445 ms | 1293 ms |
+| Open long thread, fetched         |   58 ms |  684 ms |
+| Open long thread, first paint     |   98 ms |  716 ms |
+| Open long thread, last mount      |  274 ms |  872 ms |
+| Typing, key to paint p95          |   18 ms |   18 ms |
+| Reply, longest commit             |   31 ms |   28 ms |
+
+The thread list paints from the cache, so the network does not reach cold start. Opening the 200-turn thread costs
+about two round trips. A reply still re-renders all 86 `HomeRow`s twice, in commits of about 780 renders and up to
+31 ms. Giving each unchanged thread a stable list item did not change that count, so the cells re-render for another
+reason.
 
 ## Battery
 
