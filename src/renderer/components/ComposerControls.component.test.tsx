@@ -217,6 +217,22 @@ test("Enter right after opening keeps the current model", async () => {
   expect(rpc.mock.calls.some(([method]) => method === "threads.update")).toBe(false)
 })
 
+const accessToggles = () =>
+  [...document.querySelectorAll(`[aria-label="Access"] button`)].map((toggle) => toggle.textContent)
+
+test("labels Claude's auto slot Accept edits on a model without auto mode", async () => {
+  await openPicker()
+  await expect.poll(accessToggles).toStrictEqual(["Supervised", "Accept edits", "Full access"])
+})
+
+test("labels a Muse thread's access modes with Muse's permission profiles", async () => {
+  await render(
+    <ThreadPicker thread={{ ...thread, provider: "muse", accountId: null }} canSwitchAgent onError={() => {}} />,
+  )
+  await page.getByRole("button", { name: /second/ }).click()
+  await expect.poll(accessToggles).toStrictEqual(["Ask me", "Auto-review", "Unrestricted"])
+})
+
 test("opens only the side chat's picker when the shortcut fires from the side chat", async () => {
   await render(
     <>

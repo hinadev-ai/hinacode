@@ -41,7 +41,7 @@ Feature: Responsive composer
     When I open the thread "Compose" from the sidebar
     And I use a <width> by <height> viewport with <fontSize> pixel text
     Then the composer toolbar stays on one line
-    When I choose "Auto" access in the composer
+    When I choose "Accept edits" access in the composer
     Then the thread "Compose" runs with "auto" access
 
     Examples:

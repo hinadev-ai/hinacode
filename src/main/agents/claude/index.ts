@@ -150,6 +150,7 @@ interface Session extends MapState, ApprovalSession {
   readonly launch: Readonly<Record<string, string>>
   readonly settingsFile: string
   permissionMode: PermissionMode
+  unconfirmedLaunchMode: PermissionMode | null
   sessionId: string | null
   lastAssistantUuid: string | null
   turn: TurnQueue | null
@@ -176,6 +177,14 @@ const toContextBreakdown = (usage: SDKControlGetContextUsageResponse): ContextBr
     kind === "deferred" || tokens === 0 ? [] : [{ name, tokens, kind }],
   ),
 })
+
+const BYPASS_REFUSED =
+  "Claude Code refused full access because its settings set disableBypassPermissionsMode. Switch this thread to Auto or Supervised."
+
+const refusedBypass = (session: Session, reported: PermissionMode) =>
+  session.unconfirmedLaunchMode === "bypassPermissions" &&
+  reported !== "bypassPermissions" &&
+  reported !== session.permissionMode
 
 const isIdle = (session: Session) =>
   session.turn === null && session.claims === 0 && session.unanswered.size === 0 && session.tasks.size === 0
@@ -623,6 +632,13 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
       } else if (stale) return
       if (message.type === "assistant" && message.parent_tool_use_id === null) session.lastAssistantUuid = message.uuid
       if (message.type === "system" && message.subtype === "init") {
+        const refused = refusedBypass(session, message.permissionMode)
+        session.unconfirmedLaunchMode = null
+        if (refused) {
+          emit(session, { type: "turn_failed", message: BYPASS_REFUSED })
+          closeSessionUnsafe(session)
+          return
+        }
         session.sessionId = message.session_id
         resumable.set(session.threadId, {
           cwd: session.cwd,
@@ -765,6 +781,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           launch,
           settingsFile,
           permissionMode: mode,
+          unconfirmedLaunchMode: mode,
           prompts,
           abort,
           stderr,

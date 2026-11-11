@@ -137,6 +137,36 @@ const writeTool = async (sessionId: string, cwd: string) => {
   })
 }
 
+const runTool = async (sessionId: string) => {
+  const toolCallId = "call_run"
+  const rawInput = { command: "rm -rf build" }
+  update(sessionId, {
+    sessionUpdate: "tool_call",
+    toolCallId,
+    title: "bash",
+    kind: "execute",
+    status: "pending",
+    rawInput,
+  })
+  const permission = await ask("session/request_permission", {
+    sessionId,
+    toolCall: { toolCallId, title: "rm -rf build", kind: "execute", status: "pending", rawInput },
+    options: [
+      { optionId: "once", kind: "allow_once", name: "Allow once" },
+      { optionId: "reject", kind: "reject_once", name: "Reject" },
+    ],
+  })
+  const outcome = (permission.result as { outcome: { outcome: string; optionId?: string } }).outcome
+  if (outcome.outcome === "cancelled") return
+  const allowed = outcome.outcome === "selected" && outcome.optionId !== "reject"
+  update(sessionId, {
+    sessionUpdate: "tool_call_update",
+    toolCallId,
+    status: allowed ? "completed" : "failed",
+    content: [{ type: "content", content: { type: "text", text: allowed ? "Removed build." : "Rejected" } }],
+  })
+}
+
 const prompt = async (message: Message) => {
   const params = message.params as { sessionId: string; prompt: Array<{ type: string; text?: string }> }
   const { sessionId } = params
@@ -170,10 +200,10 @@ const prompt = async (message: Message) => {
     send({ method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk" } } })
   }
   if (text === "malformed") return send({ id: message.id, result: { stopReason: 42 } })
-  if (text === "ask") {
+  if (text === "ask" || text === "ask to run") {
     let cancelled = false
     cancels.set(sessionId, () => void (cancelled = true))
-    await writeTool(sessionId, "/fake")
+    await (text === "ask" ? writeTool(sessionId, "/fake") : runTool(sessionId))
     cancels.delete(sessionId)
     if (cancelled) return send({ id: message.id, result: { stopReason: "cancelled" } })
     update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "done" } })

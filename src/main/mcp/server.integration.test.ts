@@ -11,6 +11,7 @@ import { NodeServices } from "@effect/platform-node"
 import { Context, Deferred, type Duration, Effect, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import {
+  type ApprovalDecision,
   type AgentEvent,
   createdThreadId,
   type McpConnection,
@@ -62,6 +63,8 @@ const turnInputs: Array<RunTurnInput> = []
 const modelLookupStarted = Deferred.makeUnsafe<void>()
 const modelLookupResume = Deferred.makeUnsafe<void>()
 let holdModelLookup = false
+const approvalDecisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision }> = []
+const approvalAnswered = Deferred.makeUnsafe<void>()
 
 const repos = mkdtempSync(join(tmpdir(), "kk-mcp-repos-"))
 afterAll(() => rmSync(repos, { recursive: true, force: true }))
@@ -129,6 +132,24 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
               Stream.concat(Stream.fromIterable(scriptedAgentTurn(text))),
             )
           }
+          const asked = /^Ask, then reply (.+)$/.exec(input.prompt)?.[1]
+          if (asked !== undefined) {
+            const approval: AgentEvent = {
+              type: "approval_requested",
+              request: {
+                id: "sub-approval",
+                threadId: input.threadId,
+                provider: id,
+                kind: "command",
+                title: "Run command",
+                detail: "rm -rf build",
+              },
+            }
+            return Stream.make(approval).pipe(
+              Stream.concat(Stream.fromEffect(Deferred.await(approvalAnswered)).pipe(Stream.drain)),
+              Stream.concat(Stream.fromIterable(scriptedAgentTurn(asked))),
+            )
+          }
           const reply = /^Reply (.+)$/.exec(input.prompt)?.[1]
           if (reply !== undefined) return Stream.fromIterable(scriptedAgentTurn(reply))
           turns.set(input.threadId, done)
@@ -140,7 +161,11 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
       const done = turns.get(threadId)
       return done ? Effect.asVoid(Deferred.succeed(done, undefined)) : Effect.void
     },
-    respondApproval: () => Effect.succeed(false),
+    respondApproval: (requestId, decision) =>
+      Effect.sync(() => void approvalDecisions.push({ requestId, decision })).pipe(
+        Effect.andThen(Deferred.succeed(approvalAnswered, undefined)),
+        Effect.as(false),
+      ),
     respondQuestion: () => Effect.void,
     setAccessMode: () => Effect.void,
   }
@@ -671,6 +696,30 @@ layer(testLayer)("run_agent", (it) => {
     }),
   )
 
+  it.effect("allows a sub-agent's approval without showing it when the caller has full access", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const { accessMode } = yield* threads.get(a)
+      yield* threads.update({ id: a, accessMode: "full" })
+      pushes.length = 0
+      yield* runner.send(a, "hi", [])
+      const result = yield* callFrom(a, "run_agent", {
+        provider: "codex",
+        description: "Cleanup",
+        prompt: "Ask, then reply Cleaned.",
+        model: "gpt-test",
+      })
+      expect(result).toMatchObject({ isError: false, text: "Cleaned." })
+      expect(approvalDecisions).toStrictEqual([{ requestId: "sub-approval", decision: "allow" }])
+      const shown = pushes.filter((push) => push.type === "thread.event" && push.event.type === "approval_requested")
+      expect(shown).toStrictEqual([])
+      yield* runner.interrupt(a)
+      yield* threads.update({ id: a, accessMode })
+    }),
+  )
+
   it.effect("stopping it from the Agents tab interrupts only the sub-agent", () =>
     Effect.gen(function* () {
       const runner = yield* AgentRunner
@@ -834,6 +883,27 @@ layer(testLayer)("create_thread", (it) => {
       if (id === null) throw new Error(`no thread id in ${result.text}`)
       expect((yield* threads.get(id)).parentId).toBeNull()
       yield* runner.interrupt(id)
+    }),
+  )
+
+  it.effect("starts nested and top-level threads in the caller's access mode, not the default", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const threads = yield* Threads
+      const settings = yield* Settings.Settings
+      const { a } = yield* Seeded
+      expect((yield* settings.get).defaultAccessMode).toBe("full")
+      const { accessMode } = yield* threads.get(a)
+      yield* threads.update({ id: a, accessMode: "auto" })
+
+      for (const nested of [true, false]) {
+        const result = yield* callFrom(a, "create_thread", { title: "Child", prompt: "p", nested })
+        const id = createdThreadId(result.text)
+        if (id === null) throw new Error(`no thread id in ${result.text}`)
+        expect((yield* threads.get(id)).accessMode).toBe("auto")
+        yield* runner.interrupt(id)
+      }
+      yield* threads.update({ id: a, accessMode })
     }),
   )
 

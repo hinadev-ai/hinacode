@@ -1649,7 +1649,7 @@ describe("agent approvals over rpc", () => {
   test("decodes the note and hands it to the provider with the decision", async () => {
     heldTurn = Promise.withResolvers()
     const project = result(await invoke("projects.list", undefined))[0]!
-    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const thread = result(await invoke("threads.create", { projectId: project.id, accessMode: "supervised" }))
     result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held approval" }))
     await expect
       .poll(async () => result(await invoke("threads.transcript", { threadId: thread.id })).approvals)

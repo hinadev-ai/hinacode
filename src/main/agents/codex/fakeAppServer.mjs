@@ -74,6 +74,7 @@ const finishSubagent = () => {
 let subagentFinished = false
 const held = []
 const terminals = new Map()
+const loadedSandboxes = new Map()
 let turns = 0
 let activeQuestion = null
 
@@ -131,12 +132,19 @@ const reply = ({ id, method, params }) => {
       return send({ id, result: pages[index] ?? { data: [], nextCursor: null } })
     }
     case "thread/start":
+      loadedSandboxes.set("codex-thread", sandboxPolicy(params.sandbox))
+      return send({ id, result: { thread: { id: "codex-thread" }, sandbox: loadedSandboxes.get("codex-thread") } })
     case "thread/resume":
-      return send({ id, result: { thread: { id: "codex-thread" }, sandbox: sandboxPolicy(params.sandbox) } })
+      if (!loadedSandboxes.has("codex-thread")) loadedSandboxes.set("codex-thread", sandboxPolicy(params.sandbox))
+      return send({ id, result: { thread: { id: "codex-thread" }, sandbox: loadedSandboxes.get("codex-thread") } })
+    case "thread/unsubscribe":
+      loadedSandboxes.delete(params.threadId)
+      return send({ id, result: {} })
     case "thread/fork":
       return send({ id, result: { thread: { id: "codex-fork" }, sandbox: sandboxPolicy(params.sandbox) } })
     case "turn/start": {
       const turnId = `turn-${++turns}`
+      if (params.sandboxPolicy) loadedSandboxes.set(params.threadId, params.sandboxPolicy)
       send({ id, result: { turn: { id: turnId } } })
       const { question, postedQuestions, unauthorized, crashMidTurn } = control()
       if (crashMidTurn) {

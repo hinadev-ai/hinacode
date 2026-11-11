@@ -5,7 +5,7 @@ import zhTW from "../../../../messages/zh-TW.json"
 import { deviceLanguageTags } from "./device-locale"
 import { type CatalogLocale, resolveCatalogLocale } from "./locale"
 
-type Key = Extract<keyof typeof en, `mobile_${string}` | `tool_own_${string}`>
+type Key = Extract<keyof typeof en, `mobile_${string}` | `tool_own_${string}` | `access_${string}`>
 
 const catalogs: Record<CatalogLocale, Record<Key, string>> = { en, ja, "zh-TW": zhTW, "zh-CN": zhCN }
 

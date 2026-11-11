@@ -701,6 +701,9 @@ const make = Effect.gen(function* () {
                 ? { ...received, stopped: true }
                 : received
         if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
+        if (event.type === "approval_requested" && (yield* threads.get(thread.id)).accessMode === "full") {
+          return yield* Effect.asVoid(providers[event.request.provider].respondApproval(event.request.id, "allow"))
+        }
         yield* deltas.offer(event)
       }).pipe(exclusive(thread.id))
 

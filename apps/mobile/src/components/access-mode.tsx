@@ -1,4 +1,5 @@
-import type { ModelInfo, ProviderId } from "@shared/agent.ts"
+import { type AccessBehavior, accessBehavior } from "@shared/access.ts"
+import type { ModelInfo } from "@shared/agent.ts"
 import { AccessMode, type Thread } from "@shared/domain.ts"
 import type { IconName } from "@/components/icon"
 import { OptionRow, Section } from "@/components/sheet"
@@ -6,38 +7,23 @@ import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { updateThread } from "@/stores/threads"
 
-export const accessModes: Record<AccessMode, { label: string; icon: IconName }> = {
-  supervised: { label: copy("mobile_settings_access_supervised"), icon: "ShieldUser" },
-  auto: { label: copy("mobile_settings_access_auto"), icon: "Shield" },
-  full: { label: copy("mobile_settings_access_full"), icon: "Unlock" },
+export const accessModes: Record<AccessMode, { icon: IconName }> = {
+  supervised: { icon: "ShieldUser" },
+  auto: { icon: "Shield" },
+  full: { icon: "Unlock" },
 }
 
-const supervisedHints: Record<ProviderId, string> = {
-  claude: copy("mobile_settings_access_supervised_hint"),
-  codex: copy("mobile_composer_access_supervised_codex"),
-  muse: copy("mobile_composer_access_supervised_muse"),
-  opencode: copy("mobile_composer_access_supervised_opencode"),
-  magpie: copy("mobile_settings_access_supervised_hint"),
-}
-
-const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = {
-  claude: (model) =>
-    model?.autoMode ? copy("mobile_composer_access_auto_claude") : copy("mobile_composer_access_auto_claude_edits"),
-  codex: () => copy("mobile_composer_access_auto_codex"),
-  muse: () => copy("mobile_composer_access_auto_muse"),
-  opencode: () => copy("mobile_composer_access_auto_opencode"),
-  magpie: () => copy("mobile_composer_access_auto_claude_edits"),
-}
-
-const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
-  switch (accessMode) {
-    case "supervised":
-      return supervisedHints[thread.provider]
-    case "auto":
-      return autoHints[thread.provider](model)
-    case "full":
-      return copy("mobile_settings_access_full_hint")
-  }
+const behaviorCopy: Record<AccessBehavior, { label: string; hint: string }> = {
+  askEditsAndCommands: { label: copy("access_supervised"), hint: copy("access_hint_askEditsAndCommands") },
+  askUnlessReadOnly: { label: copy("access_supervised"), hint: copy("access_hint_askUnlessReadOnly") },
+  askProtectedWrites: { label: copy("access_supervised_muse"), hint: copy("access_hint_askProtectedWrites") },
+  askEveryTool: { label: copy("access_supervised"), hint: copy("access_hint_askEveryTool") },
+  autoApprovesSafeActions: { label: copy("access_auto"), hint: copy("access_hint_autoApprovesSafeActions") },
+  acceptEdits: { label: copy("access_accept_edits"), hint: copy("access_hint_acceptEdits") },
+  sandboxed: { label: copy("access_auto"), hint: copy("access_hint_sandboxed") },
+  aiReview: { label: copy("access_auto_muse"), hint: copy("access_hint_aiReview") },
+  bypass: { label: copy("access_full"), hint: copy("access_hint_bypass") },
+  unrestricted: { label: copy("access_full_muse"), hint: copy("access_hint_unrestricted") },
 }
 
 export function AccessModeSection({
@@ -52,17 +38,22 @@ export function AccessModeSection({
   const theme = useTheme()
   return (
     <Section title={copy("mobile_composer_access")}>
-      {AccessMode.literals.map((option) => (
-        <OptionRow
-          key={option}
-          label={accessModes[option].label}
-          icon={accessModes[option].icon}
-          hint={accessHint(option, thread, model)}
-          color={option === "full" ? theme.danger : undefined}
-          selected={option === thread.accessMode}
-          onPress={() => option !== thread.accessMode && void updateThread({ id: thread.id, accessMode: option }, onError)}
-        />
-      ))}
+      {AccessMode.literals.map((option) => {
+        const { label, hint } = behaviorCopy[accessBehavior(thread.provider, option, model)]
+        return (
+          <OptionRow
+            key={option}
+            label={label}
+            icon={accessModes[option].icon}
+            hint={hint}
+            color={option === "full" ? theme.danger : undefined}
+            selected={option === thread.accessMode}
+            onPress={() =>
+              option !== thread.accessMode && void updateThread({ id: thread.id, accessMode: option }, onError)
+            }
+          />
+        )
+      })}
     </Section>
   )
 }

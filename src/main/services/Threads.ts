@@ -76,12 +76,13 @@ interface CreateThread {
   readonly model: string
   readonly effort?: string | null | undefined
   readonly fastMode?: boolean | undefined
+  readonly accessMode?: AccessMode | undefined
   readonly worktree?: { readonly branch: string; readonly baseRef: string } | undefined
   readonly createdBy?: string | undefined
   readonly parentId?: string | undefined
 }
 
-type DraftThread = Omit<CreateThread, "worktree" | "createdBy" | "parentId">
+type DraftThread = Omit<CreateThread, "accessMode" | "worktree" | "createdBy" | "parentId">
 
 export interface UpdateThread {
   readonly id: string
@@ -330,7 +331,15 @@ const make = Effect.gen(function* () {
     )
 
   const insertThread = (
-    { worktree: worktreeInput, createdBy = "user", effort = null, fastMode = false, parentId, ...input }: CreateThread,
+    {
+      worktree: worktreeInput,
+      createdBy = "user",
+      effort = null,
+      fastMode = false,
+      accessMode,
+      parentId,
+      ...input
+    }: CreateThread,
     status: "draft" | "idle",
   ) =>
     Effect.gen(function* () {
@@ -348,7 +357,7 @@ const make = Effect.gen(function* () {
         worktreeId: worktree?.id ?? null,
         effort,
         fastMode,
-        accessMode: defaultAccessMode,
+        accessMode: accessMode ?? defaultAccessMode,
         accountId: defaultAccount[input.provider],
         providerSessionId: null,
         forkedFrom: null,

@@ -372,6 +372,7 @@ const withPreparingThread = async (
           title: "Pending",
           provider: "claude",
           model: "initial-model",
+          accessMode: "supervised",
           createdBy: "automation",
           worktree: { branch: "fix/pending", baseRef: "main" },
         }),
@@ -919,6 +920,48 @@ it("allows the approval a turn is waiting on when the thread switches to full ac
     )
     await Effect.runPromise(runner.setAccessMode(thread.id, "full"))
     expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow" }])
+  })
+})
+
+it("allows an approval a full access thread receives without showing it", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, decisions, transcript }) => {
+    release()
+    await Effect.runPromise(threads.update({ id: thread.id, accessMode: "full" }))
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    await vi.waitFor(() => expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow" }]))
+
+    const shown = transcript.filter((push) => push.type === "thread.event" && push.event.type === "approval_requested")
+    expect(shown).toStrictEqual([])
+    expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toStrictEqual([])
+    expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running")
+  })
+})
+
+it("allows an approval a full access thread receives in a turn its agent starts by itself", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, idle, wake, decisions, transcript }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+    await Effect.runPromise(threads.update({ id: thread.id, accessMode: "full" }))
+    const { providerSessionId } = await Effect.runPromise(threads.get(thread.id))
+    void wake("claude", providerSessionId!, [
+      {
+        type: "approval_requested",
+        request: {
+          id: "wake-approval",
+          threadId: thread.id,
+          provider: "claude",
+          kind: "command",
+          title: "Run command",
+          detail: "pnpm build",
+        },
+      },
+    ])
+    await vi.waitFor(() => expect(decisions).toStrictEqual([{ requestId: "wake-approval", decision: "allow" }]))
+
+    const shown = transcript.filter((push) => push.type === "thread.event" && push.event.type === "approval_requested")
+    expect(shown).toStrictEqual([])
+    await Effect.runPromise(runner.interrupt(thread.id))
   })
 })
 

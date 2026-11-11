@@ -6,6 +6,7 @@ import { Deferred, Effect, Layer, ManagedRuntime, type Scope, Stream } from "eff
 import { afterAll, beforeAll, expect, test, vi } from "vitest"
 import { type AgentEvent, unlistedModel } from "../shared/agent.ts"
 import type { RpcEnvelope } from "../shared/contract.ts"
+import type { AccessMode } from "../shared/domain.ts"
 import { ClaudeProvider } from "../main/agents/claude/index.ts"
 import { CodexProvider } from "../main/agents/codex/index.ts"
 import { MuseProvider } from "../main/agents/muse/index.ts"
@@ -127,7 +128,8 @@ const options = (prompt: string, wait: boolean): RunOptions => ({
   wait,
 })
 
-const run = (prompt: string, wait: boolean) => withCli((client) => runThread(client, options(prompt, wait)))
+const run = (prompt: string, wait: boolean, accessMode?: AccessMode) =>
+  withCli((client) => runThread(client, { ...options(prompt, wait), accessMode }))
 
 const statusOf = async (threadId: string) =>
   (await withCli((client) => client.call("threads.list", undefined))).find((thread) => thread.id === threadId)?.status
@@ -196,7 +198,7 @@ test("concurrent runs create distinct threads", async () => {
 })
 
 test("run --wait exits 2 on an approval, the inbox lists it, and answering it lets the turn finish", async () => {
-  const { value, code } = await run(ASKING_PROMPT, true)
+  const { value, code } = await run(ASKING_PROMPT, true, "supervised")
   expect(code).toBe(EXIT.needsHuman)
   const { threadId } = value as { threadId: string }
   expect(value).toStrictEqual({ threadId, title: expect.any(String), outcome: "needsHuman" })

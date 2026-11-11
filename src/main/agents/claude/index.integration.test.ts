@@ -44,6 +44,7 @@ const cliProcesses = Effect.acquireRelease(
 interface Control {
   readonly lifeline?: string
   readonly exitOnStart?: boolean
+  readonly bypassDisabled?: boolean
 }
 
 const fakeHome = (control: Control) => {
@@ -161,6 +162,46 @@ describe("Claude Code CLI failures", () => {
 
         setControl({ lifeline })
         expect(ended(yield* runToEnd(provider, input(home)))).toMatchObject({ type: "turn_completed" })
+      }).pipe(Effect.scoped),
+    ),
+  )
+
+  it.live("runs a full access turn when the CLI starts in bypassPermissions", () =>
+    withClis((lifeline) =>
+      Effect.gen(function* () {
+        const { home } = fakeHome({ lifeline })
+        const provider = yield* harness
+        const events = yield* runToEnd(provider, input(home, { accessMode: "full" }))
+        expect(ended(events)).toMatchObject({ type: "turn_completed" })
+      }).pipe(Effect.scoped),
+    ),
+  )
+
+  it.live("fails a full access turn when the CLI's settings disable bypassPermissions", () =>
+    withClis((lifeline) =>
+      Effect.gen(function* () {
+        const { home } = fakeHome({ lifeline, bypassDisabled: true })
+        const provider = yield* harness
+        const events = yield* runToEnd(provider, input(home, { accessMode: "full" }))
+        expect(ended(events)).toStrictEqual({
+          type: "turn_failed",
+          message: expect.stringContaining("disableBypassPermissionsMode"),
+        })
+        expect(events.map((event) => event.type)).not.toContain("text_delta")
+      }).pipe(Effect.scoped),
+    ),
+  )
+
+  it.live("keeps a turn switched to full access while the CLI reports the mode it started in", () =>
+    withClis((lifeline) =>
+      Effect.gen(function* () {
+        const { home } = fakeHome({ lifeline })
+        const provider = yield* harness
+        const turn = yield* startTurn(provider, input(home, { prompt: "init after a mode switch" }))
+        yield* turn.until((event) => event.type === "text_delta")
+        yield* provider.setAccessMode("t1", "full")
+        yield* Fiber.join(turn.fiber)
+        expect(ended(turn.events)).toMatchObject({ type: "turn_completed" })
       }).pipe(Effect.scoped),
     ),
   )

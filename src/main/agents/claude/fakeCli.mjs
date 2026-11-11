@@ -13,7 +13,7 @@ const control = () => {
     return {}
   }
 }
-const { lifeline, exitOnStart, lingerAfterLostSession } = control()
+const { lifeline, exitOnStart, lingerAfterLostSession, bypassDisabled } = control()
 if (lifeline !== undefined) connect(lifeline).on("error", () => {})
 
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`)
@@ -24,10 +24,14 @@ const die = (code, lastWords) => {
 
 if (exitOnStart) die(1, "Error: Claude Code could not read its settings")
 
+writeFileSync(join(home, "argv.json"), JSON.stringify(process.argv.slice(2)))
 const sessions = join(home, "sessions")
 mkdirSync(sessions, { recursive: true })
 const resumed = process.argv.find((arg) => arg.startsWith("--resume="))?.slice("--resume=".length) ?? null
 const sessionId = resumed ?? randomUUID()
+const requestedMode =
+  process.argv.find((arg) => arg.startsWith("--permission-mode="))?.slice("--permission-mode=".length) ?? "default"
+const permissionMode = bypassDisabled && requestedMode === "bypassPermissions" ? "default" : requestedMode
 
 const usage = {
   input_tokens: 4,
@@ -98,7 +102,7 @@ const init = () =>
     tools: [],
     mcp_servers: [],
     model: "claude-sonnet-5-5",
-    permissionMode: "default",
+    permissionMode,
     slash_commands: [],
     apiKeySource: "none",
     output_style: "default",
@@ -135,7 +139,17 @@ const reply = (text) => {
 const pendingTools = new Map()
 let interrupted = null
 
+let initAfterModeSwitch = null
+
 const prompt = (text) => {
+  if (text === "init after a mode switch") {
+    textDelta("waiting for a mode switch")
+    initAfterModeSwitch = () => {
+      init()
+      reply("started in the launch mode")
+    }
+    return
+  }
   init()
   if (text === "exit") return process.exit(0)
   if (text === "crash") {
@@ -214,7 +228,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       interrupted = null
       return
     }
-    return answer(message.request_id)
+    answer(message.request_id)
+    if (message.request.subtype === "set_permission_mode") initAfterModeSwitch?.()
+    initAfterModeSwitch = null
+    return
   }
   if (message.type === "control_response") {
     if (!pendingTools.delete(message.response.request_id)) return
