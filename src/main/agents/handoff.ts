@@ -1,4 +1,5 @@
 import type { ProviderId } from "../../shared/agent.ts"
+import { TOOL_SUMMARY_KEYS } from "../../shared/compactTranscript.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { providerInfo } from "../../shared/providers.ts"
 
@@ -23,7 +24,7 @@ const clip = (text: string, limit: number) => (text.length <= limit ? text : `${
 
 const toolSubject = (input: unknown) => {
   if (typeof input === "object" && input !== null) {
-    for (const key of ["command", "file_path", "notebook_path", "pattern", "path", "url", "query", "description"]) {
+    for (const key of TOOL_SUMMARY_KEYS) {
       const value = Reflect.get(input, key)
       if (typeof value === "string") return value
     }

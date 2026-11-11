@@ -6,7 +6,7 @@ import { deflateRawSync } from "node:zlib"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime, Schema } from "effect"
 import { SqlClient } from "effect/sql"
-import { compactMessage, compactPush, transcriptPage } from "../../src/shared/compactTranscript.ts"
+import { compactMessage, compactPushes, transcriptPage } from "../../src/shared/compactTranscript.ts"
 import { PushEvent, RpcMethods, type RpcResponse } from "../../src/shared/contract.ts"
 import type { Message } from "../../src/shared/domain.ts"
 import { clientProof, serverProof } from "../../src/shared/proof.ts"
@@ -123,7 +123,11 @@ for (let i = 0; i < 20; i++) {
 const encodeEvent = Schema.encodeSync(PushEvent)
 const decodeFrame = Schema.decodeUnknownSync(ServerFrame)
 const currentFrames = pushes.map((push) => JSON.stringify({ type: "event", event: encodeEvent(push) }))
-const compactFrames = pushes.map((push) => JSON.stringify({ type: "event", event: compactPush(encodeEvent(push)) }))
+const compactPush = compactPushes()
+const compactFrames = pushes.flatMap((push) => {
+  const event = compactPush(encodeEvent(push))
+  return event === null ? [] : [JSON.stringify({ type: "event", event })]
+})
 for (const raw of [...currentFrames, ...compactFrames]) decodeFrame(JSON.parse(raw))
 const liveSummary = (frames: readonly string[]) => ({
   frames: frames.length,
@@ -139,8 +143,11 @@ const fanout = async (clients: number) => {
     const broadcast = yield* PushBroadcast
     const events = yield* Events
     for (let i = 0; i < clients; i++) {
+      const compactClientPush = compactPushes()
       yield* broadcast.subscribe((push) => {
-        const raw = JSON.stringify({ type: "event", event: compact ? compactPush(push) : push })
+        const event = compact ? compactClientPush(push) : push
+        if (event === null) return
+        const raw = JSON.stringify({ type: "event", event })
         const counters = compact ? projected : full
         counters.bytes += Buffer.byteLength(raw)
         counters.frames++

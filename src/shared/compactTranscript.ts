@@ -5,12 +5,21 @@ import { DocumentOutline, documentOutline, shortenText } from "./documentOutline
 import { type Message, type MessagePart, spawnsSubagent } from "./domain.ts"
 import { createdTaskId, isTodoTool } from "./todos.ts"
 
-const SUMMARY_KEYS = ["command", "file_path", "path", "pattern", "url", "description"]
+export const TOOL_SUMMARY_KEYS = [
+  "command",
+  "file_path",
+  "notebook_path",
+  "pattern",
+  "path",
+  "url",
+  "query",
+  "description",
+] as const
 
 export function toolSummary(input: unknown): { readonly key: string; readonly line: string } | null {
   if (typeof input !== "object" || input === null) return null
   const record = input as Record<string, unknown>
-  for (const key of SUMMARY_KEYS) {
+  for (const key of TOOL_SUMMARY_KEYS) {
     const value = record[key]
     if (typeof value === "string") return { key, line: value.split("\n", 1)[0]! }
   }
@@ -75,23 +84,36 @@ export const compactMessage = (message: Message): Message => ({
 const compactParts = (parts: ReadonlyArray<MessagePart>) =>
   parts.filter((part) => part.type !== "tool_call" || part.parentCallId === undefined).map(compactPart)
 
-export function compactPush(push: typeof PushEvent.Encoded): typeof PushEvent.Encoded {
-  if (push.type === "message.created" || push.type === "message.updated")
-    return { ...push, message: { ...push.message, parts: compactParts(push.message.parts) } }
-  if (push.type !== "thread.event") return push
-  const { event } = push
-  switch (event.type) {
-    case "tool_call_started":
-      return { ...push, event: { ...event, input: compactInput(event.name, event.input) } }
-    case "tool_call_finished": {
-      const { fullOutputBytes: _fullOutputBytes, ...rest } = event
-      if (createdTaskId(event.output) !== null) return { ...push, event: rest }
-      return { ...push, event: { ...rest, output: (!event.isError && firstLineOfPublished(event.output)) || "" } }
+export function compactPushes() {
+  const subagentCallIdsByThread = new Map<string, Set<string>>()
+  return (push: typeof PushEvent.Encoded): typeof PushEvent.Encoded | null => {
+    if (push.type === "message.created" || push.type === "message.updated")
+      return { ...push, message: { ...push.message, parts: compactParts(push.message.parts) } }
+    if (push.type !== "thread.event") return push
+    const { event, threadId } = push
+    switch (event.type) {
+      case "tool_call_started":
+        if (event.parentCallId !== undefined) {
+          subagentCallIdsByThread.set(threadId, (subagentCallIdsByThread.get(threadId) ?? new Set()).add(event.callId))
+          return null
+        }
+        return { ...push, event: { ...event, input: compactInput(event.name, event.input) } }
+      case "tool_call_finished": {
+        if (subagentCallIdsByThread.get(threadId)?.delete(event.callId)) return null
+        const { fullOutputBytes: _fullOutputBytes, ...rest } = event
+        if (createdTaskId(event.output) !== null) return { ...push, event: rest }
+        return { ...push, event: { ...rest, output: (!event.isError && firstLineOfPublished(event.output)) || "" } }
+      }
+      case "file_changed":
+        return { ...push, event: { ...event, diff: "" } }
+      case "turn_completed":
+      case "turn_failed":
+      case "turn_limited":
+        subagentCallIdsByThread.delete(threadId)
+        return push
+      default:
+        return push
     }
-    case "file_changed":
-      return { ...push, event: { ...event, diff: "" } }
-    default:
-      return push
   }
 }
 

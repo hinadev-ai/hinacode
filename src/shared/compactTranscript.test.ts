@@ -1,8 +1,9 @@
 import { describe, expect, test } from "@effect/vitest"
+import type { AgentEvent } from "./agent.ts"
 import type { Message, MessagePart } from "./domain.ts"
 import {
   compactMessage,
-  compactPush,
+  compactPushes,
   previewMessage,
   publishPreview,
   previewPush,
@@ -12,6 +13,7 @@ import {
   transcriptPage,
 } from "./compactTranscript.ts"
 import { OUTLINE_MAX_BLOCKS } from "./documentOutline.ts"
+import { foldEvent } from "./foldEvent.ts"
 import { latestTodos } from "./todos.ts"
 
 const message = (parts: Message["parts"]): Message => ({
@@ -111,7 +113,7 @@ describe("compactMessage", () => {
       },
     ]
     expect(latestTodos([compactMessage(message(parts))])).toStrictEqual([{ text: "Ship it", status: "completed" }])
-    const finished = compactPush({
+    const finished = compactPushes()({
       type: "thread.event",
       threadId: "t",
       messageId: "m",
@@ -131,6 +133,79 @@ describe("toolSummary", () => {
     expect(toolSummary({ description: "List", command: "ls\n-la" })).toStrictEqual({ key: "command", line: "ls" })
     expect(toolSummary({ todos: [] })).toBeNull()
     expect(toolSummary("raw")).toBeNull()
+  })
+
+  test("names the same subject the desktop does", () => {
+    expect(toolSummary({ query: "effect schema" })).toStrictEqual({ key: "query", line: "effect schema" })
+    expect(toolSummary({ notebook_path: "a.ipynb" })).toStrictEqual({ key: "notebook_path", line: "a.ipynb" })
+    expect(toolSummary({ path: "src", pattern: "TODO" })).toStrictEqual({ key: "pattern", line: "TODO" })
+  })
+})
+
+const fold = (agentEvents: ReadonlyArray<AgentEvent>) =>
+  agentEvents.reduce((folded, event) => foldEvent(folded, event, "2026-10-18T00:00:00.000Z"), message([]))
+const calls = (folded: Message) =>
+  folded.parts.flatMap((part) => (part.type === "tool_call" ? [{ callId: part.callId, input: part.input }] : []))
+
+const childStarted = (threadId: string) =>
+  ({
+    type: "thread.event",
+    seq: 0,
+    threadId,
+    event: { type: "tool_call_started", callId: "c", name: "Read", input: {}, parentCallId: "agent" },
+  }) as const
+const finishedIn = (threadId: string) =>
+  ({
+    type: "thread.event",
+    seq: 1,
+    threadId,
+    event: { type: "tool_call_finished", callId: "c", output: "", isError: false },
+  }) as const
+
+describe("a compact transcript", () => {
+  const events: ReadonlyArray<AgentEvent> = [
+    { type: "tool_call_started", callId: "agent", name: "Agent", input: { description: "Explore" } },
+    { type: "tool_call_started", callId: "read", name: "Read", input: { file_path: "a.ts" }, parentCallId: "agent" },
+    { type: "tool_call_finished", callId: "read", output: "x", isError: false },
+    { type: "tool_call_finished", callId: "agent", output: "found it", isError: false },
+    { type: "tool_call_started", callId: "search", name: "WebSearch", input: { query: "effect schema" } },
+    { type: "tool_call_finished", callId: "search", output: "results", isError: false },
+  ]
+  const compactPush = compactPushes()
+  const pushed = events.map((event, seq) => compactPush({ type: "thread.event", seq, threadId: "t", event }))
+  const live = pushed.flatMap((push) => (push?.type === "thread.event" ? [push.event as AgentEvent] : []))
+
+  test("shows the same calls live as after reload", () => {
+    expect(calls(fold(live))).toStrictEqual(calls(compactMessage(fold(events))))
+    expect(calls(fold(live))).toStrictEqual([
+      { callId: "agent", input: { description: "Explore" } },
+      { callId: "search", input: { query: "effect schema" } },
+    ])
+  })
+
+  test("sends the phone nothing about a sub-agent's calls", () => {
+    expect(live.filter((event) => "callId" in event && event.callId === "read")).toStrictEqual([])
+  })
+
+  test("drops a sub-agent's finished call only in the thread it started in", () => {
+    const compact = compactPushes()
+    compact(childStarted("a"))
+    expect(compact(finishedIn("b"))).not.toBeNull()
+    expect(compact(finishedIn("a"))).toBeNull()
+  })
+
+  test("forgets a thread's sub-agent calls when its turn ends", () => {
+    const turnEnds: ReadonlyArray<AgentEvent> = [
+      { type: "turn_completed" },
+      { type: "turn_failed", message: "boom" },
+      { type: "turn_limited", limit: { kind: "usage", message: "limit hit", reset: null } },
+    ]
+    for (const turnEnd of turnEnds) {
+      const compact = compactPushes()
+      compact(childStarted("a"))
+      compact({ type: "thread.event", seq: 2, threadId: "a", event: turnEnd })
+      expect(compact(finishedIn("a"))).not.toBeNull()
+    }
   })
 })
 
@@ -249,7 +324,7 @@ describe("previewPush", () => {
 const compacted = (part: MessagePart) =>
   compactMessage(message([part])).parts[0] as Extract<MessagePart, { type: "tool_call" }>
 const finished = (output: unknown, isError = false) =>
-  compactPush({
+  compactPushes()({
     type: "thread.event",
     seq: 1,
     threadId: "t",
@@ -340,7 +415,7 @@ describe("a publish call when compact", () => {
       { type: "tool_call" }
     >
     expect(compacted(running).output).toBeUndefined()
-    const started = compactPush({
+    const started = compactPushes()({
       type: "thread.event",
       seq: 1,
       threadId: "t",
