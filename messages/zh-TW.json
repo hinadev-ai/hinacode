@@ -699,6 +699,7 @@
   "sidebar_group_rename": "重新命名…",
   "sidebar_group_move_up": "上移",
   "sidebar_group_move_down": "下移",
+  "sidebar_conductor": "指揮",
   "sidebar_group_delete": "刪除群組",
   "sidebar_group_empty": "從專案的選單把它移到這裡。",
   "sidebar_group_save_failed": "無法儲存群組：{message}",

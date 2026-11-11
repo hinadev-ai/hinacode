@@ -690,6 +690,7 @@
   "sidebar_group_rename": "重命名…",
   "sidebar_group_move_up": "上移",
   "sidebar_group_move_down": "下移",
+  "sidebar_conductor": "指挥",
   "sidebar_group_delete": "删除分组",
   "sidebar_group_empty": "从项目菜单把它移到这里。",
   "sidebar_group_save_failed": "无法保存分组：{message}",

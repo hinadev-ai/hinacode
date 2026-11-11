@@ -699,6 +699,7 @@
   "sidebar_group_rename": "Rename…",
   "sidebar_group_move_up": "Move up",
   "sidebar_group_move_down": "Move down",
+  "sidebar_conductor": "Conductor",
   "sidebar_group_delete": "Delete group",
   "sidebar_group_empty": "Move a project here from its menu.",
   "sidebar_group_save_failed": "Could not save groups: {message}",

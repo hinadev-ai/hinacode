@@ -7,7 +7,7 @@ import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
-import { useIsChat } from "../lib/useIsChat.ts"
+import { useHasNoWorkspace } from "../lib/useHasNoWorkspace.ts"
 import { artifactSkillCommands } from "../lib/artifactSkills.ts"
 import { commandsAtom, completionKey, projectsAtom, repositoryAtom } from "../lib/rpc.ts"
 import { ThreadRepository } from "../lib/threadRepository.ts"
@@ -176,7 +176,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
     ...artifactSkillCommands(),
     ...AsyncResult.getOrElse(useAtomValue(commandsAtom(completionKey(thread))), (): ReadonlyArray<AgentCommand> => []),
   ]
-  const isChat = useIsChat(thread.projectId)
+  const hasNoWorkspace = useHasNoWorkspace(thread.projectId)
   const findOpen = useUi((state) => state.findThreadId === thread.id)
   const findQuery = useDebouncedValue(
     useUi((state) => state.findQuery),
@@ -229,7 +229,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
           ) : (
             <div className="mt-auto clear-overview">
               <EmptyThread
-                project={isChat ? null : <ThreadProjectSwitch thread={thread} />}
+                project={hasNoWorkspace ? null : <ThreadProjectSwitch thread={thread} />}
                 environment={<ThreadEnvironmentSwitch thread={thread} />}
               />
             </div>

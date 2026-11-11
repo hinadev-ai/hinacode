@@ -75,6 +75,7 @@ import {
   PencilIcon,
   PlusIcon,
   SearchIcon,
+  SteerIcon,
   TrashIcon,
 } from "@hinacode/icons"
 import { ProjectMenu } from "./ProjectMenu.tsx"
@@ -726,11 +727,13 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
   const projects = useAtomValue(projectsAtom)
   const refresh = useAtomRefresh(projectsAtom)
   const [listRef] = useAutoAnimate<HTMLUListElement>(projectListMotion)
-  const groups = groupProjects(useFilteredProjects(AsyncResult.getOrElse(projects, () => [])))
+  const listed = AsyncResult.getOrElse(projects, () => [])
+  const groups = groupProjects(useFilteredProjects(listed))
+  const conductors = groupProjects(listed.filter((project) => project.kind === "group"))
   const draftTitles = useDraftTitles()
   const shownKeys = useThreads(
     useShallow((state) =>
-      groups
+      [...groups, ...conductors]
         .filter(
           (group) =>
             isFullList(query) ||
@@ -746,23 +749,28 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
   const projectRow = (group: Group, nested = false) => (
     <ProjectGroup key={group.key} group={group} query={query} nested={nested} focusAfterDelete={focusAfterDelete} />
   )
+  const conductorOf = (group: SidebarGroup) =>
+    conductors.find((row) => row.key === group.id && shownKeys.includes(row.key))
   const groupItems = (group: SidebarGroup, rows: ReadonlyArray<Group>) => {
     const open = !group.collapsed || query !== ""
     const header = <GroupHeader key={group.id} group={group} open={open} />
     if (!open) return [header]
+    const conductor = conductorOf(group)
+    const conductorRow = conductor === undefined ? [] : [projectRow(conductor, true)]
     if (rows.length === 0) {
       return [
         header,
+        ...conductorRow,
         <li key={`${group.id}-empty`} className="px-3.5 py-1 text-xs text-muted-foreground">
           {m.sidebar_group_empty()}
         </li>,
       ]
     }
-    return [header, ...rows.map((row) => projectRow(row, true))]
+    return [header, ...conductorRow, ...rows.map((row) => projectRow(row, true))]
   }
   const items = [
     ...grouped
-      .filter(({ rows }) => isFullList(query) || rows.length > 0)
+      .filter(({ group, rows }) => isFullList(query) || rows.length > 0 || conductorOf(group) !== undefined)
       .flatMap(({ group, rows }) => groupItems(group, rows)),
     ...ungrouped.map((row) => projectRow(row)),
   ]
@@ -930,6 +938,7 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
   const drafts = useWrittenDrafts(projects, query)
   const cloud = useCloud(environmentOf(first))
   const cloudMarkId = useId()
+  const label = first.kind === "group" ? m.sidebar_conductor() : first.name
 
   return (
     <li className={nested ? "pl-2" : undefined}>
@@ -945,7 +954,7 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
           <CollapsibleTrigger
             data-stale={isStale(cloud)}
             className="group/trigger flex min-w-0 flex-1 items-center gap-1.5 rounded-md p-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[stale=true]:text-muted-foreground"
-            aria-label={m.sidebar_toggle_project({ project: first.name })}
+            aria-label={m.sidebar_toggle_project({ project: label })}
             aria-describedby={cloud && cloudMarkId}
           >
             <ChevronRightIcon
@@ -956,11 +965,13 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
               <CloudMark cloud={cloud} id={cloudMarkId} className="size-4" />
             ) : first.kind === "chats" ? (
               <ChatIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            ) : first.kind === "group" ? (
+              <SteerIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             ) : (
               <FolderIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             )}
             <span className="truncate font-medium" title={first.rootPath}>
-              {first.name}
+              {label}
             </span>
           </CollapsibleTrigger>
           <NewThreadButton projects={projects} buttonRef={newThreadButtonRef} onNewThread={newThread} />
