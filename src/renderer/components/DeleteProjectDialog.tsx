@@ -26,6 +26,8 @@ interface DeleteProjectDialogProps {
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
   readonly focusAfterDelete: RefObject<HTMLElement | null>
+  readonly confirmLabel?: string
+  readonly onDeleted?: () => void
 }
 
 interface DeleteState {
@@ -33,7 +35,14 @@ interface DeleteState {
   readonly deleted: boolean
 }
 
-export function DeleteProjectDialog({ project, open, onOpenChange, focusAfterDelete }: DeleteProjectDialogProps) {
+export function DeleteProjectDialog({
+  project,
+  open,
+  onOpenChange,
+  focusAfterDelete,
+  confirmLabel = m.project_delete_confirm(),
+  onDeleted,
+}: DeleteProjectDialogProps) {
   const threads = useThreads(
     useShallow((state) => Object.values(state.byId).filter((thread) => thread.projectId === project.id)),
   )
@@ -75,6 +84,7 @@ export function DeleteProjectDialog({ project, open, onOpenChange, focusAfterDel
     const { remove: removeThread } = useThreads.getState()
     threads.forEach((thread) => removeThread(thread.id))
     refreshProjects()
+    onDeleted?.()
   }
 
   return (
@@ -107,7 +117,7 @@ export function DeleteProjectDialog({ project, open, onOpenChange, focusAfterDel
         <AlertDialogFooter>
           <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
           <AlertDialogAction variant="destructive" disabled={isPending} action={remove}>
-            {m.project_delete_confirm()}
+            {confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
