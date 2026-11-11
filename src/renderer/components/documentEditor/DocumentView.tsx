@@ -188,7 +188,7 @@ function DocumentEditor({
     startTransition(() => setDraft(null))
   }
   const sendComment = async (sent: CommentDraft, body: string) => {
-    if (!(await sync.saveEdits())) throw new Error(m.documents_not_saved())
+    if ((await sync.saveEdits()) === null) throw new Error(m.documents_not_saved())
     await actions.comment({ body, anchor: sent.anchor })
     closeDraft()
     editor.commands.setTextSelection(sent.range.to)
@@ -310,7 +310,8 @@ function DocumentFooter({
   const draft = useDrafts((state) => state.byThreadId[threadId]?.text ?? "")
   const setText = useDrafts((state) => state.setText)
   const askAgent = async () => {
-    const revision = await sync.savedRevision()
+    const revision = await sync.saveEdits()
+    if (revision === null) return
     const prompt = m.documents_ask_prompt({ title: artifact.title, id: artifact.id, revision })
     setText(threadId, draft.trim() === "" ? prompt : `${draft.trimEnd()}\n\n${prompt}`)
   }
