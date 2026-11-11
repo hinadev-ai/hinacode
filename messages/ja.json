@@ -1089,7 +1089,6 @@
   "mobile_reconnecting_banner": "再接続しています。サーバーに戻り次第、操作を送信します。",
   "mobile_composer_sending": "送信中",
   "mobile_composer_sends_when_back": "サーバーに戻り次第送信",
-  "mobile_composer_hide_keyboard": "キーボードを閉じる",
   "mobile_composer_attach_images": "画像を添付",
   "mobile_composer_remove_image": "{name} を削除",
   "mobile_composer_image_too_large": "{name} はスマートフォンから送るには大きすぎます",

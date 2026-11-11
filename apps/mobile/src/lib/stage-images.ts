@@ -43,7 +43,9 @@ const shrink = async (uri: string, format: "jpeg" | "png") => {
   return saved.base64 ?? ""
 }
 
-const encode = async (asset: ImagePickerAsset): Promise<{ base64: string; format: ImageFormat }> => {
+type StageableImage = Pick<ImagePickerAsset, "uri" | "fileName" | "base64">
+
+const encode = async (asset: StageableImage): Promise<{ base64: string; format: ImageFormat }> => {
   if (Platform.OS === "web" && asset.base64) {
     const head = Uint8Array.from(atob(asset.base64.slice(0, 16)), (char) => char.charCodeAt(0))
     const fit = fitImage(head, base64Bytes(asset.base64))
@@ -58,7 +60,7 @@ const encode = async (asset: ImagePickerAsset): Promise<{ base64: string; format
   return { base64, format: fit.format }
 }
 
-export const imageDataUrl = async (asset: ImagePickerAsset) => {
+export const imageDataUrl = async (asset: StageableImage) => {
   const { base64, format } = await encode(asset).catch(() => {
     throw new Error(copy("mobile_composer_image_unreadable", { name: attachmentStem(asset.fileName) }))
   })
@@ -70,10 +72,10 @@ export const imageDataUrl = async (asset: ImagePickerAsset) => {
 }
 
 /**
- * Copies a picked image to the desktop, sized for the agent. An image the agent would refuse fails here, before the
- * prompt is sent, rather than failing the whole turn.
+ * Copies a picked or pasted image to the desktop, sized for the agent. An image the agent would refuse fails here,
+ * before the prompt is sent, rather than failing the whole turn.
  */
-export const stageImage = async (threadId: string, asset: ImagePickerAsset): Promise<DraftImage> => {
+export const stageImage = async (threadId: string, asset: StageableImage): Promise<DraftImage> => {
   const source = await imageDataUrl(asset)
   const attachment = await call("attachments.stage", { threadId, source })
   return { attachment, preview: asset.uri }
