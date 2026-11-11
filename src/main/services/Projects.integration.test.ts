@@ -468,6 +468,29 @@ describe("Projects.ensureGroups", () => {
     }),
   )
 
+  it.live("creates the other groups when one group's folder cannot be made", () =>
+    Effect.gen(function* () {
+      const groupsDir = join(emptyDir(), "groups")
+      mkdirSync(join(groupsDir, "g1"), { recursive: true })
+      writeFileSync(join(groupsDir, "g1", "skills"), "not a folder")
+      const published: Array<PushEvent> = []
+      const recording = Layer.succeed(Events, { publish: (event) => Effect.sync(() => void published.push(event)) })
+      const listed = yield* Projects.use((projects) =>
+        projects
+          .ensureGroups(
+            [
+              { id: "g1", name: "Broken" },
+              { id: "g2", name: "Shop" },
+            ],
+            groupsDir,
+          )
+          .pipe(Effect.andThen(projects.list)),
+      ).pipe(Effect.provide(withGitHubMock({}, recording)))
+      expect(groupRows(listed)).toStrictEqual([{ id: "g2", name: "Shop", rootPath: join(groupsDir, "g2") }])
+      expect(published).toStrictEqual([{ type: "projects.changed" }])
+    }),
+  )
+
   it.live("skips a group id that is not a single folder name", () =>
     Effect.gen(function* () {
       const base = emptyDir()
