@@ -50,6 +50,7 @@ import {
   type Gesture,
   idle,
   isDrawingTool,
+  pressInSelect,
   previewDocument,
   type Size,
   startDrawing,
@@ -96,6 +97,17 @@ interface Typing {
 const editedName = (name: string) => `${name.replace(/(-edited)?\.[^.]+$/, "")}-edited.png`
 
 const isTextField = (target: EventTarget) => target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement
+
+const typingCommand = (draft: Typing, shapes: ReadonlyArray<Shape>): Command | null => {
+  const text = draft.text.trimEnd()
+  const shape: Shape = { id: draft.id, kind: "text", at: draft.at, text, color: draft.color }
+  if (!draft.existing) return text.trim() === "" ? null : { type: "add", shape }
+  if (text.trim() === "") return { type: "remove", id: draft.id }
+  const before = shapes.find((each) => each.id === draft.id)
+  return before?.kind === "text" && before.text === text && before.color === draft.color
+    ? null
+    : { type: "update", shape }
+}
 
 const closeEditor = () => useImageEditor.getState().close()
 
@@ -160,6 +172,34 @@ function EditorShell({
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
+  )
+}
+
+function EditorActions({
+  error,
+  saving,
+  onCancel,
+  onDone,
+}: {
+  error: string | null
+  saving: boolean
+  onCancel: () => void
+  onDone: () => void
+}) {
+  return (
+    <>
+      {error !== null && (
+        <p role="alert" className="max-w-sm truncate text-xs text-red-300" title={error}>
+          {error}
+        </p>
+      )}
+      <CancelButton onClick={onCancel} />
+      <Button onClick={onDone} disabled={saving} aria-busy={saving || undefined} className="gap-2">
+        {saving && <SpinnerIcon aria-hidden className="size-3.5 animate-spin" />}
+        {m.image_editor_done()}
+        <Kbd className="bg-primary-foreground/15 text-primary-foreground">{formatForDisplay("Enter")}</Kbd>
+      </Button>
+    </>
   )
 }
 
@@ -318,20 +358,9 @@ function Editor({ request, source }: { request: EditorRequest; source: EditSourc
     if (command) setLog((current) => push(current, command))
   }
 
-  const typingCommand = (draft: Typing): Command | null => {
-    const text = draft.text.trimEnd()
-    const shape: Shape = { id: draft.id, kind: "text", at: draft.at, text, color: draft.color }
-    if (!draft.existing) return text.trim() === "" ? null : { type: "add", shape }
-    if (text.trim() === "") return { type: "remove", id: draft.id }
-    const before = edit.shapes.find((each) => each.id === draft.id)
-    return before?.kind === "text" && before.text === text && before.color === draft.color
-      ? null
-      : { type: "update", shape }
-  }
-
   const commitTyping = () => {
     if (!typing) return log
-    const command = typingCommand(typing)
+    const command = typingCommand(typing, edit.shapes)
     setTyping(null)
     if (!command) return log
     const next = push(log, command)
@@ -456,22 +485,20 @@ function Editor({ request, source }: { request: EditorRequest; source: EditSourc
     }
     if (event.button !== 0 || typing) return
     const point = pointAt(event, view)
-    const handleSlop = HANDLE_SLOP / view.scale
     event.currentTarget.setPointerCapture(event.pointerId)
     if (tool === "select") {
-      const handle = selected && handleAt(shapeHandles(selected), point, handleSlop)
-      if (selected && handle) {
-        setGesture({ kind: "resize", handle, original: selected, shape: selected })
-        return
-      }
-      const cropHandle = !selected && handleAt(rectHandles(visible), point, handleSlop)
-      if (cropHandle) {
-        setGesture({ kind: "crop", handle: cropHandle, original: visible, rect: visible, view })
-        return
-      }
-      const hit = topmostShapeAt(edit.shapes, point, HIT_SLOP / view.scale, boxOf)
-      setSelectedId(hit?.id ?? null)
-      if (hit) setGesture({ kind: "move", start: point, original: hit, shape: hit })
+      const press = pressInSelect({
+        point,
+        view,
+        selected,
+        crop: visible,
+        shapes: edit.shapes,
+        boxOf,
+        handleSlop: HANDLE_SLOP / view.scale,
+        hitSlop: HIT_SLOP / view.scale,
+      })
+      setSelectedId(press.selectedId)
+      setGesture(press.gesture)
       return
     }
     if (tool === "marker") {
@@ -529,21 +556,7 @@ function Editor({ request, source }: { request: EditorRequest; source: EditSourc
       subtitle={`${Math.round(shownCrop.width)} × ${Math.round(shownCrop.height)}`}
       onDismiss={dismiss}
       onKeyDown={onKeyDown}
-      actions={
-        <>
-          {error !== null && (
-            <p role="alert" className="max-w-sm truncate text-xs text-red-300" title={error}>
-              {error}
-            </p>
-          )}
-          <CancelButton onClick={cancel} />
-          <Button onClick={done} disabled={saving} aria-busy={saving || undefined} className="gap-2">
-            {saving && <SpinnerIcon aria-hidden className="size-3.5 animate-spin" />}
-            {m.image_editor_done()}
-            <Kbd className="bg-primary-foreground/15 text-primary-foreground">{formatForDisplay("Enter")}</Kbd>
-          </Button>
-        </>
-      }
+      actions={<EditorActions error={error} saving={saving} onCancel={cancel} onDone={done} />}
     >
       <div ref={observeStage} className="relative min-h-0 flex-1 overflow-hidden">
         <canvas

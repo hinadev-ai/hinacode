@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest"
 import { imageBounds } from "./document.ts"
-import { type DragOptions, dragTo, finish, fitView, type Gesture, startDrawing, toImage, toScreen } from "./gesture.ts"
+import {
+  type DragOptions,
+  dragTo,
+  finish,
+  fitView,
+  type Gesture,
+  pressInSelect,
+  startDrawing,
+  toImage,
+  toScreen,
+} from "./gesture.ts"
 
 const image = imageBounds(400, 300)
 const options: DragOptions = { shift: false, image, penStep: 1 }
@@ -45,5 +55,39 @@ describe("gestures", () => {
     expect(view.scale).toBeCloseTo(0.5)
     const corner = toScreen(view, { x: 400, y: 300 })
     expect(toImage(view, corner.x, corner.y)).toEqual({ x: 400, y: 300 })
+  })
+})
+
+describe("pressInSelect", () => {
+  const box = { id: "b", kind: "rect", rect: { x: 100, y: 100, width: 50, height: 50 }, color: "#ff375f" } as const
+  const press = (point: { x: number; y: number }, selected?: typeof box) => ({
+    point,
+    view: fitView(image, { width: 400, height: 300 }, 0),
+    selected,
+    crop: image,
+    shapes: [box],
+    boxOf: () => ({ x: 0, y: 0, width: 0, height: 0 }),
+    handleSlop: 6,
+    hitSlop: 4,
+  })
+
+  it("resizes from a handle of the selected shape before anything else", () => {
+    expect(pressInSelect(press({ x: 150, y: 150 }, box))).toMatchObject({
+      gesture: { kind: "resize", handle: "se" },
+      selectedId: "b",
+    })
+  })
+
+  it("crops from an image handle only when nothing is selected", () => {
+    expect(pressInSelect(press({ x: 0, y: 0 }))).toMatchObject({
+      gesture: { kind: "crop", handle: "nw" },
+      selectedId: null,
+    })
+    expect(pressInSelect(press({ x: 0, y: 0 }, box))).toEqual({ gesture: { kind: "idle" }, selectedId: null })
+  })
+
+  it("selects and moves a hit shape, and clears the selection on a miss", () => {
+    expect(pressInSelect(press({ x: 125, y: 101 }))).toMatchObject({ gesture: { kind: "move" }, selectedId: "b" })
+    expect(pressInSelect(press({ x: 300, y: 200 }))).toEqual({ gesture: { kind: "idle" }, selectedId: null })
   })
 })

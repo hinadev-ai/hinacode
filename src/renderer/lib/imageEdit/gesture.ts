@@ -1,13 +1,18 @@
 import type { Color, Command, EditDocument, Point, Rect, Shape } from "./document.ts"
 import {
+  type BoxOf,
   type Handle,
   clampPoint,
+  handleAt,
   intersectRect,
   rectFromPoints,
   resizeRect,
+  rectHandles,
   resizeShape,
+  shapeHandles,
   snapToEighth,
   squareCorner,
+  topmostShapeAt,
   translate,
 } from "./geometry.ts"
 
@@ -191,4 +196,31 @@ export const previewDocument = (document: EditDocument, gesture: Gesture, hidden
     case "crop":
       return { ...document, crop: gesture.rect, shapes: shown(document.shapes) }
   }
+}
+
+export interface SelectPress {
+  readonly point: Point
+  readonly view: View
+  readonly selected: Shape | undefined
+  readonly crop: Rect
+  readonly shapes: ReadonlyArray<Shape>
+  readonly boxOf: BoxOf
+  readonly handleSlop: number
+  readonly hitSlop: number
+}
+
+export const pressInSelect = (
+  press: SelectPress,
+): { readonly gesture: Gesture; readonly selectedId: string | null } => {
+  const { point, view, selected, crop } = press
+  const handle = selected && handleAt(shapeHandles(selected), point, press.handleSlop)
+  if (selected && handle) {
+    return { gesture: { kind: "resize", handle, original: selected, shape: selected }, selectedId: selected.id }
+  }
+  const cropHandle = !selected && handleAt(rectHandles(crop), point, press.handleSlop)
+  if (cropHandle)
+    return { gesture: { kind: "crop", handle: cropHandle, original: crop, rect: crop, view }, selectedId: null }
+  const hit = topmostShapeAt(press.shapes, point, press.hitSlop, press.boxOf)
+  if (!hit) return { gesture: idle, selectedId: null }
+  return { gesture: { kind: "move", start: point, original: hit, shape: hit }, selectedId: hit.id }
 }
