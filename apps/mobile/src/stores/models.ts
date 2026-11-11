@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { Atom } from "effect/reactivity"
+import { AsyncResult, Atom } from "effect/reactivity"
 import { create } from "zustand"
 import type { ModelInfo, ProviderId } from "@shared/agent.ts"
 import { call } from "@/lib/connection"
@@ -54,5 +54,7 @@ const loadAtom = familyOf((server: string | null, provider: ProviderId, force: b
 export const modelsLoadAtom = (server: string | undefined, provider: ProviderId) =>
   loadAtom(server ?? null, provider, false)
 
-export const modelsRelistAtom = (server: string | undefined, provider: ProviderId) =>
-  loadAtom(server ?? null, provider, true)
+const closedSheetAtom: Atom.Atom<AsyncResult.AsyncResult<void, unknown>> = Atom.make(AsyncResult.initial())
+
+export const modelsSheetAtom = (server: string | undefined, provider: ProviderId, open: boolean) =>
+  open ? loadAtom(server ?? null, provider, true) : closedSheetAtom
