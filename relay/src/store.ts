@@ -100,11 +100,15 @@ const makeStore = Effect.gen(function* () {
       `.pipe(Effect.map((rows) => rows[0]?.count ?? 0)),
     linkHost: (
       host: Pick<Host, "id" | "userId" | "environmentId" | "name" | "createdAt"> & { credentialHash: string },
+      maxHosts: number,
     ) =>
       sql`
-        INSERT INTO host ${sql.insert(host)}
+        INSERT INTO host (id, user_id, environment_id, name, credential_hash, created_at)
+        SELECT ${host.id}, ${host.userId}, ${host.environmentId}, ${host.name}, ${host.credentialHash}, ${host.createdAt}
+        WHERE (SELECT COUNT(*) FROM host WHERE user_id = ${host.userId} AND environment_id != ${host.environmentId}) < ${maxHosts}
         ON CONFLICT (user_id, environment_id) DO UPDATE SET name = excluded.name, credential_hash = excluded.credential_hash
-      `.pipe(Effect.asVoid),
+        RETURNING id
+      `.pipe(Effect.map((rows) => rows.length > 0)),
     setTunnel: (id: string, tunnelId: string) =>
       sql`UPDATE host SET tunnel_id = ${tunnelId} WHERE id = ${id}`.pipe(Effect.asVoid),
     setDnsRecord: (id: string, dnsRecordId: string | null) =>
