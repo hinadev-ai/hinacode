@@ -48,7 +48,7 @@ Every coordinate is in source image pixels, so the log does not depend on the wi
 
 `drawDocument(ctx, source, document)` draws the image, the redactions, then the shapes. The screen canvas calls it with a fit transform and the export calls it at full resolution, so the preview and the result cannot drift.
 
-Redaction replaces pixels. It downsamples the region into blocks and shuffles them with a generator seeded by the shape id, so the export holds no recoverable source pixels, and the mosaic does not flicker between frames.
+Redaction paints an opaque block over whole pixels, so the export keeps nothing of what was under it. A mosaic was tried first, but on a screenshot most blocks take the background color and the region reads as empty space, which tells neither the developer nor the agent that something was hidden.
 
 ### Rendering cost
 

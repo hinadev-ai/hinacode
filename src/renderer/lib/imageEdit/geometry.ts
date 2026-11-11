@@ -176,3 +176,28 @@ export const hitsShape = (shape: Shape, point: Point, slop: number, boxOf: BoxOf
 
 export const topmostShapeAt = (shapes: ReadonlyArray<Shape>, point: Point, slop: number, boxOf: BoxOf) =>
   shapes.findLast((shape) => hitsShape(shape, point, slop, boxOf))
+
+const boundsOfPoints = (points: ReadonlyArray<Point>): Rect => {
+  const xs = points.map((point) => point.x)
+  const ys = points.map((point) => point.y)
+  return rectFromPoints({ x: Math.min(...xs), y: Math.min(...ys) }, { x: Math.max(...xs), y: Math.max(...ys) })
+}
+
+export const shapeBounds = (shape: Shape, boxOf: BoxOf): Rect => {
+  switch (shape.kind) {
+    case "arrow":
+      return rectFromPoints(shape.from, shape.to)
+    case "pen":
+      return boundsOfPoints(shape.points)
+    case "rect":
+    case "ellipse":
+    case "redact":
+      return shape.rect
+    case "text":
+    case "marker":
+      return boxOf(shape)
+  }
+}
+
+export const handleAt = (handles: ReadonlyArray<readonly [Handle, Point]>, point: Point, slop: number) =>
+  handles.find(([, at]) => Math.abs(at.x - point.x) <= slop && Math.abs(at.y - point.y) <= slop)?.[0]

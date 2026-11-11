@@ -26,15 +26,22 @@ const pixelsOf = async (image: ImageBitmapSource, width: number, height: number)
 const documentOf = (...commands: ReadonlyArray<Command>) => replay(commands.reduce(push, emptyLog))
 
 describe("exportDocument", () => {
-  it("leaves no source pixel in place under a redaction", async () => {
+  it("covers a redaction with an opaque block that keeps no source pixel", async () => {
     const source = await noise(200, 100)
-    const document = documentOf({ type: "add", shape: { id: "r", kind: "redact", rect: { x: 0, y: 0, width: 200, height: 100 } } })
+    const document = documentOf({
+      type: "add",
+      shape: { id: "r", kind: "redact", rect: { x: 0, y: 0, width: 200, height: 100 } },
+    })
     const blob = await exportDocument(source, document, Number.POSITIVE_INFINITY)
     const before = await pixelsOf(source.image, 200, 100)
     const after = await pixelsOf(blob, 200, 100)
     let unchanged = 0
     for (let index = 0; index < before.length; index += 4) {
-      if (before[index] === after[index] && before[index + 1] === after[index + 1] && before[index + 2] === after[index + 2])
+      if (
+        before[index] === after[index] &&
+        before[index + 1] === after[index + 1] &&
+        before[index + 2] === after[index + 2]
+      )
         unchanged++
     }
     expect(unchanged / (200 * 100)).toBeLessThan(0.01)
@@ -48,7 +55,7 @@ describe("exportDocument", () => {
     const sourcePixels = await pixelsOf(source.image, 120, 80)
     const exported = await pixelsOf(bitmap, 30, 40)
     const at = (20 * 120 + 10) * 4
-    expect([...exported.slice(0, 3)]).toEqual([...sourcePixels.slice(at, at + 3)])
+    expect(exported.slice(0, 3)).toEqual(sourcePixels.slice(at, at + 3))
   })
 
   it("scales down until the PNG fits the byte budget", async () => {

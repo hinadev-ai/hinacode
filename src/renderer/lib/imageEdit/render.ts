@@ -15,9 +15,14 @@ type MarkerShape = Extract<Shape, { kind: "marker" }>
 export const annotationUnit = (source: Pick<EditSource, "width" | "height">) =>
   Math.max(1, Math.max(source.width, source.height) / 800)
 
-const FONT_FAMILY = "ui-sans-serif, system-ui, sans-serif"
+export const FONT_FAMILY = "ui-sans-serif, system-ui, sans-serif"
 
 const inkOn = (color: Color) => (color === "#ffffff" || color === "#ffd60a" ? "#000000" : "#ffffff")
+
+export const textPill = (color: Color) => ({
+  background: color === "#ffffff" ? "#1c1c1e" : "#fffdf5",
+  ink: color === "#ffd60a" ? "#1c1c1e" : color,
+})
 
 export interface TextLayout {
   readonly box: Rect
@@ -50,55 +55,13 @@ export const markerBox = (shape: Pick<MarkerShape, "at">, unit: number): Rect =>
   return { x: shape.at.x - radius, y: shape.at.y - radius, width: radius * 2, height: radius * 2 }
 }
 
-const mulberry32 = (seed: number) => () => {
-  seed = (seed + 0x6d2b79f5) | 0
-  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
-  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-}
+const REDACTION_COLOR = "#1c1c1e"
 
-const hash = (text: string) => {
-  let value = 2166136261
-  for (let index = 0; index < text.length; index++) value = Math.imul(value ^ text.charCodeAt(index), 16777619)
-  return value
-}
-
-const mosaics = new WeakMap<CanvasImageSource, Map<string, OffscreenCanvas>>()
-
-const mosaicFor = (source: EditSource, rect: Rect, seed: string, unit: number) => {
-  const block = Math.max(6, Math.round(8 * unit))
-  const key = `${seed}:${rect.x},${rect.y},${rect.width},${rect.height}:${block}`
-  const cache = mosaics.get(source.image) ?? new Map<string, OffscreenCanvas>()
-  mosaics.set(source.image, cache)
-  const cached = cache.get(key)
-  if (cached) return cached
-  const columns = Math.max(1, Math.ceil(rect.width / block))
-  const rows = Math.max(1, Math.ceil(rect.height / block))
-  const blocks = new OffscreenCanvas(columns, rows)
-  const ctx = blocks.getContext("2d", { willReadFrequently: true })!
-  ctx.drawImage(source.image, rect.x, rect.y, rect.width, rect.height, 0, 0, columns, rows)
-  const pixels = ctx.getImageData(0, 0, columns, rows)
-  const cells = new Uint32Array(pixels.data.buffer)
-  const random = mulberry32(hash(seed))
-  for (let index = cells.length - 1; index > 0; index--) {
-    const other = Math.floor(random() * (index + 1))
-    const swap = cells[index]!
-    cells[index] = cells[other]!
-    cells[other] = swap
-  }
-  ctx.putImageData(pixels, 0, 0)
-  if (cache.size > 64) cache.clear()
-  cache.set(key, blocks)
-  return blocks
-}
-
-const drawRedaction = (ctx: Context, source: EditSource, shape: Extract<Shape, { kind: "redact" }>, unit: number) => {
+const drawRedaction = (ctx: Context, source: EditSource, shape: Extract<Shape, { kind: "redact" }>) => {
   const area = intersectRect(roundRect(shape.rect), { x: 0, y: 0, width: source.width, height: source.height })
   if (area.width < 1 || area.height < 1) return
-  ctx.save()
-  ctx.imageSmoothingEnabled = false
-  ctx.drawImage(mosaicFor(source, area, shape.id, unit), area.x, area.y, area.width, area.height)
-  ctx.restore()
+  ctx.fillStyle = REDACTION_COLOR
+  ctx.fillRect(area.x, area.y, area.width, area.height)
 }
 
 const roundRect = (rect: Rect): Rect => {
@@ -145,12 +108,13 @@ const drawPen = (ctx: Context, points: ReadonlyArray<Point>) => {
 const drawText = (ctx: Context, shape: TextShape, unit: number) => {
   const layout = layoutText(ctx, shape, unit)
   const { box, padding, lineHeight, fontSize } = layout
-  ctx.fillStyle = shape.color === "#ffffff" ? "#1c1c1e" : "#fffdf5"
+  const pill = textPill(shape.color)
+  ctx.fillStyle = pill.background
   ctx.beginPath()
   ctx.roundRect(box.x, box.y, box.width, box.height, Math.min(box.height / 2, fontSize))
   ctx.fill()
   ctx.shadowColor = "transparent"
-  ctx.fillStyle = shape.color === "#ffd60a" ? "#1c1c1e" : shape.color
+  ctx.fillStyle = pill.ink
   ctx.textBaseline = "middle"
   layout.lines.forEach((line, index) => {
     ctx.fillText(line, box.x + padding, box.y + padding / 2 + lineHeight * (index + 0.5))
@@ -230,7 +194,7 @@ export const drawDocument = (ctx: Context, source: EditSource, document: EditDoc
     ctx.rect(clip.x, clip.y, clip.width, clip.height)
     ctx.clip()
   }
-  for (const shape of document.shapes) if (shape.kind === "redact") drawRedaction(ctx, source, shape, unit)
+  for (const shape of document.shapes) if (shape.kind === "redact") drawRedaction(ctx, source, shape)
   for (const shape of document.shapes) drawShape(ctx, shape, document.shapes, unit)
   ctx.restore()
 }
