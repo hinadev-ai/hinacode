@@ -456,6 +456,18 @@ describe("Projects.ensureGroups", () => {
     }),
   )
 
+  it.live("announces a group project only when it is new or renamed", () =>
+    Effect.gen(function* () {
+      const groupsDir = join(emptyDir(), "groups")
+      const published: Array<PushEvent> = []
+      const recording = Layer.succeed(Events, { publish: (event) => Effect.sync(() => void published.push(event)) })
+      yield* Projects.use((projects) =>
+        Effect.forEach(["Shop", "Shop", "Store"], (name) => projects.ensureGroups([{ id: "g1", name }], groupsDir)),
+      ).pipe(Effect.provide(withGitHubMock({}, recording)))
+      expect(published).toStrictEqual([{ type: "projects.changed" }, { type: "projects.changed" }])
+    }),
+  )
+
   it.live("skips a group id that is not a single folder name", () =>
     Effect.gen(function* () {
       const base = emptyDir()
