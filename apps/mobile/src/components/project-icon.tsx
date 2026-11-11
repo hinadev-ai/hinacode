@@ -1,27 +1,19 @@
-import { useEffect, useState } from "react"
+import { useAtomValue } from "@effect/atom-react"
+import { useState } from "react"
 import { Image, Platform } from "react-native"
 import { SvgXml } from "react-native-svg"
-import { create } from "zustand"
+import { Atom, AsyncResult } from "effect/reactivity"
 import { Icon } from "@/components/icon"
 import { useTheme } from "@/hooks/use-theme"
-import { call } from "@/lib/connection"
+import { familyOf, rpcFamily } from "@/lib/remote"
+
+const projectIconRead = rpcFamily("projects.icon")
 
 /** Favicon data URLs by project id, null when the project has none. Every row of a project shares one read. */
-const useProjectIcons = create<Readonly<Record<string, string | null>>>()(() => ({}))
-const requested = new Set<string>()
+const projectIcon = familyOf((projectId: string) => Atom.keepAlive(projectIconRead({ id: projectId })))
 
-function useProjectIcon(projectId: string): string | null {
-  const icon = useProjectIcons((icons) => icons[projectId] ?? null)
-  useEffect(() => {
-    if (requested.has(projectId)) return
-    requested.add(projectId)
-    call("projects.icon", { id: projectId }).then(
-      (found) => useProjectIcons.setState({ [projectId]: found }),
-      () => requested.delete(projectId),
-    )
-  }, [projectId])
-  return icon
-}
+const useProjectIcon = (projectId: string): string | null =>
+  AsyncResult.getOrElse(useAtomValue(projectIcon(projectId)), () => null)
 
 /** The project's own favicon, or a folder when it has none, as on the desktop. */
 export function ProjectIcon({ projectId, size }: { projectId: string; size: number }) {
