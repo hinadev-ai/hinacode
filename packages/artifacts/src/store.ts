@@ -418,7 +418,13 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
       if (artifact.version === missingVersion) return null
       try {
         const bytes = await readFile(join(root, id, String(artifact.version), listed.path))
-        return { bytes, type: listed.type, version: artifact.version, revision: artifact.revision, kind: artifact.kind }
+        return {
+          bytes,
+          type: contentType(listed.path),
+          version: artifact.version,
+          revision: artifact.revision,
+          kind: artifact.kind,
+        }
       } catch (error) {
         if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") return null
         missingVersion = artifact.version
