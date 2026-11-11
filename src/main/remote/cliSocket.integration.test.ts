@@ -212,6 +212,30 @@ test("a cloud event reaches the socket", async () => {
   client.socket.close()
 })
 
+test("a sub-agent's calls never reach the compact socket", async () => {
+  const client = cli(socketPath)
+  await client.ready()
+  const events = [
+    { type: "tool_call_started", callId: "agent", name: "Agent", input: { description: "Explore" } },
+    { type: "tool_call_started", callId: "read", name: "Read", input: { file_path: "a.ts" }, parentCallId: "agent" },
+    { type: "tool_call_finished", callId: "read", output: "x", isError: false },
+    { type: "tool_call_finished", callId: "agent", output: "found it", isError: false },
+  ] as const
+  for (const [seq, event] of events.entries())
+    await desktop.runPromise(
+      Events.use((bus) => bus.publish({ type: "thread.event", seq, threadId: "subagent-thread", event })),
+    )
+  await desktop.runPromise(Events.use((bus) => bus.publish({ type: "thread.removed", id: "subagent-marker" })))
+  await client.event((event) => event.type === "thread.removed" && event.id === "subagent-marker")
+  const callIds = client.frames.flatMap((frame) =>
+    frame.type === "event" && frame.event.type === "thread.event" && "callId" in frame.event.event
+      ? [frame.event.event.callId]
+      : [],
+  )
+  expect(callIds).toStrictEqual(["agent", "agent"])
+  client.socket.close()
+})
+
 test("revealing a cloud thread reaches the desktop's windows", async () => {
   const client = cli(socketPath)
   await client.ready()
