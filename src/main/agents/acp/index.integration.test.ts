@@ -84,6 +84,8 @@ const logged = (logPath: string, method: string, times = 1) =>
     return Effect.sync(() => watcher.close())
   })
 
+const ids = (models: ReadonlyArray<{ readonly id: string }>) => models.map((model) => model.id)
+
 const input = (fields: Partial<RunTurnInput> = {}): RunTurnInput => ({
   threadId: "t1",
   prompt: "hello",
@@ -368,7 +370,6 @@ describe("makeAcpProvider", () => {
       const { provider: make, received } = setup({ FAKE_ACP_MODELS: "after-first-session" })
       const provider = yield* make
       const probes = () => received().filter((message) => message.method === "session/new").length
-      const ids = (models: ReadonlyArray<{ readonly id: string }>) => models.map((model) => model.id)
 
       expect(yield* provider.listModels).toStrictEqual([])
       const [first, second] = yield* Effect.all([provider.listModels, provider.listModels], { concurrency: 2 })
@@ -393,6 +394,40 @@ describe("makeAcpProvider", () => {
       yield* TestClock.adjust("11 minutes")
       expect(yield* provider.listModels).toStrictEqual(models)
       yield* logged(logPath, "session/new", 2)
+    }).pipe(Effect.scoped),
+  )
+
+  it.effect("replaces the last models with the list a background probe brings back", () =>
+    Effect.gen(function* () {
+      const { provider: make, logPath } = setup({ FAKE_ACP_MODELS: "new-after-first-session" })
+      const provider = yield* make
+      expect(ids(yield* provider.listModels)).toStrictEqual(["fake/default", "fake/other"])
+
+      yield* TestClock.adjust("11 minutes")
+      expect(ids(yield* provider.listModels)).toStrictEqual(["fake/default", "fake/other"])
+      yield* logged(logPath, "session/new", 2)
+      const refreshed = yield* provider.listModels.pipe(
+        Effect.tap(() => Effect.yieldNow),
+        Effect.repeat({ until: (models) => models.length === 3 }),
+      )
+      expect(ids(refreshed)).toStrictEqual(["fake/default", "fake/other", "fake/new"])
+    }).pipe(Effect.scoped),
+  )
+
+  it.effect("drops the last models once a background probe finds the agent signed out", () =>
+    Effect.gen(function* () {
+      const { provider: make } = setup({ FAKE_ACP_AUTH: "after-first-session" })
+      const provider = yield* make
+      const models = yield* provider.listModels
+
+      yield* TestClock.adjust("11 minutes")
+      expect(yield* provider.listModels).toStrictEqual(models)
+      const error = yield* provider.listModels.pipe(
+        Effect.tap(() => Effect.yieldNow),
+        Effect.forever,
+        Effect.flip,
+      )
+      expect(error.message).toBe("opencode is not signed in")
     }).pipe(Effect.scoped),
   )
 

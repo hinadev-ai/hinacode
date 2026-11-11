@@ -15,7 +15,9 @@ const logPath = process.env["FAKE_ACP_LOG"]
 const legacyModels = process.env["FAKE_ACP_MODELS"] === "legacy"
 const signedInAfterFirstSession = process.env["FAKE_ACP_MODELS"] === "after-first-session"
 const stallAfterFirstSession = process.env["FAKE_ACP_MODELS"] === "stall-after-first-session"
+const newModelAfterFirstSession = process.env["FAKE_ACP_MODELS"] === "new-after-first-session"
 const authRequired = process.env["FAKE_ACP_AUTH"] === "required"
+const signedOutAfterFirstSession = process.env["FAKE_ACP_AUTH"] === "after-first-session"
 const silentInitialize = process.env["FAKE_ACP_SILENT_INITIALIZE"] === "1"
 const lifeline = process.env["FAKE_ACP_LIFELINE"]
 if (lifeline !== undefined) connect(lifeline).on("error", () => {})
@@ -58,6 +60,7 @@ const configFor = (sessionId: string) => {
       options: [
         { value: "fake/other", name: "Fake Other" },
         { value: "fake/default", name: "Fake Default" },
+        ...(newModelAfterFirstSession && sessionId !== "ses_1" ? [{ value: "fake/new", name: "Fake New" }] : []),
       ],
     },
     ...(levels === undefined
@@ -244,7 +247,7 @@ const handle = (message: Message) => {
         },
       })
     case "session/new": {
-      if (authRequired) {
+      if (authRequired || (signedOutAfterFirstSession && createdSessions() > 1)) {
         return send({
           id: message.id,
           error: {
