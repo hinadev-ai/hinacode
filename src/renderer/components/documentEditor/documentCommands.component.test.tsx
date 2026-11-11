@@ -3,6 +3,7 @@ import type { Node } from "@tiptap/pm/model"
 import { TextSelection } from "@tiptap/pm/state"
 import { expect, test } from "vitest"
 import { createDocumentEngine, type StructuralKey } from "../../../../packages/document-view/src/engine.ts"
+import { createDocumentSession } from "../../../../packages/document-view/src/session.ts"
 import { parseDocument } from "../../../shared/document/parse.ts"
 import { documentExtensions, documentMarkdown } from "../../../shared/document/schema.ts"
 
@@ -239,4 +240,44 @@ test("undo after typing and Enter returns to the desktop's document, and redo re
   expect(onPhone(undone)).toEqual(onDesktop(undone))
   expect(onPhone(undone).json).toEqual(onPhone({ ...typed, steps: [] }).json)
   expect(onPhone(redone)).toEqual(onDesktop(redone))
+})
+
+const pasteOnDesktop = (markdown: string, at: string, text: string) => {
+  const editor = new Editor({
+    extensions: [...documentExtensions(), documentMarkdown()],
+    content: markdown,
+    contentType: "markdown",
+    enableInputRules: false,
+  })
+  select(editor, { name: "paste", markdown, at, steps: [] })
+  editor.view.pasteText(text)
+  const result = { json: editor.getJSON(), markdown: editor.getMarkdown() }
+  editor.destroy()
+  return result
+}
+
+const pasteOnPhone = (markdown: string, at: string, text: string) => {
+  const session = createDocumentSession({ send: () => {}, schedule: (run) => run(), now: () => 0 })
+  session.load(markdown)
+  const offset = positionAfter(session.editor.state.doc, at)
+  const block = session.sources.findLastIndex((source) => source.pos < offset)
+  const inBlock = offset - session.sources[block]!.pos - 1
+  session.edit({ eventCount: 1, block, cell: null, from: inBlock, to: inBlock, text })
+  return { json: session.editor.getJSON(), markdown: session.editor.getMarkdown() }
+}
+
+test.each([
+  { name: "two lines into a paragraph", markdown: "Before after", at: "Before", text: "one\ntwo" },
+  { name: "blank-line separated paragraphs", markdown: "Start end", at: "Start", text: "first\n\nsecond\r\nthird" },
+  { name: "lines into a list item", markdown: "- item here\n- next", at: "item", text: "alpha\nbeta" },
+  {
+    name: "lines into a code block",
+    markdown: "```ts\nconst a = 1\n```",
+    at: "const a",
+    text: "\nlet b = 2\nlet c = 3",
+  },
+  { name: "an ordered list into a paragraph", markdown: "Intro", at: "Intro", text: "1. first\n2. second" },
+  { name: "Japanese lines into a heading", markdown: "## 見出し", at: "見出し", text: "一行目\n二行目" },
+])("pasting $name gives the desktop's document", ({ markdown, at, text }) => {
+  expect(pasteOnPhone(markdown, at, text)).toEqual(pasteOnDesktop(markdown, at, text))
 })
