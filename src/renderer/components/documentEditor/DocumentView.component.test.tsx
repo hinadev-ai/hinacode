@@ -50,6 +50,7 @@ const documentAt = (version: number, revision = version): Artifact => ({
 
 let stored = { version: 1, revision: 1, markdown: AGENT_MARKDOWN }
 let nextSave: DocumentSaveResult | undefined
+let saveError: string | undefined
 let saveReleased: Promise<void> = Promise.resolve()
 let saves: Array<{ baseRevision: number; markdown: string }> = []
 let storedImages: Array<string> = []
@@ -76,6 +77,7 @@ const bridge: HinacodeBridge = {
       const save = payload as { baseRevision: number; markdown: string }
       await saveReleased
       saves.push(save)
+      if (saveError !== undefined) return { error: { tag: "SaveFailed", message: saveError } }
       if (nextSave !== undefined) return { result: nextSave }
       stored = { version: 2, revision: stored.revision + 1, markdown: save.markdown }
       return { result: { type: "saved", version: stored.version, revision: stored.revision } }
@@ -152,6 +154,7 @@ beforeEach(({ task }) => {
   renames = []
   stored = { version: 1, revision: 1, markdown: AGENT_MARKDOWN }
   nextSave = undefined
+  saveError = undefined
   saveReleased = Promise.resolve()
   saves = []
   storedImages = []
@@ -470,6 +473,17 @@ test("does not ask the agent to read a document whose edits did not save", async
 
   await expect.element(page.getByRole("button", { name: "Keep mine" })).toBeVisible()
   expect(saves).toHaveLength(1)
+  expect(useDrafts.getState().byThreadId[thread.id]?.text ?? "").toBe("")
+})
+
+test("does not ask the agent to read a document whose save failed", async () => {
+  useDrafts.getState().setText(thread.id, "")
+  await openDocument()
+  saveError = "Disk full"
+  await typeAtEnd(" Mine.")
+  await page.getByRole("button", { name: "Ask agent" }).click()
+
+  await expect.element(page.getByRole("alert").filter({ hasText: "Disk full" })).toBeVisible()
   expect(useDrafts.getState().byThreadId[thread.id]?.text ?? "").toBe("")
 })
 
