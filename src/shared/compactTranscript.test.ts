@@ -147,6 +147,21 @@ const fold = (agentEvents: ReadonlyArray<AgentEvent>) =>
 const calls = (folded: Message) =>
   folded.parts.flatMap((part) => (part.type === "tool_call" ? [{ callId: part.callId, input: part.input }] : []))
 
+const childStarted = (threadId: string) =>
+  ({
+    type: "thread.event",
+    seq: 0,
+    threadId,
+    event: { type: "tool_call_started", callId: "c", name: "Read", input: {}, parentCallId: "agent" },
+  }) as const
+const finishedIn = (threadId: string) =>
+  ({
+    type: "thread.event",
+    seq: 1,
+    threadId,
+    event: { type: "tool_call_finished", callId: "c", output: "", isError: false },
+  }) as const
+
 describe("a compact transcript", () => {
   const events: ReadonlyArray<AgentEvent> = [
     { type: "tool_call_started", callId: "agent", name: "Agent", input: { description: "Explore" } },
@@ -170,6 +185,27 @@ describe("a compact transcript", () => {
 
   test("sends the phone nothing about a sub-agent's calls", () => {
     expect(live.filter((event) => "callId" in event && event.callId === "read")).toStrictEqual([])
+  })
+
+  test("drops a sub-agent's finished call only in the thread it started in", () => {
+    const compact = compactPushes()
+    compact(childStarted("a"))
+    expect(compact(finishedIn("b"))).not.toBeNull()
+    expect(compact(finishedIn("a"))).toBeNull()
+  })
+
+  test("forgets a thread's sub-agent calls when its turn ends", () => {
+    const turnEnds: ReadonlyArray<AgentEvent> = [
+      { type: "turn_completed" },
+      { type: "turn_failed", message: "boom" },
+      { type: "turn_limited", limit: { kind: "usage", message: "limit hit", reset: null } },
+    ]
+    for (const turnEnd of turnEnds) {
+      const compact = compactPushes()
+      compact(childStarted("a"))
+      compact({ type: "thread.event", seq: 2, threadId: "a", event: turnEnd })
+      expect(compact(finishedIn("a"))).not.toBeNull()
+    }
   })
 })
 

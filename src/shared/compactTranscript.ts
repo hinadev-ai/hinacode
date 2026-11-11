@@ -85,27 +85,32 @@ const compactParts = (parts: ReadonlyArray<MessagePart>) =>
   parts.filter((part) => part.type !== "tool_call" || part.parentCallId === undefined).map(compactPart)
 
 export function compactPushes() {
-  const subagentCallIds = new Set<string>()
+  const subagentCallIdsByThread = new Map<string, Set<string>>()
   return (push: typeof PushEvent.Encoded): typeof PushEvent.Encoded | null => {
     if (push.type === "message.created" || push.type === "message.updated")
       return { ...push, message: { ...push.message, parts: compactParts(push.message.parts) } }
     if (push.type !== "thread.event") return push
-    const { event } = push
+    const { event, threadId } = push
     switch (event.type) {
       case "tool_call_started":
         if (event.parentCallId !== undefined) {
-          subagentCallIds.add(event.callId)
+          subagentCallIdsByThread.set(threadId, (subagentCallIdsByThread.get(threadId) ?? new Set()).add(event.callId))
           return null
         }
         return { ...push, event: { ...event, input: compactInput(event.name, event.input) } }
       case "tool_call_finished": {
-        if (subagentCallIds.delete(event.callId)) return null
+        if (subagentCallIdsByThread.get(threadId)?.delete(event.callId)) return null
         const { fullOutputBytes: _fullOutputBytes, ...rest } = event
         if (createdTaskId(event.output) !== null) return { ...push, event: rest }
         return { ...push, event: { ...rest, output: (!event.isError && firstLineOfPublished(event.output)) || "" } }
       }
       case "file_changed":
         return { ...push, event: { ...event, diff: "" } }
+      case "turn_completed":
+      case "turn_failed":
+      case "turn_limited":
+        subagentCallIdsByThread.delete(threadId)
+        return push
       default:
         return push
     }
