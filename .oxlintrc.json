@@ -150,13 +150,26 @@
       }
     },
     {
-      "files": ["src/**/*.test.ts", "src/**/fakeAppServer.mjs", "e2e/**", "apps/web/e2e/**", "apps/mobile/src/**/*.test.ts"],
+      "files": [
+        "src/**/*.test.ts",
+        "src/**/fakeAppServer.mjs",
+        "e2e/**",
+        "apps/web/e2e/**",
+        "apps/mobile/src/**/*.test.ts"
+      ],
       "rules": {
         "hinacode/no-wall-clock-in-test": "error"
       }
     }
   ],
-  "ignorePatterns": ["out/**", "src/renderer/paraglide/**", "e2e/.features-gen/**", "apps/mobile/android/**", "apps/mobile/ios/**", "apps/mobile/dist/**"],
+  "ignorePatterns": [
+    "out/**",
+    "src/renderer/paraglide/**",
+    "e2e/.features-gen/**",
+    "apps/mobile/android/**",
+    "apps/mobile/ios/**",
+    "apps/mobile/dist/**"
+  ],
   "settings": {
     "tailwindcss": {
       "entryPoint": "src/renderer/index.css"
