@@ -21,7 +21,7 @@ A developer who works on several related repositories, such as a web app, its AP
 
 **Reconcile.** `Projects.ensureGroups(groups)` upserts one `group` project per group and creates its folder, `AGENTS.md` and `skills/` when missing. It never overwrites a file. Startup and `clientSettings.set` call it, so groups made before this change get their project on first launch. It never deletes: Delete group calls `projects.remove` on the group project after the renderer confirms.
 
-**Membership in main.** A project's group is `groupOf[project.repository] ?? groupOf[project.id]`, the same row key the sidebar uses. A `group` project belongs to itself.
+**Membership in main.** A project's group is `groupOf[rowKey]`, where `rowKey` comes from `groupProjects` over the local projects, the same calculation the sidebar uses. The first clone of a repository is keyed by its repository and any other local clone by its id. A `group` project belongs to itself.
 
 **Instructions.** `agentInstructions` gains a `<group>` block for any thread whose project has a group. It carries the group's `AGENTS.md` and one line per skill with its name, description and the absolute path of its `SKILL.md`, read from the frontmatter of `skills/*/SKILL.md`. All four providers already take the instructions string, so one block reaches every provider. A conductor thread's block also lists each member project with its id, name, root path and repository.
 

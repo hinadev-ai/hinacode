@@ -25,25 +25,6 @@ const sidebarGroups = {
   groupOf: { "o/web": "g1", p2: "g1", p3: "gone" },
 }
 
-describe("projectGroup", () => {
-  it("finds a project's group by its repository", () => {
-    expect(projectGroup({ id: "p1", kind: "folder", repository: "o/web" }, sidebarGroups)?.name).toBe("Shop")
-  })
-
-  it("finds a project's group by its id", () => {
-    expect(projectGroup({ id: "p2", kind: "folder", repository: "o/api" }, sidebarGroups)?.name).toBe("Shop")
-  })
-
-  it("puts a group project in its own group", () => {
-    expect(projectGroup({ id: "g1", kind: "group" }, sidebarGroups)?.name).toBe("Shop")
-  })
-
-  it("ignores a group that no longer exists and an ungrouped project", () => {
-    expect(projectGroup({ id: "p3", kind: "folder" }, sidebarGroups)).toBeNull()
-    expect(projectGroup({ id: "p4", kind: "folder", repository: "o/cli" }, sidebarGroups)).toBeNull()
-  })
-})
-
 const project = (id: string, kind: Project["kind"], repository?: string): Project => ({
   id,
   name: id,
@@ -55,6 +36,32 @@ const project = (id: string, kind: Project["kind"], repository?: string): Projec
   kind,
   actions: [],
   ...(repository === undefined ? {} : { repository }),
+})
+
+describe("projectGroup", () => {
+  const projects = [
+    project("p1", "folder", "o/web"),
+    project("p2", "folder"),
+    project("p3", "folder"),
+    project("p4", "folder", "o/cli"),
+  ]
+
+  it("finds a project's group by its repository", () => {
+    expect(projectGroup(projects[0]!, projects, sidebarGroups)?.name).toBe("Shop")
+  })
+
+  it("finds a project's group by its id", () => {
+    expect(projectGroup(projects[1]!, projects, sidebarGroups)?.name).toBe("Shop")
+  })
+
+  it("puts a group project in its own group", () => {
+    expect(projectGroup(project("g1", "group"), projects, sidebarGroups)?.name).toBe("Shop")
+  })
+
+  it("ignores a group that no longer exists and an ungrouped project", () => {
+    expect(projectGroup(projects[2]!, projects, sidebarGroups)).toBeNull()
+    expect(projectGroup(projects[3]!, projects, sidebarGroups)).toBeNull()
+  })
 })
 
 describe("groupMembers", () => {
