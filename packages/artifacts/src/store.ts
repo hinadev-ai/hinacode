@@ -109,6 +109,7 @@ export type CommentInput = {
   author: CommentAuthor
   body: string
   resolve?: boolean
+  undelivered?: true
 }
 
 export type ArtifactFileContent = {
@@ -131,6 +132,7 @@ export type ArtifactStore = {
   feedback(id: string): Promise<ArtifactFeedback | null>
   comment(id: string, input: CommentInput): Promise<{ feedback: ArtifactFeedback; comment: ArtifactComment }>
   resolveComment(id: string, comment: string, resolved: boolean): Promise<ArtifactFeedback>
+  markDelivered(id: string, message: string): Promise<ArtifactFeedback>
 }
 
 const ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -526,7 +528,15 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     updateFeedback(id, (current, artifact, timestamp) => {
       const body = input.body.trim()
       const message: CommentMessage | null =
-        body === "" ? null : { id: shortId("m"), author: input.author, body, createdAt: timestamp }
+        body === ""
+          ? null
+          : {
+              id: shortId("m"),
+              author: input.author,
+              body,
+              createdAt: timestamp,
+              ...(input.undelivered && { undelivered: true }),
+            }
       if (input.comment === undefined) {
         if (message === null) throw new ArtifactError("A comment needs a body.")
         return withComment(current, {
@@ -563,6 +573,21 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
       return { feedback: updated, result: updated }
     })
 
+  const markDelivered = (id: string, messageId: string) =>
+    updateFeedback(id, (current) => {
+      const delivered = (message: CommentMessage): CommentMessage => {
+        if (message.id !== messageId) return message
+        const { undelivered: _, ...rest } = message
+        return rest
+      }
+      const comments = current.comments.map(({ messages: [first, ...rest], ...comment }) => ({
+        ...comment,
+        messages: [delivered(first), ...rest.map(delivered)] satisfies ArtifactComment["messages"],
+      }))
+      const feedback = { ...current, comments }
+      return { feedback, result: feedback }
+    })
+
   return {
     root,
     publish,
@@ -575,5 +600,6 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     feedback,
     comment,
     resolveComment,
+    markDelivered,
   }
 }

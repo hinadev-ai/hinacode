@@ -23,6 +23,7 @@ export class Messages extends Context.Service<
   Messages,
   {
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<Message>, PersistenceError>
+    readonly has: (id: string) => Effect.Effect<boolean, PersistenceError>
     readonly toolOutput: (call: ToolCallRef) => Effect.Effect<Option.Option<unknown>, PersistenceError>
     readonly insert: (message: Message) => Effect.Effect<void, PersistenceError>
     readonly update: (
@@ -168,6 +169,11 @@ const make = Effect.gen(function* () {
 
   return Messages.of({
     list: (threadId) => findByThread(threadId).pipe(Effect.mapError(persistence("messages.list"))),
+    has: (id) =>
+      sql`SELECT 1 FROM message WHERE id = ${id}`.pipe(
+        Effect.map((rows) => rows.length > 0),
+        Effect.mapError(persistence("messages.has")),
+      ),
     toolOutput: (call) =>
       findToolOutput(call).pipe(
         Effect.map(Option.map((row) => row.output)),
