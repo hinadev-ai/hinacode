@@ -298,7 +298,7 @@ function PinnedThreads({ query }: { query: Query }) {
           {threads.length}
         </span>
       </CollapsibleTrigger>
-      <CollapsibleContent>
+      <CollapsibleContent className="collapse-motion">
         <SidebarThreadList group="pinned" threads={threads} reorderable={false} showProject className="px-2" />
       </CollapsibleContent>
     </Collapsible>
@@ -516,7 +516,7 @@ function Shelf({
         />
         <span className="ms-auto font-normal tabular-nums">{threads.length}</span>
       </CollapsibleTrigger>
-      <CollapsibleContent className="h-(--collapsible-panel-height) overflow-clip transition-[height] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
+      <CollapsibleContent className="collapse-motion">
         <ShelfRows key={query} group={group} threads={threads} />
       </CollapsibleContent>
     </Collapsible>
@@ -975,7 +975,7 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
             />
           )}
         </div>
-        <CollapsibleContent className="h-(--collapsible-panel-height) overflow-clip transition-[height] duration-200 ease-out [overflow-clip-margin:2px] data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
+        <CollapsibleContent className="collapse-motion">
           <SidebarThreadList
             group={group.key}
             threads={threads}

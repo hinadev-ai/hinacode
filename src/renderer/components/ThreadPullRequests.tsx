@@ -1255,7 +1255,7 @@ function Section({ id, title, summary, children }: SectionProps) {
       open={open}
       onOpenChange={(next) => setOpen(id, next)}
       render={<section aria-labelledby={headingId} />}
-      className="flex flex-col gap-2"
+      className="flex flex-col"
     >
       <h4 className="text-xs font-medium text-muted-foreground">
         <CollapsibleTrigger className="group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring">
@@ -1267,7 +1267,9 @@ function Section({ id, title, summary, children }: SectionProps) {
           {summary}
         </CollapsibleTrigger>
       </h4>
-      <CollapsibleContent className="flex flex-col gap-2">{children}</CollapsibleContent>
+      <CollapsibleContent className="collapse-motion">
+        <div className="flex flex-col gap-2 pt-2">{children}</div>
+      </CollapsibleContent>
     </Collapsible>
   )
 }

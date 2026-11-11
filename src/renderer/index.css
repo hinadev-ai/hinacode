@@ -1194,6 +1194,20 @@
   transition-timing-function: var(--ease-out);
 }
 
+@utility collapse-motion {
+  height: var(--collapsible-panel-height);
+  overflow: clip;
+  overflow-clip-margin: 4px;
+  transition: height 200ms var(--ease-out);
+  &[data-starting-style],
+  &[data-ending-style] {
+    height: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
 /*
  * The integrated terminal (wterm). Background, foreground and font follow the app theme; the 16 ANSI colors
  * have a light and a dark set, tuned for 4.5:1 against the neutral backgrounds. Light "white" is a mid gray
