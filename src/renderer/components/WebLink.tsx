@@ -1,10 +1,11 @@
 import { useAtomValue } from "@effect/atom-react"
 import { useParams } from "@tanstack/react-router"
+import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { createContext, type ReactNode, useContext } from "react"
 import { parsePullRequestUrl, pullRequestLabel } from "../lib/pullRequestRefs.ts"
-import { usePullRequestHref } from "../lib/environments.ts"
-import { faviconAtom } from "../lib/rpc.ts"
+import { useOpenThreadEnvironment, usePullRequestHref } from "../lib/environments.ts"
+import { faviconAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { WithLinkIcon } from "./LinkIcon.tsx"
 import { PullRequestLink } from "./PullRequestLink.tsx"
@@ -55,4 +56,10 @@ export function WebLink({ href, children }: { href: string; children: ReactNode 
       <WithLinkIcon icon={<Favicon origin={originOf(href)} />}>{label}</WithLinkIcon>
     </a>
   )
+}
+
+export function PullRequestReference({ href, children }: { href: string; children: ReactNode }) {
+  const status = useAtomValue(pullRequestStatusAtom(useOpenThreadEnvironment(), href))
+  const missing = AsyncResult.isFailure(status) && Option.isNone(AsyncResult.value(status))
+  return missing ? children : <WebLink href={href}>{children}</WebLink>
 }

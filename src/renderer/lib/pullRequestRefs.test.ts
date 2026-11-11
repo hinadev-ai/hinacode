@@ -4,7 +4,7 @@ import { linkPullRequestNumbers, parsePullRequestUrl, pullRequestLabel, pullRequ
 
 const repository = { owner: "hinadev-ai", name: "hinacode" }
 const numbers = (text: string) =>
-  linkPullRequestNumbers(text, repository).flatMap((segment) => (segment.type === "link" ? [segment.text] : []))
+  linkPullRequestNumbers(text, repository).flatMap((segment) => (segment.type === "reference" ? [segment.text] : []))
 
 describe("linkPullRequestNumbers", () => {
   test("links #n after the start, whitespace or an opening paren", () => {
@@ -25,7 +25,7 @@ describe("linkPullRequestNumbers", () => {
     expect(segments.map((segment) => segment.text).join("")).toBe(text)
     expect(segments).toStrictEqual([
       { type: "text", text: "see " },
-      { type: "link", text: "#7", href: "https://github.com/hinadev-ai/hinacode/pull/7" },
+      { type: "reference", text: "#7", href: "https://github.com/hinadev-ai/hinacode/pull/7" },
       { type: "text", text: "." },
     ])
   })
@@ -34,7 +34,7 @@ describe("linkPullRequestNumbers", () => {
 describe("linkify with a repository", () => {
   test("links #n outside urls, and never a url's fragment", () => {
     expect(linkify("#1 and https://example.com/page#2", repository)).toStrictEqual([
-      { type: "link", text: "#1", href: "https://github.com/hinadev-ai/hinacode/pull/1" },
+      { type: "reference", text: "#1", href: "https://github.com/hinadev-ai/hinacode/pull/1" },
       { type: "text", text: " and " },
       { type: "link", text: "https://example.com/page#2", href: "https://example.com/page#2" },
     ])
