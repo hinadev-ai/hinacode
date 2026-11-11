@@ -6,7 +6,8 @@
    AgentRunner.queue when it fails with an AgentError. Anything else is only logged. markDelivered clears the mark
    when the thread took the comment, or when the developer archived the thread, and otherwise the next start retries.
    Every path records the message under one id derived from the comment and the thread, and deliver's `when` skips a
-   comment whose id the thread's transcript or queue already has, checked under the thread's lock.
+   comment whose id the thread's transcript or queue already has. The runner checks it under the thread's lock: in a
+   turn's steer, in startTurn, and in queue before it appends.
    Racing it: more comments, the turn ending, failing or being stopped, an approval that holds steers back, the
    developer archiving the thread, and the app quitting. At the next start ArtifactFeedback hands over each comment
    still marked.
@@ -137,7 +138,8 @@ Lookup(c) ==
 \* AgentRunner.ts makeTurn steer, under the lock. A turn whose finish has run hands the message back to steerWhen.
 \* With an approval open it holds the message in the queue, otherwise steerTurn calls provider.steer, which reaches
 \* whatever turn the provider runs for the thread, and records the message in this turn. Every provider rejects a
-\* steer with no turn running, and deliver's catch calls queue.
+\* steer with no turn running, and deliver's catch calls queue. provider.steer and the transcript write are two steps,
+\* modeled as one: a quit between them delivers the comment again at the next start.
 TurnSteer(c) ==
   /\ pc[c] = "steering" /\ lock = "free"
   /\ CASE captured[c] # active ->
@@ -159,20 +161,20 @@ TurnSteer(c) ==
             /\ UNCHANGED <<queue, history>>
   /\ UNCHANGED <<flagged, status, busy, active, starting, prov, ended, awaiting, stopped, lock, send, turns, captured, budgets>>
 
-\* AgentRunner.ts queue appends under the lock while busyThreads holds the thread, and otherwise sends.
+\* AgentRunner.ts queue checks deliver's `when` and appends under the lock while busyThreads holds the thread, and
+\* otherwise sends.
 \* From steerWhen (queue1) a failed send is an AgentError that deliver catches and queues again (queue2); from the
 \* catch it is logged.
 Queue(c) ==
   /\ pc[c] \in {"queue1", "queue2"} /\ lock = "free"
-  /\ LET declined == pc[c] = "queue1" /\ HandedOver(c)
-     IN IF declined \/ busy
-          THEN /\ queue' = IF declined THEN queue ELSE Append(queue, [c |-> c, steer |-> FALSE])
-               /\ pc' = [pc EXCEPT ![c] = "done"]
-               /\ UNCHANGED <<busy, send>>
-          ELSE /\ busy' = TRUE
-               /\ send' = [pc |-> "pending", c |-> c, origin |-> IF pc[c] = "queue1" THEN "deliver" ELSE "retry"]
-               /\ pc' = [pc EXCEPT ![c] = IF pc[c] = "queue1" THEN "sending" ELSE "resending"]
-               /\ UNCHANGED queue
+  /\ IF busy
+       THEN /\ queue' = IF HandedOver(c) THEN queue ELSE Append(queue, [c |-> c, steer |-> FALSE])
+            /\ pc' = [pc EXCEPT ![c] = "done"]
+            /\ UNCHANGED <<busy, send>>
+       ELSE /\ busy' = TRUE
+            /\ send' = [pc |-> "pending", c |-> c, origin |-> IF pc[c] = "queue1" THEN "deliver" ELSE "retry"]
+            /\ pc' = [pc EXCEPT ![c] = IF pc[c] = "queue1" THEN "sending" ELSE "resending"]
+            /\ UNCHANGED queue
   /\ UNCHANGED <<flagged, status, active, starting, prov, ended, awaiting, stopped, lock, turns, captured, history, budgets>>
 
 ---------------------------------------------------------------------------------------------------------------
@@ -249,7 +251,8 @@ Answer ==
                  history, budgets>>
 
 \* AgentRunner.ts steerHeld steers the held messages in queue order. steerTurn writes each one's transcript row and its
-\* queue removal in one transaction. A failed steer is logged and leaves the rest queued.
+\* queue removal in one transaction. A failed steer is logged and leaves the rest queued. As in TurnSteer, a quit between
+\* provider.steer and the transaction delivers the comment again at the next start.
 SteerHeld ==
   /\ lock = "answer"
   /\ LET heldAt == {i \in 1..Len(queue) : queue[i].steer}
