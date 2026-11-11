@@ -45,3 +45,15 @@ test("the terminal tabs scroll sideways without drawing a scrollbar under them",
   expect(list.scrollWidth).toBeGreaterThan(list.clientWidth)
   expect(getComputedStyle(list).scrollbarWidth).toBe("none")
 })
+
+test("the resize separator reports how tall the drawer can grow", async () => {
+  useTerminals.setState({ byThreadId: { thread: { open: true, sessions: [], activeId: null } }, height: 280 })
+
+  await render(
+    <div className="flex h-[800px] flex-col">
+      <TerminalDrawer threadId="thread" />
+    </div>,
+  )
+
+  await expect.element(page.getByRole("separator", { name: "Resize terminal" })).toHaveAttribute("aria-valuemax", "600")
+})
