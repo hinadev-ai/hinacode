@@ -280,3 +280,10 @@ test("an edit the model rejects is dropped and its block is sent again instead o
   expect(patches.at(-1)).toMatchObject({ start: 0, deleteCount: 1, eventCount: 3 })
   expect(shown()[0]).toEqual(session.blocks[0])
 })
+
+test("reloading a loaded document finishes at once, so no edit can land between its slices", () => {
+  const { session, clock } = open(largeDocument())
+  clock.drain()
+  session.load(largeDocument().replace("Paragraph 40 explains", "Paragraph 40 now explains"))
+  expect(session.markdown()).toContain("Paragraph 40 now explains")
+})
