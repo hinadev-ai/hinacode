@@ -683,6 +683,27 @@ describe("Codex sub-agents", () => {
     ),
   )
 
+  it.live("marks a sub-agent completed when its turn ends during the parent turn", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ subagent: true, holdTurn: true })
+        const turn = yield* startTurn("subagent-thread")
+        yield* untilEvent(turn, (event) => event.type === "tool_call_finished")
+
+        setControl({ subagent: true, holdTurn: true, finishSubagent: true })
+        yield* untilEvent(turn, (event) => event.type === "subagent_updated" && event.subagent.summary === "218 lines")
+        yield* provider.interrupt("subagent-thread")
+        yield* finishesSoon(turn.fiber)
+
+        const statuses = turn.events.flatMap((event) =>
+          event.type === "subagent_updated" ? [event.subagent.status] : [],
+        )
+        expect(statuses.at(-1)).toBe("completed")
+      }),
+    ),
+  )
+
   it.live("stops one sub-agent by interrupting its own turn, and keeps the parent's", () =>
     withProvider(
       Effect.gen(function* () {
