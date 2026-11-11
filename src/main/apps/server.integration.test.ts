@@ -164,8 +164,12 @@ const start = ({ runtime }: App) => runtime.runPromise(AppConnections.use((conne
 const answerRequest = ({ runtime }: App, id: string, approve: boolean) =>
   runtime.runPromise(AppConnections.use((connections) => connections.answer({ id, approve })))
 
-const get = ({ origin }: App, path: string, params: Record<string, string> = {}) =>
-  fetch(`${origin}${path}?${new URLSearchParams(params)}`, { redirect: "manual" })
+const get = (
+  { origin }: App,
+  path: string,
+  params: Record<string, string> = {},
+  headers: Record<string, string> = {},
+) => fetch(`${origin}${path}?${new URLSearchParams(params)}`, { redirect: "manual", headers })
 
 const postForm = ({ origin }: App, path: string, form: Record<string, string>) =>
   fetch(`${origin}${path}`, { method: "POST", body: new URLSearchParams(form), redirect: "manual" })
@@ -401,6 +405,23 @@ describe("app server", () => {
       expect(html).toContain('<meta http-equiv="refresh" content="2">')
       expect(html).not.toMatch(/<script|src=/)
       expect(html).toContain("Sign in to approve")
+      expect(html).toContain('<html lang="en">')
+
+      const japanese = await (
+        await get(app, path, { request }, { "accept-language": "ja-JP,ja;q=0.9,en;q=0.8" })
+      ).text()
+      expect(japanese).toContain('<html lang="ja">')
+      expect(japanese).toContain("が HinaCode への接続を求めています")
+      expect(japanese).toContain("サインインして承認")
+
+      const traditional = await (await get(app, path, { request }, { "accept-language": "zh-TW,zh;q=0.9" })).text()
+      expect(traditional).toContain('<html lang="zh-TW">')
+      expect(traditional).toContain("想要連接 HinaCode")
+      expect(traditional).toContain("登入並核准")
+
+      const unsupported = await (await get(app, path, { request }, { "accept-language": "zh-CN,fr;q=0.8" })).text()
+      expect(unsupported).toContain('<html lang="en">')
+      expect(unsupported).toContain("Sign in to approve")
 
       const answered = await answerRequest(app, request, true)
       expect(answered.requests).toEqual([])

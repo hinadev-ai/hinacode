@@ -7,7 +7,16 @@ import { HttpIncomingMessage, HttpRouter, HttpServer, HttpServerRequest, HttpSer
 import { Relay } from "../remote/relay.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { AppConnections } from "./AppConnections.ts"
-import { type Approver, brokenLinkPage, notStartedPage, signInFailedPage, waitingPage } from "./approvalPage.ts"
+import {
+  type Approver,
+  brokenLinkPage,
+  localeOf,
+  notStartedPage,
+  type PageLocale,
+  signInFailedPage,
+  signInLostPage,
+  waitingPage,
+} from "./approvalPage.ts"
 import {
   ANSWER_PATH,
   AnswerForm,
@@ -62,7 +71,6 @@ const OWNER_COOKIE = "hinacode_owner"
 const OWNER_LIFE = Duration.minutes(10)
 const COOKIE = { path: "/oauth", httpOnly: true, secure: true, sameSite: "lax", maxAge: OWNER_LIFE } as const
 const SIGN_IN_NAME = "HinaCode app approval"
-const SIGN_IN_LOST = "Open the app's sign-in page again, then choose Sign in to approve."
 
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex")
 const randomToken = () => randomBytes(32).toString("base64url")
@@ -76,6 +84,10 @@ const oauthError = (error: OAuthError, description: string) =>
 
 const page = ({ html, headers }: ReturnType<typeof brokenLinkPage>, status = 200) =>
   HttpServerResponse.html(html).pipe(HttpServerResponse.setStatus(status), HttpServerResponse.setHeaders(headers))
+
+const localeOfRequest = Effect.map(HttpServerRequest.HttpServerRequest, (request) =>
+  localeOf(request.headers["accept-language"]),
+)
 
 const clientKey = Effect.gen(function* () {
   const secrets = yield* Secrets
@@ -166,7 +178,7 @@ const routes = Layer.effectDiscard(
       ),
     )
 
-    const authorization = (issuer: string, params: AuthorizationParams) => {
+    const authorization = (issuer: string, params: AuthorizationParams, locale: PageLocale) => {
       const check = checkAuthorization(key, issuer, params)
       if (check.ok) return { ok: true, client: check.client, codeChallenge: check.codeChallenge } as const
       return {
@@ -180,7 +192,7 @@ const routes = Layer.effectDiscard(
               }),
               { headers: NO_STORE },
             )
-          : page(brokenLinkPage(), 400),
+          : page(brokenLinkPage(locale), 400),
       } as const
     }
 
@@ -191,7 +203,8 @@ const routes = Layer.effectDiscard(
         HttpServerRequest.schemaSearchParams(AuthorizationParams).pipe(
           Effect.flatMap((params) =>
             Effect.gen(function* () {
-              const checked = authorization(issuer, params)
+              const locale = yield* localeOfRequest
+              const checked = authorization(issuer, params, locale)
               if (!checked.ok) return checked.response
               const id = yield* connections.request({
                 clientId: params.client_id,
@@ -201,7 +214,7 @@ const routes = Layer.effectDiscard(
                 state: params.state,
               })
               return Option.match(id, {
-                onNone: () => page(notStartedPage(), 409),
+                onNone: () => page(notStartedPage(locale), 409),
                 onSome: (request) =>
                   HttpServerResponse.redirect(`${WAIT_PATH}?${new URLSearchParams({ request })}`, {
                     status: 303,
@@ -210,7 +223,7 @@ const routes = Layer.effectDiscard(
               })
             }),
           ),
-          Effect.catch(() => Effect.succeed(page(brokenLinkPage(), 400))),
+          Effect.catch(() => Effect.map(localeOfRequest, (locale) => page(brokenLinkPage(locale), 400))),
         ),
       ),
     )
@@ -236,9 +249,10 @@ const routes = Layer.effectDiscard(
       "GET",
       WAIT_PATH,
       Effect.gen(function* () {
+        const locale = yield* localeOfRequest
         const { request } = yield* HttpServerRequest.schemaSearchParams(WaitParams)
         const outcome = yield* connections.outcome(request)
-        if (outcome.type === "unknown") return page(brokenLinkPage(), 404)
+        if (outcome.type === "unknown") return page(brokenLinkPage(locale), 404)
         const { name, redirectUri, state } = outcome.request
         if (outcome.type === "waiting") {
           const owner = yield* ownerOf((yield* HttpServerRequest.HttpServerRequest).cookies, request)
@@ -246,14 +260,14 @@ const routes = Layer.effectDiscard(
             owner === undefined
               ? { signedIn: false, signInPath: `${SIGN_IN_PATH}?${new URLSearchParams({ request })}` }
               : { signedIn: true, email: owner.email, answerPath: ANSWER_PATH, request }
-          return page(waitingPage({ appName: name, redirectHost: new URL(redirectUri).host, approver }))
+          return page(waitingPage({ appName: name, redirectHost: new URL(redirectUri).host, approver, locale }))
         }
         const answer =
           outcome.type === "approved"
             ? { code: outcome.authorizationCode }
             : { error: "access_denied", error_description: "The developer denied the connection" }
         return HttpServerResponse.redirect(redirectTo(redirectUri, { ...answer, state }), { headers: NO_STORE })
-      }).pipe(Effect.catch(() => Effect.succeed(page(brokenLinkPage(), 400)))),
+      }).pipe(Effect.catch(() => Effect.map(localeOfRequest, (locale) => page(brokenLinkPage(locale), 400)))),
     )
 
     yield* router.add(
@@ -261,8 +275,9 @@ const routes = Layer.effectDiscard(
       SIGN_IN_PATH,
       withIssuer((issuer) =>
         Effect.gen(function* () {
+          const locale = yield* localeOfRequest
           const { request } = yield* HttpServerRequest.schemaSearchParams(WaitParams)
-          if (Option.isNone(yield* connections.waiting(request))) return page(brokenLinkPage(), 404)
+          if (Option.isNone(yield* connections.waiting(request))) return page(brokenLinkPage(locale), 404)
           const verifier = randomToken()
           const nonce = randomToken()
           yield* forgetExpired(signIns, undefined)
@@ -275,7 +290,7 @@ const routes = Layer.effectDiscard(
           return HttpServerResponse.redirect(signIn.href, { status: 303, headers: NO_STORE }).pipe(
             HttpServerResponse.setCookieUnsafe(SIGN_IN_COOKIE, nonce, COOKIE),
           )
-        }).pipe(Effect.catch(() => Effect.succeed(page(brokenLinkPage(), 400)))),
+        }).pipe(Effect.catch(() => Effect.map(localeOfRequest, (locale) => page(brokenLinkPage(locale), 400)))),
       ),
     )
 
@@ -283,34 +298,36 @@ const routes = Layer.effectDiscard(
       "GET",
       SIGNED_IN_PATH,
       Effect.gen(function* () {
+        const locale = yield* localeOfRequest
         const { cookies } = yield* HttpServerRequest.HttpServerRequest
         const nonce = cookies[SIGN_IN_COOKIE]
         const pending = yield* forgetExpired(signIns, nonce)
-        if (nonce === undefined || pending === undefined) return page(signInFailedPage(SIGN_IN_LOST), 400)
+        if (nonce === undefined || pending === undefined) return page(signInLostPage(locale), 400)
         signIns.delete(nonce)
         const { code } = yield* HttpServerRequest.schemaSearchParams(SignedInParams)
         const signedIn = yield* relay.verifyOwnerSignIn({ code, codeVerifier: pending.verifier }).pipe(Effect.result)
-        if (signedIn._tag === "Failure") return page(signInFailedPage(signedIn.failure.message), 403)
+        if (signedIn._tag === "Failure") return page(signInFailedPage(locale, signedIn.failure.message), 403)
         const token = randomToken()
         owners.set(sha256(token), { request: pending.request, email: signedIn.success.email, expiresAt: yield* later })
         return HttpServerResponse.redirect(waitPath(pending.request), { status: 303, headers: NO_STORE }).pipe(
           HttpServerResponse.setCookieUnsafe(OWNER_COOKIE, token, COOKIE),
         )
-      }).pipe(Effect.catch(() => Effect.succeed(page(signInFailedPage(SIGN_IN_LOST), 400)))),
+      }).pipe(Effect.catch(() => Effect.map(localeOfRequest, (locale) => page(signInLostPage(locale), 400)))),
     )
 
     yield* router.add(
       "POST",
       ANSWER_PATH,
       Effect.gen(function* () {
+        const locale = yield* localeOfRequest
         const { request, decision } = yield* HttpServerRequest.schemaBodyUrlParams(AnswerForm)
         const owner = yield* ownerOf((yield* HttpServerRequest.HttpServerRequest).cookies, request)
-        if (owner === undefined) return page(signInFailedPage(SIGN_IN_LOST), 403)
+        if (owner === undefined) return page(signInLostPage(locale), 403)
         yield* connections.answer({ id: request, approve: decision === "approve" })
         return HttpServerResponse.redirect(waitPath(request), { status: 303, headers: NO_STORE })
       }).pipe(
         Effect.catchTag("PersistenceError", () => Effect.succeed(HttpServerResponse.empty({ status: 500 }))),
-        Effect.catch(() => Effect.succeed(page(brokenLinkPage(), 400))),
+        Effect.catch(() => Effect.map(localeOfRequest, (locale) => page(brokenLinkPage(locale), 400))),
       ),
     )
 
