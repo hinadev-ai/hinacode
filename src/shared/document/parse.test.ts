@@ -163,3 +163,22 @@ test("changing one paragraph of a large document lexes only the chunk around it"
   expect(steps.filter((step) => step.previous === null).length).toBeLessThanOrEqual(2)
   expect(steps.length).toBeGreaterThan(20)
 })
+
+const longFiller = Array.from({ length: 400 }, (_, index) => `Filler paragraph ${index} with enough words.`).join(
+  "\n\n",
+)
+
+test("a reference definition inside a quote or a list resolves across chunks", () => {
+  for (const definition of ["> [guide]: https://example.com", "- [guide]: https://example.com"]) {
+    const markdown = `See [docs][guide].\n\n${longFiller}\n\n${definition}`
+    expect(parseDocument(markdown).doc.toJSON()).toEqual(wholeParse(markdown).toJSON())
+  }
+})
+
+test("a CRLF document is cut into the same chunks as its LF copy", () => {
+  const lf = `${longFiller}\n\n${longFiller}`
+  const crlf = lf.replace(/\n/g, "\r\n")
+  const manager = documentMarkdownManager()
+  expect([...documentChunks(manager, crlf)].length).toBe([...documentChunks(manager, lf)].length)
+  expect(parseDocument(crlf).doc.toJSON()).toEqual(wholeParse(lf).toJSON())
+})

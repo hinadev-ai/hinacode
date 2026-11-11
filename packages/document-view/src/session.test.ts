@@ -264,3 +264,10 @@ test("text typed after toggling a mark at the caret carries that mark", () => {
   session.edit({ eventCount: 1, block, cell: null, from: 5, to: 5, text: "BOLD" })
   expect(session.markdown().trimEnd()).toBe("Plain**BOLD** text")
 })
+
+test("a chart's missing and null values draw as zero, as on the desktop", () => {
+  const chart =
+    '```chart\n{"type":"line","x":"d","series":[{"key":"a"}],"rows":[{"d":"1","a":5},{"d":"2","a":null},{"d":"3"},{"d":"4","a":7}]}\n```'
+  const { blocks } = renderBlocks(parseDocument(chart).doc)
+  expect(blocks[0]).toMatchObject({ kind: "chart", series: [{ values: [5, 0, 0, 7] }] })
+})
