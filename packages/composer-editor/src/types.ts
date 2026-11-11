@@ -39,6 +39,11 @@ export interface ChangeEvent {
   readonly selection: Selection
 }
 
+export interface PastedImage {
+  readonly uri: string
+  readonly fileName: string
+}
+
 export interface ComposerEditorHandle {
   focus(): void
   blur(): void
@@ -65,4 +70,5 @@ export interface ComposerEditorProps {
   readonly onChangeSelection?: (selection: Selection) => void
   readonly onFocus?: () => void
   readonly onBlur?: () => void
+  readonly onPasteImages?: (images: readonly PastedImage[]) => void
 }

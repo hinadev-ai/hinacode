@@ -31,6 +31,28 @@ func parseCssColor(_ css: String) -> UIColor? {
     red: parts[0] / 255, green: parts[1] / 255, blue: parts[2] / 255, alpha: parts.count > 3 ? parts[3] : 1)
 }
 
+/// A text view that takes Paste when the pasteboard holds images but no text, which UITextView refuses by default.
+final class ImagePastingTextView: UITextView {
+  var onPasteImages: (([URL]) -> Void)?
+
+  private var pastesImages: Bool { UIPasteboard.general.hasImages && !UIPasteboard.general.hasStrings }
+
+  override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+    if action == #selector(paste(_:)), pastesImages { return true }
+    return super.canPerformAction(action, withSender: sender)
+  }
+
+  override func paste(_ sender: Any?) {
+    guard pastesImages, let onPasteImages else { return super.paste(sender) }
+    let files = (UIPasteboard.general.images ?? []).compactMap { image -> URL? in
+      let file = FileManager.default.temporaryDirectory.appendingPathComponent("pasted-\(UUID().uuidString).png")
+      guard let data = image.pngData(), (try? data.write(to: file)) != nil else { return nil }
+      return file
+    }
+    if !files.isEmpty { onPasteImages(files) }
+  }
+}
+
 class ComposerEditorView: ExpoView, UITextViewDelegate {
   let onEditorChange = EventDispatcher()
   let onEditorSelection = EventDispatcher()
@@ -38,9 +60,10 @@ class ComposerEditorView: ExpoView, UITextViewDelegate {
   let onEditorBlur = EventDispatcher()
   let onEditorContentSize = EventDispatcher()
   let onEditorFormat = EventDispatcher()
+  let onEditorPasteImages = EventDispatcher()
 
   private let layoutManager = ChipLayoutManager()
-  let textView: UITextView
+  let textView: ImagePastingTextView
   private let placeholderLabel = UILabel()
   private var theme = Theme()
   private var font = UIFont.systemFont(ofSize: 16)
@@ -59,8 +82,13 @@ class ComposerEditorView: ExpoView, UITextViewDelegate {
     container.lineFragmentPadding = 0
     storage.addLayoutManager(layoutManager)
     layoutManager.addTextContainer(container)
-    textView = UITextView(frame: .zero, textContainer: container)
+    textView = ImagePastingTextView(frame: .zero, textContainer: container)
     super.init(appContext: appContext)
+    textView.onPasteImages = { [weak self] files in
+      self?.onEditorPasteImages([
+        "images": files.map { ["uri": $0.absoluteString, "fileName": $0.lastPathComponent] }
+      ])
+    }
     textView.delegate = self
     textView.backgroundColor = .clear
     textView.textContainerInset = .zero
