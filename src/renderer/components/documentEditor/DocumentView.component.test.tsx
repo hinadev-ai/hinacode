@@ -724,6 +724,7 @@ test("shows the error and the source of a diagram that cannot be drawn", async (
   await expect.element(editor.getByRole("code")).toBeVisible()
   expect(editor.getByRole("code").element().textContent).toBe("flowchart TD\n  A -->")
   await expect.element(editor.getByRole("button", { name: "Source" })).toHaveAttribute("aria-pressed", "true")
+  await expect.element(editor.getByRole("button", { name: "Source" })).toBeDisabled()
 })
 
 const printed = async (html: string) => {
