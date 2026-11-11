@@ -73,6 +73,24 @@ describe("groupMembers", () => {
     ])
   })
 
+  it("keys a second clone of a repository by its id, as the sidebar does", () => {
+    const clones = [
+      project("g1", "group"),
+      project("g2", "group"),
+      project("p1", "folder", "o/web"),
+      project("p5", "folder", "o/web"),
+    ]
+    const split = {
+      groups: [
+        { id: "g1", name: "Shop", collapsed: false },
+        { id: "g2", name: "Lab", collapsed: false },
+      ],
+      groupOf: { "o/web": "g1", p5: "g2" },
+    }
+    expect(groupMembers(project("g1", "group"), clones, split).map(({ id }) => id)).toStrictEqual(["p1"])
+    expect(groupMembers(project("g2", "group"), clones, split).map(({ id }) => id)).toStrictEqual(["p5"])
+  })
+
   it("lists nothing for a member project", () => {
     expect(groupMembers(project("p1", "folder", "o/web"), projects, sidebarGroups)).toStrictEqual([])
   })
