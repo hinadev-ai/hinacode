@@ -11,6 +11,7 @@ import android.view.ActionMode
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -219,6 +220,12 @@ internal class BlockEditText(context: Context, private val listener: EditorListe
     android.R.id.paste -> super.onTextContextMenuItem(android.R.id.pasteAsPlainText)
     else -> super.onTextContextMenuItem(id)
   }
+
+  /**
+   * Rows are not focusable, so there is nowhere to move focus. When the keyboard connects, TextView searches up and down
+   * to decide on Next and Previous, and RecyclerView answers by scrolling the neighbouring row fully into view.
+   */
+  override fun focusSearch(direction: Int): View? = null
 
   override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? =
     super.onCreateInputConnection(outAttrs)?.let(::Connection)

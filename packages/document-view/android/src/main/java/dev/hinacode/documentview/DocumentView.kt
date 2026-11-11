@@ -420,7 +420,8 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
       current?.let { adapter.notifyItemChanged(it.index) }
     }
     adapter.notifyItemChanged(target.index)
-    if (list.findViewHolderForAdapterPosition(target.index) == null) layoutManager.scrollToPosition(target.index)
+    val shown = layoutManager.findFirstVisibleItemPosition()..layoutManager.findLastVisibleItemPosition()
+    if (target.index !in shown) layoutManager.scrollToPosition(target.index)
   }
 
   private fun bound(editor: BlockEditText, styled: CharSequence) {
