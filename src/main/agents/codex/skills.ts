@@ -20,8 +20,18 @@ export const toCommand = (skill: SkillMetadata): AgentCommand => {
   }
 }
 
+const NAME_CHARACTER = /[\w-]/
+
+const mentions = (text: string, name: string) => {
+  const token = `$${name}`
+  for (let at = text.indexOf(token); at !== -1; at = text.indexOf(token, at + 1)) {
+    if (!NAME_CHARACTER.test(text.charAt(at + token.length))) return true
+  }
+  return false
+}
+
 // FIXME: Codex expands a skill only when it arrives as its own input item next to the $name in the text
 export const skillInputs = (text: string, skills: ReadonlyArray<SkillMetadata>): Array<UserInput> =>
   skills
-    .filter((skill) => skill.enabled && text.includes(`$${typedName(skill)}`))
+    .filter((skill) => skill.enabled && mentions(text, typedName(skill)))
     .map((skill) => ({ type: "skill", name: skill.name, path: skill.path }))
