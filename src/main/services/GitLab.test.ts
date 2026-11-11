@@ -2,7 +2,7 @@ import { describe, expect, it, test } from "@effect/vitest"
 import { Effect, Layer, Schema, Sink, Stream } from "effect"
 import { ChildProcessSpawner } from "effect/process"
 import { Events } from "./Events.ts"
-import { CommandError } from "./Git.ts"
+import { COMMAND_NOT_FOUND_EXIT_CODE, CommandError } from "./Git.ts"
 import {
   ApprovalsJson,
   DiffsJson,
@@ -247,7 +247,7 @@ const failure = (exitCode: number, stderr: string) =>
 
 describe("gitLabErrorOf", () => {
   test("reads a missing binary, a signed-out host and an API message", () => {
-    expect(failure(-1, "spawn glab ENOENT")).toStrictEqual(new GitLabCliMissingError())
+    expect(failure(COMMAND_NOT_FOUND_EXIT_CODE, "glab not found")).toStrictEqual(new GitLabCliMissingError())
     expect(failure(1, "glab: 401 Unauthorized (HTTP 401)")).toStrictEqual(
       new GitLabSignedOutError({ hostname: "gitlab.example.com" }),
     )
@@ -328,7 +328,7 @@ describe("isGitLabHost", () => {
 
   it.effect("probes again after glab was missing", () =>
     Effect.gen(function* () {
-      expect(yield* probeTwice([{ exitCode: -1 }, { stdout: "{}" }])).toStrictEqual({
+      expect(yield* probeTwice([{ exitCode: COMMAND_NOT_FOUND_EXIT_CODE }, { stdout: "{}" }])).toStrictEqual({
         answers: [false, true],
         probes: 2,
       })
