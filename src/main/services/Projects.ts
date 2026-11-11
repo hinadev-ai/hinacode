@@ -68,10 +68,7 @@ export class Projects extends Context.Service<
     readonly update: (input: UpdateProject) => Effect.Effect<Project, WriteError | NotFoundError>
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
     readonly ensureChats: (rootPath: string) => Effect.Effect<Project, PersistenceError | ProjectRootInvalidError>
-    readonly ensureGroups: (
-      groups: ReadonlyArray<GroupProject>,
-      groupsDir: string,
-    ) => Effect.Effect<void, PersistenceError | ProjectRootInvalidError>
+    readonly ensureGroups: (groups: ReadonlyArray<GroupProject>, groupsDir: string) => Effect.Effect<void>
     readonly icon: (id: string) => Effect.Effect<string | null, PersistenceError | NotFoundError>
   }
 >()("hinacode/Projects") {}
@@ -319,7 +316,12 @@ const make = Effect.gen(function* () {
   const ensureGroups = (groups: ReadonlyArray<GroupProject>, groupsDir: string) =>
     Effect.forEach(
       groups.filter(({ id }) => /^[\w-]+$/.test(id)),
-      (group) => ensureGroup(group, groupsDir),
+      (group) =>
+        ensureGroup(group, groupsDir).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning(`could not create the folder of group ${group.id}`, error).pipe(Effect.as(false)),
+          ),
+        ),
     ).pipe(
       Effect.flatMap((changed) =>
         changed.includes(true) ? events.publish({ type: "projects.changed" }) : Effect.void,
