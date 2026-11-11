@@ -33,6 +33,7 @@ import { flushSync } from "react-dom"
 import { RiGitMergeLine } from "react-icons/ri"
 import { toast } from "sonner"
 import type { ProviderId } from "../../shared/agent.ts"
+import { pullRequestNumberLabelOfUrl } from "../../shared/codeHost.ts"
 import { isThreadBusy, type PullRequestLink, type Thread, type Worktree } from "../../shared/domain.ts"
 import { type RowState, rowEmphasis, rowState, rowStatusIndicator } from "../../shared/threadStatus.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -769,7 +770,7 @@ const ThreadRow = memo(function ThreadRow({
                       <DropdownMenuItem key={link.id} onClick={() => void unwatch(link.url)}>
                         <EyeOffIcon aria-hidden />
                         {watched.length > 1
-                          ? m.pr_watch_stop({ name: `#${pullRequestNumber(link.url)}` })
+                          ? m.pr_watch_stop({ name: pullRequestNumberLabelOfUrl(link.url) })
                           : m.sidebar_thread_unwatch()}
                       </DropdownMenuItem>
                     ))
@@ -1075,7 +1076,6 @@ function useSnoozedUntil(thread: Thread) {
 }
 
 const noLinks: ReadonlyArray<PullRequestLink> = []
-const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
 function ThreadMeta({
   links,
