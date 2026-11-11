@@ -1,13 +1,15 @@
 ---------------------------- MODULE ArtifactFeedback ----------------------------
 (* Delivering a developer's artifact comment to the thread that owns the artifact.
    src/main/services/ArtifactFeedback.ts comment saves the comment in feedback.json marked undelivered, then deliver
-   unarchives the thread, like the composer's send, and hands the prompt to AgentRunner.steer
-   (src/main/services/AgentRunner.ts steerWhen). That steers a running turn or starts one, and deliver falls back to
-   AgentRunner.queue when it fails with an AgentError. Anything else is only logged. Then markDelivered clears the
-   mark. Every path records the message under one id derived from the comment and the thread.
+   unarchives the thread, like the composer's send, and hands the prompt to AgentRunner.steerWhen
+   (src/main/services/AgentRunner.ts). That steers a running turn or starts one, and deliver falls back to
+   AgentRunner.queue when it fails with an AgentError. Anything else is only logged. markDelivered clears the mark
+   when the thread took the comment, or when the developer archived the thread, and otherwise the next start retries.
+   Every path records the message under one id derived from the comment and the thread, and deliver's `when` skips a
+   comment whose id the thread's transcript or queue already has, checked under the thread's lock.
    Racing it: more comments, the turn ending, failing or being stopped, an approval that holds steers back, the
    developer archiving the thread, and the app quitting. At the next start ArtifactFeedback hands over each comment
-   still marked, unless its id is already in the thread's transcript or queue.
+   still marked.
    Resolving a comment does not touch its delivery, and comments cannot be edited or deleted, so neither is
    modeled. Mentions only change which thread receives it, so the model has one thread. *)
 EXTENDS Naturals, Sequences, FiniteSets
@@ -28,13 +30,14 @@ VARIABLES
   ended,      \* the provider's stream ended the active turn: no, completed or failed
   awaiting,   \* waitsOnUser: an approval or question is open
   stopped,    \* the stop Deferred of the current send or turn
-  lock,       \* AgentRunner's per-thread Semaphore, held by finish across its two steps
+  lock,       \* AgentRunner's per-thread Semaphore, held by finish across its two steps and by steerHeld
   queue,      \* thread.queue in SQLite: records [c, steer], steer marking a message held back by an approval
   send,       \* the send in flight: [pc, c, origin], origin deliver, retry (from deliver's catch) or queued
   turns,      \* turns started so far
   pc,         \* each comment's rpc fiber
   captured,   \* the turn steerWhen found for a comment before it waited for the lock
   deliveries, \* how many times each comment reached the agent
+  recorded,   \* comments whose id is in the thread's transcript
   where,      \* <<turn the provider gave it to, turn AgentRunner recorded it in>> for each delivery
   flagged,    \* comments feedback.json still marks undelivered
   toArchived, \* history: something reached the agent while the thread was archived
@@ -42,10 +45,10 @@ VARIABLES
   stopsLeft, archivesLeft, asksLeft, crashesLeft
 
 vars == <<status, busy, active, starting, prov, ended, awaiting, stopped, lock, queue, send, turns, pc, captured,
-          flagged, deliveries, where, toArchived, overtaken, stopsLeft, archivesLeft, asksLeft, crashesLeft>>
+          flagged, deliveries, recorded, where, toArchived, overtaken, stopsLeft, archivesLeft, asksLeft, crashesLeft>>
 
 budgets == <<stopsLeft, archivesLeft, asksLeft, crashesLeft>>
-history == <<deliveries, where, toArchived, overtaken>>
+history == <<deliveries, recorded, where, toArchived, overtaken>>
 
 Turns == 0..MaxTurns
 NoSend == [pc |-> None, c |-> None, origin |-> None]
@@ -57,12 +60,13 @@ TypeOK ==
   /\ busy \in BOOLEAN /\ awaiting \in BOOLEAN /\ stopped \in BOOLEAN /\ toArchived \in BOOLEAN
   /\ active \in Turns /\ starting \in Turns /\ prov \in Turns /\ turns \in Turns
   /\ ended \in {"no", "completed", "failed"}
-  /\ lock \in {"free", "finish"}
+  /\ lock \in {"free", "finish", "answer"}
   /\ queue \in Seq([c: Comments, steer: BOOLEAN])
   /\ send.pc \in {None, "pending", "admit"}
   /\ pc \in [Comments -> Pcs]
   /\ captured \in [Comments -> Turns]
   /\ deliveries \in [Comments -> Nat]
+  /\ recorded \subseteq Comments
   /\ flagged \subseteq Comments
   /\ overtaken \subseteq Comments
 
@@ -73,17 +77,25 @@ Init ==
   /\ captured = [c \in Comments |-> 0]
   /\ flagged = {}
   /\ deliveries = [c \in Comments |-> 0]
+  /\ recorded = {}
   /\ where = [c \in Comments |-> {}]
   /\ toArchived = FALSE /\ overtaken = {}
   /\ stopsLeft = MaxStops /\ archivesLeft = MaxArchives /\ asksLeft = MaxAsks /\ crashesLeft = MaxCrashes
 
 Deliver(c, provTurn, recordTurn) ==
   /\ deliveries' = [deliveries EXCEPT ![c] = @ + 1]
+  /\ recorded' = recorded \cup {c}
   /\ where' = [where EXCEPT ![c] = @ \cup {<<provTurn, recordTurn>>}]
   /\ toArchived' = (toArchived \/ status = "archived")
   /\ UNCHANGED overtaken
 
 Queued(c) == \E i \in 1..Len(queue) : queue[i].c = c
+
+\* ArtifactFeedback.ts handedOver, the `when` deliver gives AgentRunner.steerWhen: the comment's id is already in the
+\* thread's transcript or queue.
+HandedOver(c) == c \in recorded \/ Queued(c)
+
+Without(q, i) == SubSeq(q, 1, i - 1) \o SubSeq(q, i + 1, Len(q))
 
 ---------------------------------------------------------------------------------------------------------------
 \* A comment.
@@ -131,6 +143,9 @@ TurnSteer(c) ==
   /\ CASE captured[c] # active ->
             /\ pc' = [pc EXCEPT ![c] = "reopened"]
             /\ UNCHANGED <<queue, history>>
+       [] HandedOver(c) ->
+            /\ pc' = [pc EXCEPT ![c] = "done"]
+            /\ UNCHANGED <<queue, history>>
        [] awaiting ->
             /\ queue' = Append(queue, [c |-> c, steer |-> TRUE])
             /\ pc' = [pc EXCEPT ![c] = "done"]
@@ -149,14 +164,15 @@ TurnSteer(c) ==
 \* catch it is logged.
 Queue(c) ==
   /\ pc[c] \in {"queue1", "queue2"} /\ lock = "free"
-  /\ IF busy
-       THEN /\ queue' = Append(queue, [c |-> c, steer |-> FALSE])
-            /\ pc' = [pc EXCEPT ![c] = "done"]
-            /\ UNCHANGED <<busy, send>>
-       ELSE /\ busy' = TRUE
-            /\ send' = [pc |-> "pending", c |-> c, origin |-> IF pc[c] = "queue1" THEN "deliver" ELSE "retry"]
-            /\ pc' = [pc EXCEPT ![c] = IF pc[c] = "queue1" THEN "sending" ELSE "resending"]
-            /\ UNCHANGED queue
+  /\ LET declined == pc[c] = "queue1" /\ HandedOver(c)
+     IN IF declined \/ busy
+          THEN /\ queue' = IF declined THEN queue ELSE Append(queue, [c |-> c, steer |-> FALSE])
+               /\ pc' = [pc EXCEPT ![c] = "done"]
+               /\ UNCHANGED <<busy, send>>
+          ELSE /\ busy' = TRUE
+               /\ send' = [pc |-> "pending", c |-> c, origin |-> IF pc[c] = "queue1" THEN "deliver" ELSE "retry"]
+               /\ pc' = [pc EXCEPT ![c] = IF pc[c] = "queue1" THEN "sending" ELSE "resending"]
+               /\ UNCHANGED queue
   /\ UNCHANGED <<flagged, status, active, starting, prov, ended, awaiting, stopped, lock, turns, captured, history, budgets>>
 
 ---------------------------------------------------------------------------------------------------------------
@@ -172,20 +188,32 @@ SendFails ==
        [] send.origin = "queued"  -> queue' = <<[c |-> send.c, steer |-> FALSE]>> \o queue /\ UNCHANGED pc
 
 \* AgentRunner.ts startTurn's first locked block checks the stop. The worktree wait after it races the stop too.
+\* deliver passes its `when` to every send it starts, through steerWhen and through queue. Such a send returns false
+\* when `when` finds the comment handed over, and startClaimed frees busyThreads. startQueued's send has none.
+Declines == send.origin # "queued" /\ HandedOver(send.c)
+
+SendDeclined ==
+  /\ Declines
+  /\ busy' = FALSE /\ stopped' = FALSE /\ send' = NoSend
+  /\ pc' = [pc EXCEPT ![send.c] = "done"]
+  /\ UNCHANGED queue
+
 SendPending ==
   /\ send.pc = "pending" /\ lock = "free"
   /\ IF stopped
        THEN SendFails
-       ELSE /\ send' = [send EXCEPT !.pc = "admit"]
-            /\ UNCHANGED <<busy, stopped, queue, pc>>
+       ELSE IF Declines
+         THEN SendDeclined
+         ELSE /\ send' = [send EXCEPT !.pc = "admit"]
+              /\ UNCHANGED <<busy, stopped, queue, pc>>
   /\ UNCHANGED <<flagged, status, active, starting, prov, ended, awaiting, lock, turns, captured, history, budgets>>
 
 \* AgentRunner.ts startTurn's second locked block refuses an archived thread, or writes the prompt as the turn's
 \* user message, marks the thread running and sets activeTurns.
 SendAdmit ==
   /\ send.pc = "admit" /\ lock = "free" /\ turns < MaxTurns
-  /\ IF stopped \/ status = "archived"
-       THEN /\ SendFails
+  /\ IF stopped \/ status = "archived" \/ Declines
+       THEN /\ IF ~stopped /\ Declines THEN SendDeclined ELSE SendFails
             /\ UNCHANGED <<status, active, starting, turns, history>>
        ELSE /\ turns' = turns + 1 /\ active' = turns + 1 /\ starting' = turns + 1
             /\ status' = "running"
@@ -212,21 +240,28 @@ ProviderAsks ==
   /\ UNCHANGED <<flagged, status, busy, active, starting, prov, ended, stopped, lock, queue, send, turns, pc, captured,
                  history, stopsLeft, archivesLeft, crashesLeft>>
 
-\* AgentRunner.ts steerHeld: the developer answers, and the held messages are steered and dropped from the queue.
-\* A failed steer is logged and leaves them queued.
+\* The developer answers. AgentRunner.ts handle calls steerHeld under the lock.
 Answer ==
   /\ awaiting /\ lock = "free"
   /\ awaiting' = FALSE
-  /\ LET held == {i \in 1..Len(queue) : queue[i].steer}
-         heldComments == {queue[i].c : i \in held}
-     IN IF prov # 0 /\ held # {}
-          THEN /\ queue' = SelectSeq(queue, LAMBDA m : ~m.steer)
-               /\ deliveries' = [c \in Comments |-> deliveries[c] + Cardinality({i \in held : queue[i].c = c})]
-               /\ where' = [c \in Comments |-> IF c \in heldComments THEN where[c] \cup {<<prov, active>>} ELSE where[c]]
-               /\ toArchived' = (toArchived \/ status = "archived")
-               /\ UNCHANGED overtaken
-          ELSE UNCHANGED <<queue, history>>
-  /\ UNCHANGED <<flagged, status, busy, active, starting, prov, ended, stopped, lock, send, turns, pc, captured, budgets>>
+  /\ lock' = IF prov # 0 /\ \E i \in 1..Len(queue) : queue[i].steer THEN "answer" ELSE "free"
+  /\ UNCHANGED <<flagged, status, busy, active, starting, prov, ended, stopped, queue, send, turns, pc, captured,
+                 history, budgets>>
+
+\* AgentRunner.ts steerHeld steers the held messages in queue order. steerTurn writes each one's transcript row and its
+\* queue removal in one transaction. A failed steer is logged and leaves the rest queued.
+SteerHeld ==
+  /\ lock = "answer"
+  /\ LET heldAt == {i \in 1..Len(queue) : queue[i].steer}
+     IN IF prov = 0 \/ heldAt = {}
+          THEN /\ lock' = "free"
+               /\ UNCHANGED <<queue, history>>
+          ELSE LET first == CHOOSE i \in heldAt : \A j \in heldAt : i <= j
+               IN /\ Deliver(queue[first].c, prov, active)
+                  /\ queue' = Without(queue, first)
+                  /\ UNCHANGED lock
+  /\ UNCHANGED <<flagged, status, busy, active, starting, prov, ended, awaiting, stopped, send, turns, pc, captured,
+                 budgets>>
 
 \* The provider's stream ends the turn. A turn waiting on the developer can only fail.
 ProviderEnds ==
@@ -260,7 +295,7 @@ Archive ==
   /\ archivesLeft' = archivesLeft - 1 /\ status' = "archived"
   /\ overtaken' = overtaken \cup {c \in Comments : pc[c] \in Pending}
   /\ UNCHANGED <<flagged, busy, active, starting, prov, ended, awaiting, stopped, lock, queue, send, turns, pc, captured,
-                 deliveries, where, toArchived, stopsLeft, asksLeft, crashesLeft>>
+                 deliveries, recorded, where, toArchived, stopsLeft, asksLeft, crashesLeft>>
 
 ---------------------------------------------------------------------------------------------------------------
 \* The turn's finish (AgentRunner.ts makeTurn finish), under the lock.
@@ -272,16 +307,20 @@ FinishStarts ==
   /\ UNCHANGED <<flagged, status, busy, active, starting, prov, ended, stopped, queue, send, turns, pc, captured,
                  history, budgets>>
 
-\* A completed turn that was not stopped takes the queue's first message and keeps busyThreads for startQueued.
+\* A completed turn that was not stopped drops queued messages the transcript already has, takes the first of the
+\* rest and keeps busyThreads for startQueued.
 FinishReleases ==
   /\ lock = "finish"
   /\ lock' = "free" /\ active' = 0 /\ ended' = "no" /\ stopped' = FALSE
-  /\ IF ended = "completed" /\ ~stopped /\ queue # <<>>
-       THEN /\ send' = [pc |-> "pending", c |-> Head(queue).c, origin |-> "queued"]
-            /\ queue' = Tail(queue)
-            /\ UNCHANGED busy
-       ELSE /\ busy' = FALSE
-            /\ UNCHANGED <<send, queue>>
+  /\ LET takes == ended = "completed" /\ ~stopped
+         unsent == SelectSeq(queue, LAMBDA m : m.c \notin recorded)
+     IN IF takes /\ unsent # <<>>
+          THEN /\ send' = [pc |-> "pending", c |-> Head(unsent).c, origin |-> "queued"]
+               /\ queue' = Tail(unsent)
+               /\ UNCHANGED busy
+          ELSE /\ busy' = FALSE
+               /\ queue' = IF takes THEN unsent ELSE queue
+               /\ UNCHANGED send
   /\ UNCHANGED <<flagged, status, starting, prov, awaiting, turns, pc, captured, history, budgets>>
 
 ---------------------------------------------------------------------------------------------------------------
@@ -297,9 +336,12 @@ Crash ==
   /\ pc' = [c \in Comments |-> IF c \in flagged THEN "crashed" ELSE pc[c]]
   /\ UNCHANGED <<flagged, queue, turns, captured, history, stopsLeft, archivesLeft, asksLeft>>
 
-\* ArtifactFeedback.ts handOver ends with store.markDelivered, whatever deliver did.
+\* ArtifactFeedback.ts handOver calls store.markDelivered when the thread took the comment, or when deliver failed
+\* because the developer archived the thread. Any other failure keeps the mark for the next start.
 Clear(c) ==
-  /\ pc[c] \in {"done", "dropped", "cancelled"} /\ c \in flagged
+  /\ c \in flagged
+  /\ \/ pc[c] = "done"
+     \/ pc[c] \in {"dropped", "cancelled"} /\ status = "archived"
   /\ flagged' = flagged \ {c}
   /\ UNCHANGED <<status, busy, active, starting, prov, ended, awaiting, stopped, lock, queue, send, turns, pc,
                  captured, history, budgets>>
@@ -308,13 +350,13 @@ Clear(c) ==
 \* or handOver delivers it again.
 Recover(c) ==
   /\ pc[c] = "crashed"
-  /\ pc' = [pc EXCEPT ![c] = IF deliveries[c] > 0 \/ Queued(c) THEN "done" ELSE "saved"]
+  /\ pc' = [pc EXCEPT ![c] = IF c \in recorded \/ Queued(c) THEN "done" ELSE "saved"]
   /\ UNCHANGED <<flagged, status, busy, active, starting, prov, ended, awaiting, stopped, lock, queue, send, turns,
                  captured, history, budgets>>
 
 Runner ==
   \/ \E c \in Comments : Reopen(c) \/ Lookup(c) \/ TurnSteer(c) \/ Queue(c) \/ Clear(c) \/ Recover(c)
-  \/ SendPending \/ SendAdmit \/ ProviderStarts \/ HandleEnd \/ FinishStarts \/ FinishReleases
+  \/ SendPending \/ SendAdmit \/ ProviderStarts \/ HandleEnd \/ FinishStarts \/ FinishReleases \/ SteerHeld
 
 Next ==
   \/ Runner
@@ -330,7 +372,7 @@ LiveSpec ==
   /\ \A c \in Comments : WF_vars(Clear(c)) /\ WF_vars(Recover(c))
   /\ WF_vars(SendPending) /\ WF_vars(SendAdmit) /\ WF_vars(ProviderStarts)
   /\ WF_vars(HandleEnd) /\ WF_vars(FinishStarts) /\ WF_vars(FinishReleases)
-  /\ WF_vars(Answer) /\ WF_vars(ProviderEnds)
+  /\ WF_vars(Answer) /\ WF_vars(SteerHeld) /\ WF_vars(ProviderEnds)
 
 ---------------------------------------------------------------------------------------------------------------
 \* Properties.
