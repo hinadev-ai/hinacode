@@ -185,6 +185,18 @@ describe("linking", () => {
     expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM host").first("count")).toBe(5)
   })
 
+  it("refuses one of two machines that claim at once past the limit", async () => {
+    for (const environmentId of ["env-1", "env-2", "env-3", "env-4"]) await linkMachine(environmentId)
+    const fifth = await startLink("env-5")
+    const sixth = await startLink("env-6")
+    expect((await approve(fifth.userCode)).status).toBe(204)
+    expect((await approve(sixth.userCode)).status).toBe(204)
+
+    const claims = await Promise.all([claim(fifth.deviceCode), claim(sixth.deviceCode)])
+    expect(claims.map((response) => response.status).toSorted()).toEqual([200, 409])
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM host").first("count")).toBe(5)
+  })
+
   it("keeps the host id on a re-link and revokes the old credential", async () => {
     const first = await linkMachine()
     expect((await putTunnel(first)).status).toBe(200)
