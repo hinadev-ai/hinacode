@@ -23,7 +23,8 @@ import {
   View,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-import { DocumentToolbar, isMarkToggle, LinkSheet, selectionFormats } from "@/components/document-toolbar"
+import { DocumentToolbar, LinkSheet } from "@/components/document-toolbar"
+import { isMarkToggle, selectionFormats } from "@/lib/document-formats"
 import { Failure } from "@/components/files"
 import { Icon } from "@/components/icon"
 import { Button, EmptyState, IconButton, Notice } from "@/components/ui"
