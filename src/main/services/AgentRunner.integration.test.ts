@@ -18,6 +18,7 @@ import type {
   Subagent,
 } from "../../shared/agent.ts"
 import { RpcMethods, type TranscriptPush } from "../../shared/contract.ts"
+import { persistence } from "./errors.ts"
 import { defaultSettings, type Message, type Settings as SettingsValue, type Thread } from "../../shared/domain.ts"
 import { ClaudeProvider, makeClaudeHarness } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -83,6 +84,8 @@ interface Probe {
   readonly pauseNextUpdate: () => { readonly reached: Promise<void>; readonly resume: () => void }
   readonly turnBase: () => Promise<string | null>
   readonly storedMessages: (threadId: string) => Promise<ReadonlyArray<Message>>
+  readonly failNextInsert: (matches: (message: Message) => boolean) => void
+  readonly recordAfterCheck: (message: Message) => void
 }
 
 const streamedWords = Array.from({ length: 400 }, (_, index) => `word${index} `)
@@ -147,6 +150,8 @@ const withPreparingThread = async (
   const deliver = () => inserted.resolve()
   const snapshot = () => snapshotReady.resolve()
   let holdInsertion = options.pauseInsertion ?? false
+  let failingInsert: ((message: Message) => boolean) | undefined
+  let recordedAfterCheck: Message | undefined
   let holdSnapshot = options.pauseSnapshot ?? false
   let updateHold:
     | { readonly reached: PromiseWithResolvers<void>; readonly resumed: PromiseWithResolvers<void> }
@@ -469,7 +474,21 @@ const withPreparingThread = async (
                     inserting.resolve()
                     yield* Effect.promise(() => inserted.promise)
                   }
+                  if (failingInsert?.(message)) {
+                    failingInsert = undefined
+                    return yield* persistence("messages.insert")(new Error("disk full"))
+                  }
                   yield* messages.insert(message)
+                }),
+              has: (id) =>
+                Effect.gen(function* () {
+                  const sent = yield* messages.has(id)
+                  const late = recordedAfterCheck
+                  if (late?.id === id) {
+                    recordedAfterCheck = undefined
+                    yield* messages.insert(late)
+                  }
+                  return sent
                 }),
               update: (message, previous) =>
                 Effect.gen(function* () {
@@ -555,6 +574,12 @@ const withPreparingThread = async (
           return { reached: hold.reached.promise, resume: () => hold.resumed.resolve() }
         },
         storedMessages: (threadId) => domainRuntime.runPromise(messages.list(threadId)),
+        failNextInsert: (matches) => {
+          failingInsert = matches
+        },
+        recordAfterCheck: (message) => {
+          recordedAfterCheck = message
+        },
         turnBase: () =>
           domainRuntime.runPromise(
             sql<{
@@ -1753,6 +1778,55 @@ it("resumes a limited thread on its own once its reset passes", async () => {
     expect(turns).toHaveLength(2)
     expect(turns[1]?.input.prompt).toMatch(/streams a reply$/)
     expect((await Effect.runPromise(threads.get(thread.id))).usageLimit?.reset?.autoResume).not.toBe(true)
+  })
+})
+
+const queuedAfter = async ({ runner, threads, thread }: Probe, queue: Thread["queue"]) => {
+  await Effect.runPromise(threads.update({ id: thread.id, queue }))
+  await Effect.runPromise(runner.send(thread.id, "first accepted input", []))
+}
+
+it("drops a queued message the transcript got before it started, and starts the next one", async () => {
+  await withPreparingThread(async (probe) => {
+    const { threads, thread, release, turns, storedMessages, recordAfterCheck } = probe
+    release()
+    const now = new Date(0).toISOString()
+    recordAfterCheck({
+      id: "already-sent",
+      threadId: thread.id,
+      role: "user",
+      parts: [{ type: "text", text: "already sent accepted input" }],
+      createdAt: now,
+      completedAt: now,
+      usage: null,
+      forkPoint: null,
+    })
+
+    await queuedAfter(probe, [
+      { id: "already-sent", text: "already sent accepted input", attachments: [] },
+      { id: "waiting", text: "waiting accepted input", attachments: [] },
+    ])
+
+    await vi.waitFor(() => expect(turns.map(({ input }) => input.prompt)).toContain("waiting accepted input"))
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([])
+    expect((await storedMessages(thread.id)).filter((message) => message.id === "already-sent")).toHaveLength(1)
+  })
+})
+
+it("writes nothing for a queued message whose turn failed to start, and keeps it queued", async () => {
+  await withPreparingThread(async (probe) => {
+    const { threads, thread, release, storedMessages, failNextInsert } = probe
+    release()
+    let assistants = 0
+    failNextInsert((message) => message.role === "assistant" && ++assistants === 2)
+
+    await queuedAfter(probe, [{ id: "retry-me", text: "retry me accepted input", attachments: [] }])
+
+    await vi.waitFor(async () => {
+      expect(assistants).toBe(2)
+      expect((await Effect.runPromise(threads.get(thread.id))).queue.map((message) => message.id)).toEqual(["retry-me"])
+    })
+    expect((await storedMessages(thread.id)).some((message) => message.id === "retry-me")).toBe(false)
   })
 })
 
