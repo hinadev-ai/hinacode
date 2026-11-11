@@ -11,5 +11,4 @@ export const threadTabs: readonly { value: ThreadTab; label: string; icon: IconN
   { value: "terminal", label: copy("mobile_thread_tab_terminal"), icon: "Terminal" },
 ]
 
-/** The views the bar at the foot of a thread offers. The terminal opens from the thread's actions menu instead. */
 export const barTabs = threadTabs.filter((item) => item.value !== "terminal")

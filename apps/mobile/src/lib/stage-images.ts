@@ -71,10 +71,6 @@ export const imageDataUrl = async (asset: StageableImage) => {
   return { dataUrl: `data:image/${format};base64,${base64}`, name }
 }
 
-/**
- * Copies a picked or pasted image to the desktop, sized for the agent. An image the agent would refuse fails here,
- * before the prompt is sent, rather than failing the whole turn.
- */
 export const stageImage = async (threadId: string, asset: StageableImage): Promise<DraftImage> => {
   const source = await imageDataUrl(asset)
   const attachment = await call("attachments.stage", { threadId, source })

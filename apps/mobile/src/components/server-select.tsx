@@ -10,7 +10,6 @@ import type { Server } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { useThreads } from "@/stores/threads"
 
-/** A dropdown of the paired servers that opens a sheet, each server listed with its project count. */
 export function ServerSelect({
   testID,
   label,
@@ -20,11 +19,9 @@ export function ServerSelect({
   onChange,
 }: {
   testID: string
-  /** Names the field for screen readers and titles the sheet. */
   label: string
   servers: readonly Server[]
   value: Server
-  /** Disables offline servers, for a choice that needs to reach the server right away. */
   onlyConnected?: boolean
   onChange: (id: string) => void
 }) {

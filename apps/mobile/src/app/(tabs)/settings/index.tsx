@@ -135,12 +135,9 @@ function NotificationPermissionRow({
   const [asking, setAsking] = useState(false)
   const ask = async () => {
     setAsking(true)
-    try {
-      await requestNotificationPermission()
-      onAnswered()
-    } finally {
-      setAsking(false)
-    }
+    await requestNotificationPermission()
+      .then(() => onAnswered())
+      .finally(() => setAsking(false))
   }
   switch (permission) {
     case "undetermined":
@@ -252,7 +249,6 @@ function DesktopSettings() {
   )
 }
 
-/** The settings saved on one server: access mode, default models and archiving. */
 function ServerPreferences({ server }: { server: Server | undefined }) {
   const theme = useTheme()
   const offline = server?.status !== "connected"
@@ -453,10 +449,6 @@ function ModelSheet({
   )
 }
 
-/**
- * Every paired server with its status. Tap one to reconnect, pair it again or forget it. With several, the lists
- * can hide the offline ones.
- */
 function ServerSettings() {
   const servers = useConnection((state) => state.servers)
   const environmentFilter = usePreferences((state) => state.environmentFilter)
@@ -502,7 +494,6 @@ const connectionColor = (theme: Palette): Record<ConnectionStatus, string> => ({
   unauthorized: theme.danger,
 })
 
-/** A paired server: its name and how the phone reaches it. Tap to reconnect, pair again or forget it. */
 function ServerRow({ server, onPress }: { server: Server; onPress: () => void }) {
   const theme = useTheme()
   const name = serverName(server)

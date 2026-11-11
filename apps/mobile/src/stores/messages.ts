@@ -18,31 +18,17 @@ type ReadyHistory = {
 }
 
 export type ThreadHistory =
-  /** `pending` holds pushes that arrive before the snapshot, which may or may not contain them. */
   | { readonly status: "loading"; readonly pending: readonly TranscriptPush[] }
   | { readonly status: "error"; readonly message: string }
   | ReadyHistory
 
 interface MessagesState {
   readonly byThread: Readonly<Record<string, ThreadHistory>>
-  /** The threads on screen. The desktop streams only their transcripts, so every other history goes stale. */
   readonly watched: ReadonlySet<string>
-  /** Marks a thread on screen until the returned function runs, reading a stale history of it again. */
   readonly watch: (threadId: string) => () => void
-  /** Loads the newest page of a thread's history once; later changes arrive through `receive`. */
   readonly load: (threadId: string) => Promise<void>
-  /**
-   * Prepends the page before the oldest loaded message, when there is one and none is loading. Pushes that arrive
-   * meanwhile and are newer than the page are replayed onto it.
-   */
   readonly loadEarlier: (threadId: string) => Promise<void>
-  /**
-   * Reads every history on screen again after a reconnect, since pushes sent while the socket was down are lost.
-   * The last known history stays on screen until its newest page replaces it in one step. Earlier pages are
-   * dropped too, along with one still loading, as they may have changed meanwhile, and load again on request.
-   */
   readonly reload: () => void
-  /** Forgets every history, when the phone disconnects or unpairs. */
   readonly reset: () => void
   readonly receive: (push: TranscriptPush) => void
 }
@@ -191,8 +177,8 @@ export const useMessages = create<MessagesState>()((set, get) => {
         settle((current) => {
           const latest = live.reduce(applyPush, current)
           if (latest.messages[0]?.id !== before) return latest
-          // Folded over the whole transcript so each push finds its message as it did live, but only the page
-          // keeps the result: the newer messages already show it, including the ones pushes created.
+          // oxlint-disable-next-line hinacode/no-comments
+          // Folded over the whole transcript so each push finds its message as it did live, but only the page keeps the result: the newer messages already show it, including the ones pushes created.
           const replayed = request.pushes
             .filter((push) => push.seq > page.seq && push.type !== "message.created")
             .reduce(applyPush, { ...latest, messages: [...page.messages, ...latest.messages] })
@@ -208,7 +194,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
     },
 
     reset: () => {
-      for (const threadId of [...pendingDeltas.keys()]) takePending(threadId)
+      for (const threadId of Array.from(pendingDeltas.keys())) takePending(threadId)
       currentLoadToken.clear()
       pushesDuringReload.clear()
       pushesDuringEarlier.clear()
@@ -227,7 +213,6 @@ export const useMessages = create<MessagesState>()((set, get) => {
           return
         }
         if (pending === undefined) {
-          // Start once per group; later deltas never postpone publication.
           pendingDeltas.set(threadId, {
             pushes: [push],
             timer: setTimeout(() => {

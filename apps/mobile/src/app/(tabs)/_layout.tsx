@@ -4,7 +4,6 @@ import { useSideRail } from "@/hooks/use-side-rail"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 
-/** HinaCode's own icons, the desktop's set, rendered by `pnpm build:tab-icons` since native tabs take images. */
 const tabIcons = {
   threads: require("../../../assets/images/tabs/threads.png"),
   pullRequests: require("../../../assets/images/tabs/pull-requests.png"),
@@ -13,10 +12,6 @@ const tabIcons = {
   search: require("../../../assets/images/tabs/search.png"),
 }
 
-/**
- * Threads, Pull requests, Artifacts, Settings and Search. iOS 26 draws the glass tab bar and the search tab, which moves
- * to the side strip on iPhone Duo's half-open display.
- */
 export default function TabsLayout() {
   const theme = useTheme()
   const railed = useSideRail() > 0

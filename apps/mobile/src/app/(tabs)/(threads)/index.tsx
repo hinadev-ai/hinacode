@@ -21,7 +21,6 @@ export default function HomeScreen() {
   const sidebar = useSidebar()
   const railed = useSideRail() > 0
 
-  // In a wide window the list is the sidebar, so this route is the detail side with nothing open yet.
   if (split)
     return (
       <SafeAreaView edges={isIOS ? [] : ["top"]} style={[styles.screen, { backgroundColor: theme.background }]}>
@@ -71,7 +70,6 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  // Lined up with the thread header, so the sidebar button stays put when a thread opens.
   header: { padding: 4 },
   center: { flex: 1, justifyContent: "center" },
 })

@@ -1,7 +1,7 @@
 import { useAtomMount } from "@effect/atom-react"
 import type { Thread } from "@shared/domain.ts"
 import { useFocusEffect } from "expo-router"
-import { useCallback, useState } from "react"
+import { useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon } from "@/components/icon"
 import { Spinner } from "@/components/motion"
@@ -20,7 +20,6 @@ const MAX_TICKETS = 5
 const TEAR_DOT = 3
 const TEAR_GAP = 7
 
-/** Every thread that waits on the developer as a ticket they can answer in place, newest first. */
 export function WaitingSection({ threads }: { threads: readonly Thread[] }) {
   const theme = useTheme()
   const [expanded, setExpanded] = useState(false)
@@ -47,15 +46,11 @@ export function WaitingSection({ threads }: { threads: readonly Thread[] }) {
   )
 }
 
-/**
- * One waiting thread: its first request under a header that opens the thread. The thread is watched while the
- * ticket is on screen, so a request answered on the desktop leaves at once.
- */
 function WaitingTicket({ thread }: { thread: Thread }) {
   const theme = useTheme()
   const history = useMessages((state) => state.byThread[thread.id])
-  // NativeTabs keeps a hidden tab mounted, so the transcript is watched only while the Threads tab shows.
-  useFocusEffect(useCallback(() => useMessages.getState().watch(thread.id), [thread.id]))
+  // FIXME: NativeTabs keeps a hidden tab mounted, so the transcript is watched only while the Threads tab shows.
+  useFocusEffect(() => useMessages.getState().watch(thread.id))
   useAtomMount(loadHistoryAtom(thread.id))
 
   const requests = openRequests(history)
@@ -130,7 +125,6 @@ function TicketHeader({ thread }: { thread: Thread }) {
   )
 }
 
-/** A row of dots where the ticket's stub tears off, as many as fit the width. */
 function TearLine() {
   const theme = useTheme()
   const [width, setWidth] = useState(0)

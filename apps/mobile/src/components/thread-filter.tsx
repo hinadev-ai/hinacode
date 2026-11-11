@@ -29,11 +29,8 @@ export interface FilterChoice {
 }
 
 export interface ThreadFilterMenu {
-  /** All servers, one per server, then Hide offline. Empty with one paired server, which leaves nothing to narrow. */
   readonly servers: readonly FilterChoice[]
-  /** All projects, then one per repository with a project on a shown server. */
   readonly projects: readonly FilterChoice[]
-  /** The narrowing in effect, short enough for the pill. */
   readonly label: string
   readonly narrowed: boolean
 }
@@ -44,7 +41,6 @@ const setProjects = (projectIds: readonly string[]) => usePreferences.getState()
 export const resetThreadFilter = () =>
   usePreferences.getState().set({ environmentFilter: allEnvironments, projectIds: [] })
 
-/** The servers and projects the home list and search can narrow to, as the desktop sidebar's filter menu offers. */
 export function useThreadFilterMenu(): ThreadFilterMenu {
   const servers = useConnection((state) => state.servers)
   const environmentFilter = usePreferences((state) => state.environmentFilter)
@@ -121,7 +117,6 @@ export function useThreadFilterMenu(): ThreadFilterMenu {
   }
 }
 
-/** The picked projects, else the shown servers (`null` when all are), else the one paired server or every thread. */
 function filterLabel(projects: readonly string[], shown: readonly string[] | null, paired: readonly string[]) {
   if (projects.length === 1) return projects[0]
   if (projects.length > 1) return copy("mobile_home_filter_projects_count", { count: String(projects.length) })
@@ -130,7 +125,6 @@ function filterLabel(projects: readonly string[], shown: readonly string[] | nul
   return paired.length === 1 ? paired[0] : copy("mobile_home_filter_all_threads")
 }
 
-/** Connected when any server the list shows is. */
 function useShownConnected() {
   const shown = useShownServers()
   return useConnection((state) =>
@@ -138,7 +132,6 @@ function useShownConnected() {
   )
 }
 
-/** The filter's pill: the shown servers' connection, the narrowing in effect, and a sheet to change it. */
 export function ThreadFilterPill() {
   const theme = useTheme()
   const connected = useShownConnected()
@@ -169,7 +162,6 @@ export function ThreadFilterPill() {
   )
 }
 
-/** The filter's choices as checkboxes. It stays open across picks, so several servers or projects can be picked. */
 export function ThreadFilterSheet({ menu, open, onClose }: { menu: ThreadFilterMenu; open: boolean; onClose: () => void }) {
   return (
     <Sheet fit title={copy("mobile_home_filter_title")} open={open} onClose={onClose}>

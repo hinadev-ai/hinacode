@@ -28,7 +28,6 @@ import { familyOf, beforeFirstHandshake, registry } from "@/lib/remote"
 import { loadPullRequestAtom, usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
-/** Reads the thread's links into the store, and the pull request GitHub has for its worktree branch. */
 async function readPullRequests(threadId: string, worktreeId: string | null) {
   const [error, branch] = await Promise.all([
     usePullRequests
@@ -38,7 +37,6 @@ async function readPullRequests(threadId: string, worktreeId: string | null) {
         () => null,
         (cause: unknown) => errorText(cause),
       ),
-    // Without gh, or without a pull request for the branch, there is simply no branch card.
     worktreeId === null ? null : call("worktrees.pullRequest", { id: worktreeId }).catch(() => null),
   ])
   return { error, branch }
@@ -53,7 +51,6 @@ const threadPullRequestsAtom = familyOf((threadId: string, worktreeId: string | 
   }),
 )
 
-/** Every pull request the thread has: the ones linked to it, plus the one GitHub has for its worktree branch. */
 export function PullRequests({ thread }: { thread: Thread }) {
   const theme = useTheme()
   const links = usePullRequests((state) => state.linksByThread[thread.id])
@@ -77,14 +74,10 @@ export function PullRequests({ thread }: { thread: Thread }) {
     const urls = [...linked, ...(branchUrl === null ? [] : [branchUrl])]
     setCreateError(null)
     registry.refresh(read)
-    try {
-      await Promise.all([
-        Effect.runPromise(AtomRegistry.getResult(registry, read, { suspendOnWaiting: true })),
-        ...urls.map((url) => loadPullRequest(url, { force: true })),
-      ])
-    } finally {
-      setRefreshing(false)
-    }
+    await Promise.all([
+      Effect.runPromise(AtomRegistry.getResult(registry, read, { suspendOnWaiting: true })),
+      ...urls.map((url) => loadPullRequest(url, { force: true })),
+    ]).finally(() => setRefreshing(false))
   }
 
   const create = async () => {
@@ -153,7 +146,6 @@ function PullRequestCard({
   onPress,
 }: {
   url: string
-  /** Null for the branch's pull request that nobody linked. */
   link: PullRequestLink | null
   onPress: () => void
 }) {
@@ -250,7 +242,6 @@ function PullRequestCard({
 }
 
 const styles = StyleSheet.create({
-  // Capped and centered like the pull request screen, so cards keep a readable width on an iPad.
   list: { padding: 16, gap: 12, flexGrow: 1, width: "100%", maxWidth: 792, alignSelf: "center" },
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 24 },
   card: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.xl, padding: 16, gap: 8 },

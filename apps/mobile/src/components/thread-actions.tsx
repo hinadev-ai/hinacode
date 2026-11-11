@@ -26,7 +26,6 @@ import {
 } from "@/lib/thread-actions"
 import { useThreads } from "@/stores/threads"
 
-/** iOS and the web ask for the new title in a system prompt. Android has none, so its sheet shows a field instead. */
 const promptTitle = (current: string) =>
   new Promise<string | null>((resolve) => {
     if (Platform.OS === "web") return resolve(window.prompt(copy("mobile_thread_rename_title"), current))
@@ -58,15 +57,18 @@ const confirmDelete = (thread: Thread) =>
     )
   })
 
-/**
- * Runs a thread action and keeps its progress and error, for the row's menu or sheet, its accessibility actions and
- * the thread screen's menu. `run` resolves to whether the action finished. Renaming on Android resolves false and
- * sets `renaming`, so the sheet stays open with a title field. Archiving or deleting the open thread leaves it.
- */
+const succeeds = async (action: () => Promise<void>, onError: (message: string) => void) => {
+  try {
+    await action()
+    return true
+  } catch (cause) {
+    onError(errorText(cause))
+    return false
+  }
+}
+
 export function useThreadActions(thread: Thread) {
-  // Every thread row runs this hook, so it reads the route when an action ends instead of re-rendering on each push.
   const navigation = useNavigationContainerRef()
-  // Thread, file and pull request routes all carry the thread's id.
   const isOpen = () =>
     (navigation.getCurrentRoute() as { params?: { id?: string } } | undefined)?.params?.id === thread.id
   const [running, setRunning] = useState<ThreadActionName | null>(null)
@@ -76,15 +78,9 @@ export function useThreadActions(thread: Thread) {
   const attempt = async (name: ThreadActionName, action: () => Promise<void>) => {
     setRunning(name)
     setError(null)
-    try {
-      await action()
-      return true
-    } catch (cause) {
-      setError(errorText(cause))
-      return false
-    } finally {
-      setRunning(null)
-    }
+    const succeeded = await succeeds(action, setError)
+    setRunning(null)
+    return succeeded
   }
 
   const rename = (title: string) =>
@@ -131,7 +127,6 @@ export function useThreadActions(thread: Thread) {
         return attempt(name, () => call("threads.reveal", { threadId: thread.id }))
       case "delete":
         if (!(await confirmDelete(thread))) return false
-        // The worktree may hold work nobody committed, and the phone cannot show what it would throw away.
         return attempt(name, async () => {
           await call("threads.delete", { id: thread.id, removeWorktree: false })
           useThreads.getState().remove(thread.id)
@@ -153,10 +148,7 @@ export function useThreadActions(thread: Thread) {
   }
 }
 
-/**
- * The iOS context menu a thread row lifts into on long press: Open, then the actions in their groups. Built by a
- * call rather than as a component, because `Link` finds its menu by the element's type.
- */
+// FIXME: expo-router's Link finds its menu by the element's type, so the menu is built by a call rather than as a component.
 const threadContextMenu = (thread: Thread, state: ReturnType<typeof useThreadActions>) => (
   <Link.Menu>
     <Link.MenuAction icon="arrow.up.right" onPress={() => openThread(thread.id)}>
@@ -180,11 +172,7 @@ const threadContextMenu = (thread: Thread, state: ReturnType<typeof useThreadAct
   </Link.Menu>
 )
 
-/**
- * A thread's row: tap opens it, long press lifts it into the native context menu on iOS and opens the actions sheet
- * elsewhere, and assistive technology lists the actions. `Link` merges style objects onto its trigger and would drop
- * a style function, so `children` draws the pressed look.
- */
+// FIXME: expo-router's Link merges style objects onto its trigger and drops a style function, so `children` draws the pressed look.
 export function ThreadActionsTarget({
   thread,
   testID,
@@ -222,7 +210,6 @@ export function ThreadActionsTarget({
   return (
     <>
       {isIOS ? (
-        // The tap still goes through `openThread`, which keeps a split layout to one thread beside the list.
         <Link
           href={{ pathname: "/thread/[id]", params: { id: thread.id } }}
           asChild
@@ -245,7 +232,6 @@ export function ThreadActionsTarget({
 
 const COPIED_MS = 800
 
-/** The thread's actions in grouped cards over a scrim, with the thread's title on top. */
 export function ThreadActionsSheet({
   thread,
   open,
@@ -257,7 +243,6 @@ export function ThreadActionsSheet({
   open: boolean
   onClose: () => void
   state: ReturnType<typeof useThreadActions>
-  /** Shown on a thread's own screen, where the terminal opens from this sheet rather than the tab bar. */
   onOpenTerminal?: () => void
 }) {
   const theme = useTheme()

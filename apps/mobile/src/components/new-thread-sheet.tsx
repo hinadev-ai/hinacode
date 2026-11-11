@@ -29,10 +29,6 @@ import { draftThread, listedThreads, useThreads } from "@/stores/threads"
 
 type Picking = "environment" | "project" | null
 
-/**
- * The picked project's draft, opened as soon as the sheet shows it so the agent, model and branch can be set before
- * Start. The server keeps one draft per project, so opening it again returns the same thread.
- */
 const projectDraftAtom = familyOf((project: Project) =>
   Atom.make((get) => {
     if (beforeFirstHandshake(get)) return Effect.never
@@ -49,11 +45,6 @@ function useProjectDraft(project: Project | undefined, open: boolean, onError: (
   return useThreads((state) => draftThread(state.byId, draftId))
 }
 
-/**
- * Starts a thread: a prompt, the environment it runs on, one of that environment's projects, and the agent, model and
- * branch of that project's draft. Start opens the draft with the prompt in its composer. The most recently active
- * project comes first. `draft` starts the prompt with that text; `title` and `header` say what the thread is for.
- */
 export function NewThreadSheet({
   open,
   onClose,
@@ -100,16 +91,16 @@ export function NewThreadSheet({
     if (project === undefined) return
     setCreating(true)
     setError(null)
+    const pendingThread = projectDraft ?? createThread(project)
     try {
-      const thread = projectDraft ?? (await createThread(project))
+      const thread = await pendingThread
       if (prompt.trim() !== "") useDrafts.getState().setText(thread.id, prompt)
       close()
       openThread(thread.id)
     } catch (cause) {
       setError(errorText(cause))
-    } finally {
-      setCreating(false)
     }
+    setCreating(false)
   }
 
   const addProject = () => {
@@ -269,7 +260,6 @@ export function NewThreadSheet({
   )
 }
 
-/** The draft's agent and model, and the branch its first message runs on, each opening the composer's own picker. */
 function DraftSettings({
   thread,
   server,
@@ -315,7 +305,6 @@ function DraftSettings({
   )
 }
 
-/** A setting's name on the left and its value on the right, opening the choices for it. */
 function ValueRow({
   testID,
   icon,

@@ -14,7 +14,6 @@ import { DEFAULT_RELAY_URL } from "@/lib/relay-account"
 import { relativeTime } from "@/lib/relative-time"
 import { useRelayAccount } from "@/stores/relay-account"
 
-/** Signs in to the relay in the browser, so every machine shown on the account appears here. */
 export function RelayAccountSection() {
   const serviceUrl = useRelayAccount((state) => state.serviceUrl)
   const unauthorized = useRelayAccount((state) => state.unauthorized)
@@ -102,7 +101,6 @@ const authenticate = async (url: string, redirectUri: string) => {
   return result.type === "success" ? result.url : null
 }
 
-/** Signs in on the relay's page in the system auth sheet, which hands the code back to this phone. */
 function RelaySignIn({ initialUrl }: { initialUrl: string }) {
   const theme = useTheme()
   const signIn = useRelayAccount((state) => state.signIn)
@@ -116,11 +114,9 @@ function RelaySignIn({ initialUrl }: { initialUrl: string }) {
     }
     setBusy(true)
     setError(null)
-    try {
-      setError(await signIn({ serviceUrl: serviceUrl.trim(), deviceName, random: getRandomBytes(32), authenticate }))
-    } finally {
-      setBusy(false)
-    }
+    await signIn({ serviceUrl: serviceUrl.trim(), deviceName, random: getRandomBytes(32), authenticate })
+      .then(setError)
+      .finally(() => setBusy(false))
   }
   const inputStyle = [styles.input, { color: theme.text, backgroundColor: theme.background, borderColor: theme.border }]
   return (

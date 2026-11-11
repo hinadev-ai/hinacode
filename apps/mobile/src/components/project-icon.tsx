@@ -9,7 +9,6 @@ import { useTheme } from "@/hooks/use-theme"
 import { request, type RpcError } from "@/lib/connection"
 import { beforeFirstHandshake, familyOf } from "@/lib/remote"
 
-/** Favicon data URLs by project id, null when the project has none. Every row of a project shares one read. */
 const projectIcon = familyOf((projectId: string) =>
   Atom.make((get) => {
     const shown = get.self<AsyncResult.AsyncResult<string | null, RpcError>>().pipe(Option.filter(AsyncResult.isSuccess))
@@ -22,13 +21,12 @@ const projectIcon = familyOf((projectId: string) =>
 const useProjectIcon = (projectId: string): string | null =>
   AsyncResult.getOrElse(useAtomValue(projectIcon(projectId)), () => null)
 
-/** The project's own favicon, or a folder when it has none, as on the desktop. */
 export function ProjectIcon({ projectId, size }: { projectId: string; size: number }) {
   const theme = useTheme()
   const icon = useProjectIcon(projectId)
   const [failed, setFailed] = useState<string | null>(null)
   if (icon === null || failed === icon) return <Icon name="Folder" size={size} color={theme.textMuted} />
-  // Native Image cannot draw SVG; the web's <img> can.
+  // FIXME: React Native's Image cannot draw SVG; the web's <img> can.
   const svg = Platform.OS === "web" ? null : svgMarkup(icon)
   if (svg !== null) return <SvgXml xml={svg} width={size} height={size} />
   return (
@@ -44,7 +42,6 @@ export function ProjectIcon({ projectId, size }: { projectId: string; size: numb
 
 const SVG_PREFIX = /^data:image\/svg\+xml(;[^,]*)?,/i
 
-/** The markup of an SVG data URL, or null for any other image. */
 function svgMarkup(uri: string): string | null {
   const match = SVG_PREFIX.exec(uri)
   if (match === null) return null

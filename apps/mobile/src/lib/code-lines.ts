@@ -7,11 +7,6 @@ export interface LineSpan {
 
 export type CodeLine = readonly LineSpan[]
 
-/**
- * Splits `source` into lines of colored text. Spans may cross line breaks, and text no span covers, such as
- * the part after a highlighted prefix, is plain. `\r\n` ends a line like `\n`, and a final line break does not
- * start an empty last line. Pass null spans to get plain lines.
- */
 export function codeLines(source: string, spans: readonly SyntaxSpan[] | null): CodeLine[] {
   const lines: LineSpan[][] = [[]]
   const push = (type: SyntaxClass, start: number, end: number) => {

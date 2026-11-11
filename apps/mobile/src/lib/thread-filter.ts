@@ -3,7 +3,6 @@ import { type EnvironmentFilter, shownEnvironmentIds } from "@shared/environment
 import { filterPickedProjects, groupProjects, type ProjectGroup } from "@shared/projectGroups.ts"
 import type { ConnectionStatus } from "./connection"
 
-/** The servers the lists show, or `null` when they show everything. */
 export function shownServers(
   filter: EnvironmentFilter,
   servers: readonly { readonly id: string; readonly status: ConnectionStatus }[],
@@ -15,9 +14,7 @@ export function shownServers(
   return shown.size === servers.length ? null : shown
 }
 
-/** What the home list and search narrow to: the shown servers first, then the picked projects on them. */
 export interface ThreadFilter {
-  /** `null` when every server is shown. */
   readonly servers: ReadonlySet<string> | null
   readonly projectIds: readonly string[]
 }
@@ -25,14 +22,12 @@ export interface ThreadFilter {
 const onShown = (servers: ReadonlySet<string> | null, project: Project | undefined) =>
   servers === null || (project?.environmentId !== undefined && servers.has(project.environmentId))
 
-/** The projects on the shown servers, narrowed to the picked ones among them when any is picked. */
 const shownProjects = (filter: ThreadFilter, projects: readonly Project[]): readonly Project[] =>
   filterPickedProjects(
     projects.filter((project) => onShown(filter.servers, project)),
     filter.projectIds,
   )
 
-/** The shown projects and their threads. */
 export function withinFilter(
   filter: ThreadFilter,
   projects: readonly Project[],
@@ -44,7 +39,6 @@ export function withinFilter(
   return { projects: shown, threads: threads.filter((thread) => ids.has(thread.projectId)) }
 }
 
-/** The message hits in shown projects. */
 export function hitsWithinFilter(
   filter: ThreadFilter,
   projects: readonly Project[],
@@ -56,11 +50,9 @@ export function hitsWithinFilter(
   return hits.filter((hit) => ids.has(hit.projectId))
 }
 
-/** The project groups the filter offers: one per repository, for those with a project on a shown server. */
 export const projectChoices = (servers: ReadonlySet<string> | null, projects: readonly Project[]) =>
   groupProjects(projects).filter((group) => group.projects.some((project) => onShown(servers, project)))
 
-/** The offered groups the filter narrows to. Empty when it shows every project. */
 export const pickedGroups = (filter: ThreadFilter, projects: readonly Project[]): readonly ProjectGroup[] =>
   projectChoices(filter.servers, projects).filter((group) =>
     group.projects.some((project) => onShown(filter.servers, project) && filter.projectIds.includes(project.id)),

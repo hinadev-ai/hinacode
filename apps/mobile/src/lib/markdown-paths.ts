@@ -5,7 +5,6 @@ export type ImageSource =
 
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i
 
-/** `.` dropped and `..` popped. Null when `..` climbs above the first segment. */
 function normalize(segments: readonly string[]): string[] | null {
   const out: string[] = []
   for (const segment of segments) {
@@ -16,10 +15,6 @@ function normalize(segments: readonly string[]): string[] | null {
   return out
 }
 
-/**
- * `href` as a `/`-separated path relative to `root`, with no `.`, `..` or empty segments, which is the only form
- * `fs.preview` and `fs.read` accept. A relative `href` starts from `folder`, itself relative to `root`.
- */
 function relativeToRoot(href: string, root: string, folder: string): string | "outsideRoot" | "invalid" {
   let path = href.trim()
   if (/^file:\/\//i.test(path)) path = path.slice("file://".length).replace(/^localhost(?=\/)/i, "")
@@ -47,11 +42,6 @@ function relativeToRoot(href: string, root: string, folder: string): string | "o
   return segments.length === 0 ? "invalid" : segments.join("/")
 }
 
-/**
- * Where a Markdown image's `src` loads from. URLs load directly; a path loads from `root`, the thread's working
- * folder, and must stay inside it. `folder` is where the Markdown itself sits, for a file previewed from the
- * workspace; a reply's paths start at the root.
- */
 export function resolveImageSource(src: string, root: string | null, folder = ""): ImageSource {
   const trimmed = src.trim()
   if (/^(https?:\/\/|data:)/i.test(trimmed)) return { kind: "uri", uri: trimmed }
@@ -62,7 +52,6 @@ export function resolveImageSource(src: string, root: string | null, folder = ""
   return { kind: "file", root, path }
 }
 
-/** The file a relative Markdown link points at, relative to `root`, or null when it is not a file in it. */
 export function resolveFileLink(href: string, root: string | null, folder = ""): string | null {
   if (root === null) return null
   const path = relativeToRoot(href, root, folder)

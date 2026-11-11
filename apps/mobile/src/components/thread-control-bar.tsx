@@ -13,7 +13,6 @@ const TAB_WIDTH = 56
 const TAB_HEIGHT = 32
 const TAB_SLOP = { top: (HIT - TAB_HEIGHT) / 2, bottom: (HIT - TAB_HEIGHT) / 2 }
 
-/** The thread's views as icon tabs at the foot of the screen. */
 export function ThreadControlBar({
   tab,
   onSelect,

@@ -45,10 +45,6 @@ function workspaceImages(text: string, root: string | null, folder: string | und
 
 const escapeAlt = (alt: string) => alt.replace(/[[\]\\]/g, "\\$&")
 
-/**
- * `text` with each image that points into the workspace swapped for its data URL once `fs.preview` returns it,
- * since the phone cannot load the desktop's files by path. URLs and images outside `root` stay as written.
- */
 export function useWorkspaceImages(text: string, root: string | null, folder: string | undefined): string {
   const images = workspaceImages(text, root, folder)
   const dataUrls = useAtomValue(loadedPreviews(images.map((image) => [image.root, image.path] as const)))

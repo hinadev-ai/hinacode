@@ -1,13 +1,3 @@
-/**
- * The phone side of `scripts/perf/mobile.ts`. Only a release bundle built with `EXPO_PUBLIC_PERF_URL` contains it:
- * metro.config.js loads it through `perf-renderer.js`, just before React's profiling renderer. It long-polls the
- * driver for a workload, runs it and posts back what it saw: commits with the components each rendered and their
- * render time, JS frame gaps, and long tasks.
- *
- * The stores and the router load lazily, after the first commit, so this module does not change the app's
- * startup order.
- */
-
 type Fiber = {
   tag: number
   type: unknown
@@ -42,7 +32,6 @@ const nameOf = (fiber: Fiber) => {
   return type?.displayName || inner?.displayName || inner?.name || "Anonymous"
 }
 
-/** Components that rendered in this commit: every new fiber, and every old one that did work. */
 function walk(next: Fiber, prev: Fiber | null, rendered: Record<string, number>) {
   if (composite.has(next.tag) && (prev === null || (next.flags & PERFORMED_WORK) !== 0)) {
     const name = prev === null ? `${nameOf(next)} (mount)` : nameOf(next)
@@ -62,7 +51,6 @@ function onCommit(root: FiberRoot) {
   if (recording) {
     const rendered: Record<string, number> = {}
     walk(root.current, root.current.alternate, rendered)
-    // Only the profiling renderer, which metro.config.js picks for perf bundles, times renders.
     const renderMs = root.current.actualDuration ?? null
     commits.push({ at: performance.now(), renderMs, rendered })
   }
@@ -91,7 +79,6 @@ const nextCommit = () => new Promise<void>((resolve) => commitWaiters.push(resol
 const nextFrame = () => new Promise<number>((resolve) => requestAnimationFrame(() => resolve(performance.now())))
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Resolves once no commit has landed for `quietMs`, with the time of the last one. */
 async function settle(quietMs: number, timeoutMs = 15000) {
   const start = performance.now()
   for (;;) {
@@ -106,7 +93,6 @@ let frames: number[] = []
 let longTasks: { start: number; duration: number }[] = []
 let frameLoopId = 0
 
-/** One frame callback chain per recording, so a recording that starts before the last chain ends is not counted twice. */
 function frameLoop(id: number) {
   if (!recording || id !== frameLoopId) return
   frames.push(performance.now())
@@ -151,10 +137,6 @@ const withTestID = (testID: string) => (fiber: Fiber) => fiber.memoizedProps?.te
 
 type Store<S> = { getState: () => S; subscribe: (listener: (state: S) => void) => () => void }
 
-/**
- * When `store` first satisfies `ready`, and when the commit that follows it reaches the next frame. The check runs
- * inside the store's update, before React renders it, so that commit cannot slip past.
- */
 function paintedWhen<S>(store: Store<S>, ready: (state: S) => boolean, timeoutMs = 60000) {
   return new Promise<{ readyAt: number; paintedAt: number }>((resolve, reject) => {
     const timer = setTimeout(() => (unsubscribe(), reject(new Error("timed out"))), timeoutMs)
@@ -185,7 +167,7 @@ const perfFrames = () => (require("@hinacode/perf-frames") as typeof import("@hi
 
 let firstCommit: number | null = null
 
-/** React Native's startup marks, read one by one because the object's fields are getters JSON does not see. */
+// FIXME: rnStartupTiming's fields are getters JSON.stringify skips, so they are read one by one.
 function startupTiming() {
   const timing = (performance as { rnStartupTiming?: Record<string, number | undefined> }).rnStartupTiming
   if (timing === undefined) return null
@@ -195,7 +177,6 @@ function startupTiming() {
 let longTasksObserved = false
 let threadList: Promise<{ readyAt: number; paintedAt: number }> | null = null
 
-/** Startup timings, and the thread list's first paint once the desktop has answered. */
 async function hello() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { loadServers } = require("@/lib/storage") as typeof import("@/lib/storage")
@@ -204,7 +185,7 @@ async function hello() {
   return {
     paired,
     longTasksObserved,
-    // `performance.now()` counts from boot without the time the Mac slept, so convert with the wall clock instead.
+    // FIXME: `performance.now()` counts from boot without the time the Mac slept, so convert with the wall clock instead.
     epochOffset: Date.now() - performance.now(),
     startup: startupTiming(),
     firstCommit,
@@ -212,7 +193,6 @@ async function hello() {
   }
 }
 
-/** Pairs with the target the driver read from the desktop, as scanning its QR code would. */
 async function pair(command: Command) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { pair } = require("@/lib/start-app") as typeof import("@/lib/start-app")
@@ -220,7 +200,6 @@ async function pair(command: Command) {
   return {}
 }
 
-/** Opens a thread from the list with its transcript not loaded yet, as the first visit does. */
 async function open(command: Command) {
   const threadId = String(command.threadId)
   const { messages } = stores()
@@ -240,7 +219,6 @@ async function back() {
   return {}
 }
 
-/** Scrolls a list by `px` every frame, as `scroll` does on the desktop. JS drives it, so it measures JS cost only. */
 async function scroll(command: Command) {
   const list = findFiber((fiber) => withTestID(String(command.testID))(fiber) && hasScrollTo(fiber.stateNode))
   if (list === undefined) throw new Error(`no list with testID ${command.testID}`)
@@ -266,12 +244,7 @@ async function scroll(command: Command) {
 const hasScrollTo = (node: unknown) =>
   typeof node === "object" && node !== null && typeof (node as { scrollToOffset?: unknown }).scrollToOffset === "function"
 
-/**
- * Calls the composer's `onChangeText` one character at a time. Native text input is not part of it, and the update
- * runs at React's default priority instead of a key press's discrete one.
- */
 async function type(command: Command) {
-  // Read the handler again for each key: the composer makes a new one every render.
   const change = (next: string) => {
     const input = findFiber(
       (fiber) => withTestID("composer-input")(fiber) && typeof fiber.memoizedProps?.onChangeText === "function",
@@ -282,7 +255,6 @@ async function type(command: Command) {
   const text = String(command.text)
   const intervalMs = Number(command.intervalMs ?? 50)
   const keys: { at: number; commit: number | null; paint: number }[] = []
-  // The transcript may still be mounting batches after a scroll; let it finish so only keys are measured.
   await settle(1000)
   startRecording()
   for (let length = 1; length <= text.length; length++) {
@@ -300,7 +272,6 @@ async function type(command: Command) {
   return result
 }
 
-/** Records while the driver sends a prompt to the desktop's paced mock reply, until that reply completes. */
 async function reply(command: Command) {
   const threadId = String(command.threadId)
   const { messages } = stores()
@@ -340,7 +311,6 @@ const appliedPatches: number[] = []
 const patchWaiters: (() => void)[] = []
 const probed = new WeakSet<object>()
 
-/** Records when each patch the document view receives has been applied natively, as the next frame after it. */
 function probeNativeDocument() {
   const fiber = findFiber((candidate) => isNativeDocument(candidate.stateNode))
   const view = fiber?.stateNode
@@ -358,7 +328,6 @@ function probeNativeDocument() {
 
 const nextPatch = () => new Promise<void>((resolve) => patchWaiters.push(resolve))
 
-/** Resolves once no commit and no native patch has landed for `quietMs`, with the time of the last one. */
 const lastCommitThatRendered = () => commits.findLast((commit) => Object.keys(commit.rendered).length > 0)?.at
 
 async function settleWithPatches(quietMs: number, timeoutMs = 15000) {
@@ -371,11 +340,6 @@ async function settleWithPatches(quietMs: number, timeoutMs = 15000) {
   }
 }
 
-/**
- * Opens a document and times its first content: the frame after the first patch the native view applied, or for
- * a JS-rendered screen the frame after the commit that mounted it. Afterwards, outside the recording, it times
- * `parseDocument` on the same Markdown, the JS parse the screen runs.
- */
 async function openDocument(command: Command) {
   const threadId = String(command.threadId)
   const artifactId = String(command.artifactId)
@@ -407,7 +371,6 @@ async function openDocument(command: Command) {
   return { start, firstContent, settled, patches, heap, parseMs, blocks, bytes: markdown.length, ...recorded }
 }
 
-/** Samples native frames while the driver injects swipes. The driver answers `/ready` once the last one is done. */
 async function fling(command: Command) {
   const sampler = perfFrames()
   await settle(500)
@@ -421,7 +384,6 @@ async function fling(command: Command) {
   return { start, end, nativeFrames, ...stopRecording() }
 }
 
-/** Waits for the open document's `artifact.updated` push while the driver saves it, then times the repaint. */
 async function updateDocument(command: Command) {
   const artifactId = String(command.artifactId)
   const native = probeNativeDocument()

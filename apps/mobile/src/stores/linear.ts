@@ -6,19 +6,15 @@ import { errorText } from "@/lib/error-text"
 import { sortIssues } from "@/lib/overview"
 import type { Remote } from "@/stores/pull-requests"
 
-/** Each read is a Linear API call on the server, so the list is read at most this often unless forced. */
 const ISSUES_MAX_AGE = 60_000
 
-/** A desktop from before Linear tickets answers the method as unknown, which its schema check reports. */
 const failureText = (cause: unknown) =>
   cause instanceof RpcError && cause.tag === "SchemaError"
     ? copy("mobile_overview_linear_update_desktop")
     : copy("mobile_overview_linear_failed", { message: errorText(cause) })
 
 interface LinearState {
-  /** Undefined until the first read. */
   readonly issues: Remote<readonly LinearIssue[]> | undefined
-  /** Whether the server has a Linear key, so an empty list can say why. Null when unknown. */
   readonly configured: boolean | null
   readonly load: (options?: { readonly force?: boolean }) => Promise<void>
 }

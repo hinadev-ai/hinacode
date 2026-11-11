@@ -15,11 +15,9 @@ import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { usePreferences } from "@/stores/preferences"
 
-// A deep link or a notification opens a thread with the tabs under it, so back has somewhere to go.
 export const unstable_settings = { anchor: "(tabs)" }
 
-// Expo Router 58 lays iOS 26 screens under a translucent header. The thread, file and pull request screens put fixed
-// content at the top, which would slide under it, so keep the opaque header until they are designed for that.
+// FIXME: Expo Router 58 lays iOS 26 screens under a translucent header, which would cover the fixed top content of the thread, file and pull request screens.
 enableLegacyHeaderAppearance()
 
 export default function RootLayout() {
@@ -28,7 +26,7 @@ export default function RootLayout() {
   const appearance = usePreferences((state) => state.appearance)
   const base = scheme === "dark" ? DarkTheme : DefaultTheme
 
-  // Native alerts, switches and the keyboard follow the app's appearance only through this override.
+  // FIXME: Native alerts, switches and the keyboard follow the app's appearance only through this override.
   useEffect(() => {
     if (Platform.OS !== "web") Appearance.setColorScheme(appearance === "system" ? "unspecified" : appearance)
   }, [appearance])
@@ -60,7 +58,6 @@ function Routes() {
   const paired = useConnection((state) => state.paired)
   const split = useSplitLayout() && paired
   const rail = measureSideRail(useSafeAreaInsets())
-  // The Stack keeps its place in the tree whether the sidebar shows or not, so a resize keeps the navigation state.
   return (
     <SideRailContext value={rail}>
       <View style={styles.split}>
@@ -72,7 +69,6 @@ function Routes() {
           >
             <Stack.Protected guard={paired}>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              {/* Picking a thread in the sidebar swaps the detail, as Mail does, instead of sliding a page in. */}
               <Stack.Screen name="thread/[id]/index" options={{ title: "", animation: split ? "none" : undefined }} />
               <Stack.Screen name="thread/[id]/file" options={{ title: "" }} />
               <Stack.Screen name="thread/[id]/pull-request" options={{ title: "" }} />
@@ -95,7 +91,6 @@ function Routes() {
   )
 }
 
-/** iPhone Duo's outer display puts the status bar and the header buttons in a column at the side, over the content. */
 function SideSafeArea({ children }: { children: ReactNode }) {
   return (
     <SafeAreaView edges={["left", "right"]} style={styles.detail}>

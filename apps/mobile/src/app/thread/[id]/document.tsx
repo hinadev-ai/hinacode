@@ -4,6 +4,9 @@ import { createDocumentSync, type DocumentSync, type SaveStatus } from "@shared/
 import type { Thread } from "@shared/domain.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { useHeaderHeight } from "expo-router/react-navigation"
+import { useAtomValue } from "@effect/atom-react"
+import { Cause, Effect, Option } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
 import { useEffect, useEffectEvent, useRef, useState } from "react"
 import {
   type CodeToken,
@@ -31,7 +34,8 @@ import { Button, EmptyState, IconButton, Notice } from "@/components/ui"
 import { CalloutColors, ChartColors, mono, type Palette, radius, SyntaxColors } from "@/constants/theme"
 import { useThreadConnection, useThreadServer } from "@/hooks/use-server"
 import { type Scheme, useScheme, useTheme } from "@/hooks/use-theme"
-import { call, onEvent } from "@/lib/connection"
+import { call, onEvent, request, type RpcError } from "@/lib/connection"
+import { beforeFirstHandshake, familyOf } from "@/lib/remote"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { lex } from "@/lib/lexer"
@@ -93,6 +97,27 @@ const documentTheme = (theme: Palette, scheme: Scheme): DocumentTheme => ({
   monoFont: mono ?? "Menlo",
 })
 
+const documentAtom = familyOf((id: string, server: string | null, _attempt: number) =>
+  Atom.make((get) => {
+    if (beforeFirstHandshake(get)) return Effect.never
+    get.addFinalizer(
+      onEvent((event) => event.type === "artifact.updated" && event.artifact.id === id && get.refreshSelf()),
+    )
+    const loaded = get.self<AsyncResult.AsyncResult<DocumentContent, RpcError>>().pipe(Option.filter(AsyncResult.isSuccess))
+    return Option.isSome(loaded)
+      ? Effect.succeed(loaded.value.value)
+      : request("artifacts.readDocument", { id }, server === null ? undefined : { server })
+  }),
+)
+
+async function insertPickedImages(artifactId: string, server: string | undefined, insert: (src: string) => unknown) {
+  for (const asset of await pickImages()) {
+    const { dataUrl } = await imageDataUrl(asset)
+    const { path } = await call("artifacts.addDocumentImage", { id: artifactId, dataUrl }, { server })
+    await insert(path)
+  }
+}
+
 type Loaded =
   | { readonly status: "loading" }
   | { readonly status: "ready"; readonly document: DocumentContent }
@@ -130,47 +155,31 @@ function DocumentBody({
   const server = useThreadServer(thread.id)?.id
   const connected = connection === "connected"
   const [title, setTitle] = useState(initialTitle)
-  const [version, setVersion] = useState<number | null>(null)
-  const [state, setState] = useState<Loaded>({ status: "loading" })
-  const latestRead = useRef(0)
-
-  const read = async () => {
-    const attempt = ++latestRead.current
-    try {
-      const document = await call("artifacts.readDocument", { id: artifactId }, { server })
-      if (latestRead.current !== attempt) return
-      setVersion(document.version)
-      setState({ status: "ready", document })
-    } catch (cause) {
-      if (latestRead.current !== attempt) return
-      setState((current) => (current.status === "ready" ? current : { status: "error", message: errorText(cause) }))
-    }
-  }
-
-  const readUntilLoaded = useEffectEvent(() => {
-    if (state.status !== "ready") void read()
-  })
-  useEffect(() => {
-    if (connected) readUntilLoaded()
-  }, [connected])
+  const [pushedVersion, setPushedVersion] = useState<number | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  const [removedAt, setRemovedAt] = useState<number | null>(null)
+  const result = useAtomValue(documentAtom(artifactId, server ?? null, attempt))
+  const document = Option.getOrUndefined(AsyncResult.value(result))
+  const version = pushedVersion ?? document?.version ?? null
+  const state: Loaded =
+    removedAt === attempt
+      ? { status: "error", message: copy("mobile_document_removed") }
+      : document !== undefined
+        ? { status: "ready", document }
+        : AsyncResult.isFailure(result) && !result.waiting
+          ? { status: "error", message: errorText(Cause.squash(result.cause)) }
+          : { status: "loading" }
 
   const onPush = useEffectEvent((event: Parameters<Parameters<typeof onEvent>[0]>[0]) => {
     if (event.type === "artifact.updated" && event.artifact.id === artifactId) {
       setTitle(event.artifact.title)
-      setVersion(event.artifact.version)
-      readUntilLoaded()
+      setPushedVersion(event.artifact.version)
     }
-    if (event.type === "artifact.removed" && event.id === artifactId) {
-      latestRead.current++
-      setState({ status: "error", message: copy("mobile_document_removed") })
-    }
+    if (event.type === "artifact.removed" && event.id === artifactId) setRemovedAt(attempt)
   })
   useEffect(() => onEvent(onPush), [])
 
-  const retry = () => {
-    setState({ status: "loading" })
-    void read()
-  }
+  const retry = () => setAttempt(attempt + 1)
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
@@ -374,17 +383,9 @@ function DocumentEditing({
   const insertImages = async () => {
     setImageError(null)
     setImageBusy(true)
-    try {
-      for (const asset of await pickImages()) {
-        const { dataUrl } = await imageDataUrl(asset)
-        const { path } = await call("artifacts.addDocumentImage", { id: artifactId, dataUrl }, { server })
-        await editor.current?.run({ type: "insertImage", src: path, alt: "" })
-      }
-    } catch (cause) {
-      setImageError(copy("mobile_document_image_failed", { message: errorText(cause) }))
-    } finally {
-      setImageBusy(false)
-    }
+    await insertPickedImages(artifactId, server, (src) => editor.current?.run({ type: "insertImage", src, alt: "" }))
+      .catch((cause: unknown) => setImageError(copy("mobile_document_image_failed", { message: errorText(cause) })))
+      .finally(() => setImageBusy(false))
   }
 
   return (

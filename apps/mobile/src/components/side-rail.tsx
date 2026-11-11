@@ -11,14 +11,9 @@ import { useSideRail } from "@/hooks/use-side-rail"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 
-/** iPhone Duo draws the clock and the Wi-Fi mark at the top of the strip; the buttons start below them. */
 const STATUS_CLEARANCE = 168
 const BUTTON_SIZE = 48
 
-/**
- * The tabs' buttons in the side strip: More under the clock, then New thread and Search at the bottom, beside the tab
- * bar, in the toolbar's Liquid Glass. Drawn over the screens, since each screen keeps clear of the strip.
- */
 export function SideRail() {
   const width = useSideRail()
   const insets = useSafeAreaInsets()

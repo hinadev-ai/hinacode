@@ -25,6 +25,7 @@ const MARK_SIZE = 16
 const MARK_GAP = 10
 const STATUS_SIZE = 16
 const noLinks: readonly PullRequestLink[] = []
+const PHONE_RECEIVES_BACKGROUND_TASKS = false
 
 const titleColor = (theme: Palette, state: RowState, away: boolean) => {
   if (away) return theme.textMuted
@@ -54,10 +55,6 @@ const statusLabel: Record<IndicatedState, string> = {
 
 const isIndicated = (state: RowState): state is IndicatedState => state in rowStatusIndicator
 
-/**
- * A thread in a list, laid out like a desktop sidebar row: the agent's mark, the title and its status icon, then
- * the project, branch, pull request and last activity, with the thread's actions on long press.
- */
 export function ThreadRow({
   thread,
   showProject,
@@ -82,8 +79,7 @@ export function ThreadRow({
   const links = usePullRequests((pullRequests) => pullRequests.linksByThread[thread.id]) ?? noLinks
   const state = rowState(
     thread.status,
-    // The phone does not receive background tasks yet.
-    false,
+    PHONE_RECEIVES_BACKGROUND_TASKS,
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
     usePullRequestAttention(links),
   )
@@ -173,7 +169,6 @@ export function ThreadRow({
   )
 }
 
-/** The desktop sidebar's status icon. A thread that starts waiting for approval rings a few times, then rests. */
 function StatusIndicator({ state }: { state: IndicatedState }) {
   const theme = useTheme()
   const glyph = indicatorGlyph(theme, rowStatusIndicator[state])

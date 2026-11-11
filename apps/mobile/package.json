@@ -48,9 +48,8 @@
     "zustand": "5.0.15"
   },
   "devDependencies": {
+    "@types/node": "26.6.5",
     "@types/react": "~19.3.0",
-    "eslint": "^9.39.5",
-    "eslint-config-expo": "~58.0.4",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -58,7 +57,7 @@
     "android": "./scripts/android-env.sh expo run:android",
     "ios": "LANG=en_US.UTF-8 expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint",
+    "lint": "pnpm --dir ../.. exec oxlint apps/mobile",
     "build:terminal": "node ./scripts/build-terminal-html.mts",
     "build:icons": "./scripts/build-app-icons.sh",
     "build:tab-icons": "node ./scripts/build-tab-icons.mts",

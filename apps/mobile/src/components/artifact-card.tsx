@@ -33,10 +33,6 @@ const summaryOf = (outline: DocumentOutline | null) => {
 const openDocument = (threadId: string, artifactId: string, title: string) =>
   router.push({ pathname: "/thread/[id]/document", params: { id: threadId, artifactId, title } })
 
-/**
- * A publish call as the desktop's preview card. It reads only what the compact transcript keeps, so a running call and
- * an older server's call have no id. A document with an id opens its screen; anything else cannot be opened here.
- */
 export function ArtifactCard({ part, threadId }: { part: ToolCall; threadId: string }) {
   const theme = useTheme()
   const isDocument = isPublishDocumentTool(part.name)

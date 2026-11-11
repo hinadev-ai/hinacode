@@ -11,7 +11,6 @@ export interface ThreadAction {
   readonly name: ThreadActionName
   readonly label: string
   readonly icon: IconName
-  /** Menus split actions into groups: change the thread, reach it elsewhere, put it away. */
   readonly group: 0 | 1 | 2
   readonly destructive?: boolean
 }
@@ -25,13 +24,8 @@ const remove: ThreadAction = {
   destructive: true,
 }
 
-/** Claude, Codex and magpie, which runs on the Claude harness, record the points a fork resumes from. */
 const forksSessions = { claude: true, codex: true, muse: false, opencode: false, magpie: true } satisfies Record<ProviderId, boolean>
 
-/**
- * What a thread offers on long press: an archived thread can only come back or go, an active one can change.
- * As on the desktop, a busy thread can neither be settled nor deleted, and a settled one reopens instead.
- */
 export function threadActions(thread: Thread): readonly ThreadAction[] {
   if (thread.status === "archived")
     return [
@@ -59,10 +53,8 @@ export function threadActions(thread: Thread): readonly ThreadAction[] {
   ]
 }
 
-/** Archiving or deleting a thread leaves it when it is open, as Mail leaves a message it archives. */
 export const leavesThread = (name: ThreadActionName) => name === "archive" || name === "delete"
 
-/** `actions` in their menu groups, in order. */
 export const actionGroups = (actions: readonly ThreadAction[]) =>
   [0, 1, 2].map((group) => actions.filter((action) => action.group === group)).filter((group) => group.length > 0)
 
@@ -76,7 +68,6 @@ export const requestThreadAction = (thread: Thread, name: ServerThreadActionName
   return call(name === "archive" ? "threads.archive" : "threads.unarchive", { threadId: thread.id })
 }
 
-/** Each action's SF Symbol in the native iOS menus. */
 export const threadActionSymbols = {
   pin: "pin",
   unpin: "pin.slash",

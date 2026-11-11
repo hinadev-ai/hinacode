@@ -99,7 +99,6 @@ const contentSearch = familyOf((threadId: string, query: string) =>
   }),
 )
 
-/** The thread's workspace: what it changed, a folder listing, a path filter and a content search. */
 export function FilesPanel({ thread }: { thread: Thread }) {
   const root = useThreadRoot(thread)
   const [query, setQuery] = useState("")
@@ -211,10 +210,6 @@ function FolderBrowser({
   )
 }
 
-/**
- * The worktree's changes against the branch it forked from, each file opening into its diff, and Undo for the files
- * the last turn changed. Read again on pull to refresh and whenever a turn ends.
- */
 function ChangesSection({ thread }: { thread: Thread }) {
   const theme = useTheme()
   const worktree = useThreads((state) => (thread.worktreeId === null ? undefined : state.worktrees[thread.worktreeId]))
@@ -531,7 +526,6 @@ function MatchRow({ match, onPress }: { match: PathMatch; onPress: () => void })
   )
 }
 
-/** `text` with the characters at `hits` (offset by `offset`) in `style`. */
 function Emphasized({
   text,
   offset,
@@ -613,7 +607,6 @@ function HitRow({ hit, query, onPress }: { hit: FileSearchHit; query: string; on
       <Text numberOfLines={1} ellipsizeMode="head" style={[styles.hitLocation, { color: theme.textMuted }]}>
         {location}
       </Text>
-      {/* The desktop's find highlight: a wash of the brand coral, since amber would read as needing attention. */}
       <Text numberOfLines={2} style={[styles.hitText, { color: theme.text }]}>
         <Emphasized
           text={snippet.text}
@@ -626,7 +619,6 @@ function HitRow({ hit, query, onPress }: { hit: FileSearchHit; query: string; on
   )
 }
 
-/** A spinner and a label that appear only when loading takes a moment. */
 export function Loading({ label }: { label: string }) {
   const theme = useTheme()
   return (

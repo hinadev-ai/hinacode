@@ -35,26 +35,17 @@ import { copy } from "@/lib/copy"
 const SHEET_PADDING = 12
 const SHEET_RADIUS = 28
 const SHEET_MAX_WIDTH = 640
-/** A release counts as a dismissal once the sheet would travel this share of its height, or flicks this fast. */
 const DISMISS_SHARE = 0.35
 const DISMISS_VELOCITY = 900
-/** How far ahead a release's velocity carries the sheet, in seconds, so a short flick still dismisses. */
 const PROJECTION = 0.2
 const SETTLE = { damping: 32, stiffness: 340, mass: 1 } as const
-/** How far the sheet rises past its resting place when dragged up. Its color extends this far below it, as a native sheet's does. */
 const MAX_LIFT = 24
 
-/** Dragged past its resting place the sheet resists, moving less the further it goes. */
 const rubberBand = (distance: number) => {
   "worklet"
   return -Math.sqrt(-distance) * 4
 }
 
-/**
- * A sheet with a grabber, a round close button and a centred title, full height by default or as tall as its content
- * with `fit`. The scrim fades while the sheet rises; both fade out together, which is quicker than the way in. A full
- * height sheet on an Android phone covers the whole screen, as Material's full-screen dialog does.
- */
 export function Sheet({
   title,
   open,
@@ -67,11 +58,8 @@ export function Sheet({
   title: string
   open: boolean
   onClose: () => void
-  /** Shown under the title and above the scrolling content, such as a search field. */
   header?: ReactNode
-  /** A round button at the header's trailing edge, opposite the close button. */
   action?: ReactNode
-  /** Sizes the sheet to a short list instead of filling the screen. */
   fit?: boolean
   children: ReactNode
 }) {
@@ -84,7 +72,7 @@ export function Sheet({
       visible={open}
       onRequestClose={onClose}
     >
-      {/* A Modal is its own native root, so gestures inside it need their own root view. */}
+      {/* FIXME: A Modal is its own native root, so gestures inside it need their own GestureHandlerRootView. */}
       <GestureHandlerRootView style={styles.fill}>
         <SheetFrame>
           <SheetBody title={title} onClose={onClose} header={header} action={action} fit={fit}>
@@ -96,10 +84,6 @@ export function Sheet({
   )
 }
 
-/**
- * The scrim and the sheet. Mounted only while the Modal shows, so every opening starts at rest. The grabber and the
- * header drag the sheet: it follows the finger, and a release far or fast enough closes it, otherwise it springs back.
- */
 function SheetBody({
   title,
   onClose,
@@ -146,7 +130,6 @@ function SheetBody({
           return
         }
         const remaining = Math.max(0, height.get() - offset.get())
-        // Faster flicks leave faster, so the sheet keeps the speed the finger gave it.
         const time = Math.min(duration.sheet, Math.max(120, (remaining / Math.max(event.velocityY, 1)) * 1000))
         offset.set(withTiming(height.get(), { duration: time, easing: ease.out }, () => scheduleOnRN(onClose)))
       } else {
@@ -228,10 +211,7 @@ function SheetBody({
 const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow"
 const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide"
 
-/**
- * The window under a sheet, which rises above the keyboard. A Modal draws edge to edge on Android, so its window does
- * not shrink for the keyboard there. Mounted only while the Modal shows, so a closed sheet keeps no listeners.
- */
+// FIXME: A Modal draws edge to edge on Android, so its window does not shrink for the keyboard and this view lifts the sheet instead.
 function SheetFrame({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets()
   const { height } = useWindowDimensions()
@@ -244,11 +224,10 @@ function SheetFrame({ children }: { children: ReactNode }) {
     ]
     return () => subscriptions.forEach((subscription) => subscription.remove())
   }, [])
-  // The sheet already pads for the bottom inset, which iOS counts in the keyboard's height and Android does not.
+  // FIXME: iOS counts the bottom inset in the keyboard's height and Android does not, and the sheet already pads for that inset.
   const lift = Platform.OS === "ios" ? Math.max(0, keyboard - insets.bottom) : keyboard
   return (
-    // Android lays a Modal out without the system bars first, then corrects it while the entering animation owns
-    // the sheet's frame, which drops the correction. The window's size holds from the first frame.
+    // FIXME: Android lays a Modal out without the system bars first and the entering animation drops the correction, so the window's size is fixed from the first frame.
     <Animated.View
       style={{
         height,
@@ -265,14 +244,12 @@ function SheetFrame({ children }: { children: ReactNode }) {
   )
 }
 
-/** Rows on one card, split by hairlines, as iOS groups a list of options. */
 export function Section({
   title,
   role = "radiogroup",
   children,
 }: {
   title: string
-  /** `group` for a section of switches, which are not one choice among several. */
   role?: "radiogroup" | "group"
   children: ReactNode
 }) {
@@ -301,12 +278,10 @@ export function OptionRow({
   label: string
   hint?: string
   icon?: IconName
-  /** Tints only the icon, such as an agent's brand color. */
   iconColor?: string
   color?: string
   monospace?: boolean
   selected: boolean
-  /** `checkbox` for a row in a `group` section, where several can be picked. */
   role?: "radio" | "checkbox"
   disabled?: boolean
   style?: StyleProp<ViewStyle>
@@ -365,7 +340,6 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   fitSheet: { maxHeight: "85%" },
   fitScroll: { flexGrow: 0 },
-  // A tablet keeps the sheet to a column, with the scrim on both sides; every phone is narrower.
   sheet: {
     width: "100%",
     maxWidth: SHEET_MAX_WIDTH,

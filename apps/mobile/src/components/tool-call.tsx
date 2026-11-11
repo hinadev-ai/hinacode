@@ -23,7 +23,6 @@ const statusLabel = {
   done: "mobile_chat_tool_done",
 } as const
 
-/** One receding line per tool call, like the desktop's tool row. Opening it shows the call and loads its output. */
 export function ToolCallRow({ call, threadId }: { call: ToolCall; threadId: string }) {
   const theme = useTheme()
   const [open, setOpen] = useState(false)

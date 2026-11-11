@@ -89,7 +89,6 @@ function FileBody({ thread, path, line }: { thread: Thread; path: string; line: 
 
 const fileReads = { "fs.read": rpcFamily("fs.read"), "fs.preview": rpcFamily("fs.preview") }
 
-/** Reads `path` under `root` with `method`, again on `retry`. The result is null while loading. */
 function useFile<M extends keyof typeof fileReads>(method: M, root: string, path: string) {
   const file = fileReads[method]({ root, path }) as Atom.Atom<AsyncResult.AsyncResult<RpcResponse<M>, RpcError>>
   return { result: asLoaded(useAtomValue(file)), retry: useAtomRefresh(file) }
@@ -97,7 +96,6 @@ function useFile<M extends keyof typeof fileReads>(method: M, root: string, path
 
 const useFileText = (root: string, path: string) => useFile("fs.read", root, path)
 
-/** Loading, error and binary states around a file's text. */
 function WithText({
   root,
   path,
@@ -178,7 +176,6 @@ function MarkdownFile({
   )
 }
 
-/** Highlighting a whole megabyte would stall the phone, so only the start is colored. */
 const HIGHLIGHT_LIMIT = 300_000
 const PAGE_PADDING = 16
 const LINE_HEIGHT = 18
@@ -263,7 +260,6 @@ function CodeView({
 
 const fadeOut = { from: { opacity: 1 }, to: { opacity: 0 } }
 
-/** Tints the line a search hit opened at, then fades. Under reduce motion the tint stays briefly and goes. */
 function LineFlash() {
   const theme = useTheme()
   const reduced = useReducedMotion()
@@ -321,7 +317,6 @@ const imageSize = familyOf((uri: string) =>
   ),
 )
 
-/** As wide as the screen, or its natural width when narrower, keeping its aspect ratio. */
 function FittedImage({ uri, label }: { uri: string; label: string }) {
   const theme = useTheme()
   const size = AsyncResult.getOrElse(useAtomValue(imageSize(uri)), () => null)
@@ -368,7 +363,6 @@ function SvgFile({ root, path }: { root: string; path: string }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  // iOS centers the title, Android puts it after the back button.
   title: { alignItems: Platform.OS === "ios" ? "center" : "flex-start" },
   titleName: { fontSize: 16, fontWeight: "600" },
   titleFolder: { fontSize: 12, fontFamily: mono },
@@ -386,7 +380,7 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     fontVariant: ["tabular-nums"],
   },
-  // A browser keeps a flex item as wide as its longest token unless it may shrink, so a long one ran off screen.
+  // FIXME: A browser keeps a flex item as wide as its longest token unless it may shrink, so a long one ran off screen.
   codeText: { flex: 1, minWidth: 0, fontFamily: mono, fontSize: 12, lineHeight: LINE_HEIGHT },
   comment: { fontStyle: "italic" },
   media: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 16 },

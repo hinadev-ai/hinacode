@@ -19,7 +19,6 @@ const SUGGESTIONS_PER_GROUP = 20
 
 const currentBranchAtom = rpcFamily("projects.currentBranch")
 
-/** The branch checked out in the project root, which a thread without a picked workspace runs on. */
 function useCurrentBranch(projectId: string) {
   const result = useAtomValue(currentBranchAtom({ id: projectId }))
   return Option.getOrElse(AsyncResult.value(result), () => "")
@@ -61,7 +60,6 @@ const closedBranchesAtom: Listed<{ readonly branches: readonly string[]; readonl
 const closedPullRequestsAtom: Listed<readonly OpenPullRequest[]> = Atom.make(AsyncResult.initial())
 const closedFetchAtom: Listed<unknown> = Atom.make(AsyncResult.initial())
 
-/** Branches and open pull requests while the sheet is open, listed again once a fetch of `origin` settles. */
 function useRefs(projectId: string, open: boolean, onError: (message: string) => void): Refs {
   const branchesSource = open ? branchesAtom(projectId) : closedBranchesAtom
   const listed = AsyncResult.value(useAtomValue(branchesSource))
@@ -72,7 +70,6 @@ function useRefs(projectId: string, open: boolean, onError: (message: string) =>
   return { branches, defaultBranch, pullRequests: Option.getOrElse(pullRequests, () => noRefs.pullRequests) }
 }
 
-/** Pull requests, then branches, containing the query. A query that is exactly one of them shows them all. */
 function filterRefs({ branches, pullRequests }: Refs, query: string) {
   const trimmed = query.trim()
   const needle = trimmed.toLowerCase()
@@ -91,7 +88,6 @@ function filterRefs({ branches, pullRequests }: Refs, query: string) {
   }
 }
 
-/** Where the thread's first message will run: the picked workspace, else the branch checked out in the project root. */
 export function useWorkspace(thread: Thread) {
   const workspace = useDrafts((state) => state.workspaces[thread.id])
   const currentBranch = useCurrentBranch(thread.projectId)
@@ -100,10 +96,6 @@ export function useWorkspace(thread: Thread) {
   return { mode, ref, label: ref === "" ? copy("mobile_workspace_project_root") : ref }
 }
 
-/**
- * Where the first turn runs: the project root, switched to a branch or pull request on send, or a new
- * worktree forked from a branch or checked out from a pull request. Shown until the first message.
- */
 export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (message: string) => void }) {
   const theme = useTheme()
   const [open, setOpen] = useState(false)

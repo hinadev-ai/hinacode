@@ -100,6 +100,7 @@ export const toolIcon = (name: string): IconName => toolIcons[ownToolName(name)]
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
 
+// oxlint-disable-next-line no-control-regex
 const ANSI_ESCAPE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])/g
 
 function outputText(output: unknown): string {
@@ -116,7 +117,6 @@ function outputText(output: unknown): string {
     .join("\n")
 }
 
-/** The output as plain text, cut to its tail when it is too long to lay out in a transcript row. */
 export function shownOutput(output: unknown): { readonly text: string; readonly truncated: boolean } {
   const text = outputText(output).replace(ANSI_ESCAPE, "").replace(/\s+$/, "")
   const preview = outputPreview(text)

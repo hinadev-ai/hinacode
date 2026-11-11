@@ -3,7 +3,6 @@ import { serverProof } from "@shared/proof.ts"
 import { RELAY_DELAY_MS } from "@shared/remote.ts"
 import type { StoredServer } from "./stored-target"
 
-/** A server's socket, answered by hand. */
 class FakeSocket {
   static all: FakeSocket[] = []
   onopen: (() => void) | null = null
@@ -19,7 +18,6 @@ class FakeSocket {
   }
   close() {}
 
-  /** Opens, challenges, and proves the token `server()` pairs with back to the client's answer. */
   ready(environment?: { id: string; name: string }, relay?: string, hosts?: readonly string[]) {
     this.onopen?.()
     this.receive({ type: "challenge", nonce: "server-nonce" })
@@ -98,10 +96,13 @@ const thread = (id: string, projectId: string) => ({
   updatedAt: "2026-10-24T00:00:00.000Z",
 })
 
-/** A call the test never answers, which fails when the servers are closed after it. */
 const unanswered = (promise: Promise<unknown>) => void promise.catch(() => {})
 
-const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+const PROMISE_HOPS_PER_CALL = 10
+
+const flush = async () => {
+  for (let hop = 0; hop < PROMISE_HOPS_PER_CALL; hop++) await Promise.resolve()
+}
 
 beforeEach(() => {
   FakeSocket.all = []
@@ -344,7 +345,6 @@ describe("servers", () => {
     direct.answer("projects.create", project("api"))
     expect((await creating).name).toBe("api")
 
-    // The next round races the host against the learned relay.
     vi.useFakeTimers()
     try {
       direct.onclose?.({ code: 1006 })
