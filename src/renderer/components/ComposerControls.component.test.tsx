@@ -26,13 +26,15 @@ const account = (id: string) => ({
   binary: "claude",
 })
 
+let listedModels = [model("first"), model("second"), model("third")]
+
 const rpc = vi.fn(async (method: string, payload?: unknown) => {
   if (method === "agents.account") return { result: { type: "apiKey" } }
   if (method === "accounts.list") return { result: ["one", "two", "three", "four"].map(account) }
   if (method === "threads.switchAccount")
     return { result: { ...thread, accountId: (payload as { accountId: string }).accountId } }
   if (method === "threads.update") return { result: thread }
-  if (method === "models.list") return { result: [model("first"), model("second"), model("third")] }
+  if (method === "models.list") return { result: listedModels }
   return { error: { tag: "NotStubbed", message: method } }
 })
 vi.stubGlobal("hinacode", { rpc, onEvent: () => () => {}, pathForFile: () => "", liquidGlass: false })
@@ -122,6 +124,18 @@ test("focuses the search box on the current model and moves through the models w
   await expect.poll(highlighted).toContain("third")
   await userEvent.keyboard("{ArrowUp}{ArrowUp}")
   await expect.poll(highlighted).toContain("first")
+})
+
+test("lists the models again each time it opens, so a provider signed in meanwhile shows up", async () => {
+  await openPicker()
+  await userEvent.keyboard("{Escape}")
+  listedModels = [...listedModels, model("fourth")]
+  try {
+    await page.getByRole("button", { name: /second/ }).click()
+    await expect.element(page.getByRole("option", { name: "fourth" })).toBeVisible()
+  } finally {
+    listedModels = listedModels.slice(0, 3)
+  }
 })
 
 test("typing filters the models instead of running shortcuts", async () => {
