@@ -287,3 +287,12 @@ test("reloading a loaded document finishes at once, so no edit can land between 
   session.load(largeDocument().replace("Paragraph 40 explains", "Paragraph 40 now explains"))
   expect(session.markdown()).toContain("Paragraph 40 now explains")
 })
+
+test("a selection carries the view's event count, so later patches are not mistaken for stale ones", () => {
+  const { session, patches, indexOf } = editable("First.\n\nSecond.")
+  const caret = { block: indexOf("Second"), cell: null, offset: 0 }
+  session.select({ anchor: caret, head: caret, eventCount: 5 })
+  session.run(() => session.editor.commands.toggleHeading({ level: 2 }))
+  expect(patches.length).toBeGreaterThan(0)
+  expect(patches.every((patch) => patch.eventCount === 5)).toBe(true)
+})
