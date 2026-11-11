@@ -10,7 +10,13 @@ Node 24.22.1 or newer (26.12.1 or newer on Node 26):
 npx hinacode serve
 ```
 
-From a checkout, `pnpm serve` builds and runs the same daemon.
+Without Node, download `hinacode-<platform>-<arch>.tar.gz` for `linux-x64`, `linux-arm64` or `darwin-arm64` from the [latest release](https://github.com/hinadev-ai/hinacode/releases/latest), unpack it anywhere and run the executable inside. Keep `node_modules/` next to it. On Linux it needs glibc 2.28 and `libatomic.so.1` (`apt install libatomic1` in a minimal image), the same as Node. It does not update itself; unpack the next release over it and restart.
+
+```sh
+tar -xzf hinacode-linux-x64.tar.gz && ./hinacode/hinacode serve
+```
+
+From a checkout, `pnpm serve` builds and runs the same daemon, and `pnpm build:exe` builds the archive for this machine into `dist-exe/`.
 
 The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, and prints the pairing block: a phone URL for its address and a QR code to scan in the mobile app, then the URL to add under Settings > Connections on the desktop. It listens on `--host`, else the address it used last, else `private`. `private` answers on the LAN and Tailscale and closes any connection with a public address on either end, so a phone at home connects with no flags. Anyone on the same network can reach the port, and only the pairing token keeps them out. Pass one address, such as a Tailscale address, to keep other networks out entirely, or `--host 127.0.0.1 --relay` to be reached only through the relay. A machine that already stored an address keeps it until you pass `--host private`. `0.0.0.0` and `::` are refused. `hinacode pair` prints the same block again, whether the daemon runs or not. The data directory holds `hinacode.sqlite`, attachments, and the pairing token inside the database. A desktop app and a cloud refuse to share one directory, and so do two clouds. The daemon spots a desktop by the `SingletonLock` in the directory's `chromium/`.
 

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { isSea } from "node:sea"
 import { fileURLToPath } from "node:url"
 import { Effect, Layer, ManagedRuntime, References } from "effect"
 import QRCode from "qrcode"
@@ -31,7 +32,7 @@ const QUIT_TIMEOUT_MS = 5000
 const LISTEN_TIMEOUT_MS = 5000
 
 const { version } = packageJson
-const packageRoot = fileURLToPath(new URL("../..", import.meta.url))
+const packageRoot = isSea() ? undefined : fileURLToPath(new URL("../..", import.meta.url))
 
 const appData = () =>
   process.platform === "darwin"

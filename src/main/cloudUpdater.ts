@@ -19,13 +19,14 @@ const NpmRelease = Schema.Struct({ version: Schema.String })
 
 interface CloudUpdaterOptions {
   readonly current: string
-  readonly packageRoot: string
+  readonly packageRoot: string | undefined
   readonly registry: string
   readonly restart: () => void
   readonly autoInstall: boolean
 }
 
-const globalPrefix = (packageRoot: string) => {
+const globalPrefix = (packageRoot: string | undefined) => {
+  if (packageRoot === undefined) return undefined
   const nodeModules = dirname(packageRoot)
   const lib = dirname(nodeModules)
   const isGlobal = basename(packageRoot) === "hinacode" && basename(nodeModules) === "node_modules"

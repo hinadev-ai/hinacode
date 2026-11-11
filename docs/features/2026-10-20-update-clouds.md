@@ -21,14 +21,14 @@ A developer with clouds on two machines updates each one by hand: ssh in, `npm i
 
 No new types. A cloud answers `updates.status` with the `UpdateStatus` the desktop already uses:
 
-| `UpdateState` | On a cloud                                                         |
-| ------------- | ------------------------------------------------------------------ |
-| `unsupported` | Not a global npm install (a checkout, `npx`), or Windows           |
-| `checking`    | Asking the registry for `hinacode`'s `latest` dist-tag             |
-| `upToDate`    | `latest` is the running version                                    |
-| `ready`       | `latest` is another version, and `updates.install` will install it |
-| `downloading` | `npm install -g` is running                                        |
-| `failed`      | The check or the install failed, with the message                  |
+| `UpdateState` | On a cloud                                                              |
+| ------------- | ----------------------------------------------------------------------- |
+| `unsupported` | Not a global npm install (a checkout, `npx`, an executable), or Windows |
+| `checking`    | Asking the registry for `hinacode`'s `latest` dist-tag                  |
+| `upToDate`    | `latest` is the running version                                         |
+| `ready`       | `latest` is another version, and `updates.install` will install it      |
+| `downloading` | `npm install -g` is running                                             |
+| `failed`      | The check or the install failed, with the message                       |
 
 `updates.status`, `updates.check` and `updates.install` move from the `client` route to `named`, so the renderer asks the environment it names and This Mac when it names none. A cloud from before this change answers `unsupported` with its version, so the page still shows what it runs.
 
