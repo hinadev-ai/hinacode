@@ -79,7 +79,6 @@ export const showSystemNotification = async ({ title, body, tag, onClick }: Syst
     })
     return
   }
-  if (Notification.permission !== "granted") return
   const click = tag ?? crypto.randomUUID()
   if (onClick !== undefined) notificationClicks.set(click, onClick)
   await registration.showNotification(title, {
@@ -90,8 +89,11 @@ export const showSystemNotification = async ({ title, body, tag, onClick }: Syst
   })
 }
 
+const canShowSystemNotification = () =>
+  !inBrowser() || ("Notification" in window && Notification.permission === "granted")
+
 export const notify = (surface: Surface, { alert, title, body, sound, tag, onClick }: Notice) => {
-  if (surface === "desktop") {
+  if (surface === "desktop" && canShowSystemNotification()) {
     void showSystemNotification({ title, body, tag, onClick })
   } else {
     showToast[alert](title, {
