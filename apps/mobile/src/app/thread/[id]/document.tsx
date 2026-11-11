@@ -457,6 +457,7 @@ function DocumentEditing({
           onRun={run}
           onImage={() => void insertImages()}
           onLink={openLink}
+          onHideKeyboard={() => void editor.current?.blur()}
         />
       )}
       {linking !== null && <LinkSheet href={linking.href} onSave={saveLink} onClose={() => setLinking(null)} />}

@@ -2538,6 +2538,7 @@
   "mobile_document_delete_table": "表を削除",
   "mobile_document_image_failed": "画像を追加できませんでした：{message}",
   "mobile_document_link": "リンク",
+  "mobile_document_hide_keyboard": "キーボードを閉じる",
   "mobile_document_link_edit": "リンクを編集",
   "mobile_document_link_save": "保存",
   "mobile_document_link_remove": "リンクを解除",

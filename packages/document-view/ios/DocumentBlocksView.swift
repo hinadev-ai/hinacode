@@ -40,6 +40,7 @@ final class DocumentBlocksView: ExpoView {
     renders.countLimit = 400
     collectionView.contentInsetAdjustmentBehavior = .never
     collectionView.alwaysBounceVertical = true
+    collectionView.keyboardDismissMode = .interactive
     collectionView.backgroundColor = style.background
     addSubview(collectionView)
     dataSource = makeDataSource()

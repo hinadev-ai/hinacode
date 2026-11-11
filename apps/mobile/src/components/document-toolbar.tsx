@@ -73,12 +73,14 @@ export function DocumentToolbar({
   onRun,
   onImage,
   onLink,
+  onHideKeyboard,
 }: {
   selection: SelectionState | null
   imageBusy: boolean
   onRun: (action: DocumentAction) => void
   onImage: () => void
   onLink: () => void
+  onHideKeyboard: () => void
 }) {
   const theme = useTheme()
   const allows = (type: DocumentActionType) => selection === null || selection.available.includes(type)
@@ -109,6 +111,7 @@ export function DocumentToolbar({
         horizontal
         keyboardShouldPersistTaps="always"
         showsHorizontalScrollIndicator={false}
+        style={styles.tools}
         contentContainerStyle={styles.row}
       >
         {groups
@@ -134,6 +137,14 @@ export function DocumentToolbar({
           onPress={onLink}
         />
       </ScrollView>
+      <View style={[styles.pinned, { borderColor: theme.border }]}>
+        <ToolButton
+          icon="RiKeyboardBoxLine"
+          label={copy("mobile_document_hide_keyboard")}
+          disabled={false}
+          onPress={onHideKeyboard}
+        />
+      </View>
     </View>
   )
 }
@@ -230,7 +241,9 @@ export function LinkSheet({
 }
 
 const styles = StyleSheet.create({
-  bar: { borderTopWidth: StyleSheet.hairlineWidth },
+  bar: { flexDirection: "row", alignItems: "center", borderTopWidth: StyleSheet.hairlineWidth },
+  tools: { flex: 1 },
+  pinned: { paddingHorizontal: 4, borderLeftWidth: StyleSheet.hairlineWidth },
   row: { alignItems: "center", paddingHorizontal: 4 },
   divider: { width: StyleSheet.hairlineWidth, height: 24, marginHorizontal: 4 },
   tool: {

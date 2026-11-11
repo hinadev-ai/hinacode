@@ -2556,6 +2556,7 @@
   "mobile_document_delete_table": "刪除表格",
   "mobile_document_image_failed": "無法加入圖片：{message}",
   "mobile_document_link": "連結",
+  "mobile_document_hide_keyboard": "隱藏鍵盤",
   "mobile_document_link_edit": "編輯連結",
   "mobile_document_link_save": "儲存",
   "mobile_document_link_remove": "移除連結",

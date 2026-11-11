@@ -2585,6 +2585,7 @@
   "mobile_document_delete_table": "删除表格",
   "mobile_document_image_failed": "无法添加图片：{message}",
   "mobile_document_link": "链接",
+  "mobile_document_hide_keyboard": "隐藏键盘",
   "mobile_document_link_edit": "编辑链接",
   "mobile_document_link_save": "保存",
   "mobile_document_link_remove": "移除链接",

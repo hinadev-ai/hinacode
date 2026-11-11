@@ -2602,6 +2602,7 @@
   "mobile_document_delete_table": "Delete table",
   "mobile_document_image_failed": "Could not add the image: {message}",
   "mobile_document_link": "Link",
+  "mobile_document_hide_keyboard": "Hide keyboard",
   "mobile_document_link_edit": "Edit link",
   "mobile_document_link_save": "Save",
   "mobile_document_link_remove": "Remove link",
