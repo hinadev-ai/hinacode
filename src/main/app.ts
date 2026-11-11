@@ -1,6 +1,5 @@
 import { join } from "node:path"
 import { ProviderId } from "../shared/agent.ts"
-import type { ClientSettings as ClientSettingsValue } from "../shared/domain.ts"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer, Stream } from "effect"
 import { AgentBinaries } from "./agents/binary.ts"
@@ -165,13 +164,16 @@ export const makeAppLayer = ({
     Effect.gen(function* () {
       const projects = yield* Projects.Projects
       const clientSettings = yield* ClientSettings.ClientSettings
-      const ensureGroups = ({ sidebarGroups }: ClientSettingsValue) =>
-        projects
-          .ensureGroups(sidebarGroups.groups, join(userData, "groups"))
-          .pipe(Effect.catch((error) => Effect.logWarning("could not create group folders", error)))
+      const ensureGroups = clientSettings.get.pipe(
+        Effect.flatMap(({ sidebarGroups }) => projects.ensureGroups(sidebarGroups.groups, join(userData, "groups"))),
+        Effect.catch((error) => Effect.logWarning("could not read the sidebar groups", error)),
+      )
       const changes = yield* clientSettings.changes
-      yield* clientSettings.get.pipe(Effect.flatMap(ensureGroups), Effect.ignore)
-      yield* changes.pipe(Stream.runForEach(ensureGroups), Effect.forkScoped)
+      yield* ensureGroups
+      yield* changes.pipe(
+        Stream.runForEach(() => ensureGroups),
+        Effect.forkScoped,
+      )
     }),
   )
   const domain = Layer.mergeAll(
