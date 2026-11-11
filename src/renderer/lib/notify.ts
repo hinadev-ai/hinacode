@@ -2,6 +2,7 @@ import { toast } from "sonner"
 import type { ThreadAlert } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { callPromise } from "./rpc.ts"
+import { inBrowser } from "./runtime.ts"
 
 const chimes: Record<ThreadAlert, ReadonlyArray<number>> = {
   completed: [660, 880],
@@ -49,13 +50,49 @@ interface Notice {
   readonly onClick?: () => void
 }
 
-export const notify = (surface: Surface, { alert, title, body, sound, tag, onClick }: Notice) => {
-  if (surface === "desktop") {
+const notificationClicks = new Map<string, () => void>()
+
+if ("serviceWorker" in navigator)
+  navigator.serviceWorker.addEventListener("message", (event: MessageEvent<{ type?: string; click?: string }>) => {
+    if (event.data.type !== "hinacode.notificationClick" || event.data.click === undefined) return
+    notificationClicks.get(event.data.click)?.()
+    notificationClicks.delete(event.data.click)
+  })
+
+const workerRegistration = async () =>
+  inBrowser() && "serviceWorker" in navigator ? navigator.serviceWorker.getRegistration() : undefined
+
+interface SystemNotification {
+  readonly title: string
+  readonly body: string
+  readonly tag?: string | undefined
+  readonly onClick?: (() => void) | undefined
+}
+
+export const showSystemNotification = async ({ title, body, tag, onClick }: SystemNotification) => {
+  const registration = await workerRegistration()
+  if (registration === undefined) {
     const notification = new Notification(title, { body, silent: true, ...(tag === undefined ? {} : { tag }) })
     notification.addEventListener("click", () => {
       void callPromise("app.focus", undefined)
       onClick?.()
     })
+    return
+  }
+  if (Notification.permission !== "granted") return
+  const click = tag ?? crypto.randomUUID()
+  if (onClick !== undefined) notificationClicks.set(click, onClick)
+  await registration.showNotification(title, {
+    body,
+    silent: true,
+    ...(tag === undefined ? {} : { tag }),
+    data: { click, page: location.href },
+  })
+}
+
+export const notify = (surface: Surface, { alert, title, body, sound, tag, onClick }: Notice) => {
+  if (surface === "desktop") {
+    void showSystemNotification({ title, body, tag, onClick })
   } else {
     showToast[alert](title, {
       description: body,

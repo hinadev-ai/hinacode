@@ -38,3 +38,16 @@ const answer = async (event) => {
   const { status, headers, body } = await reply
   return new Response(body, { status, headers })
 }
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close()
+  event.waitUntil(openNotifiedPage(event.notification.data ?? {}))
+})
+
+const openNotifiedPage = async ({ click, page: pageUrl }) => {
+  const pages = (await self.clients.matchAll({ type: "window" })).filter((page) => page.frameType === "top-level")
+  const page = pages.find((candidate) => candidate.url === pageUrl) ?? pages[0]
+  if (page === undefined) return self.clients.openWindow("/")
+  if (click !== undefined) page.postMessage({ type: "hinacode.notificationClick", click })
+  await page.focus()
+}

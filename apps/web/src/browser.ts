@@ -9,6 +9,7 @@ import {
   type SettingsPatch,
 } from "../../../src/shared/domain.ts"
 import { RelayHostList, type RelayMachine } from "../../../src/shared/relayMachines.ts"
+import { showSystemNotification } from "@/lib/notify.ts"
 import { m } from "@/paraglide/messages.js"
 import { type RelayAccount, relayEndpoint, signOutDevice } from "./account.ts"
 
@@ -116,8 +117,7 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
       if (!("Notification" in window)) return "refused"
       const answer = await Notification.requestPermission()
       if (answer !== "granted") return answer === "denied" ? "refused" : "noAnswer"
-      const shown = new Notification(title, { body })
-      shown.addEventListener("click", () => window.focus())
+      await showSystemNotification({ title, body })
       return "shown"
     },
     "shell.openers": () => [],

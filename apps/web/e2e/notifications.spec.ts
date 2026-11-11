@@ -10,7 +10,10 @@ const shownNotifications = (page: Page) =>
     return (await registration.getNotifications()).map(({ title, body }) => ({ title, body }))
   })
 
-test("a turn that finishes in the background notifies through the service worker", async ({
+const clickFirstNotification = `self.registration.getNotifications().then(([notification]) =>
+  self.dispatchEvent(new NotificationEvent("notificationclick", { notification })))`
+
+test("a background turn notifies through the service worker, and the notification opens its thread", async ({
   page,
   web,
   repo,
@@ -26,4 +29,10 @@ test("a turn that finishes in the background notifies through the service worker
   })
   await sendMessage(page, "Show me some Markdown")
   await expect.poll(() => shownNotifications(page)).toContainEqual(expect.objectContaining({ body: "Finished" }))
+
+  await startThread(page, web, project)
+  await expect(page.getByText("Show me some Markdown", { exact: true })).toHaveCount(0)
+  const [worker] = page.context().serviceWorkers()
+  await worker!.evaluate(clickFirstNotification)
+  await expect(page.getByText("Show me some Markdown", { exact: true })).toBeVisible()
 })
