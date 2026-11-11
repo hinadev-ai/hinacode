@@ -1,37 +1,97 @@
 import type { DocumentContent } from "@shared/artifact.ts"
 import type { CalloutTone } from "@shared/documentCallout.ts"
+import { createDocumentSync, type DocumentSync, type SaveStatus } from "@shared/document/sync.ts"
 import type { Thread } from "@shared/domain.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
+import { useHeaderHeight } from "expo-router/react-navigation"
 import { useEffect, useEffectEvent, useRef, useState } from "react"
-import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, useWindowDimensions, View } from "react-native"
+import {
+  type CodeToken,
+  type DocumentAction,
+  DocumentEditor,
+  type DocumentEditorHandle,
+  type DocumentTheme,
+  type SelectionState,
+} from "@hinacode/document-view"
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
+import { DocumentToolbar, LinkSheet } from "@/components/document-toolbar"
+import { isMarkToggle, selectionFormats } from "@/lib/document-formats"
 import { Failure } from "@/components/files"
-import { Icon, type IconName } from "@/components/icon"
-import { Markdown } from "@/components/markdown"
-import { EmptyState, Notice } from "@/components/ui"
-import { CalloutColors, READABLE_WIDTH, radius } from "@/constants/theme"
+import { Icon } from "@/components/icon"
+import { Button, EmptyState, IconButton, Notice } from "@/components/ui"
+import { CalloutColors, ChartColors, mono, type Palette, radius, SyntaxColors } from "@/constants/theme"
 import { useThreadConnection, useThreadServer } from "@/hooks/use-server"
-import { useScheme, useTheme } from "@/hooks/use-theme"
+import { type Scheme, useScheme, useTheme } from "@/hooks/use-theme"
 import { call, onEvent } from "@/lib/connection"
 import { copy } from "@/lib/copy"
-import { type DocumentSegment, documentSegments } from "@/lib/document-segments"
 import { errorText } from "@/lib/error-text"
-import { useThreadRoot, useThreads } from "@/stores/threads"
+import { lex } from "@/lib/lexer"
+import { openWebUrl } from "@/lib/open-url"
+import { imageDataUrl, pickImages } from "@/lib/stage-images"
+import { useThreads } from "@/stores/threads"
 
 type Params = { id: string; artifactId: string; title?: string }
 
-const PADDING = 16
-/** The Markdown renderer trims a segment's last margin, so the space between segments lives here. */
-const SEGMENT_GAP = 14
 const TITLE_INSET = 120
 
-const calloutCopy = {
-  note: { label: "mobile_document_callout_note", icon: "Info" },
-  tip: { label: "mobile_document_callout_tip", icon: "RiLightbulbLine" },
-  important: { label: "mobile_document_callout_important", icon: "RiFeedbackLine" },
-  warning: { label: "mobile_document_callout_warning", icon: "Alert" },
-  caution: { label: "mobile_document_callout_caution", icon: "RiSpam2Line" },
-} as const satisfies Record<CalloutTone, { label: Parameters<typeof copy>[0]; icon: IconName }>
+const calloutLabels = {
+  note: "mobile_document_callout_note",
+  tip: "mobile_document_callout_tip",
+  important: "mobile_document_callout_important",
+  warning: "mobile_document_callout_warning",
+  caution: "mobile_document_callout_caution",
+} as const satisfies Record<CalloutTone, Parameters<typeof copy>[0]>
+
+const highlighter =
+  (scheme: Scheme) =>
+  (code: string, language: string): CodeToken[] =>
+    lex(code, `snippet.${language}`).flatMap(({ type, start, end }) =>
+      type === "plain" ? [] : [[start, end, SyntaxColors[scheme][type]] as const],
+    )
+
+const documentTheme = (theme: Palette, scheme: Scheme): DocumentTheme => ({
+  text: theme.text,
+  muted: theme.textMuted,
+  link: theme.link,
+  background: theme.background,
+  surface: theme.surface,
+  border: theme.border,
+  codeBackground: theme.surface,
+  codeText: SyntaxColors[scheme].plain,
+  accent: theme.primary,
+  callouts: CalloutColors[scheme],
+  calloutLabels: {
+    note: copy(calloutLabels.note),
+    tip: copy(calloutLabels.tip),
+    important: copy(calloutLabels.important),
+    warning: copy(calloutLabels.warning),
+    caution: copy(calloutLabels.caution),
+  },
+  chartLanes: ChartColors[scheme],
+  diagram: {
+    bg: theme.surface,
+    fg: theme.text,
+    muted: theme.textMuted,
+    line: theme.textMuted,
+    surface: theme.background,
+    surfaceAlt: theme.surface,
+    border: theme.textMuted,
+    accent: theme.primary,
+    critical: theme.danger,
+  },
+  fontSize: 16,
+  lineHeight: 24,
+  monoFont: mono ?? "Menlo",
+})
 
 type Loaded =
   | { readonly status: "loading" }
@@ -65,10 +125,12 @@ function DocumentBody({
   artifactId: string
   initialTitle: string
 }) {
+  const headerHeight = useHeaderHeight()
   const connection = useThreadConnection(thread.id)
   const server = useThreadServer(thread.id)?.id
   const connected = connection === "connected"
   const [title, setTitle] = useState(initialTitle)
+  const [version, setVersion] = useState<number | null>(null)
   const [state, setState] = useState<Loaded>({ status: "loading" })
   const latestRead = useRef(0)
 
@@ -76,22 +138,27 @@ function DocumentBody({
     const attempt = ++latestRead.current
     try {
       const document = await call("artifacts.readDocument", { id: artifactId }, { server })
-      if (latestRead.current === attempt) setState({ status: "ready", document })
+      if (latestRead.current !== attempt) return
+      setVersion(document.version)
+      setState({ status: "ready", document })
     } catch (cause) {
       if (latestRead.current !== attempt) return
       setState((current) => (current.status === "ready" ? current : { status: "error", message: errorText(cause) }))
     }
   }
 
-  const readOnConnect = useEffectEvent(() => void read())
+  const readUntilLoaded = useEffectEvent(() => {
+    if (state.status !== "ready") void read()
+  })
   useEffect(() => {
-    if (connected) readOnConnect()
+    if (connected) readUntilLoaded()
   }, [connected])
 
   const onPush = useEffectEvent((event: Parameters<Parameters<typeof onEvent>[0]>[0]) => {
     if (event.type === "artifact.updated" && event.artifact.id === artifactId) {
       setTitle(event.artifact.title)
-      void read()
+      setVersion(event.artifact.version)
+      readUntilLoaded()
     }
     if (event.type === "artifact.removed" && event.id === artifactId) {
       latestRead.current++
@@ -106,15 +173,16 @@ function DocumentBody({
   }
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title,
-          headerTitle: () => (
-            <DocumentTitle title={title} version={state.status === "ready" ? state.document.version : null} />
-          ),
-        }}
-      />
+    <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
+      {state.status !== "ready" && (
+        <Stack.Screen
+          options={{
+            title,
+            headerTitle: () => <DocumentTitle title={title} version={version} status={{ type: "saved" }} />,
+            headerRight: undefined,
+          }}
+        />
+      )}
       {!connected && (
         <View style={styles.banner}>
           <Notice text={copy("mobile_reconnecting_banner")} tone="attention" />
@@ -125,13 +193,50 @@ function DocumentBody({
       ) : state.status === "loading" ? (
         <Loading />
       ) : (
-        <DocumentText thread={thread} markdown={state.document.markdown} />
+        <DocumentEditing
+          artifactId={artifactId}
+          server={server}
+          title={title}
+          version={version}
+          loaded={state.document}
+          connected={connected}
+        />
       )}
-    </>
+    </KeyboardAvoidingView>
   )
 }
 
-function DocumentTitle({ title, version }: { title: string; version: number | null }) {
+function ConflictBanner({ sync }: { sync: DocumentSync }) {
+  const theme = useTheme()
+  return (
+    <View
+      accessibilityRole="alert"
+      style={[styles.conflict, { backgroundColor: theme.attentionBg, borderColor: theme.border }]}
+    >
+      <View style={styles.conflictText}>
+        <Icon name="Warning" size={16} color={theme.attention} />
+        <Text style={[styles.conflictMessage, { color: theme.text }]}>{copy("mobile_document_conflict")}</Text>
+      </View>
+      <View style={styles.conflictActions}>
+        <Button
+          testID="document-use-theirs"
+          label={copy("mobile_document_use_theirs")}
+          onPress={sync.useTheirs}
+          style={styles.conflictAction}
+        />
+        <Button
+          testID="document-keep-mine"
+          label={copy("mobile_document_keep_mine")}
+          variant="primary"
+          onPress={() => void sync.keepMine()}
+          style={styles.conflictAction}
+        />
+      </View>
+    </View>
+  )
+}
+
+function DocumentTitle({ title, version, status }: { title: string; version: number | null; status: SaveStatus }) {
   const theme = useTheme()
   const { width } = useWindowDimensions()
   return (
@@ -142,6 +247,25 @@ function DocumentTitle({ title, version }: { title: string; version: number | nu
       {version !== null && (
         <Text style={[styles.version, { color: theme.textMuted }]}>
           {copy("mobile_artifact_card_version", { version: String(version) })}
+        </Text>
+      )}
+      <View style={styles.savingSlot}>
+        {status.type === "saving" && (
+          <ActivityIndicator
+            testID="document-saving"
+            size="small"
+            color={theme.textMuted}
+            accessibilityLabel={copy("mobile_document_saving")}
+          />
+        )}
+      </View>
+      {(status.type === "conflict" || status.type === "failed") && (
+        <Text
+          testID="document-save-status"
+          accessibilityLiveRegion="polite"
+          style={[styles.version, { color: theme.danger }]}
+        >
+          {copy("mobile_document_not_saved")}
         </Text>
       )}
     </View>
@@ -157,64 +281,199 @@ function Loading() {
   )
 }
 
-function DocumentText({ thread, markdown }: { thread: Thread; markdown: string }) {
-  const root = useThreadRoot(thread)
-  const segments = documentSegments(markdown)
-  if (segments.length === 0) return <EmptyState icon="FileText" title={copy("mobile_document_empty")} />
-  return (
-    <FlatList
-      testID="document"
-      style={styles.flex}
-      contentContainerStyle={styles.content}
-      data={segments}
-      keyExtractor={(_, index) => String(index)}
-      renderItem={({ item }) => <Segment segment={item} root={root} threadId={thread.id} />}
-      ItemSeparatorComponent={SegmentGap}
-      // One segment can hold hundreds of views, so the list mounts a screenful first, as the transcript does.
-      initialNumToRender={4}
-      maxToRenderPerBatch={2}
-      windowSize={9}
-    />
-  )
-}
-
-function SegmentGap() {
-  return <View style={styles.gap} />
-}
-
-function Segment({ segment, root, threadId }: { segment: DocumentSegment; root: string | null; threadId: string }) {
-  if (segment.kind === "callout") return <Callout segment={segment} root={root} threadId={threadId} />
-  return <Markdown text={segment.text} root={root} threadId={threadId} gutter={PADDING} measure="document" />
-}
-
-function Callout({
-  segment: { tone, text },
-  root,
-  threadId,
+function DocumentEditing({
+  artifactId,
+  server,
+  title,
+  version,
+  loaded,
+  connected,
 }: {
-  segment: Extract<DocumentSegment, { kind: "callout" }>
-  root: string | null
-  threadId: string
+  artifactId: string
+  server: string | undefined
+  title: string
+  version: number | null
+  loaded: DocumentContent
+  connected: boolean
 }) {
+  const theme = useTheme()
   const scheme = useScheme()
-  const { tint, label } = CalloutColors[scheme][tone]
-  const { label: labelKey, icon } = calloutCopy[tone]
+  const editor = useRef<DocumentEditorHandle | null>(null)
+  const live = useRef(false)
+  const started = useRef(false)
+  const [status, setStatus] = useState<SaveStatus>({ type: "saved" })
+  const [sync] = useState(() =>
+    createDocumentSync({
+      key: JSON.stringify([server ?? null, artifactId]),
+      loaded,
+      onStatus: setStatus,
+      describe: errorText,
+      rpc: {
+        save: ({ baseRevision, markdown }) =>
+          call("artifacts.saveDocument", { id: artifactId, baseRevision, markdown }, { server }),
+        read: () => call("artifacts.readDocument", { id: artifactId }, { server }),
+      },
+    }),
+  )
+  const [document, setDocument] = useState({ revision: loaded.revision, markdown: sync.initial })
+  const [lossy, setLossy] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const [selection, setSelection] = useState<SelectionState | null>(null)
+  const [linking, setLinking] = useState<{ readonly href: string | null } | null>(null)
+  const [imageBusy, setImageBusy] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
+  const editable = connected && !lossy
+  const [shownScheme, setShownScheme] = useState(scheme)
+  if (shownScheme !== scheme) {
+    setShownScheme(scheme)
+    setDocument((current) => ({
+      revision: current.revision + 1,
+      markdown: editor.current?.getMarkdown() ?? current.markdown,
+    }))
+  }
+
+  useEffect(() => {
+    live.current = true
+    const stop = onEvent((event) => {
+      if (event.type === "artifact.updated" && event.artifact.id === artifactId)
+        void sync.published(event.artifact.revision)
+    })
+    return () => {
+      stop()
+      sync.flush()
+      live.current = false
+    }
+  }, [sync, artifactId])
+
+  const catchUpOnReconnect = useEffectEvent(() => void sync.published())
+  const wasConnected = useRef(connected)
+  useEffect(() => {
+    if (connected && !wasConnected.current) catchUpOnReconnect()
+    wasConnected.current = connected
+  }, [connected])
+
+  const startSync = () => {
+    if (started.current) return
+    started.current = true
+    sync.start({
+      markdown: () => editor.current?.getMarkdown() ?? "",
+      load: (markdown) => setDocument((current) => ({ revision: current.revision + 1, markdown })),
+      live: () => live.current,
+    })
+  }
+
+  const run = (action: DocumentAction) => void editor.current?.run(action)
+
+  const openLink = () => setLinking({ href: selection?.href ?? null })
+
+  const saveLink = (href: string | null) => {
+    setLinking(null)
+    run({ type: "setLink", href })
+  }
+
+  const insertImages = async () => {
+    setImageError(null)
+    setImageBusy(true)
+    try {
+      for (const asset of await pickImages()) {
+        const { dataUrl } = await imageDataUrl(asset)
+        const { path } = await call("artifacts.addDocumentImage", { id: artifactId, dataUrl }, { server })
+        await editor.current?.run({ type: "insertImage", src: path, alt: "" })
+      }
+    } catch (cause) {
+      setImageError(copy("mobile_document_image_failed", { message: errorText(cause) }))
+    } finally {
+      setImageBusy(false)
+    }
+  }
+
   return (
-    <View style={[styles.callout, { backgroundColor: tint }]}>
-      <View style={styles.calloutLabel}>
-        <Icon name={icon} size={14} color={label} />
-        <Text style={[styles.calloutLabelText, { color: label }]}>{copy(labelKey)}</Text>
-      </View>
-      {text !== "" && <Markdown text={text} root={root} threadId={threadId} measure="document" />}
-    </View>
+    <>
+      <Stack.Screen
+        options={{
+          title,
+          headerTitle: () => <DocumentTitle title={title} version={version} status={status} />,
+          headerRight:
+            status.type === "failed"
+              ? () => (
+                  <IconButton
+                    testID="document-save-retry"
+                    icon="Refresh"
+                    accessibilityLabel={copy("mobile_document_retry")}
+                    onPress={() => void sync.retry()}
+                  />
+                )
+              : undefined,
+        }}
+      />
+      {status.type === "conflict" && <ConflictBanner sync={sync} />}
+      {lossy && (
+        <View style={styles.banner}>
+          <Notice text={copy("mobile_document_read_only")} />
+        </View>
+      )}
+      {imageError !== null && (
+        <View style={styles.banner}>
+          <Notice text={imageError} tone="danger" />
+        </View>
+      )}
+      <DocumentEditor
+        key={shownScheme}
+        ref={(handle) => {
+          if (handle !== null) editor.current = handle
+        }}
+        testID="document"
+        style={styles.flex}
+        document={document}
+        editable={editable}
+        theme={documentTheme(theme, shownScheme)}
+        highlightCode={highlighter(shownScheme)}
+        resolveImage={async (path) => (await call("artifacts.file", { id: artifactId, path }, { server })).dataUrl}
+        onLinkPress={openWebUrl}
+        onLoaded={() => {
+          setLossy(false)
+          startSync()
+        }}
+        onError={(error) => {
+          if (error.kind === "lossy") setLossy(true)
+        }}
+        onChange={() => {
+          setImageError(null)
+          sync.edited()
+        }}
+        onSelectionChange={setSelection}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        formatActions={selectionFormats}
+        onFormat={(type) => {
+          if (type === "setLink") openLink()
+          else if (isMarkToggle(type)) run({ type })
+        }}
+      />
+      {focused && editable && (
+        <DocumentToolbar
+          selection={selection}
+          imageBusy={imageBusy}
+          onRun={run}
+          onImage={() => void insertImages()}
+          onLink={openLink}
+          onHideKeyboard={() => void editor.current?.blur()}
+        />
+      )}
+      {linking !== null && <LinkSheet href={linking.href} onSave={saveLink} onClose={() => setLinking(null)} />}
+    </>
   )
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   banner: { paddingHorizontal: 12, paddingTop: 8 },
+  conflict: { gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  conflictText: { flexDirection: "row", alignItems: "center", gap: 8 },
+  conflictMessage: { flex: 1, fontSize: 14, lineHeight: 20 },
+  conflictActions: { flexDirection: "row", gap: 8 },
+  conflictAction: { flex: 1, borderRadius: radius.full },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
-  content: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center", padding: PADDING, paddingBottom: 32 },
   titleRow: {
     flexDirection: "row",
     alignItems: "baseline",
@@ -223,8 +482,5 @@ const styles = StyleSheet.create({
   },
   title: { flexShrink: 1, fontSize: 16, fontWeight: "600" },
   version: { fontSize: 13, fontVariant: ["tabular-nums"] },
-  gap: { height: SEGMENT_GAP },
-  callout: { borderRadius: radius.lg, paddingHorizontal: 14, paddingVertical: 12, gap: 6 },
-  calloutLabel: { flexDirection: "row", alignItems: "center", gap: 6 },
-  calloutLabelText: { fontSize: 13, lineHeight: 18, fontWeight: "600" },
+  savingSlot: { width: 20, height: 20, alignSelf: "center", alignItems: "center", justifyContent: "center" },
 })

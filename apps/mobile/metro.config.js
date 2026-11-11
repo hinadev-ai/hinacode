@@ -7,8 +7,14 @@ const shared = path.resolve(__dirname, "../../src/shared")
 const messages = path.resolve(__dirname, "../../messages")
 const icons = path.resolve(__dirname, "../../packages/icons")
 const composerEditor = path.resolve(__dirname, "../../packages/composer-editor")
+const perfFrames = path.resolve(__dirname, "../../packages/perf-frames")
+const documentView = path.resolve(__dirname, "../../packages/document-view")
 
-config.watchFolders = [shared, messages, icons, composerEditor]
+// The document model is the desktop's own Tiptap and ProseMirror, imported by src/shared/document from the repo's
+// node_modules, where its pnpm patches live. Metro only resolves files inside a watched folder.
+const rootModules = path.resolve(__dirname, "../../node_modules")
+
+config.watchFolders = [shared, messages, icons, composerEditor, perfFrames, documentView, rootModules]
 config.resolver.nodeModulesPaths = [path.resolve(__dirname, "node_modules"), path.resolve(__dirname, "../../node_modules")]
 
 // src/shared would otherwise resolve `effect` from the repo root, giving the bundle two copies whose
@@ -23,7 +29,7 @@ const perfRenderer = path.join(__dirname, "src/lib/perf-renderer.js")
 const resolvesFromApp = (context, moduleName) =>
   moduleName === "effect" ||
   moduleName.startsWith("effect/") ||
-  ((context.originModulePath.startsWith(icons) || context.originModulePath.startsWith(composerEditor)) &&
+  ([icons, composerEditor, perfFrames, documentView].some((dir) => context.originModulePath.startsWith(dir)) &&
     fromAppForPackages.test(moduleName))
 config.resolver.resolveRequest = (context, moduleName, platform) =>
   context.resolveRequest(
