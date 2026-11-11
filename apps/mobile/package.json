@@ -47,12 +47,8 @@
     "zustand": "5.0.15"
   },
   "devDependencies": {
-    "@babel/core": "7.29.7",
-    "@babel/preset-typescript": "7.29.7",
-    "@types/babel__core": "7.20.5",
     "@types/node": "26.6.5",
     "@types/react": "~19.3.0",
-    "babel-plugin-react-compiler": "1.0.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
