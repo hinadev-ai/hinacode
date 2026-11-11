@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { afterAll, expect, layer } from "@effect/vitest"
-import { Effect, Layer, Queue, Stream } from "effect"
+import { afterAll, expect, it as vitest, layer } from "@effect/vitest"
+import { Deferred, Effect, Fiber, Layer, Option, Queue, Stream } from "effect"
 import { unlistedModel } from "../../shared/agent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -12,6 +12,7 @@ import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { seedThread } from "../db/testing.ts"
 import { makeTestAppLayer } from "../testing.ts"
+import { AgentRunner } from "./AgentRunner.ts"
 import { ArtifactFeedback } from "./ArtifactFeedback.ts"
 import { Artifacts } from "./Artifacts.ts"
 import { Events, PushBroadcast, WindowPush } from "./Events.ts"
@@ -39,6 +40,10 @@ const ownerAndSibling = Effect.gen(function* () {
 const delivered = Effect.runSync(Queue.unbounded<{ readonly threadId: string; readonly text: string }>())
 const receive = (threadId: string, text: string) => Queue.offer(delivered, { threadId, text }).pipe(Effect.asVoid)
 
+const KEEP_WORKING = "Keep working until I stop you."
+const STALLS_STEER = "This steer never returns."
+const stalledSteer = Effect.runSync(Deferred.make<void>())
+
 const provider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
@@ -46,8 +51,15 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   planLimits: () => Effect.succeed(null),
   usage: () => Effect.succeed(null),
   listCommands: () => Effect.succeed([]),
-  runTurn: (input) => Stream.fromEffect(receive(input.threadId, input.prompt)).pipe(Stream.drain),
-  steer: receive,
+  runTurn: (input) =>
+    Stream.fromEffect(receive(input.threadId, input.prompt)).pipe(
+      Stream.drain,
+      Stream.concat(input.prompt === KEEP_WORKING ? Stream.never : Stream.empty),
+    ),
+  steer: (threadId, text) =>
+    text.includes(STALLS_STEER)
+      ? Deferred.succeed(stalledSteer, undefined).pipe(Effect.andThen(Effect.never))
+      : receive(threadId, text),
   interrupt: () => Effect.void,
   respondApproval: () => Effect.succeed(false),
   respondQuestion: () => Effect.void,
@@ -67,6 +79,11 @@ const quietEvents = Layer.mergeAll(
   Layer.succeed(WindowPush, WindowPush.of({ send: () => Effect.void })),
   Layer.succeed(PushBroadcast, PushBroadcast.of({ subscribe: () => Effect.void })),
 )
+
+const restartable = makeTestAppLayer(join(mkdtempSync(join(base, "restart-")), "hinacode.sqlite"), {
+  providers,
+  events: quietEvents,
+})
 
 layer(makeTestAppLayer(join(base, "hinacode.sqlite"), { providers, events: quietEvents }), {
   excludeTestServices: true,
@@ -195,3 +212,29 @@ layer(makeTestAppLayer(join(base, "hinacode.sqlite"), { providers, events: quiet
     }),
   )
 })
+
+vitest.live("delivers a comment saved right before the app quit once it starts again", () =>
+  Effect.gen(function* () {
+    const { threadId, artifactId } = yield* Effect.gen(function* () {
+      const owner = yield* newThread
+      const document = yield* documentOf(owner)
+      yield* AgentRunner.use((runner) => runner.send(owner, KEEP_WORKING, []))
+      expect(yield* Queue.take(delivered)).toEqual({ threadId: owner, text: KEEP_WORKING })
+
+      const commenting = yield* ArtifactFeedback.use((feedback) =>
+        feedback.comment({ id: document.id, body: STALLS_STEER }),
+      ).pipe(Effect.forkChild)
+      yield* Deferred.await(stalledSteer)
+      yield* Fiber.interrupt(commenting)
+      return { threadId: owner, artifactId: document.id }
+    }).pipe(Effect.provide(restartable))
+
+    const redelivered = yield* Effect.gen(function* () {
+      const saved = yield* ArtifactFeedback.use((feedback) => feedback.feedback(artifactId))
+      expect(saved.comments.map((comment) => comment.messages[0]?.body)).toEqual([STALLS_STEER])
+      return yield* Queue.take(delivered).pipe(Effect.timeoutOption("5 seconds"))
+    }).pipe(Effect.provide(restartable))
+
+    expect(redelivered).toEqual(Option.some({ threadId, text: expect.stringContaining(STALLS_STEER) }))
+  }),
+)
