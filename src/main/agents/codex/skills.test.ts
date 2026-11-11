@@ -33,4 +33,12 @@ describe("skillInputs", () => {
     ])
     expect(skillInputs("no skill here", [createPr])).toStrictEqual([])
   })
+
+  test("leaves out a skill whose $name is only the start of a longer name", () => {
+    const review = { ...createPr, name: "review", path: "/home/u/.agents/skills/review/SKILL.md" }
+    expect(skillInputs("run $review-pr and $reviewer", [review])).toStrictEqual([])
+    expect(skillInputs("run $review, then stop", [review])).toStrictEqual([
+      { type: "skill", name: "review", path: review.path },
+    ])
+  })
 })
