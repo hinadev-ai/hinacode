@@ -1,3 +1,4 @@
+import type { PastedImage } from "@hinacode/composer-editor"
 import type { AgentCommand } from "@shared/agent.ts"
 import type { KnownTokens } from "@shared/composerSyntax.ts"
 import type { Ref } from "react"
@@ -27,4 +28,5 @@ export interface ComposerInputProps {
   readonly onChangeSelection: (selection: ComposerSelection) => void
   readonly onFocus: () => void
   readonly onBlur: () => void
+  readonly onPasteImages?: (images: readonly PastedImage[]) => void
 }

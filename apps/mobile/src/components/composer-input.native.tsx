@@ -30,6 +30,7 @@ export function ComposerInput({
   onChangeSelection,
   onFocus,
   onBlur,
+  onPasteImages,
 }: ComposerInputProps) {
   const theme = useTheme()
   const editor = useRef<ComposerEditorHandle>(null)
@@ -74,6 +75,7 @@ export function ComposerInput({
       onChangeSelection={onChangeSelection}
       onFocus={onFocus}
       onBlur={onBlur}
+      onPasteImages={onPasteImages}
     />
   )
 }

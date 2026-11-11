@@ -200,8 +200,7 @@ export function Composer({ thread }: { thread: Thread }) {
     }
   }
 
-  const attachImages = async () => {
-    const assets = await pickImages()
+  const stageImages = async (assets: readonly Parameters<typeof stageImage>[1][]) => {
     if (assets.length === 0) return
     setError(null)
     setStaging(true)
@@ -212,6 +211,8 @@ export function Composer({ thread }: { thread: Thread }) {
     const failed = results.find((result) => result.status === "rejected")
     if (failed) setError(errorText(failed.reason))
   }
+
+  const attachImages = async () => stageImages(await pickImages())
 
   return (
     <View style={styles.composer}>
@@ -273,6 +274,7 @@ export function Composer({ thread }: { thread: Thread }) {
           }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          onPasteImages={(pasted) => void stageImages(pasted)}
           placeholder={
             busy
               ? copy(steers ? "mobile_composer_steer_placeholder" : "mobile_composer_queue_placeholder")
@@ -292,7 +294,6 @@ export function Composer({ thread }: { thread: Thread }) {
             <SettingsChip thread={thread} onError={setError} />
           </View>
           <View style={styles.chips}>
-            {focused && <HideKeyboardButton onPress={() => inputRef.current?.blur()} />}
             <SendButton
               busy={busy}
               steers={steers}
@@ -309,21 +310,6 @@ export function Composer({ thread }: { thread: Thread }) {
         </Text>
       )}
     </View>
-  )
-}
-
-function HideKeyboardButton({ onPress }: { onPress: () => void }) {
-  const theme = useTheme()
-  return (
-    <Pressable
-      testID="composer-hide-keyboard"
-      accessibilityRole="button"
-      accessibilityLabel={copy("mobile_composer_hide_keyboard")}
-      onPress={onPress}
-      style={({ pressed }) => [styles.attach, pressed && [styles.pressed, { backgroundColor: theme.inkWash }]]}
-    >
-      <Icon name="ChevronDown" size={20} color={theme.textMuted} />
-    </Pressable>
   )
 }
 

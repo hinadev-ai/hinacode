@@ -70,6 +70,7 @@ export default function PullRequestScreen() {
   const link = usePullRequests((state) => state.linksByThread[id]?.find((existing) => existing.url === url) ?? null)
   const [refreshing, setRefreshing] = useState(false)
   const [tab, setTab] = useState<Tab>("info")
+  const [barHeight, setBarHeight] = useState(0)
   const web = useWebLink(id, url)
 
   useAtomMount(loadDetailAtom(url))
@@ -86,7 +87,8 @@ export default function PullRequestScreen() {
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ title: number === null ? "" : `#${number}` }} />
       <ScrollView
-        contentContainerStyle={styles.page}
+        contentContainerStyle={[styles.page, { paddingBottom: 16 + barHeight }]}
+        scrollIndicatorInsets={{ bottom: barHeight }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={theme.textMuted} />
         }
@@ -114,7 +116,13 @@ export default function PullRequestScreen() {
           )}
         </View>
       </ScrollView>
-      <ActionBar web={web} detail={remote?.status === "ready" ? remote.value : null} onChanged={reload} />
+      <View
+        pointerEvents="box-none"
+        style={styles.floating}
+        onLayout={(event) => setBarHeight(event.nativeEvent.layout.height)}
+      >
+        <ActionBar web={web} detail={remote?.status === "ready" ? remote.value : null} onChanged={reload} />
+      </View>
     </View>
   )
 }
@@ -564,9 +572,9 @@ function ActionBar({
   }
 
   return (
-    <View style={[styles.bar, { paddingBottom: 8 + insets.bottom }]}>
+    <View pointerEvents="box-none" style={[styles.bar, { paddingBottom: 8 + insets.bottom }]}>
       {error !== null && <Notice tone="danger" text={error} />}
-      <View style={styles.barRow}>
+      <View pointerEvents="box-none" style={styles.barRow}>
         <IconButton
           icon="External"
           accessibilityLabel={web.label}
@@ -675,6 +683,7 @@ const styles = StyleSheet.create({
   runs: { paddingHorizontal: 14, paddingBottom: 6 },
   run: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 10, paddingLeft: 10 },
   runName: { flex: 1, fontSize: 14, lineHeight: 19, paddingVertical: 6 },
+  floating: { position: "absolute", left: 0, right: 0, bottom: 0 },
   bar: { gap: 8, paddingHorizontal: 16, paddingTop: 8, width: "100%", maxWidth: 792, alignSelf: "center" },
   barRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   round: { width: HIT + 8, height: HIT + 8, borderRadius: radius.full, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)" },

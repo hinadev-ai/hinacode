@@ -1,7 +1,7 @@
 import { requireNativeView } from "expo"
 import { type Ref, useImperativeHandle, useRef, useState } from "react"
 import type { NativeSyntheticEvent, StyleProp, ViewStyle } from "react-native"
-import type { ComposerEditorHandle, ComposerEditorProps, Selection } from "./types.ts"
+import type { ComposerEditorHandle, ComposerEditorProps, PastedImage, Selection } from "./types.ts"
 
 interface NativeChange {
   readonly text: string
@@ -31,6 +31,7 @@ interface NativeProps {
   readonly onEditorBlur: () => void
   readonly onEditorFormat: (event: NativeSyntheticEvent<{ readonly action: string } & Selection>) => void
   readonly onEditorContentSize: (event: NativeSyntheticEvent<{ readonly height: number }>) => void
+  readonly onEditorPasteImages: (event: NativeSyntheticEvent<{ readonly images: readonly PastedImage[] }>) => void
 }
 
 interface NativeHandle {
@@ -60,6 +61,7 @@ export function ComposerEditor({
   onChangeSelection,
   onFocus,
   onBlur,
+  onPasteImages,
   ...rest
 }: ComposerEditorProps & { readonly ref?: Ref<ComposerEditorHandle> }) {
   const native = useRef<NativeHandle>(null)
@@ -93,6 +95,7 @@ export function ComposerEditor({
       onEditorBlur={() => onBlur?.()}
       onEditorFormat={({ nativeEvent: { action, start, end } }) => onFormat?.(action, { start, end })}
       onEditorContentSize={({ nativeEvent }) => setContentHeight(nativeEvent.height)}
+      onEditorPasteImages={({ nativeEvent }) => onPasteImages?.(nativeEvent.images)}
     />
   )
 }

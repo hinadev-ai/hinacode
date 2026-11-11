@@ -149,7 +149,8 @@ export const ChartColors = {
   dark: ["#61a3e6", "#57b9a1", "#e29d56", "#da7baa", "#92ba66", "#808080"],
 } as const
 
-export const mono = Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" })
+// FIXME: some Android phones map the generic `monospace` family to a proportional font, so Android bundles one.
+export const mono = Platform.select({ ios: "Menlo", android: "JetBrains Mono", default: "ui-monospace, Menlo, monospace" })
 
 export const HIT = 44
 
