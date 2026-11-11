@@ -228,7 +228,7 @@ export function createDocumentSession({
 
     const step = () => {
       if (loadRevision !== revision) return
-      const deadline = now() + sliceMs
+      const deadline = progressive ? now() + sliceMs : Infinity
       for (;;) {
         const next = iterator.next()
         if (next.done === true) return finish()
