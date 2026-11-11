@@ -20,10 +20,12 @@ export const handshakes = Atom.readable((get) => {
   return useConnection.getState().generation
 })
 
+export const beforeFirstHandshake = (get: Atom.AtomContext) => get(handshakes) === 0
+
 export const loaderFamily = <Args extends ReadonlyArray<unknown>>(load: (...args: Args) => Promise<unknown>) =>
   familyOf((...args: Args) =>
     Atom.make((get) => {
-      get(handshakes)
+      if (beforeFirstHandshake(get)) return Effect.never
       return Effect.ignore(Effect.tryPromise(() => load(...args)))
     }),
   )
@@ -34,7 +36,7 @@ export const rpcFamily =<M extends RpcMethod>(
 ) =>
   familyOf((payload: RpcRequest<M>, server?: string | null) =>
     Atom.make((get) => {
-      get(handshakes)
+      if (beforeFirstHandshake(get)) return Effect.never
       const { refreshOn } = options
       if (refreshOn !== undefined)
         get.addFinalizer(onEvent((event) => refreshOn(event, payload) && get.refreshSelf()))

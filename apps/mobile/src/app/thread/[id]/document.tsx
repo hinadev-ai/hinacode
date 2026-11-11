@@ -35,7 +35,7 @@ import { CalloutColors, ChartColors, mono, type Palette, radius, SyntaxColors } 
 import { useThreadConnection, useThreadServer } from "@/hooks/use-server"
 import { type Scheme, useScheme, useTheme } from "@/hooks/use-theme"
 import { call, onEvent, request, type RpcError } from "@/lib/connection"
-import { familyOf, handshakes } from "@/lib/remote"
+import { beforeFirstHandshake, familyOf } from "@/lib/remote"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { lex } from "@/lib/lexer"
@@ -99,7 +99,7 @@ const documentTheme = (theme: Palette, scheme: Scheme): DocumentTheme => ({
 
 const documentAtom = familyOf((id: string, server: string | null, _attempt: number) =>
   Atom.make((get) => {
-    get(handshakes)
+    if (beforeFirstHandshake(get)) return Effect.never
     get.addFinalizer(
       onEvent((event) => event.type === "artifact.updated" && event.artifact.id === id && get.refreshSelf()),
     )

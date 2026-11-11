@@ -47,7 +47,7 @@ import { keepSkillWhole } from "@/lib/composer-text"
 import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { motion } from "@/lib/motion"
-import { familyOf, handshakes, reportFailure } from "@/lib/remote"
+import { familyOf, beforeFirstHandshake, reportFailure } from "@/lib/remote"
 import { pickImages, stageImage } from "@/lib/stage-images"
 import { type DraftImage, useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
@@ -95,7 +95,7 @@ type FilesSource = Pick<CompletionSource, "threadId" | "worktreeId" | "busy">
 
 const commandsAtom = familyOf((source: CompletionSource) =>
   Atom.make((get) => {
-    get(handshakes)
+    if (beforeFirstHandshake(get)) return Effect.never
     return request("commands.list", { threadId: source.threadId })
   }),
 )
@@ -586,7 +586,7 @@ const DEFAULT_EFFORT = "default"
 
 const serverOptionsAtom = familyOf((server: string | null) =>
   Atom.make((get) => {
-    get(handshakes)
+    if (beforeFirstHandshake(get)) return Effect.never
     const on = server === null ? undefined : { server }
     return Effect.all(
       {
