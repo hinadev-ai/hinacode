@@ -9,9 +9,12 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.text.SpannableString
 import android.text.Spanned
+import android.text.InputType
+import android.text.Layout
 import android.text.TextDirectionHeuristics
 import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
@@ -26,13 +29,34 @@ import kotlin.math.roundToInt
 
 internal interface Host {
   val images: Images
+  val editable: Boolean
+  val editorListener: EditorListener
 
   fun link(href: String)
+
+  /** A tap, or a long press, on a block that has no editor yet. [offset] is in the block's (or the cell's) text. */
+  fun tap(view: View, cell: Cell?, offset: Int, long: Boolean)
+
+  fun editorBound(editor: BlockEditText, styled: CharSequence)
+
+  fun taskToggle(view: View)
 }
 
-internal enum class RowKind { TEXT, CODE, CHART, DIAGRAM, TABLE, IMAGE, RULE }
+internal enum class RowKind { TEXT, CODE, CHART, DIAGRAM, TABLE, IMAGE, RULE, EDIT_TEXT, EDIT_SOURCE }
 
-internal fun rowKind(body: Body) = when (body) {
+internal fun Body.editsAsText() = this is Body.Paragraph || this is Body.Heading
+
+internal fun Body.editsAsSource() = this is Body.Code || this is Body.Chart || this is Body.Diagram
+
+internal fun Body.isEditable() = editsAsText() || editsAsSource() || this is Body.Table
+
+internal fun rowKind(body: Body, focused: Boolean = false) = when {
+  focused && body.editsAsText() -> RowKind.EDIT_TEXT
+  focused && body.editsAsSource() -> RowKind.EDIT_SOURCE
+  else -> readOnlyRowKind(body)
+}
+
+private fun readOnlyRowKind(body: Body) = when (body) {
   is Body.Paragraph, is Body.Heading, is Body.Unsupported -> RowKind.TEXT
   is Body.Code -> RowKind.CODE
   is Body.Diagram -> if (body.drawing == null) RowKind.CODE else RowKind.DIAGRAM
@@ -46,12 +70,14 @@ internal abstract class BlockContent(val view: View) {
   open val firstLine: TextView? = null
   open val isRtl: Boolean = false
 
-  abstract fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean)
+  abstract fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean, cell: Cell?)
 
   companion object {
-    fun create(context: Context, kind: RowKind): BlockContent = when (kind) {
-      RowKind.TEXT -> TextContent(context)
-      RowKind.CODE -> CodeContent(context)
+    fun create(context: Context, kind: RowKind, host: Host): BlockContent = when (kind) {
+      RowKind.TEXT -> TextContent(TextView(context))
+      RowKind.EDIT_TEXT -> TextContent(BlockEditText(context, host.editorListener))
+      RowKind.CODE -> CodeContent(TextView(context))
+      RowKind.EDIT_SOURCE -> CodeContent(BlockEditText(context, host.editorListener))
       RowKind.CHART -> ChartContent(context)
       RowKind.DIAGRAM -> DiagramContent(context)
       RowKind.TABLE -> TableContent(context)
@@ -73,8 +99,7 @@ private fun TextView.size(sp: Float, lineSp: Float) {
 
 private val HEADING_SIZES = floatArrayOf(28f, 22f, 19f, 17f, 17f, 17f)
 
-private class TextContent(context: Context) : BlockContent(TextView(context)) {
-  private val text = view as TextView
+private class TextContent(private val text: TextView) : BlockContent(text) {
   private var host: Host? = null
   private var rtl = false
 
@@ -84,18 +109,22 @@ private class TextContent(context: Context) : BlockContent(TextView(context)) {
   init {
     text.includeFontPadding = false
     text.textDirection = View.TEXT_DIRECTION_FIRST_STRONG
-    text.setOnTouchListener(LinkTouch(text::linkAt) { href -> host?.link(href) })
+    if (text !is BlockEditText) {
+      val links = LinkTouch(text::linkAt) { href -> host?.link(href) }
+      text.setOnTouchListener(EditTouch({ host }, { null to text.getOffsetForPosition(it.x, it.y) }, links))
+    }
   }
 
-  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean) {
+  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean, cell: Cell?) {
     this.host = host
+    val editing = text is BlockEditText
     val content: CharSequence = when (body) {
       is Body.Heading -> {
         val size = HEADING_SIZES[body.level - 1]
         text.size(size, size * 1.3f)
         text.typeface = text.context.semibold()
         text.setTextColor(theme.text)
-        runsText(body.runs, theme)
+        runsText(body.runs, theme, editing)
       }
       is Body.Unsupported -> {
         text.size(theme.fontSize * 0.875f, theme.lineHeight * 0.875f)
@@ -107,21 +136,31 @@ private class TextContent(context: Context) : BlockContent(TextView(context)) {
         text.size(theme.fontSize, theme.lineHeight)
         text.typeface = Typeface.DEFAULT
         text.setTextColor(if (quoted) theme.muted else theme.text)
-        runsText((body as Body.Paragraph).runs, theme)
+        runsText((body as Body.Paragraph).runs, theme, editing)
       }
     }
     rtl = TextDirectionHeuristics.FIRSTSTRONG_LTR.isRtl(content, 0, content.length)
-    text.text = content
+    if (text is BlockEditText) {
+      text.tint(theme)
+      host.editorBound(text, content)
+    } else {
+      text.text = content
+    }
   }
 }
 
-private class CodeContent(context: Context) : BlockContent(LinearLayout(context)) {
+internal fun BlockEditText.tint(theme: DocumentTheme) {
+  highlightColor = (theme.accent and 0x00ffffff) or 0x40000000
+  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) textCursorDrawable?.setTint(theme.accent)
+}
+
+private class CodeContent(private val code: TextView) : BlockContent(LinearLayout(code.context)) {
   private val column = view as LinearLayout
-  private val label = TextView(context)
-  private val code = TextView(context)
-  private val error = TextView(context)
-  private val scroller = HorizontalScrollView(context)
+  private val label = TextView(code.context)
+  private val error = TextView(code.context)
+  private val scroller = HorizontalScrollView(code.context)
   private val background = GradientDrawable()
+  private var host: Host? = null
 
   init {
     val pad = view.dp(12f).roundToInt()
@@ -136,15 +175,24 @@ private class CodeContent(context: Context) : BlockContent(LinearLayout(context)
     code.textDirection = View.TEXT_DIRECTION_LTR
     error.setPadding(pad, 0, pad, pad)
     error.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-    scroller.isHorizontalScrollBarEnabled = false
-    scroller.overScrollMode = View.OVER_SCROLL_NEVER
-    scroller.addView(code, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
-    column.addView(label, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-    column.addView(scroller, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+    if (code is BlockEditText) {
+      code.inputType = code.inputType or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+      column.addView(label, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+      column.addView(code, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+    } else {
+      scroller.isHorizontalScrollBarEnabled = false
+      scroller.overScrollMode = View.OVER_SCROLL_NEVER
+      scroller.isFillViewport = true
+      scroller.addView(code, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
+      code.setOnTouchListener(EditTouch({ host }, { null to code.getOffsetForPosition(it.x, it.y) }))
+      column.addView(label, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+      column.addView(scroller, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+    }
     column.addView(error, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
   }
 
-  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean) {
+  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean, cell: Cell?) {
+    this.host = host
     background.setColor(theme.codeBackground)
     label.setTextColor(theme.muted)
     error.setTextColor(theme.muted)
@@ -153,59 +201,142 @@ private class CodeContent(context: Context) : BlockContent(LinearLayout(context)
     code.size(theme.fontSize * 0.8125f, theme.lineHeight * 0.8125f)
     val (title, source, problem) = when (body) {
       is Body.Diagram -> Triple("Mermaid", highlighted(body.source, emptyList()), null)
+      is Body.Chart -> Triple("Chart", highlighted(body.source, emptyList()), null)
       is Body.Code -> Triple(body.language, highlighted(body.text, body.tokens), body.error)
       else -> Triple("", "", null)
     }
     label.text = title
     label.visibility = if (title.isEmpty()) View.GONE else View.VISIBLE
-    code.text = source
     error.text = problem
     error.visibility = if (problem.isNullOrEmpty()) View.GONE else View.VISIBLE
-    scroller.scrollTo(0, 0)
-  }
-
-  private fun highlighted(text: String, tokens: List<CodeToken>): CharSequence {
-    if (tokens.isEmpty()) return text
-    val spannable = SpannableString(text)
-    for (token in tokens) {
-      val start = token.start.coerceIn(0, text.length)
-      val end = token.end.coerceIn(start, text.length)
-      if (end > start) spannable.setSpan(ForegroundColorSpan(token.color), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    if (code is BlockEditText) {
+      code.tint(theme)
+      host.editorBound(code, source)
+    } else {
+      code.text = source
+      scroller.scrollTo(0, 0)
     }
-    return spannable
   }
 }
 
+private fun highlighted(text: String, tokens: List<CodeToken>): CharSequence {
+  if (tokens.isEmpty()) return text
+  val spannable = SpannableString(text)
+  for (token in tokens) {
+    val start = token.start.coerceIn(0, text.length)
+    val end = token.end.coerceIn(start, text.length)
+    if (end > start) spannable.setSpan(ForegroundColorSpan(token.color), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+  }
+  return spannable
+}
+
 private class ChartContent(context: Context) : BlockContent(ChartView(context)) {
-  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean) {
+  private var host: Host? = null
+
+  init {
+    view.setOnTouchListener(EditTouch({ host }, { null to 0 }))
+  }
+
+  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean, cell: Cell?) {
+    this.host = host
     (view as ChartView).bind(body as Body.Chart, theme)
   }
 }
 
 private class DiagramContent(context: Context) : BlockContent(DiagramScroller(context)) {
-  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean) {
+  private var host: Host? = null
+
+  init {
+    (view as DiagramScroller).diagram.setOnTouchListener(EditTouch({ host }, { null to 0 }))
+  }
+
+  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean, cell: Cell?) {
+    this.host = host
     val scroller = view as DiagramScroller
     scroller.diagram.bind((body as Body.Diagram).drawing ?: return, theme)
     scroller.scrollTo(0, 0)
   }
 }
 
+/** Lays the cell editor over the cell it edits, letting it grow past the cell until the model's patch resizes the row. */
+private class TableFrame(context: Context, val table: TableView) : FrameLayout(context) {
+  var editor: BlockEditText? = null
+  var cell: Cell? = null
+
+  init {
+    addView(table, LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
+  }
+
+  private fun editing() = editor?.takeIf { it.visibility == View.VISIBLE }
+
+  override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+    table.measure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+    var height = table.measuredHeight
+    val editor = editing()
+    val rect = cell?.let(table::cellRect)
+    if (editor != null && rect != null) {
+      editor.minHeight = rect.height().roundToInt()
+      editor.measure(
+        MeasureSpec.makeMeasureSpec(rect.width().roundToInt().coerceAtLeast(1), MeasureSpec.EXACTLY),
+        MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+      )
+      height = max(height, (rect.top + editor.measuredHeight).roundToInt())
+    }
+    setMeasuredDimension(table.measuredWidth, height)
+  }
+
+  override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+    table.layout(0, 0, table.measuredWidth, table.measuredHeight)
+    val editor = editing() ?: return
+    val rect = cell?.let(table::cellRect) ?: return
+    val x = rect.left.roundToInt()
+    val y = rect.top.roundToInt()
+    editor.layout(x, y, x + editor.measuredWidth, y + editor.measuredHeight)
+  }
+}
+
 private class TableContent(context: Context) : BlockContent(HorizontalScrollView(context)) {
   private val table = TableView(context)
+  private val frame = TableFrame(context, table)
   private var host: Host? = null
 
   init {
     val scroller = view as HorizontalScrollView
     scroller.isFillViewport = true
     scroller.overScrollMode = View.OVER_SCROLL_NEVER
-    scroller.addView(table, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
+    scroller.addView(frame, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
     table.onLink = { href -> host?.link(href) }
+    val links = table.linkTouch
+    table.setOnTouchListener(EditTouch({ host }, { table.cellAt(it.x, it.y)?.let { hit -> hit.cell to hit.offset } }, links))
   }
 
-  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean) {
+  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean, cell: Cell?) {
+    val wasEditing = frame.cell != null
     this.host = host
     table.bind(body as Body.Table, theme)
-    view.scrollTo(0, 0)
+    val styled = cell?.takeIf { host.editable }?.let { table.cellText(it, theme) }
+    table.hiddenCell = if (styled != null) cell else null
+    frame.cell = if (styled != null) cell else null
+    if (styled == null) {
+      frame.editor?.visibility = View.GONE
+      if (!wasEditing) view.scrollTo(0, 0)
+      return
+    }
+    val editor = frame.editor ?: BlockEditText(view.context, host.editorListener).also {
+      frame.editor = it
+      frame.addView(it, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
+    }
+    editor.visibility = View.VISIBLE
+    editor.setTextSize(TypedValue.COMPLEX_UNIT_PX, table.textSize)
+    editor.setLineSpacing(table.lineSpacing, 1f)
+    editor.setTextColor(theme.text)
+    editor.gravity = when (table.alignmentOf(cell!!.second)) {
+      Layout.Alignment.ALIGN_CENTER -> Gravity.CENTER_HORIZONTAL
+      Layout.Alignment.ALIGN_OPPOSITE -> Gravity.END
+      else -> Gravity.START
+    } or Gravity.TOP
+    editor.tint(theme)
+    host.editorBound(editor, styled)
   }
 }
 
@@ -225,7 +356,7 @@ private class ImageContent(context: Context) : BlockContent(FrameLayout(context)
     frame.addView(alt, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
   }
 
-  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean) {
+  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean, cell: Cell?) {
     body as Body.Image
     alt.setTextColor(theme.muted)
     alt.setTextSize(TypedValue.COMPLEX_UNIT_SP, theme.fontSize * 0.875f)
@@ -272,7 +403,7 @@ private class RuleView(context: Context) : View(context) {
 }
 
 private class RuleContent(context: Context) : BlockContent(RuleView(context)) {
-  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean) {
+  override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean, cell: Cell?) {
     (view as RuleView).paint.color = theme.border
     view.invalidate()
   }

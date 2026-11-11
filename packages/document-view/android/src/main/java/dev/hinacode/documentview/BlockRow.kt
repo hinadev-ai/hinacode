@@ -1,5 +1,6 @@
 package dev.hinacode.documentview
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -9,6 +10,7 @@ import android.graphics.Typeface
 import android.os.Build
 import android.text.TextPaint
 import android.util.TypedValue
+import android.view.MotionEvent
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
@@ -52,6 +54,9 @@ internal class BlockRow(context: Context, val content: BlockContent) : FrameLayo
   private var theme = DocumentTheme()
   private var gapTop = 0f
   private var rtl = false
+  private var host: Host? = null
+  private val checkbox = RectF()
+  private var checkboxPressed = false
 
   init {
     setWillNotDraw(false)
@@ -61,10 +66,12 @@ internal class BlockRow(context: Context, val content: BlockContent) : FrameLayo
 
   private fun dp(value: Float) = value * density
 
-  fun bind(block: Block, previous: Block?, theme: DocumentTheme, host: Host) {
+  fun bind(block: Block, previous: Block?, theme: DocumentTheme, host: Host, cell: Cell?) {
     this.theme = theme
+    this.host = host
     containers = block.containers
-    content.bind(block.body, theme, host, quoted = containers.any { it is Container.Quote })
+    checkbox.setEmpty()
+    content.bind(block.body, theme, host, quoted = containers.any { it is Container.Quote }, cell)
     rtl = content.isRtl
     gapTop = gap(previous, block)
     val callouts = containers.filterIsInstance<Container.Callout>()
@@ -146,6 +153,25 @@ internal class BlockRow(context: Context, val content: BlockContent) : FrameLayo
     return content.view.top + text.baseline + (metrics.ascent + metrics.descent) / 2
   }
 
+  /** The innermost task's checkbox toggles it, with a touch target larger than the drawing. */
+  @SuppressLint("ClickableViewAccessibility")
+  override fun onTouchEvent(event: MotionEvent): Boolean {
+    val host = host
+    val innermostTask = containers.lastOrNull { it.isListItem() } as? Container.Task
+    if (host == null || !host.editable || innermostTask?.first != true || checkbox.isEmpty) return super.onTouchEvent(event)
+    val reach = dp(14f)
+    val inside = event.x in checkbox.left - reach..checkbox.right + reach && event.y in checkbox.top - reach..checkbox.bottom + reach
+    when (event.actionMasked) {
+      MotionEvent.ACTION_DOWN -> checkboxPressed = inside
+      MotionEvent.ACTION_UP -> {
+        if (checkboxPressed && inside) host.taskToggle(this)
+        checkboxPressed = false
+      }
+      MotionEvent.ACTION_CANCEL -> checkboxPressed = false
+    }
+    return checkboxPressed || super.onTouchEvent(event)
+  }
+
   private fun drawBand(canvas: Canvas, callout: Container.Callout, from: Float, to: Float, top: Float, bottom: Float) {
     val (left, right) = span(from, to)
     val radius = dp(10f)
@@ -197,6 +223,7 @@ internal class BlockRow(context: Context, val content: BlockContent) : FrameLayo
     val y = firstLineCenter()
     val (left, right) = span(slot, slot + size)
     rect.set(left, y - size / 2, right, y + size / 2)
+    checkbox.set(rect)
     val radius = dp(3.5f)
     if (checked) {
       fill.color = theme.accent

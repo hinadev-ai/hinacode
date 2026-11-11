@@ -30,6 +30,7 @@ internal sealed interface Body {
   class Code(val language: String, val text: String, val tokens: List<CodeToken>, val error: String?) : Body
 
   class Chart(
+    val source: String,
     val line: Boolean,
     val title: String,
     val notes: String,
@@ -133,6 +134,7 @@ private fun JSONArray?.strings(): List<String> =
   if (this == null) emptyList() else (0 until length()).map { optString(it) }
 
 private fun JSONObject.toChart() = Body.Chart(
+  source = optString("source"),
   line = optString("type") == "line",
   title = optString("title"),
   notes = optString("notes"),

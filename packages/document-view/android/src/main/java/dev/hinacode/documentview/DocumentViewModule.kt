@@ -15,6 +15,7 @@ class DocumentViewModule : Module() {
 
       Prop("theme") { view: DocumentView, json: String -> view.setTheme(json) }
       Prop("editable") { view: DocumentView, editable: Boolean -> view.editable = editable }
+      Prop("formatActions") { view: DocumentView, json: String -> view.setFormatActions(json) }
       Prop("contentInsetTop") { view: DocumentView, inset: Float -> view.setContentInset(top = inset) }
       Prop("contentInsetBottom") { view: DocumentView, inset: Float -> view.setContentInset(bottom = inset) }
 
@@ -23,6 +24,8 @@ class DocumentViewModule : Module() {
       AsyncFunction("provideImage") { view: DocumentView, src: String, dataUrl: String ->
         view.provideImage(src, dataUrl)
       }.runOnQueue(Queues.MAIN)
+      AsyncFunction("focus") { view: DocumentView -> view.focus() }.runOnQueue(Queues.MAIN)
+      AsyncFunction("blur") { view: DocumentView -> view.blur() }.runOnQueue(Queues.MAIN)
     }
   }
 }

@@ -1,5 +1,7 @@
 package dev.hinacode.documentview
 
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.SpannableStringBuilder
@@ -9,6 +11,7 @@ import android.text.style.BackgroundColorSpan
 import android.text.style.ClickableSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
+import android.text.style.ReplacementSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
@@ -25,11 +28,31 @@ internal class LinkSpan(val href: String, private val color: Int) : ClickableSpa
 
 private const val OBJECT_REPLACEMENT = "￼"
 
-internal fun runsText(runs: List<Run>, theme: DocumentTheme): SpannableStringBuilder {
+/** Draws an inline image's label in place of its one-unit object replacement character, so editor offsets match the model. */
+private class ImageLabelSpan(private val label: String, private val color: Int) : ReplacementSpan() {
+  override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, metrics: Paint.FontMetricsInt?): Int {
+    if (metrics != null) paint.getFontMetricsInt(metrics)
+    return paint.measureText(label).toInt()
+  }
+
+  override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+    val previous = paint.color
+    paint.color = color
+    canvas.drawText(label, x, y.toFloat(), paint)
+    paint.color = previous
+  }
+}
+
+/** [editing] keeps every run's text as the model has it, which the focused block's editor needs for its offsets. */
+internal fun runsText(runs: List<Run>, theme: DocumentTheme, editing: Boolean = false): SpannableStringBuilder {
   val out = SpannableStringBuilder()
   for (run in runs) {
     val start = out.length
-    if (run.image != null) {
+    if (run.image != null && editing) {
+      out.append(run.text)
+      val label = run.alt?.ifEmpty { null } ?: run.image.substringAfterLast('/')
+      if (out.length > start) out.setSpan(ImageLabelSpan(label, theme.muted), start, out.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    } else if (run.image != null) {
       out.append(run.text.replace(OBJECT_REPLACEMENT, run.alt?.ifEmpty { null } ?: run.image.substringAfterLast('/')))
       out.setSpan(ForegroundColorSpan(theme.muted), start, out.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     } else {

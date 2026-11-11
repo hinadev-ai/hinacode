@@ -3,6 +3,7 @@ package dev.hinacode.documentview
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.SpannableStringBuilder
@@ -15,6 +16,10 @@ import android.view.View
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
+
+internal typealias Cell = Pair<Int, Int>
+
+internal class CellHit(val cell: Cell, val offset: Int)
 
 internal class TableView(context: Context) : View(context) {
   private val density = resources.displayMetrics.density
@@ -34,12 +39,58 @@ internal class TableView(context: Context) : View(context) {
   private var heights = FloatArray(0)
   private var layouts: List<List<StaticLayout>> = emptyList()
   private var measuredFor = -1
-  private var lineSpacing = 0f
+  var lineSpacing = 0f
+    private set
+  val textSize get() = paint.textSize
 
   var onLink: (String) -> Unit = {}
 
-  init {
-    setOnTouchListener(LinkTouch(::linkAt) { onLink(it) })
+  /** The cell an editor covers, which the table leaves blank. */
+  var hiddenCell: Cell? = null
+    set(value) {
+      field = value
+      invalidate()
+    }
+
+  val linkTouch = LinkTouch(::linkAt) { onLink(it) }
+
+  fun cellText(cell: Cell, theme: DocumentTheme): SpannableStringBuilder? {
+    val table = table ?: return null
+    val runs = table.rows.getOrNull(cell.first)?.getOrNull(cell.second) ?: return null
+    val text = runsText(runs, theme, editing = true)
+    if (table.header && cell.first == 0) text.setSpan(StyleSpan(Typeface.BOLD), 0, text.length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+    return text
+  }
+
+  fun alignmentOf(column: Int) = alignment(table?.align?.getOrNull(column))
+
+  /** The text area of a cell, inside its padding. */
+  fun cellRect(cell: Cell): RectF? {
+    val (row, column) = cell
+    if (row !in heights.indices || column !in widths.indices) return null
+    val left = (0 until column).sumOf { widths[it].toDouble() }.toFloat()
+    val top = (0 until row).sumOf { heights[it].toDouble() }.toFloat()
+    return RectF(left + cellPadX, top + cellPadY, left + widths[column] - cellPadX, top + heights[row] - cellPadY)
+  }
+
+  fun cellAt(x: Float, y: Float): CellHit? {
+    var top = 0f
+    for (row in layouts.indices) {
+      if (y < top + heights[row]) {
+        var left = 0f
+        for (column in widths.indices) {
+          if (x < left + widths[column]) {
+            val layout = layouts[row][column]
+            val line = layout.getLineForVertical((y - top - cellPadY).toInt())
+            return CellHit(row to column, layout.getOffsetForHorizontal(line, x - left - cellPadX))
+          }
+          left += widths[column]
+        }
+        return null
+      }
+      top += heights[row]
+    }
+    return null
   }
 
   fun bind(table: Body.Table, theme: DocumentTheme) {
@@ -109,6 +160,10 @@ internal class TableView(context: Context) : View(context) {
     layouts.forEachIndexed { row, cellsInRow ->
       var x = 0f
       cellsInRow.forEachIndexed { column, layout ->
+        if (hiddenCell == row to column) {
+          x += widths[column]
+          return@forEachIndexed
+        }
         canvas.save()
         canvas.translate(x + cellPadX, y + cellPadY)
         layout.draw(canvas)
