@@ -124,7 +124,7 @@ private class TextContent(private val text: TextView) : BlockContent(text) {
         text.size(size, size * 1.3f)
         text.typeface = text.context.semibold()
         text.setTextColor(theme.text)
-        runsText(body.runs, theme, editing)
+        runsText(body.runs, theme, editing) { src -> text.inlineImage(host.images, src) }
       }
       is Body.Unsupported -> {
         text.size(theme.fontSize * 0.875f, theme.lineHeight * 0.875f)
@@ -136,7 +136,7 @@ private class TextContent(private val text: TextView) : BlockContent(text) {
         text.size(theme.fontSize, theme.lineHeight)
         text.typeface = Typeface.DEFAULT
         text.setTextColor(if (quoted) theme.muted else theme.text)
-        runsText((body as Body.Paragraph).runs, theme, editing)
+        runsText((body as Body.Paragraph).runs, theme, editing) { src -> text.inlineImage(host.images, src) }
       }
     }
     rtl = TextDirectionHeuristics.FIRSTSTRONG_LTR.isRtl(content, 0, content.length)
@@ -406,5 +406,14 @@ private class RuleContent(context: Context) : BlockContent(RuleView(context)) {
   override fun bind(body: Body, theme: DocumentTheme, host: Host, quoted: Boolean, cell: Cell?) {
     (view as RuleView).paint.color = theme.border
     view.invalidate()
+  }
+}
+
+private fun TextView.inlineImage(images: Images, src: String): BitmapDrawable? {
+  val bitmap = (images.state(src) as? ImageState.Loaded)?.bitmap ?: return null
+  if (bitmap.height <= 0) return null
+  val height = minOf(lineHeight * 1.5f, bitmap.height.toFloat())
+  return BitmapDrawable(resources, bitmap).apply {
+    setBounds(0, 0, (height * bitmap.width / bitmap.height).roundToInt(), height.roundToInt())
   }
 }

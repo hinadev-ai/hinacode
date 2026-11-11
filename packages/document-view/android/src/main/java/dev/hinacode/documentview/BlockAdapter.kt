@@ -65,6 +65,13 @@ internal class BlockAdapter(private val host: Host) : RecyclerView.Adapter<Block
   }
 
   fun imageChanged(src: String) {
-    blocks.forEachIndexed { index, block -> if ((block.body as? Body.Image)?.src == src) notifyItemChanged(index) }
+    blocks.forEachIndexed { index, block -> if (block.body.shows(src)) notifyItemChanged(index) }
   }
+}
+
+private fun Body.shows(src: String) = when (this) {
+  is Body.Image -> this.src == src
+  is Body.Paragraph -> runs.any { it.image == src }
+  is Body.Heading -> runs.any { it.image == src }
+  else -> false
 }
