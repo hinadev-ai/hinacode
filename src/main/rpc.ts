@@ -202,6 +202,13 @@ const handlers: Handlers = {
   "projects.delete": ({ id }) =>
     Effect.gen(function* () {
       const threads = (yield* Threads.use((service) => service.list)).filter((thread) => thread.projectId === id)
+      const runner = yield* AgentRunner
+      yield* Effect.forEach(
+        threads,
+        (thread) =>
+          runner.isBusy(thread.id).pipe(Effect.flatMap((busy) => (busy ? runner.stop(thread.id) : Effect.void))),
+        { concurrency: "unbounded", discard: true },
+      )
       yield* Effect.forEach(threads, (thread) => closeTerminals(thread.id))
       yield* Projects.use((projects) => projects.remove(id))
       yield* Effect.forEach(threads, (thread) =>
