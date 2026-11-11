@@ -2,6 +2,7 @@ import type { ExperimentalSettings } from "../../shared/domain.ts"
 import type { ModelInfo } from "../../shared/agent.ts"
 import { providerInfo } from "../../shared/providers.ts"
 import { artifactMention, terminalMention, threadMention } from "../../shared/mentions.ts"
+import type { GroupContext } from "../services/groupContext.ts"
 import type { SubagentChoice } from "./runAgent.ts"
 
 // FIXME: Claude Code defers MCP tools, so agents see only their names until they load one
@@ -122,6 +123,18 @@ const environmentInstructions = ({
   scratch directory: \`${scratchDirectory}\`
 </environment>`
 
+const groupInstructions = ({ name, instructions, skills }: GroupContext) =>
+  [
+    `<group>
+This project is in the HinaCode project group "${name}". The group's rules and skills below apply on top of the repository's own. Before you do a task a group skill covers, read its SKILL.md.`,
+    ...(instructions === "" ? [] : [`Group AGENTS.md:\n${instructions}`]),
+    ...(skills.length === 0
+      ? []
+      : [
+          `Group skills:\n${skills.map((skill) => `- \`${skill.name}\`: ${skill.description} (\`${skill.path}\`)`).join("\n")}`,
+        ]),
+  ].join("\n\n") + "\n</group>"
+
 const modelLine = ({ id, label, efforts }: ModelInfo) =>
   `  - \`${id}\`${label === id ? "" : ` (${label})`}${efforts.length === 0 ? "" : `, effort: ${efforts.join(", ")}`}`
 
@@ -146,10 +159,12 @@ export const agentInstructions = (
   experimental: ExperimentalSettings,
   environment: AgentEnvironment,
   subagents: ReadonlyArray<SubagentChoice>,
+  group: GroupContext | null = null,
 ): string =>
   [
     AGENT_INSTRUCTIONS,
     environmentInstructions(environment),
+    ...(group === null ? [] : [groupInstructions(group)]),
     ...(subagents.length === 0 ? [] : [agentsInstructions(subagents)]),
     ...(experimental.tinyVm
       ? [

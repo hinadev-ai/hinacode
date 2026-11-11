@@ -39,6 +39,7 @@ import * as Projects from "./Projects.ts"
 import * as PullRequests from "./PullRequests.ts"
 import { PullRequestWatcher, layer as watcherLayer } from "./PullRequestWatcher.ts"
 import { Secrets } from "./Secrets.ts"
+import * as ClientSettings from "./ClientSettings.ts"
 import * as Settings from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
 import * as Scratch from "./Scratch.ts"
@@ -181,6 +182,7 @@ const withPreparingThread = async (
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
       Layer.provideMerge(Settings.layer(dir)),
+      Layer.provideMerge(ClientSettings.layer(dir)),
     ),
     Messages.layer,
     Attachments.layer(join(dir, "attachments")),

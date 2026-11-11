@@ -32,6 +32,7 @@ import { type Job, Scheduler } from "../Scheduler.ts"
 import * as SourceControl from "../SourceControl.ts"
 import * as Scratch from "../Scratch.ts"
 import * as Secrets from "../Secrets.ts"
+import * as ClientSettings from "../ClientSettings.ts"
 import * as Settings from "../Settings.ts"
 import * as Terminals from "../Terminals.ts"
 import * as ThreadNaming from "../ThreadNaming.ts"
@@ -102,6 +103,7 @@ const makeLayer = ({ pushes, jobs }: Harness, port: number) => {
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
       Layer.provideMerge(Settings.layer(dataDir)),
+      Layer.provideMerge(ClientSettings.layer(dataDir)),
     ),
     Messages.layer,
     Attachments.layer(join(dataDir, "attachments")),

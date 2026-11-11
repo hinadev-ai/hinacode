@@ -51,3 +51,27 @@ test("says none for a detached HEAD and a repository without an origin", () => {
   expect(instructions).toContain("git branch: `(none)`")
   expect(instructions).toContain("remote: `(none)`")
 })
+
+const group = {
+  name: "Shop",
+  instructions: "Use pnpm in every repository.",
+  skills: [{ name: "release", description: "Ship a release", path: "/data/groups/g1/skills/release/SKILL.md" }],
+}
+
+test("adds the group's AGENTS.md and skills after the environment", () => {
+  const instructions = agentInstructions(experimental, environment, [], group)
+  expect(instructions).toContain('project group "Shop"')
+  expect(instructions).toContain("Group AGENTS.md:\nUse pnpm in every repository.")
+  expect(instructions).toContain("- `release`: Ship a release (`/data/groups/g1/skills/release/SKILL.md`)")
+  expect(instructions.indexOf("<group>")).toBeGreaterThan(instructions.indexOf("</environment>"))
+})
+
+test("leaves out an empty group AGENTS.md", () => {
+  const instructions = agentInstructions(experimental, environment, [], { ...group, instructions: "" })
+  expect(instructions).toContain("<group>")
+  expect(instructions).not.toContain("Group AGENTS.md")
+})
+
+test("has no group block outside a group", () => {
+  expect(agentInstructions(experimental, environment, [])).not.toContain("<group>")
+})

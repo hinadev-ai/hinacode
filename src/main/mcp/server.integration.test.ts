@@ -44,6 +44,7 @@ import * as Projects from "../services/Projects.ts"
 import * as PullRequests from "../services/PullRequests.ts"
 import { layer as linearLayer } from "../services/Linear.ts"
 import { noKeyring, layer as secretsLayer } from "../services/Secrets.ts"
+import * as ClientSettings from "../services/ClientSettings.ts"
 import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
 import { decodeTar, encodeTar } from "../services/tinyVm/tar.ts"
@@ -200,6 +201,7 @@ const core = Layer.mergeAll(
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(AgentAccounts.layer),
     Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-mcp-settings-")))),
+    Layer.provideMerge(ClientSettings.layer(mkdtempSync(join(tmpdir(), "kk-mcp-settings-")))),
   ),
   Messages.layer,
   Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),
