@@ -108,7 +108,11 @@ export function DocumentEditor({
     }),
   )
 
+  const [ready, setReady] = useState(false)
+  const editing = editable && ready
+
   const loaded = useEffectEvent(() => {
+    setReady(true)
     onLoaded?.({ blocks: session.blocks.length })
     if (session.lossy) onError?.({ kind: "lossy", message: "" })
   })
@@ -190,7 +194,7 @@ export function DocumentEditor({
         return
       }
     }
-    if (!editable) return
+    if (!editing) return
     switch (event.type) {
       case "taskToggle":
         session.toggleTask(event.block)
@@ -210,7 +214,7 @@ export function DocumentEditor({
     <NativeDocumentView
       ref={native}
       theme={JSON.stringify(theme)}
-      editable={editable}
+      editable={editing}
       formatActions={JSON.stringify(formatActions)}
       contentInsetTop={contentInset.top}
       contentInsetBottom={contentInset.bottom}
