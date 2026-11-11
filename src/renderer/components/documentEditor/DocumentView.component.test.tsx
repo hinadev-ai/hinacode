@@ -727,6 +727,23 @@ test("shows the error and the source of a diagram that cannot be drawn", async (
   await expect.element(editor.getByRole("button", { name: "Source" })).toBeDisabled()
 })
 
+test("keeps a diagram's source open while the developer fixes it", async () => {
+  stored = { ...stored, markdown: "# Release plan\n\n```mermaid\nflowchart TD\n  A -->\n```\n" }
+  const editor = await openDocument()
+  await expect.element(editor.getByRole("code")).toBeVisible()
+
+  await editor.getByRole("code").click()
+  await userEvent.keyboard("{End} B")
+
+  await expect
+    .poll(() => editor.element().querySelector("[data-diagram-svg] > svg"), { timeout: 10_000 })
+    .not.toBeNull()
+  const source = editor.element().querySelector("[data-diagram] pre")
+  expect(source?.textContent).toBe("flowchart TD\n  A --> B")
+  expect(shown(source)).toBe(true)
+  await expect.element(editor.getByRole("button", { name: "Source" })).toHaveAttribute("aria-pressed", "true")
+})
+
 const printed = async (html: string) => {
   const frame = document.createElement("iframe")
   frame.style.width = "800px"
