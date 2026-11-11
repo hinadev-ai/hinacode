@@ -91,6 +91,12 @@ function ActionForm({ project, environment, target, onSaved }: ActionFormProps) 
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const command = event.currentTarget.elements.namedItem("command")
+    if (command instanceof HTMLTextAreaElement && command.value.trim() === "") {
+      command.value = ""
+      command.reportValidity()
+      return
+    }
     const form = new FormData(event.currentTarget)
     startTransition(() => submit(form))
   }
