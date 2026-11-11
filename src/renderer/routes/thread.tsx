@@ -75,10 +75,10 @@ export function ThreadRoute() {
       {!docked && (
         <Dialog open={overlayOpen} onOpenChange={setOverlayOpen}>
           <DialogPortal>
-            <DialogPrimitive.Backdrop className="fixed inset-x-0 top-titlebar bottom-0 z-50 bg-background/60" />
+            <DialogPrimitive.Backdrop className="fixed inset-x-0 top-titlebar bottom-0 z-50 bg-background/60 transition-opacity duration-250 ease-drawer data-ending-style:opacity-0 data-ending-style:duration-200 data-starting-style:opacity-0" />
             <DialogPrimitive.Popup
               finalFocus={toggleRef}
-              className="fixed top-titlebar right-0 bottom-0 z-50 flex w-[calc(24rem+2.75rem)] max-w-full flex-col overflow-hidden border-l border-border bg-background outline-none"
+              className="fixed top-titlebar right-0 bottom-0 z-50 flex w-[calc(24rem+2.75rem)] max-w-full flex-col overflow-hidden border-l border-border bg-background transition-[translate,opacity] duration-250 ease-drawer outline-none data-ending-style:duration-200 motion-safe:data-ending-style:translate-x-full motion-safe:data-starting-style:translate-x-full motion-reduce:data-ending-style:opacity-0 motion-reduce:data-starting-style:opacity-0"
             >
               <DialogTitle className="sr-only">{m.panel_label()}</DialogTitle>
               <ThreadSidePanel key={thread.id} thread={thread} compact />
