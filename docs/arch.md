@@ -727,12 +727,6 @@ flowchart LR
 - Three failed scheduled runs in a row disable the routine.
 - One webhook secret per machine lives in `Secrets` under `routines.webhookSecret`.
 
-## Event bus
-
-`EventBus` is a typed `PubSub.sliding(256)` for reactions inside the main process, separate from `Events`, which pushes to windows and remote clients. `Conductor` is its one subscriber. Its only topic is `pullRequest.linked`, which `PullRequestLifecycle.announce` turns into a first `observed_status`. Every 3 minutes `PullRequestLifecycle.sweep` refreshes the status of unsettled links.
-
-- `pull_request_link.observed_status` records the last status seen. Only `merged` is never read again, because a closed pull request can reopen.
-
 ## Security boundaries
 
 ```mermaid
