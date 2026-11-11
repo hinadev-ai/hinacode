@@ -16,6 +16,7 @@ import {
   Semaphore,
   Stream,
 } from "effect"
+import { SqlClient } from "effect/sql"
 import { type RpcResponse, type TranscriptPush, transcriptThreadId } from "../../shared/contract.ts"
 import type {
   AccountHome,
@@ -81,6 +82,7 @@ import {
   NotFoundError,
   AccountInUseError,
   type PersistenceError,
+  persistence,
   type PullRequestElsewhereError,
   type RootBusyError,
   ThreadStartedError,
@@ -366,6 +368,7 @@ const make = Effect.gen(function* () {
   const git = yield* Git
   const pullRequests = yield* PullRequests
   const messages = yield* Messages
+  const sql = yield* SqlClient.SqlClient
   const push = yield* Events
   const mcp = yield* McpCredentials
   const settings = yield* Settings
@@ -440,6 +443,11 @@ const make = Effect.gen(function* () {
 
   yield* messages.closeInterrupted
   yield* threads.resetInterrupted
+
+  const inTransaction = <A, E>(effect: Effect.Effect<A, E>) =>
+    sql
+      .withTransaction(effect)
+      .pipe(Effect.catchTag("SqlError", (error) => Effect.fail(persistence("agentRunner.transaction")(error))))
 
   const updateThread = (input: Parameters<typeof threads.update>[0]) =>
     threads.update(input).pipe(Effect.tap((thread) => push.publish({ type: "thread.updated", thread })))
@@ -715,9 +723,11 @@ const make = Effect.gen(function* () {
       if (provider.steer === undefined || waitsOnUser(thread.id)) return
       const held = (yield* threads.get(thread.id)).queue.filter((message) => message.steer)
       for (const message of held) {
-        yield* steerTurn(message.text, message.attachments, "next", message.id)
-        const { queue } = yield* threads.get(thread.id)
-        yield* updateThread({ id: thread.id, queue: queue.filter((queued) => queued.id !== message.id) })
+        const dequeue = Effect.gen(function* () {
+          const { queue } = yield* threads.get(thread.id)
+          yield* updateThread({ id: thread.id, queue: queue.filter((queued) => queued.id !== message.id) })
+        })
+        yield* steerTurn(message.text, message.attachments, "next", message.id, dequeue)
       }
     }).pipe(Effect.catch((error) => Effect.logWarning("held message did not steer", error)))
 
@@ -744,12 +754,16 @@ const make = Effect.gen(function* () {
       attachments: ReadonlyArray<Attachment>,
       priority: SteerPriority,
       messageId: string,
+      alsoOnRecord: Effect.Effect<void, PersistenceError | NotFoundError> = Effect.void,
     ) =>
       Effect.gen(function* () {
         if (provider.steer === undefined) return
         yield* deltas.flush
         yield* provider.steer(thread.id, expandDocumentCommand(expandArtifactSkill(text)), attachments, priority)
         const now = yield* nowIso
+        yield* inTransaction(
+          insertMessage(userMessage(thread.id, text, attachments, now, messageId)).pipe(Effect.andThen(alsoOnRecord)),
+        )
         const current = turnMessages.at(-1)!
         const closed: Message = { ...current, completedAt: now }
         setTurnMessages(replaceLast(turnMessages, closed))
@@ -757,7 +771,6 @@ const make = Effect.gen(function* () {
         yield* publishTranscript({ type: "message.updated", message: closed })
 
         const next = openAssistantMessage(thread.id, now)
-        yield* insertMessage(userMessage(thread.id, text, attachments, now, messageId))
         yield* insertMessage(next)
         turnMessages = [...turnMessages, next]
       })
@@ -796,8 +809,10 @@ const make = Effect.gen(function* () {
       if (closed !== last) yield* publishTranscript({ type: "message.updated", message: closed })
       if (isThreadBusy(status)) yield* updateThread({ id: thread.id, status: "idle" })
       if (!completed || (yield* Deferred.isDone(stop))) return
-      const [first, ...rest] = (yield* threads.get(thread.id)).queue
-      if (first === undefined) return
+      const { queue } = yield* threads.get(thread.id)
+      const unsent = yield* Effect.filter(queue, (queued) => Effect.map(messages.has(queued.id), (sent) => !sent))
+      const [first, ...rest] = unsent
+      if (first === undefined && unsent.length === queue.length) return
       yield* updateThread({ id: thread.id, queue: rest })
       next = first
     }).pipe(
@@ -1247,6 +1262,7 @@ const make = Effect.gen(function* () {
       Effect.catch((error) =>
         Effect.gen(function* () {
           yield* Effect.logWarning("queued message did not start", error)
+          if (yield* messages.has(message.id)) return
           const thread = yield* threads.get(threadId)
           yield* updateThread({ id: threadId, queue: [message, ...thread.queue] })
         }).pipe(

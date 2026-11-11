@@ -115,6 +115,12 @@ const make = Effect.gen(function* () {
           .pipe(Effect.flatMap((reopened) => events.publish({ type: "thread.updated", thread: reopened })))
       : Effect.void
 
+  const archivedByDeveloper = (threadId: string) =>
+    threads.get(threadId).pipe(
+      Effect.map((thread) => thread.status === "archived"),
+      Effect.catch(() => Effect.succeed(false)),
+    )
+
   const deliver = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>, messageId: string) =>
     threads.get(threadId).pipe(
       Effect.flatMap(reopenArchived),
@@ -123,8 +129,13 @@ const make = Effect.gen(function* () {
           .steer(threadId, prompt, attachments, messageId)
           .pipe(Effect.catchTag("AgentError", () => runner.queue(threadId, prompt, attachments, messageId))),
       ),
-      Effect.catchTag("NotFoundError", () => Effect.void),
-      Effect.catchCause((cause) => Effect.logWarning("artifact feedback did not reach a thread", threadId, cause)),
+      Effect.as(true),
+      Effect.catchTag("NotFoundError", () => Effect.succeed(true)),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("artifact feedback did not reach a thread", threadId, cause).pipe(
+          Effect.andThen(archivedByDeveloper(threadId)),
+        ),
+      ),
     )
 
   const inProject = (projectId: string | undefined) => (threadId: string) =>
@@ -161,22 +172,19 @@ const make = Effect.gen(function* () {
         anchor.kind === "elements"
           ? yield* Effect.promise(() => selectedElements(store, artifact.id, anchor.ids))
           : undefined
-      yield* Effect.forEach(
-        yield* recipients(message.body, artifact.threadId),
-        (threadId) => {
-          const messageId = deliveryId(message, threadId)
-          const prompt = artifactFeedbackPrompt({
-            artifact,
-            comment,
-            mentioned: threadId !== artifact.threadId,
-            ...(elements === undefined ? {} : { elements }),
-          })
-          return Effect.flatMap(alreadyHandedOver(threadId, messageId), (done) =>
-            done ? Effect.void : deliver(threadId, prompt, attachments, messageId),
-          )
-        },
-        { discard: true },
-      )
+      const settled = yield* Effect.forEach(yield* recipients(message.body, artifact.threadId), (threadId) => {
+        const messageId = deliveryId(message, threadId)
+        const prompt = artifactFeedbackPrompt({
+          artifact,
+          comment,
+          mentioned: threadId !== artifact.threadId,
+          ...(elements === undefined ? {} : { elements }),
+        })
+        return Effect.flatMap(alreadyHandedOver(threadId, messageId), (done) =>
+          done ? Effect.succeed(true) : deliver(threadId, prompt, attachments, messageId),
+        )
+      })
+      if (!settled.every(Boolean)) return undefined
       return yield* attempt(() => store.markDelivered(artifact.id, message.id))
     })
 
@@ -192,11 +200,12 @@ const make = Effect.gen(function* () {
           ...(anchor === undefined ? {} : { anchor: writableAnchor(anchor) }),
         }),
       )
-      return yield* handOver(
+      const delivered = yield* handOver(
         { artifact, comment: saved.comment, message: saved.comment.messages.at(-1)! },
         attachments,
         () => Effect.succeed(false),
       )
+      return delivered ?? saved.feedback
     })
 
   const resolveComment = ({ id, comment: commentId, resolved }: { id: string; comment: string; resolved: boolean }) =>
@@ -208,25 +217,31 @@ const make = Effect.gen(function* () {
   const handedOver = (threadId: string, messageId: string) =>
     Effect.gen(function* () {
       const { queue } = yield* threads.get(threadId)
-      if (queue.some((queued) => queued.id === messageId)) return true
-      return (yield* messages.list(threadId)).some((message) => message.id === messageId)
+      return queue.some((queued) => queued.id === messageId) || (yield* messages.has(messageId))
     }).pipe(Effect.catch(() => Effect.succeed(false)))
 
-  const undelivered = Effect.promise(async () => {
-    const found = await Promise.all(
-      (await store.list()).map(async (artifact) => {
-        const saved = await store.feedback(artifact.id)
-        return saved === null ? [] : undeliveredIn(artifact, saved)
-      }),
+  const undeliveredOf = (artifact: Artifact) =>
+    Effect.tryPromise(() => store.feedback(artifact.id)).pipe(
+      Effect.map((saved) => (saved === null ? [] : undeliveredIn(artifact, saved))),
+      Effect.catch((cause) =>
+        Effect.as(Effect.logWarning("artifact feedback could not be read", artifact.id, cause), []),
+      ),
     )
-    return found.flat()
-  })
 
-  yield* Effect.forEach(yield* undelivered, (pending) =>
-    handOver(pending, [], handedOver).pipe(
-      Effect.catchCause((cause) => Effect.logWarning("artifact feedback was not redelivered", cause)),
-    ),
-  ).pipe(Effect.forkScoped)
+  const redeliver = Effect.gen(function* () {
+    const artifacts = yield* Effect.tryPromise(() => store.list())
+    const pending = yield* Effect.forEach(artifacts, undeliveredOf, { concurrency: 8 })
+    yield* Effect.forEach(
+      pending.flat(),
+      (undelivered) =>
+        handOver(undelivered, [], handedOver).pipe(
+          Effect.catchCause((cause) => Effect.logWarning("artifact feedback was not redelivered", cause)),
+        ),
+      { discard: true },
+    )
+  }).pipe(Effect.catchCause((cause) => Effect.logWarning("artifact feedback recovery did not run", cause)))
+
+  yield* Effect.forkScoped(redeliver)
 
   return ArtifactFeedback.of({ feedback, comment, resolveComment })
 })
