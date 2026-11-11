@@ -461,6 +461,18 @@ test("asks the agent to read the edited document from the thread's draft", async
   expect(useDrafts.getState().byThreadId[thread.id]?.text).toContain(`"Release plan" (${documentId}, revision 1)`)
 })
 
+test("does not ask the agent to read a document whose edits did not save", async () => {
+  useDrafts.getState().setText(thread.id, "")
+  await openDocument()
+  nextSave = { type: "conflict", version: 2, revision: 2, markdown: "# Release plan\n\nThe agent's version.\n" }
+  await typeAtEnd(" Mine.")
+  await page.getByRole("button", { name: "Ask agent" }).click()
+
+  await expect.element(page.getByRole("button", { name: "Keep mine" })).toBeVisible()
+  expect(saves).toHaveLength(1)
+  expect(useDrafts.getState().byThreadId[thread.id]?.text ?? "").toBe("")
+})
+
 test("colors a code block in the language the Markdown names", async () => {
   const editor = await openDocument()
   const block = editor.element().querySelector("pre")!
