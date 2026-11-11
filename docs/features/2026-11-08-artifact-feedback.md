@@ -78,6 +78,8 @@ Delivery runs on the machine that holds the artifact, so a mention reaches only 
 
 An artifact from another harness has no owning thread. Its comments are saved, and only mentions deliver.
 
+A comment is saved and delivered in two steps, so quitting between them must not lose it. The message is saved with `undelivered: true` in the same `feedback.json` write, and `markDelivered` clears it after the thread has it. At the next start, ArtifactFeedback hands over every message still marked. Each delivery records its message in the thread under an id made from the comment message and the thread, and recovery skips a thread whose transcript or queue already has that id, so a quit after delivery does not send it twice. A recovered whiteboard comment loses its selection image, because `feedback.json` does not keep attachments. The element descriptions in the prompt still name the selection.
+
 ### What the agent receives
 
 `artifactFeedbackPrompt` in `src/shared/artifactFeedback.ts` writes the steer text, so it is one pure function with tests:

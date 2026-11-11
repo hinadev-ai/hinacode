@@ -116,6 +116,7 @@ interface AgentRequest {
 interface SendOptions {
   readonly workspace?: WorkspaceChoice | undefined
   readonly scheduledId?: string | undefined
+  readonly messageId?: string | undefined
 }
 
 type SendError =
@@ -171,11 +172,13 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       text: string,
       attachments: ReadonlyArray<Attachment>,
+      messageId?: string,
     ) => Effect.Effect<void, SendError>
     readonly queue: (
       threadId: string,
       text: string,
       attachments: ReadonlyArray<Attachment>,
+      messageId?: string,
     ) => Effect.Effect<void, SendError>
     readonly unqueue: (
       threadId: string,
@@ -196,6 +199,7 @@ export class AgentRunner extends Context.Service<
       readonly threadId: string
       readonly text: string
       readonly attachments: ReadonlyArray<Attachment>
+      readonly messageId?: string | undefined
       readonly when: Effect.Effect<boolean, PersistenceError>
     }) => Effect.Effect<boolean, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
@@ -711,7 +715,7 @@ const make = Effect.gen(function* () {
       if (provider.steer === undefined || waitsOnUser(thread.id)) return
       const held = (yield* threads.get(thread.id)).queue.filter((message) => message.steer)
       for (const message of held) {
-        yield* steerTurn(message.text, message.attachments, "next")
+        yield* steerTurn(message.text, message.attachments, "next", message.id)
         const { queue } = yield* threads.get(thread.id)
         yield* updateThread({ id: thread.id, queue: queue.filter((queued) => queued.id !== message.id) })
       }
@@ -721,20 +725,26 @@ const make = Effect.gen(function* () {
       text: string,
       attachments: ReadonlyArray<Attachment>,
       when: Effect.Effect<boolean, PersistenceError>,
+      messageId: string,
     ) =>
       Effect.gen(function* () {
         if (finishing) return "finished" as const
         if (provider.steer === undefined || !(yield* when)) return false
         if (!waitsOnUser(thread.id)) {
-          yield* steerTurn(text, attachments, "now")
+          yield* steerTurn(text, attachments, "now", messageId)
           return true
         }
         const { queue } = yield* threads.get(thread.id)
-        yield* updateThread({ id: thread.id, queue: [...queue, { id: randomUUID(), text, attachments, steer: true }] })
+        yield* updateThread({ id: thread.id, queue: [...queue, { id: messageId, text, attachments, steer: true }] })
         return true
       }).pipe(exclusive(thread.id))
 
-    const steerTurn = (text: string, attachments: ReadonlyArray<Attachment>, priority: SteerPriority) =>
+    const steerTurn = (
+      text: string,
+      attachments: ReadonlyArray<Attachment>,
+      priority: SteerPriority,
+      messageId: string,
+    ) =>
       Effect.gen(function* () {
         if (provider.steer === undefined) return
         yield* deltas.flush
@@ -747,7 +757,7 @@ const make = Effect.gen(function* () {
         yield* publishTranscript({ type: "message.updated", message: closed })
 
         const next = openAssistantMessage(thread.id, now)
-        yield* insertMessage(userMessage(thread.id, text, attachments, now))
+        yield* insertMessage(userMessage(thread.id, text, attachments, now, messageId))
         yield* insertMessage(next)
         turnMessages = [...turnMessages, next]
       })
@@ -1137,7 +1147,9 @@ const make = Effect.gen(function* () {
             const agentPrompt = yield* promptForSession(thread, expandDocumentCommand(expandArtifactSkill(prompt)))
             const now = yield* nowIso
             const assistant = openAssistantMessage(threadId, now)
-            yield* insertMessage(userMessage(threadId, prompt, attachments, now, options.scheduledId))
+            yield* insertMessage(
+              userMessage(threadId, prompt, attachments, now, options.messageId ?? options.scheduledId),
+            )
             if (options.scheduledId !== undefined) yield* removeScheduled(threadId, options.scheduledId)
             yield* insertMessage(assistant)
             yield* updateThread({ id: threadId, status: "running" })
@@ -1204,15 +1216,20 @@ const make = Effect.gen(function* () {
   const send = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>, options: SendOptions = {}) =>
     sendWhen(threadId, prompt, attachments, options, Effect.succeed(true)).pipe(Effect.asVoid)
 
-  const queue = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
+  const queue = (
+    threadId: string,
+    text: string,
+    attachments: ReadonlyArray<Attachment>,
+    messageId: string = randomUUID(),
+  ) =>
     Effect.gen(function* () {
       const queued = yield* Effect.gen(function* () {
         if (!busyThreads.has(threadId)) return false
         const thread = yield* threads.get(threadId)
-        yield* updateThread({ id: threadId, queue: [...thread.queue, { id: randomUUID(), text, attachments }] })
+        yield* updateThread({ id: threadId, queue: [...thread.queue, { id: messageId, text, attachments }] })
         return true
       }).pipe(exclusive(threadId))
-      if (!queued) yield* send(threadId, text, attachments)
+      if (!queued) yield* send(threadId, text, attachments, { messageId })
     })
 
   const unqueue = (threadId: string, id: string) =>
@@ -1225,7 +1242,7 @@ const make = Effect.gen(function* () {
     }).pipe(exclusive(threadId))
 
   const startQueued = (threadId: string, message: QueuedMessage) =>
-    startClaimed(threadId, message.text, message.attachments, {}, Effect.succeed(true)).pipe(
+    startClaimed(threadId, message.text, message.attachments, { messageId: message.id }, Effect.succeed(true)).pipe(
       Effect.asVoid,
       Effect.catch((error) =>
         Effect.gen(function* () {
@@ -1241,16 +1258,16 @@ const make = Effect.gen(function* () {
 
   const steerWhen: typeof AgentRunner.Service.steerWhen = (input) =>
     Effect.suspend(() => {
-      const { threadId, text, attachments, when } = input
+      const { threadId, text, attachments, when, messageId = randomUUID() } = input
       const turn = activeTurns.get(threadId)
-      if (turn === undefined) return sendWhen(threadId, text, attachments, {}, when)
+      if (turn === undefined) return sendWhen(threadId, text, attachments, { messageId }, when)
       if (turn.provider.steer !== undefined) {
-        return Effect.flatMap(turn.steer(text, attachments, when), (steered) =>
-          steered === "finished" ? steerWhen(input) : Effect.succeed(steered),
+        return Effect.flatMap(turn.steer(text, attachments, when, messageId), (steered) =>
+          steered === "finished" ? steerWhen({ ...input, messageId }) : Effect.succeed(steered),
         )
       }
       return Effect.flatMap(when, (ready) =>
-        ready ? Effect.as(queue(threadId, text, attachments), true) : Effect.succeed(false),
+        ready ? Effect.as(queue(threadId, text, attachments, messageId), true) : Effect.succeed(false),
       )
     })
 
@@ -1764,8 +1781,8 @@ const make = Effect.gen(function* () {
     switchAccount,
     removeAccount,
     switchAgent,
-    steer: (threadId, text, attachments) =>
-      steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),
+    steer: (threadId, text, attachments, messageId) =>
+      steerWhen({ threadId, text, attachments, messageId, when: Effect.succeed(true) }).pipe(Effect.asVoid),
     steerWhen,
     interrupt,
     stop: (threadId) =>

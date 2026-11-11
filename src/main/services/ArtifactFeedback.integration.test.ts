@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, expect, it as vitest, layer } from "@effect/vitest"
@@ -9,7 +9,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
-import type { AgentProvider } from "../agents/provider.ts"
+import { AgentError, type AgentProvider } from "../agents/provider.ts"
 import { seedThread } from "../db/testing.ts"
 import { makeTestAppLayer } from "../testing.ts"
 import { AgentRunner } from "./AgentRunner.ts"
@@ -42,6 +42,7 @@ const receive = (threadId: string, text: string) => Queue.offer(delivered, { thr
 
 const KEEP_WORKING = "Keep working until I stop you."
 const STALLS_STEER = "This steer never returns."
+const REFUSES_STEER = "This steer fails, so it waits in the queue."
 const stalledSteer = Effect.runSync(Deferred.make<void>())
 
 const provider = (id: AgentProvider["id"]): AgentProvider => ({
@@ -56,10 +57,11 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
       Stream.drain,
       Stream.concat(input.prompt === KEEP_WORKING ? Stream.never : Stream.empty),
     ),
-  steer: (threadId, text) =>
-    text.includes(STALLS_STEER)
-      ? Deferred.succeed(stalledSteer, undefined).pipe(Effect.andThen(Effect.never))
-      : receive(threadId, text),
+  steer: (threadId, text) => {
+    if (text.includes(STALLS_STEER)) return Deferred.succeed(stalledSteer, undefined).pipe(Effect.andThen(Effect.never))
+    if (text.includes(REFUSES_STEER)) return Effect.fail(new AgentError({ provider: id, message: "steer refused" }))
+    return receive(threadId, text)
+  },
   interrupt: () => Effect.void,
   respondApproval: () => Effect.succeed(false),
   respondQuestion: () => Effect.void,
@@ -236,5 +238,35 @@ vitest.live("delivers a comment saved right before the app quit once it starts a
     }).pipe(Effect.provide(restartable))
 
     expect(redelivered).toEqual(Option.some({ threadId, text: expect.stringContaining(STALLS_STEER) }))
+  }),
+)
+
+vitest.live("does not deliver a comment twice when the app quit after queueing it", () =>
+  Effect.gen(function* () {
+    const { threadId, artifactId } = yield* Effect.gen(function* () {
+      const owner = yield* newThread
+      const document = yield* documentOf(owner)
+      yield* AgentRunner.use((runner) => runner.send(owner, KEEP_WORKING, []))
+      expect(yield* Queue.take(delivered)).toEqual({ threadId: owner, text: KEEP_WORKING })
+      yield* ArtifactFeedback.use((feedback) => feedback.comment({ id: document.id, body: REFUSES_STEER }))
+
+      const { store } = yield* Artifacts
+      const file = join(store.root, document.id, "feedback.json")
+      const saved = JSON.parse(readFileSync(file, "utf8"))
+      saved.comments[0].messages[0].undelivered = true
+      writeFileSync(file, JSON.stringify(saved))
+      return { threadId: owner, artifactId: document.id }
+    }).pipe(Effect.provide(restartable))
+
+    const { redelivered, after, queue } = yield* Effect.gen(function* () {
+      const redelivered = yield* Queue.take(delivered).pipe(Effect.timeoutOption("1 second"))
+      const after = yield* ArtifactFeedback.use((feedback) => feedback.feedback(artifactId))
+      const { queue } = yield* Threads.use((threads) => threads.get(threadId))
+      return { redelivered, after, queue }
+    }).pipe(Effect.provide(restartable))
+
+    expect(redelivered).toEqual(Option.none())
+    expect(queue.map((message) => message.text)).toEqual([expect.stringContaining(REFUSES_STEER)])
+    expect(after.comments[0]?.messages[0]?.undelivered).toBeUndefined()
   }),
 )
