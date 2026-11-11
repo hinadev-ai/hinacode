@@ -333,7 +333,7 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
       }
     }
     adapter.splice(start, deleteCount, patch.insert, keep)
-    val head = patch.head ?: return
+    val head = patch.head?.takeIf { patch.eventCount >= eventCount } ?: return
     val anchor = patch.anchor ?: head
     val target = adapter.blocks.getOrNull(head.block)?.takeIf { it.textAt(head.cell) != null }
     if (target == null) return endEditing()
