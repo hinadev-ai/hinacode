@@ -130,6 +130,12 @@ export function trackRunningSince(
 export const listedThreads = (byId: Readonly<Record<string, Thread>>) =>
   Object.values(byId).filter((thread) => thread.status !== "draft")
 
+/** The thread `id` while it is still a draft. Its first message turns it into a listed thread. */
+export const draftThread = (byId: Readonly<Record<string, Thread>>, id: string | undefined) => {
+  const thread = id === undefined ? undefined : byId[id]
+  return thread?.status === "draft" ? thread : undefined
+}
+
 /** A project's threads in the order the developer arranged them in the desktop sidebar. */
 export const sortThreads = (threads: readonly Thread[]) => [...threads].sort((a, b) => a.sortIndex - b.sortIndex)
 
