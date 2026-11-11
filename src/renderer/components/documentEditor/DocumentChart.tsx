@@ -20,6 +20,11 @@ export function ChartBlock({ node, updateAttributes }: ReactNodeViewProps) {
   const [panel, setPanel] = useState<Panel>("none")
   const source = useDeferredValue(useDebouncedValue(node.textContent, REDRAW_DELAY_MS))
   const parsed = parseChart(source)
+  const [wasFailed, setWasFailed] = useState(false)
+  if (!parsed.ok !== wasFailed) {
+    setWasFailed(!parsed.ok)
+    if (!parsed.ok) setPanel("source")
+  }
   const toggle = (next: Panel) => setPanel((current) => (current === next ? "none" : next))
   return (
     <NodeViewWrapper data-chart className="not-prose my-6 overflow-hidden rounded-[10px] bg-muted">
@@ -59,6 +64,7 @@ export function ChartBlock({ node, updateAttributes }: ReactNodeViewProps) {
               size="xs"
               className={surfaceControl}
               aria-pressed={panel === "source"}
+              disabled={!parsed.ok}
               action={() => toggle("source")}
             >
               {m.documents_chart_source()}
@@ -68,7 +74,7 @@ export function ChartBlock({ node, updateAttributes }: ReactNodeViewProps) {
         {parsed.ok && <ChartBody chart={parsed.chart} />}
       </div>
       {parsed.ok && panel === "data" && <ChartData chart={parsed.chart} />}
-      <div hidden={parsed.ok && panel !== "source"}>
+      <div hidden={panel !== "source"}>
         <CodeSource language={CHART_LANGUAGE} updateAttributes={updateAttributes} />
       </div>
     </NodeViewWrapper>
