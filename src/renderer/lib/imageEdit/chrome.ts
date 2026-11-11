@@ -1,6 +1,6 @@
 import type { Point, Rect } from "./document.ts"
 import { type Handle, rectHandles } from "./geometry.ts"
-import { toScreen, type View } from "./gesture.ts"
+import { type Gesture, toScreen, type View } from "./gesture.ts"
 
 export const HANDLE_SIZE = 9
 
@@ -99,5 +99,19 @@ export const cursorFor = (handle: Handle) => {
     case "from":
     case "to":
       return "crosshair"
+  }
+}
+
+export const cursorForGesture = (gesture: Gesture, hover: string) => {
+  switch (gesture.kind) {
+    case "move":
+      return "grabbing"
+    case "resize":
+    case "crop":
+      return cursorFor(gesture.handle)
+    case "draw":
+      return "crosshair"
+    case "idle":
+      return hover
   }
 }

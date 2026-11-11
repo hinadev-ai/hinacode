@@ -8,7 +8,7 @@ import { blobFromDataUrl } from "../../lib/dataUrl.ts"
 import { emptyLog } from "../../lib/imageEdit/document.ts"
 import { useDrafts } from "../../stores/drafts.ts"
 import { useImageEditor } from "../../stores/imageEditor.ts"
-import { ImageEditorHost } from "./ImageEditorHost.tsx"
+import { ImageEditor } from "./ImageEditor.tsx"
 
 const staged: Array<{ name: string; dataUrl: string }> = []
 
@@ -85,8 +85,20 @@ const reddishPixels = async (dataUrl: string) => {
   return count
 }
 
-test("draws a rectangle, undoes and redoes it, and Done swaps the chip for the export", async () => {
+function OpenEditor() {
+  const request = useImageEditor((state) => state.request)
+  return request && <ImageEditor key={request.attachment.id} request={request} />
+}
+
+const click = async (at: { x: number; y: number }) => {
+  await cdp().send("Input.dispatchMouseEvent", { type: "mousePressed", ...at, button: "left", clickCount: 1 })
+  await cdp().send("Input.dispatchMouseEvent", { type: "mouseReleased", ...at, button: "left", clickCount: 1 })
+}
+
+const openEditor = async () => {
+  useDrafts.getState().discard("t-1")
   useDrafts.getState().addAttachments("t-1", [original])
+  staged.length = 0
   useImageEditor.setState({
     request: {
       threadId: "t-1",
@@ -96,7 +108,34 @@ test("draws a rectangle, undoes and redoes it, and Done swaps the chip for the e
       source: { status: "ready", source: await graySource() },
     },
   })
-  await render(<ImageEditorHost />)
+}
+
+test("places a text label on click, keeps shortcuts out of it, and returns to Select", async () => {
+  await openEditor()
+  await render(<OpenEditor />)
+  await expect.poll(() => document.querySelector("canvas")?.width ?? 0).toBeGreaterThan(300)
+  const bounds = document.querySelector("canvas")!.getBoundingClientRect()
+
+  await key("t")
+  await click({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 })
+  const label = page.getByRole("textbox", { name: "Annotation text" })
+  await expect.element(label).toHaveFocus()
+  await cdp().send("Input.insertText", { text: "rv" })
+  await expect.element(label).toHaveValue("rv")
+  await key("Enter")
+
+  await expect.element(label).not.toBeInTheDocument()
+  await expect
+    .element(page.getByRole("button", { name: "Select", exact: true }))
+    .toHaveAttribute("aria-pressed", "true")
+  await expect.element(page.getByRole("button", { name: "Undo", exact: true })).toBeEnabled()
+  expect(useImageEditor.getState().request).not.toBeNull()
+  useImageEditor.getState().close()
+})
+
+test("draws a rectangle, undoes and redoes it, and Done swaps the chip for the export", async () => {
+  await openEditor()
+  await render(<OpenEditor />)
   const undo = page.getByRole("button", { name: "Undo", exact: true })
   await expect.element(undo).toBeDisabled()
   await expect.poll(() => document.querySelector("canvas")?.width ?? 0).toBeGreaterThan(300)

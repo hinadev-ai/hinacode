@@ -6,6 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
   startTransition,
   useEffect,
   useRef,
@@ -13,15 +14,17 @@ import {
   useTransition,
 } from "react"
 import { AGENT_IMAGE_MAX_BYTES } from "../../../shared/agentImages.ts"
-import { cursorFor, dimOutside, drawCropFrame, drawSelection } from "../../lib/imageEdit/chrome.ts"
+import { cursorFor, cursorForGesture, dimOutside, drawCropFrame, drawSelection } from "../../lib/imageEdit/chrome.ts"
 import {
   canRedo,
   canUndo,
   type Color,
   type Command,
+  type EditDocument,
   imageBounds,
   PALETTE,
   type Point,
+  type Rect,
   push,
   redo,
   replay,
@@ -30,6 +33,7 @@ import {
   visibleRect,
 } from "../../lib/imageEdit/document.ts"
 import { exportDocument } from "../../lib/imageEdit/export.ts"
+import { type KeyAction, keyAction } from "../../lib/imageEdit/keys.ts"
 import {
   type BoxOf,
   handleAt,
@@ -49,7 +53,6 @@ import {
   previewDocument,
   type Size,
   startDrawing,
-  TOOL_KEYS,
   toImage,
   toScreen,
   type Tool,
@@ -169,16 +172,111 @@ function CancelButton({ onClick }: { onClick: () => void }) {
 }
 
 function useStageSize() {
+  const [element, setElement] = useState<HTMLDivElement | null>(null)
   const [size, setSize] = useState<Size | null>(null)
-  const observe = (element: HTMLDivElement | null) => {
+  useEffect(() => {
     if (!element) return
     const observer = new ResizeObserver(([entry]) => {
       if (entry) setSize({ width: entry.contentRect.width, height: entry.contentRect.height })
     })
     observer.observe(element)
     return () => observer.disconnect()
-  }
-  return [size, observe] as const
+  }, [element])
+  return [size, setElement] as const
+}
+
+interface Scene {
+  readonly stage: Size | null
+  readonly view: View | null
+  readonly source: EditSource
+  readonly preview: EditDocument
+  readonly crop: Rect
+  readonly selectionBox: Rect | null
+  readonly selectionHandles: ReturnType<typeof shapeHandles>
+  readonly showCropFrame: boolean
+}
+
+function usePaintedCanvas({
+  stage,
+  view,
+  source,
+  preview,
+  crop,
+  selectionBox,
+  selectionHandles,
+  showCropFrame,
+}: Scene) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !stage || !view) return
+    const ratio = window.devicePixelRatio
+    const width = Math.round(stage.width * ratio)
+    const height = Math.round(stage.height * ratio)
+    if (canvas.width !== width) canvas.width = width
+    if (canvas.height !== height) canvas.height = height
+    const ctx = canvas.getContext("2d")!
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, width, height)
+    ctx.setTransform(ratio * view.scale, 0, 0, ratio * view.scale, ratio * view.offsetX, ratio * view.offsetY)
+    drawDocument(ctx, source, preview, crop)
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+    dimOutside(ctx, view, imageBounds(source.width, source.height), crop)
+    if (selectionBox) drawSelection(ctx, view, selectionBox, selectionHandles)
+    else if (showCropFrame) drawCropFrame(ctx, view, crop)
+  }, [stage, view, source, preview, crop, selectionBox, selectionHandles, showCropFrame])
+  return canvasRef
+}
+
+function TextDraft({
+  draft,
+  view,
+  unit,
+  onChange,
+  onCommit,
+  inputRef,
+}: {
+  draft: Typing
+  view: View
+  unit: number
+  onChange: (text: string) => void
+  onCommit: () => void
+  inputRef: RefObject<HTMLTextAreaElement | null>
+}) {
+  const at = toScreen(view, draft.at)
+  const fontSize = 16 * unit * view.scale
+  const pill = textPill(draft.color)
+  return (
+    <textarea
+      ref={(node) => {
+        inputRef.current = node
+        node?.focus()
+      }}
+      rows={1}
+      aria-label={m.image_editor_text_label()}
+      value={draft.text}
+      onChange={(event) => onChange(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault()
+          returnFocusToEditor(event.currentTarget)
+        }
+      }}
+      onBlur={onCommit}
+      style={{
+        left: at.x,
+        top: at.y,
+        fontSize,
+        fontFamily: FONT_FAMILY,
+        lineHeight: 1.3,
+        padding: `${fontSize * 0.25}px ${fontSize * 0.5}px`,
+        borderRadius: fontSize,
+        color: pill.ink,
+        backgroundColor: pill.background,
+      }}
+      className="absolute field-sizing-content min-w-8 resize-none overflow-hidden font-semibold whitespace-pre shadow-lg outline-2 outline-white/70"
+    />
+  )
 }
 
 function Editor({ request, source }: { request: EditorRequest; source: EditSource }) {
@@ -192,7 +290,6 @@ function Editor({ request, source }: { request: EditorRequest; source: EditSourc
   const [error, setError] = useState<string | null>(null)
   const [saving, startSaving] = useTransition()
   const [measurer] = useState(() => new OffscreenCanvas(1, 1).getContext("2d")!)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const textRef = useRef<HTMLTextAreaElement>(null)
   const [stage, observeStage] = useStageSize()
 
@@ -206,28 +303,16 @@ function Editor({ request, source }: { request: EditorRequest; source: EditSourc
   const boxOf: BoxOf = (shape) =>
     shape.kind === "text" ? layoutText(measurer, shape, unit).box : markerBox(shape, unit)
   const shownCrop = visibleRect(preview, source.width, source.height)
-  const showCropFrame = tool === "select" && !selected && typing === null
-  const selectionBox = selected ? shapeBounds(selected, boxOf) : null
-  const selectionHandles = selected && gesture.kind === "idle" ? shapeHandles(selected) : NO_HANDLES
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !stage || !view) return
-    const ratio = window.devicePixelRatio
-    const width = Math.round(stage.width * ratio)
-    const height = Math.round(stage.height * ratio)
-    if (canvas.width !== width) canvas.width = width
-    if (canvas.height !== height) canvas.height = height
-    const ctx = canvas.getContext("2d")!
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.clearRect(0, 0, width, height)
-    ctx.setTransform(ratio * view.scale, 0, 0, ratio * view.scale, ratio * view.offsetX, ratio * view.offsetY)
-    drawDocument(ctx, source, preview, shownCrop)
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
-    dimOutside(ctx, view, image, shownCrop)
-    if (selectionBox) drawSelection(ctx, view, selectionBox, selectionHandles)
-    else if (showCropFrame) drawCropFrame(ctx, view, shownCrop)
-  }, [stage, view, source, preview, shownCrop, image, selectionBox, selectionHandles, showCropFrame])
+  const canvasRef = usePaintedCanvas({
+    stage,
+    view,
+    source,
+    preview,
+    crop: shownCrop,
+    selectionBox: selected ? shapeBounds(selected, boxOf) : null,
+    selectionHandles: selected && gesture.kind === "idle" ? shapeHandles(selected) : NO_HANDLES,
+    showCropFrame: tool === "select" && !selected && typing === null,
+  })
 
   const apply = (command: Command | null) => {
     if (command) setLog((current) => push(current, command))
@@ -323,42 +408,32 @@ function Editor({ request, source }: { request: EditorRequest; source: EditSourc
     setSelectedId(null)
   }
 
+  const runKey = (action: KeyAction) => {
+    switch (action.type) {
+      case "undo":
+        return setLog(undo)
+      case "redo":
+        return setLog(redo)
+      case "done":
+        return done()
+      case "delete":
+        return removeSelected()
+      case "nudge":
+        return selected && apply({ type: "update", shape: translate(selected, action.dx, action.dy) })
+      case "color":
+        return pickColor(action.color)
+      case "tool":
+        return pickTool(action.tool)
+    }
+  }
+
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (isTextField(event.target)) return
-    const key = event.key.toLowerCase()
-    if (event.metaKey || event.ctrlKey) {
-      if (key === "z" || key === "y") {
-        event.preventDefault()
-        setLog(key === "y" || event.shiftKey ? redo : undo)
-      }
-      return
-    }
-    if (event.altKey) return
-    if (key === "enter") {
-      if (event.target instanceof HTMLButtonElement) return
-      event.preventDefault()
-      done()
-      return
-    }
-    if (key === "delete" || key === "backspace") {
-      removeSelected()
-      return
-    }
-    if (key.startsWith("arrow") && selected) {
-      event.preventDefault()
-      const step = event.shiftKey ? 10 : 1
-      const dx = key === "arrowleft" ? -step : key === "arrowright" ? step : 0
-      const dy = key === "arrowup" ? -step : key === "arrowdown" ? step : 0
-      apply({ type: "update", shape: translate(selected, dx, dy) })
-      return
-    }
-    const swatch = PALETTE[Number(event.key) - 1]
-    if (swatch) {
-      pickColor(swatch)
-      return
-    }
-    const shortcut = TOOL_KEYS.find(([, letter]) => letter === key)
-    if (shortcut) pickTool(shortcut[0])
+    const action = keyAction(event)
+    if (!action) return
+    if (action.type === "done" && event.target instanceof HTMLButtonElement) return
+    if (action.type !== "tool" && action.type !== "color") event.preventDefault()
+    runKey(action)
   }
 
   const textAt = (point: Point, current: View) =>
@@ -428,51 +503,24 @@ function Editor({ request, source }: { request: EditorRequest; source: EditSourc
     setGesture(dragTo(gesture, point, { shift: event.shiftKey, image, penStep: 1 / view.scale }))
   }
 
-  const onPointerUp = () => {
-    if (gesture.kind === "idle" || !view) return
-    apply(finish(gesture, image, MIN_SIZE / view.scale))
-    setGesture(idle)
+  const placeText = (point: Point, current: View) => {
+    const existing = textAt(point, current)
+    if (existing) editText(existing)
+    else setTyping({ id: crypto.randomUUID(), existing: false, at: point, text: "", color })
   }
 
-  const onClick = (event: ReactMouseEvent<HTMLCanvasElement>) => {
-    if (!view || tool !== "text" || typing || saving) return
-    const point = pointAt(event, view)
-    const existing = textAt(point, view)
-    startTransition(() => {
-      if (existing) editText(existing)
-      else setTyping({ id: crypto.randomUUID(), existing: false, at: point, text: "", color })
-    })
+  const onPointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!view || event.button !== 0) return
+    if (tool === "text" && !typing && !saving) placeText(pointAt(event, view), view)
+    if (gesture.kind === "idle") return
+    apply(finish(gesture, image, MIN_SIZE / view.scale))
+    setGesture(idle)
   }
 
   const onDoubleClick = (event: ReactMouseEvent<HTMLCanvasElement>) => {
     if (!view || tool !== "select") return
     const shape = textAt(pointAt(event, view), view)
     if (shape) editText(shape)
-  }
-
-  const gestureCursor =
-    gesture.kind === "move"
-      ? "grabbing"
-      : gesture.kind === "resize" || gesture.kind === "crop"
-        ? cursorFor(gesture.handle)
-        : gesture.kind === "draw"
-          ? "crosshair"
-          : hoverCursor
-
-  const typingStyle = (draft: Typing, current: View) => {
-    const at = toScreen(current, draft.at)
-    const fontSize = 16 * unit * current.scale
-    return {
-      left: at.x,
-      top: at.y,
-      fontSize,
-      fontFamily: FONT_FAMILY,
-      lineHeight: 1.3,
-      padding: `${fontSize * 0.25}px ${fontSize * 0.5}px`,
-      borderRadius: fontSize,
-      color: textPill(draft.color).ink,
-      backgroundColor: textPill(draft.color).background,
-    }
   }
 
   return (
@@ -500,40 +548,30 @@ function Editor({ request, source }: { request: EditorRequest; source: EditSourc
       <div ref={observeStage} className="relative min-h-0 flex-1 overflow-hidden">
         <canvas
           ref={canvasRef}
-          style={{ cursor: gestureCursor }}
+          style={{ cursor: cursorForGesture(gesture, hoverCursor) }}
           className="absolute inset-0 size-full touch-none"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={() => setGesture(idle)}
-          onClick={onClick}
           onDoubleClick={onDoubleClick}
           onContextMenu={(event) => event.preventDefault()}
         >
           {m.image_editor_canvas({ name: request.original.name })}
         </canvas>
         {typing && view && (
-          <textarea
-            ref={(node) => {
-              textRef.current = node
-              node?.focus()
-            }}
-            rows={1}
-            aria-label={m.image_editor_text_label()}
-            value={typing.text}
-            onChange={(event) => setTyping({ ...typing, text: event.target.value })}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault()
-                returnFocusToEditor(event.currentTarget)
-              }
-            }}
-            onBlur={() => {
-              commitTyping()
-              setTool("select")
-            }}
-            style={typingStyle(typing, view)}
-            className="absolute field-sizing-content min-w-8 resize-none overflow-hidden font-semibold whitespace-pre shadow-lg outline-2 outline-white/70"
+          <TextDraft
+            draft={typing}
+            view={view}
+            unit={unit}
+            inputRef={textRef}
+            onChange={(text) => setTyping({ ...typing, text })}
+            onCommit={() =>
+              startTransition(() => {
+                commitTyping()
+                setTool("select")
+              })
+            }
           />
         )}
       </div>
