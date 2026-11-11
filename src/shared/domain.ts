@@ -20,7 +20,7 @@ import { EntrySource } from "./relayMachines.ts"
 export const Timestamp = Schema.String
 export type Timestamp = typeof Timestamp.Type
 
-export const ProjectKind = Schema.Literals(["folder", "chats"])
+export const ProjectKind = Schema.Literals(["folder", "chats", "group"])
 export type ProjectKind = typeof ProjectKind.Type
 
 export const ProjectAction = Schema.Struct({ name: Schema.String, command: Schema.String })

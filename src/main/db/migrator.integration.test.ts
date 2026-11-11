@@ -70,11 +70,35 @@ describe("runMigrations", () => {
         [46, "app_connection"],
         [47, "routines"],
         [48, "drop_pull_request_observed_status"],
+        [49, "project_group_kind"],
       ])
       expect(yield* columnsOf("pull_request_link")).not.toContain("observed_status")
       expect(yield* sql`SELECT name FROM effect_sql_migrations WHERE migration_id = 40`).toStrictEqual([
         { name: "remote_private_networks" },
       ])
+    }).pipe(Effect.provide(freshDatabase())),
+  )
+
+  it.effect("allows group projects, keeps each project's kind and still allows one Chats project", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+      const folder = yield* seedThread({ rootPath: "/repo" })
+      const chats = yield* seedThread({ rootPath: "/data/chats", kind: "chats" })
+      yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id >= 49`
+
+      expect(yield* runMigrations).toStrictEqual([[49, "project_group_kind"]])
+
+      yield* seedThread({ rootPath: "/data/groups/g1", kind: "group" })
+      const kinds = yield* sql<{ readonly id: string; readonly kind: string }>`SELECT id, kind FROM project`
+      expect(kinds).toEqual(
+        expect.arrayContaining([
+          { id: folder.projectId, kind: "folder" },
+          { id: chats.projectId, kind: "chats" },
+          expect.objectContaining({ kind: "group" }),
+        ]),
+      )
+      const second = yield* Effect.exit(seedThread({ rootPath: "/data/other-chats", kind: "chats" }))
+      expect(Exit.isFailure(second)).toBe(true)
     }).pipe(Effect.provide(freshDatabase())),
   )
 
@@ -99,7 +123,7 @@ describe("runMigrations", () => {
 
       expect(upgraded.thread).toStrictEqual({ title: "t", provider: "claude" })
       expect(upgraded.ids.slice(0, 4)).toStrictEqual([1, 2, 3, 4])
-      expect(upgraded.ids.at(-1)).toBe(48)
+      expect(upgraded.ids.at(-1)).toBe(49)
       expect(upgraded.projectColumns).toContain("trusted")
     }),
   )
@@ -145,7 +169,7 @@ describe("runMigrations", () => {
           const sql = yield* SqlClient.SqlClient
           const seeded = yield* seedThread({ rootPath: "/repo" })
           yield* sql`ALTER TABLE thread ADD COLUMN from_the_future TEXT NOT NULL DEFAULT 'kept'`
-          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (49, 'from_the_future')`
+          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (50, 'from_the_future')`
           return seeded
         }),
       )
@@ -165,7 +189,7 @@ describe("runMigrations", () => {
         ran: [],
         thread: { title: "t", provider: "claude" },
         future: { fromTheFuture: "kept" },
-        ids: expect.arrayContaining([48, 49]),
+        ids: expect.arrayContaining([49, 50]),
       })
     }),
   )
