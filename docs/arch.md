@@ -89,7 +89,7 @@ A desktop pairs with clouds (`environments.add`) and keeps one live WebSocket to
 
 The phone does the same with no local machine: it pairs with each server directly, keeps one `Transport` per server, and `call` in `apps/mobile/src/lib/connection.ts` routes by the same table and owner index. An id no server has claimed waits until every server has listed its threads, and a named call without a server goes to the first connected one. See `features/2026-10-24-mobile-servers.md`.
 
-The web app (`apps/web`) runs the desktop renderer in a browser tab against relay machines. Its `window.hinacode` keeps one shared `Transport` (`shared/transport.ts`) per machine and routes with `apps/web/src/route.ts`, which is `environments/route.ts` with no local machine: every relay machine is an environment, and a call that names none goes to the first connected one. A service worker serves the custom-scheme resources through the page. See `features/2026-11-04-web-app.md`.
+The web app (`apps/web`) runs the desktop renderer in a browser tab against relay machines. Its `window.hinacode` keeps one shared `Transport` (`shared/transport.ts`) per machine and routes with `apps/web/src/route.ts`, which is `environments/route.ts` with no local machine: every relay machine is an environment, and a call that names none goes to the first connected one. A service worker serves the custom-scheme resources through the page and posts its notifications. See `features/2026-11-04-web-app.md`.
 
 Phones negotiate `watch` to limit pushes. The focused chat tab watches its transcript; other cached histories
 refresh when reopened. Backgrounding closes the sockets and stops client heartbeats, direct-address probes, and
