@@ -1,0 +1,44 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 1d52d2410c838c899b3ae63779aad0f3f9114d53..e5f23c0bef27b2f11773c98a576c5441398eb86b 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -4856,6 +4856,17 @@ function parseContinuation(mainContent, nestedContent, lexer) {
+ * ```
+ */
+ function parseIndentedBlocks(src, config, lexer) {
++	let lineStart = 0;
++	for (;;) {
++		const lineEnd = src.indexOf("\n", lineStart);
++		const line = src.slice(lineStart, lineEnd < 0 ? void 0 : lineEnd);
++		if (line.trim() !== "") {
++			if (!line.match(config.itemPattern)) return void 0;
++			break;
++		}
++		if (lineEnd < 0) return void 0;
++		lineStart = lineEnd + 1;
++	}
+ 	const lines = src.split("\n");
+ 	const items = [];
+ 	let totalRaw = "";
+diff --git a/dist/index.js b/dist/index.js
+index fffaf703c0d507712b3fbdb4849f08854f7ced99..212e0af2f0826802dad8f0b6c3aaf593f51f5c20 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -4844,6 +4844,17 @@ function parseContinuation(mainContent, nestedContent, lexer) {
+ * ```
+ */
+ function parseIndentedBlocks(src, config, lexer) {
++	let lineStart = 0;
++	for (;;) {
++		const lineEnd = src.indexOf("\n", lineStart);
++		const line = src.slice(lineStart, lineEnd < 0 ? void 0 : lineEnd);
++		if (line.trim() !== "") {
++			if (!line.match(config.itemPattern)) return void 0;
++			break;
++		}
++		if (lineEnd < 0) return void 0;
++		lineStart = lineEnd + 1;
++	}
+ 	const lines = src.split("\n");
+ 	const items = [];
+ 	let totalRaw = "";

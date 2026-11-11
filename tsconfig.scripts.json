@@ -16,6 +16,8 @@
   "exclude": [
     "packages/icons/**",
     "packages/composer-editor/**",
+    "packages/perf-frames/**",
+    "packages/document-view/**",
     "scripts/ui-states/main.ts",
     "scripts/ui-states/webview.ts"
   ]

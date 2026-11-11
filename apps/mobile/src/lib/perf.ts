@@ -177,6 +177,10 @@ const stores = () => ({
   messages: (require("@/stores/messages") as typeof import("@/stores/messages")).useMessages,
 })
 const router = () => (require("expo-router") as typeof import("expo-router")).router
+const connection = () => require("@/lib/connection") as typeof import("@/lib/connection")
+const parseDocument = () =>
+  (require("@shared/document/parse.ts") as typeof import("@shared/document/parse.ts")).parseDocument
+const perfFrames = () => (require("@hinacode/perf-frames") as typeof import("@hinacode/perf-frames")).loadPerfFrames()
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 let firstCommit: number | null = null
@@ -317,7 +321,146 @@ async function reply(command: Command) {
   return { start, done, painted, settled, ...stopRecording() }
 }
 
-const workloads: Record<string, (command: Command) => Promise<unknown>> = { hello, pair, open, back, scroll, type, reply }
+function hermesHeap() {
+  const stats = (
+    globalThis as { HermesInternal?: { getInstrumentedStats?: () => Record<string, number> } }
+  ).HermesInternal?.getInstrumentedStats?.()
+  return stats === undefined ? null : { heapSize: stats.js_heapSize, allocatedBytes: stats.js_allocatedBytes }
+}
+
+type NativeDocument = {
+  applyPatch: (patch: string) => Promise<void>
+  scrollToBlock: (index: number) => Promise<void>
+}
+
+const isNativeDocument = (node: unknown): node is NativeDocument =>
+  typeof node === "object" && node !== null && typeof (node as { applyPatch?: unknown }).applyPatch === "function"
+
+const appliedPatches: number[] = []
+const patchWaiters: (() => void)[] = []
+const probed = new WeakSet<object>()
+
+/** Records when each patch the document view receives has been applied natively, as the next frame after it. */
+function probeNativeDocument() {
+  const fiber = findFiber((candidate) => isNativeDocument(candidate.stateNode))
+  const view = fiber?.stateNode
+  if (!isNativeDocument(view)) return null
+  if (probed.has(view)) return view
+  probed.add(view)
+  const apply = view.applyPatch.bind(view)
+  view.applyPatch = async (patch) => {
+    await apply(patch)
+    appliedPatches.push(await nextFrame())
+    for (const resolve of patchWaiters.splice(0)) resolve()
+  }
+  return view
+}
+
+const nextPatch = () => new Promise<void>((resolve) => patchWaiters.push(resolve))
+
+/** Resolves once no commit and no native patch has landed for `quietMs`, with the time of the last one. */
+const lastCommitThatRendered = () => commits.findLast((commit) => Object.keys(commit.rendered).length > 0)?.at
+
+async function settleWithPatches(quietMs: number, timeoutMs = 15000) {
+  const start = performance.now()
+  for (;;) {
+    const last = Math.max(lastCommitThatRendered() ?? start, appliedPatches.at(-1) ?? start)
+    const now = performance.now()
+    if (now - last >= quietMs || now - start > timeoutMs) return last
+    await sleep(50)
+  }
+}
+
+/**
+ * Opens a document and times its first content: the frame after the first patch the native view applied, or for
+ * a JS-rendered screen the frame after the commit that mounted it. Afterwards, outside the recording, it times
+ * `parseDocument` on the same Markdown, the JS parse the screen runs.
+ */
+async function openDocument(command: Command) {
+  const threadId = String(command.threadId)
+  const artifactId = String(command.artifactId)
+  await settle(300)
+  appliedPatches.length = 0
+  startRecording()
+  const start = performance.now()
+  const mounted = (async () => {
+    for (;;) {
+      await nextCommit()
+      if (findFiber(withTestID("document")) === undefined) continue
+      const native = probeNativeDocument()
+      if (native === null) return nextFrame()
+      if (appliedPatches.length === 0) await nextPatch()
+      return appliedPatches[0]!
+    }
+  })()
+  router().push({ pathname: "/thread/[id]/document", params: { id: threadId, artifactId, title: "perf" } })
+  const firstContent = await mounted
+  const settled = await settleWithPatches(1000)
+  const heap = hermesHeap()
+  const recorded = stopRecording()
+  const { markdown } = await connection().call("artifacts.readDocument", { id: artifactId })
+  const parse = parseDocument()
+  const parseStart = performance.now()
+  const blocks = parse(markdown).doc.childCount
+  const parseMs = performance.now() - parseStart
+  const patches = appliedPatches.slice()
+  return { start, firstContent, settled, patches, heap, parseMs, blocks, bytes: markdown.length, ...recorded }
+}
+
+/** Samples native frames while the driver injects swipes. The driver answers `/ready` once the last one is done. */
+async function fling(command: Command) {
+  const sampler = perfFrames()
+  await settle(500)
+  startRecording()
+  await sampler.start()
+  const start = performance.now()
+  await post("/ready", { id: command.id })
+  const nativeFrames = await sampler.stop()
+  const end = performance.now()
+  await settle(500)
+  return { start, end, nativeFrames, ...stopRecording() }
+}
+
+/** Waits for the open document's `artifact.updated` push while the driver saves it, then times the repaint. */
+async function updateDocument(command: Command) {
+  const artifactId = String(command.artifactId)
+  const native = probeNativeDocument()
+  if (native === null) throw new Error("no open document")
+  await native.scrollToBlock(0)
+  await settle(1000)
+  let unsubscribe = () => {}
+  const arrived = new Promise<number>((resolve) => {
+    unsubscribe = connection().onEvent((event) => {
+      if (event.type === "artifact.updated" && event.artifact.id === artifactId) resolve(performance.now())
+    })
+  })
+  appliedPatches.length = 0
+  startRecording()
+  const start = performance.now()
+  const patched = nextPatch()
+  await post("/ready", { id: command.id })
+  const eventAt = await Promise.race([arrived, sleep(20000).then(() => null)])
+  unsubscribe()
+  if (eventAt === null) throw new Error("no artifact.updated within 20 s")
+  await Promise.race([patched, sleep(10000)])
+  const paintedAt = appliedPatches.find((at) => at > eventAt) ?? null
+  const settled = await settleWithPatches(1000)
+  const recorded = stopRecording()
+  return { start, eventAt, settled, paintedAt, ...recorded }
+}
+
+const workloads: Record<string, (command: Command) => Promise<unknown>> = {
+  hello,
+  pair,
+  open,
+  back,
+  scroll,
+  type,
+  reply,
+  openDocument,
+  fling,
+  updateDocument,
+}
 
 async function post(path: string, body: unknown) {
   await fetch(`${url}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
