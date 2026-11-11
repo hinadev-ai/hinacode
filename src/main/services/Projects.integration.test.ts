@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
@@ -402,6 +411,48 @@ describe("Projects.ensureChats", () => {
         { kind: "chats", rootPath: second },
       ])
       expect(statSync(second).isDirectory()).toBe(true)
+    }),
+  )
+})
+
+describe("Projects.ensureGroups", () => {
+  const groupRows = (projects: ReadonlyArray<{ kind: string; id: string; name: string; rootPath: string }>) =>
+    projects.filter(({ kind }) => kind === "group").map(({ id, name, rootPath }) => ({ id, name, rootPath }))
+
+  it.live("creates one group project with its folder, AGENTS.md and skills", () =>
+    Effect.gen(function* () {
+      const groupsDir = join(emptyDir(), "groups")
+      const listed = yield* provided(
+        Projects.use((projects) =>
+          projects.ensureGroups([{ id: "g1", name: "Shop" }], groupsDir).pipe(Effect.andThen(projects.list)),
+        ),
+      )
+      const rootPath = join(groupsDir, "g1")
+      expect(groupRows(listed)).toStrictEqual([{ id: "g1", name: "Shop", rootPath }])
+      expect(readFileSync(join(rootPath, "AGENTS.md"), "utf8")).toBe("")
+      expect(statSync(join(rootPath, "skills")).isDirectory()).toBe(true)
+    }),
+  )
+
+  it.live("keeps an existing AGENTS.md, stays one row on a second call and follows a rename", () =>
+    Effect.gen(function* () {
+      const groupsDir = join(emptyDir(), "groups")
+      const rootPath = join(groupsDir, "g1")
+      mkdirSync(rootPath, { recursive: true })
+      writeFileSync(join(rootPath, "AGENTS.md"), "Use pnpm.\n")
+      const listed = yield* provided(
+        Projects.use((projects) =>
+          projects
+            .ensureGroups([{ id: "g1", name: "Shop" }], groupsDir)
+            .pipe(
+              Effect.andThen(projects.ensureGroups([{ id: "g1", name: "Shop" }], groupsDir)),
+              Effect.andThen(projects.ensureGroups([{ id: "g1", name: "Store" }], groupsDir)),
+              Effect.andThen(projects.list),
+            ),
+        ),
+      )
+      expect(groupRows(listed)).toStrictEqual([{ id: "g1", name: "Store", rootPath }])
+      expect(readFileSync(join(rootPath, "AGENTS.md"), "utf8")).toBe("Use pnpm.\n")
     }),
   )
 })

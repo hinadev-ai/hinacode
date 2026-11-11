@@ -626,7 +626,7 @@ function SidebarFilterMenu() {
   const ids = useUi((state) => state.sidebarProjectIds)
   const setIds = useUi((state) => state.setSidebarProjectIds)
   const picked = new Set(ids)
-  const shownGroups = groupProjects(projects).filter((group) =>
+  const shownGroups = groupProjects(projects.filter((project) => project.kind !== "group")).filter((group) =>
     group.projects.some((project) => !hidden.has(environmentOf(project))),
   )
   const projectsPicked = shownGroups.some((group) => group.projects.some((project) => picked.has(project.id)))
@@ -771,7 +771,7 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
     .onInitial(() => <p className="animate-reveal px-3 py-2 text-xs text-muted-foreground">{m.sidebar_loading()}</p>)
     .onSuccess((list) => (
       <>
-        {list.every((project) => project.kind === "chats") && (
+        {list.every((project) => project.kind !== "folder") && (
           <div className="flex flex-col items-start gap-2 px-3 py-4">
             <p className="text-sm font-medium">{m.sidebar_empty_title()}</p>
             <p className="text-xs text-muted-foreground">{m.sidebar_empty_hint()}</p>

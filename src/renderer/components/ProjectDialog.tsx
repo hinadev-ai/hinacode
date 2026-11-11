@@ -92,7 +92,7 @@ const parentOf = (path: string) => path.replace(/[\\/][^\\/]*[\\/]?$/, "")
 
 function useDefaultCloneParent(environment: EnvironmentId) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => []).filter(
-    (candidate) => environmentOf(candidate) === environment,
+    (candidate) => candidate.kind === "folder" && environmentOf(candidate) === environment,
   )
   const newest = projects.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt)).at(0)
   return newest ? parentOf(newest.rootPath) : "~/code"

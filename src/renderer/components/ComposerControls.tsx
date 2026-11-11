@@ -860,7 +860,7 @@ export function ThreadProjectSwitch({ thread }: { thread: Thread }) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   const current = projects.find((project) => project.id === thread.projectId)
   const options = projects
-    .filter((project) => project.kind !== "chats" && environmentOf(project) === environmentOf(current))
+    .filter((project) => project.kind === "folder" && environmentOf(project) === environmentOf(current))
     .map((project) => ({ projectId: project.id, label: project.name }))
   return <ContextSwitch thread={thread} label={current?.name ?? ""} options={options} />
 }

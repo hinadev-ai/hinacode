@@ -45,6 +45,11 @@ interface UpdateProject {
   readonly actions?: ReadonlyArray<ProjectAction> | undefined
 }
 
+interface GroupProject {
+  readonly id: string
+  readonly name: string
+}
+
 type WriteError = PersistenceError | ProjectPathTakenError | ProjectRootInvalidError | ProjectInWslError
 
 export class Projects extends Context.Service<
@@ -63,6 +68,10 @@ export class Projects extends Context.Service<
     readonly update: (input: UpdateProject) => Effect.Effect<Project, WriteError | NotFoundError>
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
     readonly ensureChats: (rootPath: string) => Effect.Effect<Project, PersistenceError | ProjectRootInvalidError>
+    readonly ensureGroups: (
+      groups: ReadonlyArray<GroupProject>,
+      groupsDir: string,
+    ) => Effect.Effect<void, PersistenceError | ProjectRootInvalidError>
     readonly icon: (id: string) => Effect.Effect<string | null, PersistenceError | NotFoundError>
   }
 >()("hinacode/Projects") {}
@@ -285,6 +294,29 @@ const make = Effect.gen(function* () {
       return yield* findChats(undefined).pipe(Effect.mapError(persistence("projects.ensureChats")))
     })
 
+  const writeMissingFile = (path: string) =>
+    fs.exists(path).pipe(
+      Effect.flatMap((exists) => (exists ? Effect.void : fs.writeFileString(path, ""))),
+      Effect.catchTag("PlatformError", () => Effect.fail(new ProjectRootInvalidError({ rootPath: path }))),
+    )
+
+  const ensureGroup = ({ id, name }: GroupProject, groupsDir: string) =>
+    Effect.gen(function* () {
+      const rootPath = join(groupsDir, id)
+      yield* makeDirectory(join(rootPath, "skills"))
+      yield* writeMissingFile(join(rootPath, "AGENTS.md"))
+      const now = yield* nowIso
+      const row = { id, name, rootPath, setupScript: null, kind: "group", createdAt: now, updatedAt: now }
+      yield* sql`
+        INSERT INTO project ${sql.insert(row)}
+        ON CONFLICT (id) DO UPDATE SET name = excluded.name, root_path = excluded.root_path, updated_at = excluded.updated_at
+        WHERE name != excluded.name OR root_path != excluded.root_path
+      `.pipe(Effect.mapError(persistence("projects.ensureGroups")))
+    })
+
+  const ensureGroups = (groups: ReadonlyArray<GroupProject>, groupsDir: string) =>
+    Effect.forEach(groups, (group) => ensureGroup(group, groupsDir), { discard: true })
+
   const update = (input: UpdateProject) =>
     Effect.gen(function* () {
       const current = yield* get(input.id)
@@ -339,6 +371,7 @@ const make = Effect.gen(function* () {
     update,
     icon,
     ensureChats,
+    ensureGroups,
     remove: (id) =>
       sql`DELETE FROM project WHERE id = ${id}`.pipe(Effect.asVoid, Effect.mapError(persistence("projects.delete"))),
   })

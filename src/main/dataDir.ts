@@ -26,7 +26,7 @@ export const desktopPid = (profile: string) => {
   return isAlive(pid) ? pid : undefined
 }
 
-const OWN_DIRS = new Set(["chats", "attachments", "accounts", "tiny-vm", "cloudflared", "resource-monitor"])
+const OWN_DIRS = new Set(["chats", "groups", "attachments", "accounts", "tiny-vm", "cloudflared", "resource-monitor"])
 
 const isOwn = (name: string) =>
   OWN_DIRS.has(name) || name.startsWith("hinacode.sqlite") || name.startsWith("kkcode.sqlite")

@@ -1,7 +1,8 @@
 import { join } from "node:path"
 import { ProviderId } from "../shared/agent.ts"
+import type { ClientSettings as ClientSettingsValue } from "../shared/domain.ts"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Stream } from "effect"
 import { AgentBinaries } from "./agents/binary.ts"
 import * as ClaudeProvider from "./agents/claude/index.ts"
 import { mockScenarios, usageLimitLayer } from "./agents/claude/mock.ts"
@@ -160,9 +161,24 @@ export const makeAppLayer = ({
   ).pipe(Layer.provide(settings))
   const spans = new SpanLedger(STALL_MS)
   const chats = Layer.effectDiscard(Projects.Projects.use((projects) => projects.ensureChats(join(userData, "chats"))))
+  const groups = Layer.effectDiscard(
+    Effect.gen(function* () {
+      const projects = yield* Projects.Projects
+      const clientSettings = yield* ClientSettings.ClientSettings
+      const ensureGroups = ({ sidebarGroups }: ClientSettingsValue) =>
+        projects
+          .ensureGroups(sidebarGroups.groups, join(userData, "groups"))
+          .pipe(Effect.catch((error) => Effect.logWarning("could not create group folders", error)))
+      const changes = yield* clientSettings.changes
+      yield* clientSettings.get.pipe(Effect.flatMap(ensureGroups), Effect.ignore)
+      yield* changes.pipe(Stream.runForEach(ensureGroups), Effect.forkScoped)
+    }),
+  )
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(chats),
+      Layer.provideMerge(groups),
+      Layer.provideMerge(ClientSettings.layer(userData)),
       Layer.provideMerge(Scratch.layer(join(userData, "scratch"))),
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
@@ -170,7 +186,6 @@ export const makeAppLayer = ({
       Layer.provideMerge(AgentAccounts.layer),
       Layer.provideMerge(settings),
     ),
-    ClientSettings.layer(userData),
     Messages.layer,
     Attachments.layer(join(userData, "attachments")),
     Artifacts.layer(join(userData, "artifacts")),

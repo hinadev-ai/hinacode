@@ -56,7 +56,7 @@ export const useThreads = create<ThreadsState>()((set, get) => {
           else if (byId[id] === undefined || byId[id].updatedAt <= thread.updatedAt) byId[id] = thread
         }
         set({
-          projects,
+          projects: projects.filter((project) => project.kind !== "group"),
           worktrees: {
             ...Object.fromEntries(worktrees.map((worktree) => [worktree.id, worktree])),
             ...Object.fromEntries(ownWorktrees),
