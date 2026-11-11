@@ -193,7 +193,7 @@ const summary = (report: Report) => {
     ["startup: gh processes", startup("gh")],
   ]
   for (const thread of report.threads) {
-    const label = `${thread.title.slice(0, 24)} (${thread.messages} msgs, ${thread.kb} KB)`
+    const label = `${thread.title.slice(0, 24)} [${thread.id.slice(0, 8)}] (${thread.messages} msgs, ${thread.kb} KB)`
     const cold = (open: Open) => open.id === thread.id && open.round === 0
     const warm = (open: Open) => open.id === thread.id && open.round > 0
     rows.push(
@@ -210,6 +210,8 @@ const summary = (report: Report) => {
     ["idle: git processes per hour", perHour(report.idle.git)],
     ["idle: gh processes per hour", perHour(report.idle.gh)],
   )
+  const duplicate = rows.find(([name], index) => rows.findIndex(([other]) => other === name) !== index)
+  if (duplicate) throw new Error(`${report.label} has two rows named "${duplicate[0]}"; pass each thread id once`)
   return rows
 }
 
