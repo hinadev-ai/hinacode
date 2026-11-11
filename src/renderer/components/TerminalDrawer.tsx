@@ -104,7 +104,7 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
           <TabsList
             variant="line"
             aria-label={m.terminal_sessions()}
-            className="min-w-0 overflow-x-auto overflow-y-hidden"
+            className="min-w-0 scrollbar-none overflow-x-auto overflow-y-hidden"
           >
             {sessions.map((session, index) => (
               <SessionTab
