@@ -45,6 +45,9 @@ type Results = {
 const [label, scenario = "history", check] = process.argv.slice(2)
 if (!/^[\w-]+$/.test(label ?? "") || !["history", "claude", "footprint", "startup"].includes(scenario))
   throw new Error("usage: memory.ts <label> [history|claude|footprint|startup] [--check]")
+const idleSeconds = Number(process.env.PERF_IDLE_SECONDS ?? 300)
+if (!Number.isInteger(idleSeconds) || idleSeconds <= 0 || idleSeconds % 5 !== 0)
+  throw new Error("PERF_IDLE_SECONDS must be a positive multiple of 5, the sampling interval")
 const root = process.cwd()
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const packagedApp = process.env.HINACODE_PERF_APP
@@ -278,7 +281,7 @@ try {
       messagesPerLongTranscript: 2000,
       sha256: digest.digest("hex"),
       bytes: seed.bytes,
-      idleSeconds: Number(process.env.PERF_IDLE_SECONDS ?? 300),
+      idleSeconds,
       gpu: packagedApp ? "default" : "disabled",
     }
     results.workload = workload
