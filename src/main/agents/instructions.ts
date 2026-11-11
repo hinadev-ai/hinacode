@@ -2,7 +2,7 @@ import type { ExperimentalSettings } from "../../shared/domain.ts"
 import type { ModelInfo } from "../../shared/agent.ts"
 import { providerInfo } from "../../shared/providers.ts"
 import { artifactMention, terminalMention, threadMention } from "../../shared/mentions.ts"
-import type { GroupContext } from "../services/groupContext.ts"
+import type { GroupContext, GroupMember } from "../services/groupContext.ts"
 import type { SubagentChoice } from "./runAgent.ts"
 
 // FIXME: Claude Code defers MCP tools, so agents see only their names until they load one
@@ -123,10 +123,18 @@ const environmentInstructions = ({
   scratch directory: \`${scratchDirectory}\`
 </environment>`
 
-const groupInstructions = ({ name, instructions, skills }: GroupContext) =>
+const memberLine = ({ id, name, rootPath, repository }: GroupMember) =>
+  `- \`${id}\`: ${name} (\`${rootPath}\`${repository === null ? "" : `, ${repository}`})`
+
+const groupInstructions = ({ name, instructions, skills, members }: GroupContext) =>
   [
     `<group>
 This project is in the HinaCode project group "${name}". The group's rules and skills below apply on top of the repository's own. Before you do a task a group skill covers, read its SKILL.md.`,
+    ...(members.length === 0
+      ? []
+      : [
+          `You are this group's conductor. You coordinate the projects below: read them directly by path, and do the work by starting a thread in each with the hinacode \`create_thread\` tool and its \`project\` id, then follow those threads with \`read_thread\` and steer them with \`send_to_thread\`.\n\nGroup projects:\n${members.map(memberLine).join("\n")}`,
+        ]),
     ...(instructions === "" ? [] : [`Group AGENTS.md:\n${instructions}`]),
     ...(skills.length === 0
       ? []

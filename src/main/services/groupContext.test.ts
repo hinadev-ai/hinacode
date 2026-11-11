@@ -4,7 +4,8 @@ import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
-import { projectGroup, readGroup } from "./groupContext.ts"
+import type { Project } from "../../shared/domain.ts"
+import { groupMembers, projectGroup, readGroup } from "./groupContext.ts"
 
 const dirs: Array<string> = []
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })))
@@ -43,6 +44,40 @@ describe("projectGroup", () => {
   })
 })
 
+const project = (id: string, kind: Project["kind"], repository?: string): Project => ({
+  id,
+  name: id,
+  rootPath: `/code/${id}`,
+  setupScript: null,
+  createdAt: "",
+  updatedAt: "",
+  linearReview: false,
+  kind,
+  actions: [],
+  ...(repository === undefined ? {} : { repository }),
+})
+
+describe("groupMembers", () => {
+  const projects = [
+    project("g1", "group"),
+    project("p1", "folder", "o/web"),
+    project("p2", "folder"),
+    project("p4", "folder", "o/cli"),
+    project("chats", "chats"),
+  ]
+
+  it("lists the projects of a group project's group", () => {
+    expect(groupMembers(project("g1", "group"), projects, sidebarGroups)).toStrictEqual([
+      { id: "p1", name: "p1", rootPath: "/code/p1", repository: "o/web" },
+      { id: "p2", name: "p2", rootPath: "/code/p2", repository: null },
+    ])
+  })
+
+  it("lists nothing for a member project", () => {
+    expect(groupMembers(project("p1", "folder", "o/web"), projects, sidebarGroups)).toStrictEqual([])
+  })
+})
+
 describe("readGroup", () => {
   it.effect("reads AGENTS.md and the skills that have a name", () =>
     Effect.gen(function* () {
@@ -56,13 +91,19 @@ describe("readGroup", () => {
         name: "Shop",
         instructions: "Use pnpm.",
         skills: [{ name: "release", description: "Ship a release", path: join(root, "skills/release/SKILL.md") }],
+        members: [],
       })
     }).pipe(Effect.provide(NodeServices.layer)),
   )
 
   it.effect("reads a group folder without AGENTS.md or skills as empty", () =>
     Effect.gen(function* () {
-      expect(yield* readGroup("Shop", groupFolder({}))).toStrictEqual({ name: "Shop", instructions: "", skills: [] })
+      expect(yield* readGroup("Shop", groupFolder({}))).toStrictEqual({
+        name: "Shop",
+        instructions: "",
+        skills: [],
+        members: [],
+      })
     }).pipe(Effect.provide(NodeServices.layer)),
   )
 })

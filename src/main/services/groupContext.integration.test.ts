@@ -54,7 +54,11 @@ describe("groupContext", () => {
         instructions: "Use pnpm.",
         skills: [{ name: "release" }],
       })
-      expect(yield* groupContext("g1")).toMatchObject({ name: "Shop" })
+      expect((yield* groupContext(member.id))?.members).toStrictEqual([])
+      expect(yield* groupContext("g1")).toMatchObject({
+        name: "Shop",
+        members: [{ id: member.id, name: "api", rootPath: member.rootPath, repository: null }],
+      })
       expect(yield* groupContext(outsider.id)).toBeNull()
     }).pipe(Effect.provide(servicesAt(dataDir)))
   })
