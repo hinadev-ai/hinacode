@@ -53,10 +53,11 @@ export const groupMembers = (
 
 export const reachableProjects = (projectId: string) =>
   Effect.gen(function* () {
-    const listed = yield* (yield* Projects).listWithRepositories
-    const project = listed.find((candidate) => candidate.id === projectId)
-    if (project?.kind !== "group") return [projectId]
+    const projects = yield* Projects
+    const project = yield* projects.get(projectId)
+    if (project.kind !== "group") return [projectId]
     const { sidebarGroups } = yield* (yield* ClientSettings).get
+    const listed = yield* projects.listWithRepositories
     return [projectId, ...groupMembers(project, listed, sidebarGroups).map((member) => member.id)]
   })
 
