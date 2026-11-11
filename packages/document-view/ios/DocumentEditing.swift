@@ -375,6 +375,7 @@ extension DocumentBlocksView: UITextViewDelegate, UIGestureRecognizerDelegate {
 
   private func select(_ anchor: TextPoint, _ head: TextPoint) {
     editing.lostFocusedBlock = false
+    guard editing.editable else { return }
     guard head.block >= 0, head.block < items.count, items[head.block].block.editableText(cell: head.cell) != nil else {
       editing.focus = nil
       return blurDocument()
