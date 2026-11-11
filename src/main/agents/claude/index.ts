@@ -180,6 +180,8 @@ const toContextBreakdown = (usage: SDKControlGetContextUsageResponse): ContextBr
 const isIdle = (session: Session) =>
   session.turn === null && session.claims === 0 && session.unanswered.size === 0 && session.tasks.size === 0
 
+const hasBackgroundWork = (session: Session) => session.tasks.size > 0 || session.wakeup !== null
+
 const startsByItself = (session: Session, message: SDKMessage) =>
   message.type === "system" &&
   message.subtype === "session_state_changed" &&
@@ -808,6 +810,17 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         return Semaphore.withPermit(lock, effect)
       }
 
+    const backgroundWorkBlocksRestart = (session: Session) => {
+      const labels = [...session.backgroundTasks, ...(session.wakeup === null ? [] : [session.wakeup])].map(
+        (task) => task.label,
+      )
+      const running = labels.length > 0 ? labels.join(", ") : "background work"
+      return new AgentError({
+        provider: id,
+        message: `This change restarts Claude Code, which would stop ${running}. Stop the background work on this thread first, or wait for it to finish.`,
+      })
+    }
+
     const reuseOrStartSession = (input: SessionInput, mode: PermissionMode) =>
       Effect.gen(function* () {
         const launch = yield* launchEnv(input)
@@ -820,6 +833,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
             existing.autoCompactTokens === input.autoCompactTokens
           )
             return claim(existing)
+          if (hasBackgroundWork(existing)) return yield* backgroundWorkBlocksRestart(existing)
           yield* closeSession(existing)
         }
         return yield* startSession(input, mode, launch)
