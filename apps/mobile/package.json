@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@effect/atom-react": "4.0.3",
     "@noble/hashes": "2.4.0",
     "@react-native-community/netinfo": "12.0.1",
     "@xterm/addon-fit": "^0.11.0",
