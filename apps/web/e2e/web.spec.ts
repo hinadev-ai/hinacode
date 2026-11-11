@@ -122,6 +122,16 @@ test("a hard reload, which skips the service worker, still loads the app", async
   await expect(sidebar(page)).toBeVisible()
 })
 
+test("the app links a manifest whose icons load", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  const devtools = await page.context().newCDPSession(page)
+  const { errors, manifest } = await devtools.send("Page.getAppManifest", {})
+  expect(errors).toEqual([])
+  expect(manifest).toMatchObject({ name: "HinaCode", display: "kStandalone" })
+  for (const icon of manifest?.icons ?? [])
+    expect((await page.request.get(icon.url)).headers()["content-type"], icon.url).toBe("image/png")
+})
+
 test("markup injected into the page cannot run script", async ({ page, web }) => {
   await openSignedIn(page, web)
   const ran = await page.evaluate(async () => {
