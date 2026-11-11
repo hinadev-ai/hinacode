@@ -8,6 +8,7 @@ on:
       - electron-builder.yml
       - package.json
       - pnpm-lock.yaml
+      - scripts/build-executable.ts
       - .github/workflows/build.yml
   workflow_dispatch:
 
@@ -90,9 +91,36 @@ jobs:
           # Actions mounts HOME at /github/home, which Wine refuses because root does not own it.
           WINEPREFIX: /root/.wine
 
+  # `hinacode serve` as a Node single executable, for servers without Node. It embeds the Node that builds it,
+  # so each target builds on its own runner.
+  executable:
+    needs: draft
+    if: ${{ !cancelled() && needs.draft.result != 'failure' }}
+    strategy:
+      matrix:
+        # Fork pull requests skip macOS, as in the mac job.
+        target: ${{ fromJSON(github.event.pull_request.head.repo.full_name != github.repository && github.event_name == 'pull_request' && '["linux-x64", "linux-arm64"]' || '["linux-x64", "linux-arm64", "darwin-arm64"]') }}
+    runs-on: ${{ fromJSON('{"linux-x64":"ubuntu-24.04","linux-arm64":"ubuntu-24.04-arm","darwin-arm64":"blacksmith-6vcpu-macos-latest"}')[matrix.target] }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - run: pnpm install --frozen-lockfile
+      - if: github.ref_type == 'tag'
+        run: npm pkg set version="${GITHUB_REF_NAME#v}"
+      - run: pnpm build:exe
+      - run: pnpm verify:exe
+      - if: github.ref_type == 'tag'
+        run: gh release upload "$GITHUB_REF_NAME" "dist-exe/hinacode-${{ matrix.target }}.tar.gz" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   release:
     if: github.ref_type == 'tag'
-    needs: [mac, linux-and-windows]
+    needs: [mac, linux-and-windows, executable]
     runs-on: ubuntu-latest
     steps:
       - run: gh release edit "$GITHUB_REF_NAME" --draft=false

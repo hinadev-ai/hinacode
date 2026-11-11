@@ -839,6 +839,18 @@ describe("pull request reads", () => {
     }).pipe(Effect.provide(gh.layer))
   })
 
+  it.effect("a read gh cannot send fails with gh's own error, not a JSON parse error", () => {
+    const gh = fakeGh(() => ({
+      stderr: "error connecting to api.github.com\ncheck your internet connection or https://githubstatus.com\n",
+      exitCode: 1,
+    }))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      const error = yield* Effect.flip(github.pullRequest(urlOf(1)))
+      expect(error.message).toContain("error connecting to api.github.com")
+    }).pipe(Effect.provide(gh.layer))
+  })
+
   it.effect("a merge through HinaCode shows on the next read", () => {
     let state = "OPEN"
     const gh = fakeGh((args) => {

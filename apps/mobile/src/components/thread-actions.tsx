@@ -1,6 +1,6 @@
 import type { Thread } from "@shared/domain.ts"
 import { setStringAsync } from "expo-clipboard"
-import { Link, useGlobalSearchParams } from "expo-router"
+import { Link, useNavigationContainerRef } from "expo-router"
 import { type ReactNode, useEffect, useEffectEvent, useState } from "react"
 import { AccessibilityInfo, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { isIOS } from "@/components/glass"
@@ -68,7 +68,9 @@ const succeeds = async (action: () => Promise<void>, onError: (message: string) 
 }
 
 export function useThreadActions(thread: Thread) {
-  const { id: openId } = useGlobalSearchParams<{ id?: string }>()
+  const navigation = useNavigationContainerRef()
+  const isOpen = () =>
+    (navigation.getCurrentRoute() as { params?: { id?: string } } | undefined)?.params?.id === thread.id
   const [running, setRunning] = useState<ThreadActionName | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [renaming, setRenaming] = useState(false)
@@ -92,7 +94,7 @@ export function useThreadActions(thread: Thread) {
 
   const run = async (name: ThreadActionName) => {
     const done = await perform(name)
-    if (done && leavesThread(name) && openId === thread.id) leaveThread()
+    if (done && leavesThread(name) && isOpen()) leaveThread()
     return done
   }
 

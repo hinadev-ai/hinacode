@@ -32,12 +32,15 @@ interface Query {
 
 const queries: Array<Query> = []
 let answer: (query: Query) => Promise<unknown> = async () => ANSWER
+let apiError: string | null = null
 
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@anthropic-ai/claude-agent-sdk")>()),
   query: async function* (query: Query) {
     queries.push(query)
-    yield { type: "result", subtype: "success", structured_output: await answer(query) }
+    yield apiError === null
+      ? { type: "result", subtype: "success", is_error: false, structured_output: await answer(query) }
+      : { type: "result", subtype: "success", is_error: true, result: apiError }
   },
 }))
 
@@ -232,6 +235,17 @@ describe("PullRequestGuides", () => {
         yield* ensure(url, "h1", { retry: true })
         yield* until(url, (state) => state.guide?.head === "h1")
         expect(queriesFor(url)).toHaveLength(2)
+      }),
+    )
+
+    it.effect("a failed head shows the API error Claude Code reported", () =>
+      Effect.gen(function* () {
+        const url = "https://github.com/o/overloaded/pull/1"
+        apiError = "API Error: 529 Overloaded"
+        yield* ensure(url, "h1")
+        const failed = yield* until(url, (state) => state.job?.status === "failed")
+        apiError = null
+        expect(failed.job).toStrictEqual({ status: "failed", head: "h1", message: "API Error: 529 Overloaded" })
       }),
     )
 
