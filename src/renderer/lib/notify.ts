@@ -92,16 +92,19 @@ export const showSystemNotification = async ({ title, body, tag, onClick }: Syst
 const canShowSystemNotification = () =>
   !inBrowser() || ("Notification" in window && Notification.permission === "granted")
 
-export const notify = (surface: Surface, { alert, title, body, sound, tag, onClick }: Notice) => {
+const showAlertToast = ({ alert, title, body, tag, onClick }: Notice) =>
+  showToast[alert](title, {
+    description: body,
+    ...(tag === undefined ? {} : { id: tag }),
+    ...(alert === "completed" ? {} : { duration: LINGERING_TOAST_MS }),
+    ...(onClick === undefined ? {} : { action: { label: m.notification_open(), onClick } }),
+  })
+
+export const notify = (surface: Surface, notice: Notice) => {
   if (surface === "desktop" && canShowSystemNotification()) {
-    void showSystemNotification({ title, body, tag, onClick })
+    void showSystemNotification(notice).catch(() => showAlertToast(notice))
   } else {
-    showToast[alert](title, {
-      description: body,
-      ...(tag === undefined ? {} : { id: tag }),
-      ...(alert === "completed" ? {} : { duration: LINGERING_TOAST_MS }),
-      ...(onClick === undefined ? {} : { action: { label: m.notification_open(), onClick } }),
-    })
+    showAlertToast(notice)
   }
-  if (sound) playChime(alert)
+  if (notice.sound) playChime(notice.alert)
 }
