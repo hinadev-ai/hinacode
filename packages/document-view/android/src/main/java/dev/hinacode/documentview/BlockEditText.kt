@@ -223,7 +223,10 @@ internal class BlockEditText(context: Context, private val listener: EditorListe
     }
 
     override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
-      if (text?.toString() == "\n") return settled(true).also { structural(StructuralKey.ENTER, false) }
+      if (text?.toString() == "\n") {
+        if (composing) super.finishComposingText()
+        return settled(true).also { structural(StructuralKey.ENTER, false) }
+      }
       return settled(super.commitText(text, newCursorPosition))
     }
 
