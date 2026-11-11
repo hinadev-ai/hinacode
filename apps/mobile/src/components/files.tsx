@@ -1,6 +1,9 @@
-import { type Changes, type FileSearchHit, type FsEntry, isThreadBusy, type Thread } from "@shared/domain.ts"
+import { type FileSearchHit, type FsEntry, isThreadBusy, type Thread } from "@shared/domain.ts"
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { Effect } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
 import { router } from "expo-router"
-import { type ReactNode, useEffect, useRef, useState } from "react"
+import { type ReactNode, useRef, useState } from "react"
 import {
   FlatList,
   Pressable,
@@ -20,13 +23,14 @@ import { SearchField } from "@/components/search-field"
 import { Button, EmptyState, Notice } from "@/components/ui"
 import { HIT, type Palette, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call, RpcError } from "@/lib/connection"
+import { call, request } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { basename, dirname, entryIcon } from "@/lib/file-kinds"
 import { confirmDestructive } from "@/lib/confirm"
 import { type FilePatch, filePatches } from "@/lib/file-patches"
 import { lineSnippet, matchPaths, type PathMatch, splitPath } from "@/lib/path-match"
+import { asLoaded, failureOf, familyOf, beforeFirstHandshake, rpcFamily } from "@/lib/remote"
 import { useThreadRoot, useThreads } from "@/stores/threads"
 
 type GitStatus = NonNullable<FsEntry["gitStatus"]>
@@ -62,35 +66,50 @@ const openFile = (threadId: string, path: string, line?: number) =>
     params: line === undefined ? { id: threadId, path } : { id: threadId, path, line: String(line) },
   })
 
-type Loaded<T> = { readonly value: T } | { readonly error: string; readonly tag?: string }
+const workspaceFiles = rpcFamily("files.list")
+const folderListing = rpcFamily("fs.list")
+
+const isBusyNow = (threadId: string) => {
+  const thread = useThreads.getState().byId[threadId]
+  return thread !== undefined && isThreadBusy(thread.status)
+}
+
+const threadBusy = familyOf((threadId: string) =>
+  Atom.readable((get) => {
+    get.addFinalizer(useThreads.subscribe(() => get.setSelf(isBusyNow(threadId))))
+    return isBusyNow(threadId)
+  }),
+)
+
+const changesRead = familyOf((threadId: string) =>
+  Atom.make((get) => {
+    if (beforeFirstHandshake(get)) return Effect.never
+    if (get(threadBusy(threadId))) return Effect.never
+    return Effect.all({
+      worktree: request("threads.changes", { threadId, scope: "worktree" }),
+      turn: request("threads.changes", { threadId, scope: "turn" }),
+    })
+  }),
+)
+
+const contentSearch = familyOf((threadId: string, query: string) =>
+  Atom.make((get) => {
+    if (beforeFirstHandshake(get)) return Effect.never
+    return Effect.sleep("300 millis").pipe(Effect.andThen(request("search.files", { threadId, query, limit: 100 })))
+  }),
+)
 
 /** The thread's workspace: what it changed, a folder listing, a path filter and a content search. */
 export function FilesPanel({ thread }: { thread: Thread }) {
   const root = useThreadRoot(thread)
   const [query, setQuery] = useState("")
   const [searchContents, setSearchContents] = useState(false)
-  const [files, setFiles] = useState<Loaded<readonly string[]> | null>(null)
   const filtering = query.trim() !== ""
-  const wantFiles = filtering && files === null
-
-  useEffect(() => {
-    if (!wantFiles) return
-    let current = true
-    call("files.list", { threadId: thread.id }).then(
-      (paths) => current && setFiles({ value: paths }),
-      (cause) => current && setFiles({ error: errorText(cause) }),
-    )
-    return () => {
-      current = false
-    }
-  }, [wantFiles, thread.id])
+  const refreshChanges = useAtomRefresh(changesRead(thread.id))
 
   const changeQuery = (next: string) => {
     setQuery(next)
-    if (next.trim() !== "") return
-    setSearchContents(false)
-    // The agent keeps adding files, so each new search reads the list again.
-    setFiles(null)
+    if (next.trim() === "") setSearchContents(false)
   }
 
   if (root === null) return <Loading label={copy("mobile_files_finding_workspace")} />
@@ -111,15 +130,14 @@ export function FilesPanel({ thread }: { thread: Thread }) {
           key={root}
           root={root}
           threadId={thread.id}
-          header={(revision) => <ChangesSection thread={thread} revision={revision} />}
+          header={<ChangesSection thread={thread} />}
+          onRefresh={refreshChanges}
         />
       </View>
       {filtering && (
         <PathSearch
           threadId={thread.id}
           query={query.trim()}
-          files={files}
-          onRetryFiles={() => setFiles(null)}
           searchContents={searchContents}
           onSearchContents={() => setSearchContents(true)}
         />
@@ -132,43 +150,32 @@ function FolderBrowser({
   root,
   threadId,
   header,
+  onRefresh,
 }: {
   root: string
   threadId: string
-  /** Shown above the root folder's listing, read again on each pull to refresh. */
-  header: (revision: number) => ReactNode
+  header: ReactNode
+  onRefresh: () => void
 }) {
   const theme = useTheme()
   const [stack, setStack] = useState<readonly string[]>([""])
   const folder = stack[stack.length - 1]
-  const [listing, setListing] = useState<(Loaded<readonly FsEntry[]> & { folder: string }) | null>(null)
-  const [revision, setRevision] = useState(0)
-  const [refreshing, setRefreshing] = useState(false)
+  const listing = folderListing({ root, path: folder })
+  const result = useAtomValue(listing)
+  const refreshListing = useAtomRefresh(listing)
+  const shown = asLoaded(result)
+  const refreshing = AsyncResult.isSuccess(result) && result.waiting
 
-  useEffect(() => {
-    let current = true
-    call("fs.list", { root, path: folder })
-      .then(
-        (entries) => current && setListing({ folder, value: entries }),
-        (cause) => current && setListing({ folder, error: errorText(cause) }),
-      )
-      .finally(() => current && setRefreshing(false))
-    return () => {
-      current = false
-    }
-  }, [root, folder, revision])
-
-  const shown = listing?.folder === folder ? listing : null
   const open = (entry: FsEntry) =>
     entry.kind === "dir" ? setStack([...stack, entry.path]) : openFile(threadId, entry.path)
   const reload = () => {
-    setRefreshing(true)
-    setRevision(revision + 1)
+    refreshListing()
+    onRefresh()
   }
 
   const top = (
     <>
-      {stack.length === 1 && header(revision)}
+      {stack.length === 1 && header}
       <Breadcrumbs root={root} stack={stack} onSelect={(depth) => setStack(stack.slice(0, depth + 1))} />
     </>
   )
@@ -183,13 +190,7 @@ function FolderBrowser({
       ) : "error" in shown ? (
         <>
           {top}
-          <Failure
-            message={shown.error}
-            onRetry={() => {
-              setListing(null)
-              setRevision(revision + 1)
-            }}
-          />
+          <Failure message={shown.error} onRetry={refreshListing} />
         </>
       ) : (
         <FadeIn key={folder} style={styles.flex}>
@@ -210,36 +211,20 @@ function FolderBrowser({
   )
 }
 
-type ChangesRead = { readonly worktree: Changes | null; readonly turn: Changes | null }
-
 /**
  * The worktree's changes against the branch it forked from, each file opening into its diff, and Undo for the files
  * the last turn changed. Read again on pull to refresh and whenever a turn ends.
  */
-function ChangesSection({ thread, revision }: { thread: Thread; revision: number }) {
+function ChangesSection({ thread }: { thread: Thread }) {
   const theme = useTheme()
   const worktree = useThreads((state) => (thread.worktreeId === null ? undefined : state.worktrees[thread.worktreeId]))
   const busy = isThreadBusy(thread.status)
-  const [read, setRead] = useState<Loaded<ChangesRead> | null>(null)
-  const [reads, setReads] = useState(0)
+  const changes = changesRead(thread.id)
+  const read = useAtomValue(changes)
+  const readAgain = useAtomRefresh(changes)
 
-  useEffect(() => {
-    if (busy) return
-    let current = true
-    Promise.all([
-      call("threads.changes", { threadId: thread.id, scope: "worktree" }),
-      call("threads.changes", { threadId: thread.id, scope: "turn" }),
-    ]).then(
-      ([worktreeChanges, turn]) => current && setRead({ value: { worktree: worktreeChanges, turn } }),
-      (cause) => current && setRead({ error: errorText(cause) }),
-    )
-    return () => {
-      current = false
-    }
-  }, [thread.id, busy, revision, reads])
-
-  if (read === null) return null
-  if ("error" in read) return <Failure message={read.error} onRetry={() => setReads(reads + 1)} />
+  if (AsyncResult.isInitial(read)) return null
+  if (AsyncResult.isFailure(read)) return <Failure message={failureOf(read.cause).error} onRetry={readAgain} />
   const files = read.value.worktree?.files ?? []
   const turnFiles = read.value.turn?.files.length ?? 0
   if (files.length === 0 && turnFiles === 0) return null
@@ -280,7 +265,7 @@ function ChangesSection({ thread, revision }: { thread: Thread; revision: number
         </>
       )}
       {turnFiles > 0 && (
-        <UndoTurn threadId={thread.id} count={turnFiles} disabled={busy} onUndone={() => setReads(reads + 1)} />
+        <UndoTurn threadId={thread.id} count={turnFiles} disabled={busy} onUndone={readAgain} />
       )}
     </View>
   )
@@ -467,19 +452,18 @@ function EntryRow({ entry, onPress }: { entry: FsEntry; onPress: () => void }) {
 function PathSearch({
   threadId,
   query,
-  files,
-  onRetryFiles,
   searchContents,
   onSearchContents,
 }: {
   threadId: string
   query: string
-  files: Loaded<readonly string[]> | null
-  onRetryFiles: () => void
   searchContents: boolean
   onSearchContents: () => void
 }) {
   const theme = useTheme()
+  const filesAtom = workspaceFiles({ threadId })
+  const files = asLoaded(useAtomValue(filesAtom))
+  const retryFiles = useAtomRefresh(filesAtom)
   const matches = files !== null && "value" in files ? matchPaths(files.value, query) : []
   return (
     <FlatList
@@ -490,7 +474,7 @@ function PathSearch({
         files === null ? (
           <Loading label={copy("mobile_files_loading")} />
         ) : "error" in files ? (
-          <Failure message={files.error} onRetry={onRetryFiles} />
+          <Failure message={files.error} onRetry={retryFiles} />
         ) : matches.length === 0 ? (
           <Text style={[styles.quiet, { color: theme.textMuted }]}>{copy("mobile_files_no_matches", { query })}</Text>
         ) : undefined
@@ -579,28 +563,9 @@ function Emphasized({
 
 function ContentSearch({ threadId, query }: { threadId: string; query: string }) {
   const theme = useTheme()
-  const [result, setResult] = useState<(Loaded<readonly FileSearchHit[]> & { query: string }) | null>(null)
-  const [revision, setRevision] = useState(0)
-
-  // Once asked for, contents follow the query as it changes, 300 ms after the last keystroke, so typing does not
-  // start a ripgrep run on the desktop per character.
-  useEffect(() => {
-    let current = true
-    const timer = setTimeout(() => {
-      call("search.files", { threadId, query, limit: 100 }).then(
-        (hits) => current && setResult({ query, value: hits }),
-        (cause) =>
-          current &&
-          setResult({ query, error: errorText(cause), tag: cause instanceof RpcError ? cause.tag : undefined }),
-      )
-    }, 300)
-    return () => {
-      current = false
-      clearTimeout(timer)
-    }
-  }, [threadId, query, revision])
-
-  const shown = result?.query === query ? result : null
+  const search = contentSearch(threadId, query)
+  const shown = asLoaded(useAtomValue(search))
+  const searchAgain = useAtomRefresh(search)
   return (
     <View>
       <Text style={[styles.heading, { color: theme.textMuted }]}>
@@ -614,13 +579,7 @@ function ContentSearch({ threadId, query }: { threadId: string; query: string })
             <Notice text={copy("mobile_files_ripgrep_missing")} tone="attention" />
           </View>
         ) : (
-          <Failure
-            message={shown.error}
-            onRetry={() => {
-              setResult(null)
-              setRevision(revision + 1)
-            }}
-          />
+          <Failure message={shown.error} onRetry={searchAgain} />
         )
       ) : shown.value.length === 0 ? (
         <Text style={[styles.quiet, { color: theme.textMuted }]}>{copy("mobile_files_no_lines", { query })}</Text>

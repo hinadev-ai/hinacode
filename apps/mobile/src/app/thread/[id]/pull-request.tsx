@@ -1,3 +1,4 @@
+import { useAtomMount } from "@effect/atom-react"
 import type {
   CheckRun,
   CheckRunStatus,
@@ -10,7 +11,7 @@ import { linearReviewUrl } from "@shared/github.ts"
 import { providerInfo } from "@shared/providers.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "@shared/pullRequestPrompts.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
-import { type ReactNode, useEffect, useState } from "react"
+import { type ReactNode, useState } from "react"
 import { Alert, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
@@ -22,12 +23,12 @@ import { OptionRow, Sheet } from "@/components/sheet"
 import { Button, IconButton, Notice, Pill, Toggle, UnderlineTabs } from "@/components/ui"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call, useConnection } from "@/lib/connection"
+import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { openWebUrl } from "@/lib/open-url"
 import { reviewLabel, reviewTone, statusGlyph, statusLabel } from "@/lib/pull-request-labels"
-import { filesKey, pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
+import { filesKey, loadDetailAtom, pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
 type Tab = "info" | "code"
@@ -53,7 +54,6 @@ function useWebLink(threadId: string, url: string): WebLink {
 export default function PullRequestScreen() {
   const theme = useTheme()
   const { id, url } = useLocalSearchParams<{ id: string; url: string }>()
-  const connected = useConnection((state) => state.status === "connected")
   const remote = usePullRequests((state) => state.details[url])
   const link = usePullRequests((state) => state.linksByThread[id]?.find((existing) => existing.url === url) ?? null)
   const [refreshing, setRefreshing] = useState(false)
@@ -61,9 +61,7 @@ export default function PullRequestScreen() {
   const [barHeight, setBarHeight] = useState(0)
   const web = useWebLink(id, url)
 
-  useEffect(() => {
-    if (connected) void usePullRequests.getState().loadDetail(url)
-  }, [connected, url])
+  useAtomMount(loadDetailAtom(url))
 
   const reload = () => usePullRequests.getState().loadDetail(url, { force: true })
   const refresh = async () => {

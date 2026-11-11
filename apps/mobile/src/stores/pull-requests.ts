@@ -9,6 +9,7 @@ import type {
 import { call, onEvent, RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
+import { loaderFamily } from "@/lib/remote"
 
 /** A value read from GitHub through the desktop. A refresh keeps the last value until the new one lands. */
 export type Remote<T> =
@@ -236,6 +237,14 @@ export const usePullRequests = create<PullRequestsState>()((set, get) => {
     setCodeView: (codeView) => set({ codeView }),
   }
 })
+
+export const loadPullRequestAtom = loaderFamily((url: string) => usePullRequests.getState().loadPullRequest(url))
+
+export const loadDetailAtom = loaderFamily((url: string) => usePullRequests.getState().loadDetail(url))
+
+export const loadFilesAtom = loaderFamily((url: string, head: string) => usePullRequests.getState().loadFiles(url, head))
+
+export const loadGuideAtom = loaderFamily((url: string) => usePullRequests.getState().loadGuide(url))
 
 /** The pull request number in a GitHub pull request URL, so a link can show `#123` before GitHub answers. */
 export const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? null

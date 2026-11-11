@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { call } from "@/lib/connection"
 import { errorText } from "@/lib/error-text"
+import { loaderFamily } from "@/lib/remote"
 import { shownOutput } from "@/lib/tool-call"
 
 export type ToolOutputState =
@@ -35,4 +36,9 @@ export const useToolOutputs = create<ToolOutputsState>()((set, get) => {
       }
     },
   }
+})
+
+export const loadToolOutputAtom = loaderFamily(async (threadId: string, callId: string) => {
+  if (useToolOutputs.getState().byCall[toolOutputKey(threadId, callId)] === undefined)
+    await useToolOutputs.getState().load(threadId, callId)
 })

@@ -4,6 +4,7 @@ import type { TranscriptPush } from "@shared/contract.ts"
 import type { Message } from "@shared/domain.ts"
 import { foldTranscript } from "@shared/foldEvent.ts"
 import { call } from "@/lib/connection"
+import { loaderFamily } from "@/lib/remote"
 
 const STREAM_PUBLICATION_INTERVAL_MS = 100
 
@@ -255,6 +256,10 @@ export const useMessages = create<MessagesState>()((set, get) => {
 })
 
 const readPage = (threadId: string) => call("threads.transcript", { threadId, compact: true, page: {} })
+
+export const loadHistoryAtom = loaderFamily(async (threadId: string) => {
+  if (useMessages.getState().byThread[threadId] === undefined) await useMessages.getState().load(threadId)
+})
 
 export const isTranscriptPush = (event: { readonly type: string }): event is TranscriptPush =>
   event.type === "thread.event" || event.type === "message.created" || event.type === "message.updated"

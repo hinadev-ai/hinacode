@@ -1,27 +1,26 @@
-import { useEffect, useState } from "react"
+import { useAtomValue } from "@effect/atom-react"
+import { useState } from "react"
 import { Image, Platform } from "react-native"
 import { SvgXml } from "react-native-svg"
-import { create } from "zustand"
+import { Effect, Option } from "effect"
+import { Atom, AsyncResult } from "effect/reactivity"
 import { Icon } from "@/components/icon"
 import { useTheme } from "@/hooks/use-theme"
-import { call } from "@/lib/connection"
+import { request, type RpcError } from "@/lib/connection"
+import { beforeFirstHandshake, familyOf } from "@/lib/remote"
 
 /** Favicon data URLs by project id, null when the project has none. Every row of a project shares one read. */
-const useProjectIcons = create<Readonly<Record<string, string | null>>>()(() => ({}))
-const requested = new Set<string>()
+const projectIcon = familyOf((projectId: string) =>
+  Atom.make((get) => {
+    const shown = get.self<AsyncResult.AsyncResult<string | null, RpcError>>().pipe(Option.filter(AsyncResult.isSuccess))
+    if (Option.isSome(shown)) return Effect.succeed(shown.value.value)
+    if (beforeFirstHandshake(get)) return Effect.never
+    return request("projects.icon", { id: projectId })
+  }).pipe(Atom.keepAlive),
+)
 
-function useProjectIcon(projectId: string): string | null {
-  const icon = useProjectIcons((icons) => icons[projectId] ?? null)
-  useEffect(() => {
-    if (requested.has(projectId)) return
-    requested.add(projectId)
-    call("projects.icon", { id: projectId }).then(
-      (found) => useProjectIcons.setState({ [projectId]: found }),
-      () => requested.delete(projectId),
-    )
-  }, [projectId])
-  return icon
-}
+const useProjectIcon = (projectId: string): string | null =>
+  AsyncResult.getOrElse(useAtomValue(projectIcon(projectId)), () => null)
 
 /** The project's own favicon, or a folder when it has none, as on the desktop. */
 export function ProjectIcon({ projectId, size }: { projectId: string; size: number }) {

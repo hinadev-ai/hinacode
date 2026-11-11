@@ -215,7 +215,7 @@ async function hello() {
 /** Pairs with the target the driver read from the desktop, as scanning its QR code would. */
 async function pair(command: Command) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { pair } = require("@/components/connection-provider") as typeof import("@/components/connection-provider")
+  const { pair } = require("@/lib/start-app") as typeof import("@/lib/start-app")
   await pair(command.target as Parameters<typeof pair>[0])
   return {}
 }

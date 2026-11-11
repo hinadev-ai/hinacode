@@ -1,5 +1,8 @@
 import type { Thread, ThreadSearchHit } from "@shared/domain.ts"
-import { type ReactNode, useEffect, useState } from "react"
+import { useAtomValue } from "@effect/atom-react"
+import { Cause, Effect } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
+import type { ReactNode } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { GroupedCard, SectionHeading } from "@/components/grouped-card"
 import { Icon } from "@/components/icon"
@@ -11,11 +14,12 @@ import { threadStatusLabel } from "@/constants/thread-status"
 import { useNow } from "@/hooks/use-now"
 import { useThreadFilter } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { call } from "@/lib/connection"
+import { request, type RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { matchParts } from "@/lib/match-parts"
 import { openThread } from "@/lib/navigation"
+import { familyOf, beforeFirstHandshake } from "@/lib/remote"
 import { relativeTime } from "@/lib/relative-time"
 import { hitsWithinFilter, withinFilter } from "@/lib/thread-filter"
 import { listedThreads, matchThreads, useThreads } from "@/stores/threads"
@@ -31,29 +35,24 @@ type MessageSearch =
   | { readonly state: "done"; readonly hits: readonly ThreadSearchHit[] }
   | { readonly state: "error"; readonly error: string }
 
-type Answer = { readonly query: string; readonly hits: readonly ThreadSearchHit[]; readonly error: string | null }
+const messageSearch = familyOf((query: string) =>
+  Atom.make((get) => {
+    if (beforeFirstHandshake(get)) return Effect.never
+    return Effect.sleep(DEBOUNCE_MS).pipe(Effect.andThen(request("search.threads", { query, limit: MESSAGE_LIMIT })))
+  }),
+)
+
+const idleSearch = Atom.make(AsyncResult.initial<readonly ThreadSearchHit[], RpcError>())
 
 /** Messages that contain `query`, asked 150 ms after the last keystroke. An answer to an older query is dropped. */
 function useMessageSearch(query: string): MessageSearch {
   const trimmed = query.trim()
-  const [answer, setAnswer] = useState<Answer | null>(null)
-  useEffect(() => {
-    if (trimmed.length < MIN_MESSAGE_QUERY) return
-    let current = true
-    const timer = setTimeout(() => {
-      call("search.threads", { query: trimmed, limit: MESSAGE_LIMIT }).then(
-        (hits) => current && setAnswer({ query: trimmed, hits, error: null }),
-        (cause: unknown) => current && setAnswer({ query: trimmed, hits: [], error: errorText(cause) }),
-      )
-    }, DEBOUNCE_MS)
-    return () => {
-      current = false
-      clearTimeout(timer)
-    }
-  }, [trimmed])
-  if (trimmed.length < MIN_MESSAGE_QUERY) return { state: "idle" }
-  if (answer === null || answer.query !== trimmed) return { state: "loading" }
-  return answer.error === null ? { state: "done", hits: answer.hits } : { state: "error", error: answer.error }
+  const searched = trimmed.length >= MIN_MESSAGE_QUERY
+  const result = useAtomValue(searched ? messageSearch(trimmed) : idleSearch)
+  if (!searched) return { state: "idle" }
+  if (AsyncResult.isSuccess(result)) return { state: "done", hits: result.value }
+  if (AsyncResult.isFailure(result)) return { state: "error", error: errorText(Cause.squash(result.cause)) }
+  return { state: "loading" }
 }
 
 export type SearchScope = "all" | "threads" | "messages"

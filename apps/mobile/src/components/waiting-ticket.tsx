@@ -1,19 +1,19 @@
+import { useAtomMount } from "@effect/atom-react"
 import type { Thread } from "@shared/domain.ts"
 import { useFocusEffect } from "expo-router"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon } from "@/components/icon"
 import { Spinner } from "@/components/motion"
 import { ApprovalCard, QuestionCard } from "@/components/request-cards"
 import { mono, radius, subheading } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
-import { useThreadConnection } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { openRequests } from "@/lib/home-summary"
 import { openThread } from "@/lib/navigation"
 import { relativeTime } from "@/lib/relative-time"
-import { useMessages } from "@/stores/messages"
+import { loadHistoryAtom, useMessages } from "@/stores/messages"
 import { useThreadBranchName, useThreads } from "@/stores/threads"
 
 const MAX_TICKETS = 5
@@ -53,13 +53,10 @@ export function WaitingSection({ threads }: { threads: readonly Thread[] }) {
  */
 function WaitingTicket({ thread }: { thread: Thread }) {
   const theme = useTheme()
-  const connected = useThreadConnection(thread.id) === "connected"
   const history = useMessages((state) => state.byThread[thread.id])
   // NativeTabs keeps a hidden tab mounted, so the transcript is watched only while the Threads tab shows.
   useFocusEffect(useCallback(() => useMessages.getState().watch(thread.id), [thread.id]))
-  useEffect(() => {
-    if (connected && history === undefined) void useMessages.getState().load(thread.id)
-  }, [connected, history, thread.id])
+  useAtomMount(loadHistoryAtom(thread.id))
 
   const requests = openRequests(history)
   const first = requests[0]
