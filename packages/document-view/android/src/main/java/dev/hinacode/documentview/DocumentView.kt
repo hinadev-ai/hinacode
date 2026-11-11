@@ -2,6 +2,7 @@ package dev.hinacode.documentview
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -89,6 +90,7 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
   private var activeEditor: BlockEditText? = null
   private var pendingSelection: PendingSelection? = null
   private var lastFocus: Focus? = null
+  private var staleEditorRow: String? = null
   private val held = ArrayDeque<Patch>()
 
   private val images: Images = Images(
@@ -141,7 +143,11 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
         }
         return
       }
-      post { if (editor === activeEditor && editor.isAttachedToWindow && !editor.hasFocus() && !focusInside()) endEditing() }
+      post {
+        if (editor === activeEditor && editor.isAttachedToWindow && !editor.hasFocus() && !focusInside()) {
+          endEditing(rebind = false)
+        }
+      }
     }
 
     override fun format(editor: BlockEditText, action: String) {
@@ -192,6 +198,23 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
 
   init {
     addView(list, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+  }
+
+  override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+    if (event.actionMasked == MotionEvent.ACTION_DOWN && rebindStaleEditorRow()) {
+      measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY))
+      layout(left, top, right, bottom)
+    }
+    return super.dispatchTouchEvent(event)
+  }
+
+  private fun rebindStaleEditorRow(): Boolean {
+    val id = staleEditorRow ?: return false
+    staleEditorRow = null
+    val index = adapter.blocks.indexOfFirst { it.id == id }
+    if (index < 0) return false
+    adapter.notifyItemChanged(index)
+    return true
   }
 
   override fun onAttachedToWindow() {
@@ -324,6 +347,7 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
   }
 
   private fun focusOn(target: Focus, selection: PendingSelection) {
+    rebindStaleEditorRow()
     val current = adapter.focus
     val editor = activeEditor
     lastFocus = target
@@ -381,13 +405,19 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
     generation++
   }
 
-  private fun endEditing() {
+  /**
+   * [rebind] false leaves the focused row's editor in place until the next touch. Focus is lost that way when the screen
+   * is leaving, and react-native-screens then keeps every row attached for its exit animation, so swapping the row for
+   * its read-only kind would make RecyclerView recycle a view that is still attached and crash.
+   */
+  private fun endEditing(rebind: Boolean = true) {
     val editor = activeEditor
     val focus = adapter.focus
     editing = false
     if (focus != null) {
+      val id = adapter.blocks.getOrNull(focus.index)?.id
       dropFocus()
-      adapter.notifyItemChanged(focus.index)
+      if (rebind) adapter.notifyItemChanged(focus.index) else staleEditorRow = id
     }
     if (editor != null) {
       val keyboard = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
