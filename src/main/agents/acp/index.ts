@@ -449,13 +449,19 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
 
     const lastModels = yield* Ref.make<ReadonlyArray<ModelInfo>>([])
     const freshModels = yield* Effect.cachedWithTTL(
-      probeModels.pipe(Effect.tap((models) => (models.length > 0 ? Ref.set(lastModels, models) : Effect.void))),
+      probeModels.pipe(
+        Effect.tap((models) => (models.length > 0 ? Ref.set(lastModels, models) : Effect.void)),
+        Effect.tapError((error) => (error === signedOut ? Ref.set(lastModels, []) : Effect.void)),
+      ),
       (exit) => (Exit.isSuccess(exit) && exit.value.length > 0 ? Duration.minutes(10) : Duration.zero),
     )
     const listModels = Effect.gen(function* () {
       const last = yield* Ref.get(lastModels)
       if (last.length === 0) return yield* freshModels
-      yield* freshModels.pipe(Effect.ignore, Effect.forkIn(providerScope))
+      yield* freshModels.pipe(
+        Effect.ignore({ log: "Warn", message: `${name} model refresh failed` }),
+        Effect.forkIn(providerScope),
+      )
       return last
     })
 
