@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { Cache, Deferred, Duration, Effect, Exit, Queue, Schema, Scope, Stream } from "effect"
+import { Cache, Deferred, Duration, Effect, Exit, Queue, Ref, Schema, Scope, Stream } from "effect"
 import type {
   AgentAccount,
   AgentCommand,
   AgentEvent,
   ApprovalDecision,
+  ModelInfo,
   ProviderId,
   RunTurnInput,
 } from "../../../shared/agent.ts"
@@ -446,9 +447,17 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       return toModelInfos(probe, config.id, efforts)
     }).pipe(Effect.scoped)
 
-    const listModels = yield* Effect.cachedWithTTL(probeModels, (exit) =>
-      Exit.isSuccess(exit) && exit.value.length > 0 ? Duration.minutes(10) : Duration.zero,
+    const lastModels = yield* Ref.make<ReadonlyArray<ModelInfo>>([])
+    const freshModels = yield* Effect.cachedWithTTL(
+      probeModels.pipe(Effect.tap((models) => (models.length > 0 ? Ref.set(lastModels, models) : Effect.void))),
+      (exit) => (Exit.isSuccess(exit) && exit.value.length > 0 ? Duration.minutes(10) : Duration.zero),
     )
+    const listModels = Effect.gen(function* () {
+      const last = yield* Ref.get(lastModels)
+      if (last.length === 0) return yield* freshModels
+      yield* freshModels.pipe(Effect.ignore, Effect.forkIn(providerScope))
+      return last
+    })
 
     const probeCommands = (cwd: string) =>
       Effect.gen(function* () {
