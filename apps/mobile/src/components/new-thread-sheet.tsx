@@ -21,7 +21,7 @@ import { projectsByActivity } from "@/lib/projects"
 import { createThread } from "@/lib/start-thread"
 import { useDrafts } from "@/stores/drafts"
 import { useModels } from "@/stores/models"
-import { listedThreads, useThreads } from "@/stores/threads"
+import { draftThread, listedThreads, useThreads } from "@/stores/threads"
 
 type Picking = "environment" | "project" | null
 
@@ -34,8 +34,7 @@ function useProjectDraft(project: Project | undefined, open: boolean, onError: (
   const [draftIds, setDraftIds] = useState<Record<string, string>>({})
   const projectId = project?.id
   const draftId = projectId === undefined ? undefined : draftIds[projectId]
-  const cached = useThreads((state) => (draftId === undefined ? undefined : state.byId[draftId]))
-  const draft = cached?.status === "draft" ? cached : undefined
+  const draft = useThreads((state) => draftThread(state.byId, draftId))
   const hasDraft = draft !== undefined
 
   useEffect(() => {
