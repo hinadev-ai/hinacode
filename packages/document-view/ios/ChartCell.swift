@@ -132,17 +132,25 @@ final class ChartPainter: CanvasPainter {
     context.setLineWidth(2)
     context.setLineJoin(.round)
     context.setLineCap(.round)
-    for (index, item) in series.enumerated() {
+    let values = series.map { Array($0.values.prefix(chart.x.count)) }
+    let dotted = chart.x.count <= 30
+    for (index, values) in values.enumerated() {
       let path = CGMutablePath()
+      var dots: [CGPoint] = []
       var drawing = false
-      for (column, value) in item.values.prefix(chart.x.count).enumerated() {
+      for (column, value) in values.enumerated() {
         guard let value, value.isFinite else { drawing = false; continue }
         let point = CGPoint(x: plot.minX + slot * (CGFloat(column) + 0.5), y: y(value, plot))
+        let isolated = !drawing && (column + 1 >= values.count || values[column + 1].map { !$0.isFinite } ?? true)
+        if dotted || isolated { dots.append(point) }
         if drawing { path.addLine(to: point) } else { path.move(to: point); drawing = true }
       }
-      context.setStrokeColor(style.chartLanes[index % style.chartLanes.count].cgColor)
+      let color = style.chartLanes[index % style.chartLanes.count].cgColor
+      context.setStrokeColor(color)
       context.addPath(path)
       context.strokePath()
+      context.setFillColor(color)
+      for dot in dots { context.fillEllipse(in: CGRect(x: dot.x - 2.5, y: dot.y - 2.5, width: 5, height: 5)) }
     }
   }
 
