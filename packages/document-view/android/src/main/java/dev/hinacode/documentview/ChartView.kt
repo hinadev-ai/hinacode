@@ -233,7 +233,7 @@ internal class ChartView(context: Context) : View(context) {
         else -> left + span / count * (index + 0.5f)
       }
       val half = labelPaint.measureText(label) / 2
-      val x = (center - half).coerceIn(left - half, right - 2 * half)
+      val x = (center - half).coerceAtMost(right - 2 * half).coerceAtLeast(left - half)
       canvas.drawText(label, x, baseline, labelPaint)
     }
   }
