@@ -38,6 +38,10 @@ const KEYBOARD_STEP = 24
 
 const terminals = () => useTerminals.getState()
 
+const columnOf = (handle: HTMLElement | null) => handle?.parentElement?.parentElement
+const maxHeightIn = (column: HTMLElement | null | undefined) =>
+  Math.max(MIN_HEIGHT, (column?.clientHeight ?? 0) - RESERVED_HEIGHT)
+
 export function TerminalToggle({ threadId }: { threadId: string }) {
   const open = useTerminals((state) => state.byThreadId[threadId]?.open ?? false)
   const label = open ? m.terminal_hide() : m.terminal_show()
@@ -285,12 +289,18 @@ function TerminalScreen({ threadId, id, active }: { threadId: string; id: string
 function ResizeHandle({ height }: { height: number }) {
   const setHeight = useTerminals((state) => state.setHeight)
   const ref = useRef<HTMLDivElement>(null)
+  const [maxHeight, setMaxHeight] = useState<number>()
 
-  const maxHeight = () => {
-    const column = ref.current?.parentElement?.parentElement
-    return Math.max(MIN_HEIGHT, (column?.clientHeight ?? 0) - RESERVED_HEIGHT)
-  }
-  const resize = (next: number) => setHeight(Math.round(Math.min(maxHeight(), Math.max(MIN_HEIGHT, next))))
+  useEffect(() => {
+    const column = columnOf(ref.current)
+    if (!column) return
+    const observer = new ResizeObserver(() => setMaxHeight(maxHeightIn(column)))
+    observer.observe(column)
+    return () => observer.disconnect()
+  }, [])
+
+  const resize = (next: number) =>
+    setHeight(Math.round(Math.min(maxHeightIn(columnOf(ref.current)), Math.max(MIN_HEIGHT, next))))
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -325,6 +335,7 @@ function ResizeHandle({ height }: { height: number }) {
       aria-label={m.terminal_resize()}
       aria-valuenow={height}
       aria-valuemin={MIN_HEIGHT}
+      aria-valuemax={maxHeight}
       tabIndex={0}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}

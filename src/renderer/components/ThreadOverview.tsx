@@ -1,8 +1,9 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, type RefObject, startTransition, useRef, useState } from "react"
-import { RiGitPullRequestLine, RiGithubFill } from "react-icons/ri"
+import { RiGitPullRequestLine, RiGithubFill, RiGitlabFill } from "react-icons/ri"
 import { toast } from "sonner"
+import { codeHostOfUrl, parseGitLabMergeRequestUrl, pullRequestNumberLabel } from "../../shared/codeHost.ts"
 import type { ChecksStatus, Project, PullRequest, Thread, Worktree } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { useOpenSubagent } from "../lib/subagents.ts"
@@ -12,7 +13,7 @@ import { branchPullRequestAtom, callPromise, projectsAtom, pullRequestStatusAtom
 import { lineCounts } from "../lib/patch.ts"
 import { useThreadChanges } from "../lib/threadChanges.ts"
 import { cn } from "../lib/utils.ts"
-import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
+import { parsePullRequestUrl, pullRequestName } from "../lib/pullRequestRefs.ts"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
@@ -377,8 +378,7 @@ interface PullRequestRowProps {
 function PullRequestRow({ thread, url, linked }: PullRequestRowProps) {
   const status = useAtomValue(pullRequestStatusAtom(useThreadEnvironment(thread.id), url))
   const pullRequest = AsyncResult.isSuccess(status) ? status.value : undefined
-  const ref = parsePullRequestUrl(url)
-  const name = pullRequest?.title ?? (ref ? `${ref.owner}/${ref.name}#${ref.number}` : url)
+  const name = pullRequest?.title ?? pullRequestName(url)
   const indicator = pullRequest ? statusIndicator[pullRequest.status] : undefined
   const Icon = indicator?.Icon ?? RiGitPullRequestLine
   const rowRef = useRef<HTMLDivElement>(null)
@@ -441,7 +441,9 @@ interface PullRequestMenuProps {
 
 function PullRequestMenu({ thread, url, pullRequest, linked, anchor, className }: PullRequestMenuProps) {
   const href = usePullRequestHref(thread.id, url)
-  const number = pullRequest?.number ?? parsePullRequestUrl(url)?.number
+  const host = codeHostOfUrl(url)
+  const number = pullRequest?.number ?? parsePullRequestUrl(url)?.number ?? parseGitLabMergeRequestUrl(url)?.iid
+  const HostIcon = host === "gitlab" ? RiGitlabFill : RiGithubFill
   const unlink = () =>
     callPromise("pullRequests.unlink", { threadId: thread.id, url }).catch((cause: unknown) =>
       toast.error(m.overview_pr_unlink_failed({ message: errorMessage(cause) })),
@@ -472,7 +474,9 @@ function PullRequestMenu({ thread, url, pullRequest, linked, anchor, className }
         <div className="flex items-center">
           <DropdownMenuItem className="flex-1" onClick={() => openPullRequest(thread.id, url)}>
             <FileTextIcon aria-hidden />
-            {number === undefined ? m.overview_pr_view() : m.overview_pr_view_number({ number })}
+            {number === undefined
+              ? m.overview_pr_view()
+              : m.overview_pr_view_number({ number: pullRequestNumberLabel(host, number) })}
           </DropdownMenuItem>
           <DropdownMenuItem
             aria-label={m.overview_pr_copy_link()}
@@ -488,10 +492,10 @@ function PullRequestMenu({ thread, url, pullRequest, linked, anchor, className }
             target="_blank"
             rel="noreferrer"
             closeOnClick
-            aria-label={m.overview_pr_open_github()}
+            aria-label={host === "gitlab" ? m.pr_open_on_gitlab() : m.pr_open_on_github()}
             title={href}
           >
-            <RiGithubFill aria-hidden />
+            <HostIcon aria-hidden />
           </DropdownMenuLinkItem>
         </div>
         <DropdownMenuItem onClick={() => openPullRequest(thread.id, url, "files")}>

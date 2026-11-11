@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
+import { pullRequestNumberLabelOfUrl } from "../../shared/codeHost.ts"
 import type { PullRequest, PullRequestStatus, Thread } from "../../shared/domain.ts"
 import { environmentName, useClouds, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
 import { currentBranchAtom, pullRequestStatusesAtom } from "../lib/rpc.ts"
@@ -7,7 +8,7 @@ import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { useUi } from "../stores/ui.ts"
-import { useWorktrees } from "../stores/worktrees.ts"
+import { useActiveWorktree } from "./ArchiveDialog.tsx"
 import { StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
 import { BranchIcon, CloudIcon, LaptopIcon, StackIcon } from "@hinacode/icons"
 
@@ -18,14 +19,12 @@ const statusLabel = {
   closed: m.pr_state_closed,
 } satisfies Record<PullRequestStatus, () => string>
 
-const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
-
 const noLinks: ReadonlyArray<never> = []
 
 export function ComposerStatusLine({ thread }: { thread: Thread }) {
   const environment = useThreadEnvironment(thread.id)
   const clouds = useClouds()
-  const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
+  const worktree = useActiveWorktree(thread)
   const rootBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => "")
   const links = usePullRequests((state) => state.byThreadId[thread.id] ?? noLinks)
   const urls = links.map((link) => link.url)
@@ -85,7 +84,8 @@ function PullRequestSummary({
       className="flex shrink-0 items-center gap-1.5 rounded-sm tabular-nums underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className={cn("flex items-center gap-1", status && statusIndicator[status].className)}>
-        <StatusIcon status={status} className="size-3" />#{pullRequestNumber(url)}
+        <StatusIcon status={status} className="size-3" />
+        {pullRequestNumberLabelOfUrl(url)}
         {status && <span className="sr-only">{statusLabel[status]()}</span>}
       </span>
       {pullRequest && (
