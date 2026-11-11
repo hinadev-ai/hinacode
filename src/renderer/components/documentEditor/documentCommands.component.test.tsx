@@ -250,7 +250,9 @@ const pasteOnDesktop = (markdown: string, at: string, text: string) => {
     enableInputRules: false,
   })
   select(editor, { name: "paste", markdown, at, steps: [] })
-  editor.view.pasteText(text)
+  const clipboardData = new DataTransfer()
+  clipboardData.setData("text/plain", text)
+  editor.view.pasteText(text, new ClipboardEvent("paste", { clipboardData }))
   const result = { json: editor.getJSON(), markdown: editor.getMarkdown() }
   editor.destroy()
   return result

@@ -274,6 +274,11 @@ export function createDocumentSession({
       const start = positionAt({ block, cell, offset: from })
       const end = positionAt({ block, cell, offset: to })
       if (start === null || end === null) return false
+      if (/[\r\n]/.test(text))
+        return change(() => {
+          engine.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start, end)))
+          engine.paste(text)
+        }, true)
       return change(() => {
         const tr = editor.state.tr
         if (text === "") tr.delete(start, end)

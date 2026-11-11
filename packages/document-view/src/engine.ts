@@ -1,5 +1,5 @@
 import { Editor } from "@tiptap/core"
-import type { Node } from "@tiptap/pm/model"
+import { Fragment, type Node, Slice } from "@tiptap/pm/model"
 import { EditorState, type Transaction } from "@tiptap/pm/state"
 import type { DocumentMarkdown } from "../../../src/shared/document/parse.ts"
 import { createDocumentMarkdown, documentExtensions, documentMarkdown } from "../../../src/shared/document/schema.ts"
@@ -21,6 +21,23 @@ const keyView = (editor: Editor) => ({
   composing: false,
   editable: true,
   hasFocus: () => true,
+})
+
+const plainTextSlice = (state: EditorState, text: string) => {
+  const { $from } = state.selection
+  const { schema } = state
+  if ($from.parent.type.spec.code) return new Slice(Fragment.from(schema.text(text.replace(/\r\n?/g, "\n"))), 0, 0)
+  const marks = $from.marks()
+  const paragraphs = text
+    .split(/(?:\r\n?|\n)+/)
+    .map((line) => schema.nodes["paragraph"]!.create(null, line === "" ? null : schema.text(line, marks)))
+  return Slice.maxOpen(Fragment.from(paragraphs), true)
+}
+
+const pasteEvent = (text: string) => ({
+  type: "paste",
+  clipboardData: { getData: (type: string) => (type === "text/plain" || type === "Text" ? text : ""), files: [] },
+  preventDefault: () => {},
 })
 
 const keyEvent = (key: StructuralKey, shiftKey: boolean) => ({
@@ -63,6 +80,15 @@ export function createDocumentEngine() {
       return editor.state.plugins.some(
         (plugin) => plugin.props.handleKeyDown?.call(plugin, view as never, event as never) === true,
       )
+    },
+    paste: (text: string) => {
+      const view = keyView(editor)
+      const slice = plainTextSlice(editor.state, text)
+      const event = pasteEvent(text)
+      const handled = editor.state.plugins.some(
+        (plugin) => plugin.props.handlePaste?.call(plugin, view as never, event as never, slice) === true,
+      )
+      if (!handled) editor.view.dispatch(editor.state.tr.replaceSelection(slice).setMeta("paste", true))
     },
     dispatch: (tr: Transaction) => editor.view.dispatch(tr),
   }
