@@ -8,15 +8,12 @@ import { familyOf, handshakes } from "@/lib/remote"
 type ByProvider = Readonly<Partial<Record<ProviderId, readonly ModelInfo[]>>>
 
 interface ModelsState {
-  /** By server id, since each machine has its own agents and accounts. `""` is a call that named no server. */
   readonly byServer: Readonly<Record<string, ByProvider>>
-  /** Fetches a provider's models on `server` once; rejects when the server could not list them. */
   readonly load: (server: string | undefined, provider: ProviderId) => Promise<void>
 }
 
 const inFlight = new Map<string, Promise<void>>()
 
-/** The models each agent offers on each server, cached for the life of the app like the desktop's `modelsAtom`. */
 export const useModels = create<ModelsState>()((set, get) => ({
   byServer: {},
   load: (server, provider) => {

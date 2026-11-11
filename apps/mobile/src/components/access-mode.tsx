@@ -12,7 +12,6 @@ export const accessModes: Record<AccessMode, { label: string; icon: IconName }> 
   full: { label: copy("mobile_settings_access_full"), icon: "Unlock" },
 }
 
-/** What each mode lets through, which differs by agent and, for Claude's auto mode, by model. */
 const supervisedHints: Record<ProviderId, string> = {
   claude: copy("mobile_settings_access_supervised_hint"),
   codex: copy("mobile_composer_access_supervised_codex"),
@@ -41,7 +40,6 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-/** The access modes as one section of the composer's settings sheet, as the desktop keeps them in its model picker. */
 export function AccessModeSection({
   thread,
   model,

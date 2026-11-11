@@ -11,7 +11,6 @@ const OPENING_FENCE = /^ {0,3}(?:(`{3,})([^`]*)|(~{3,})(.*))$/
 const QUOTE = /^ {0,3}> ?(.*)$/
 const LIST_OR_INDENTED = /^(?:\s+|\s*(?:[-*+]|\d{1,9}[.)])[ \t])/
 
-/** Past this, a segment ends at the next paragraph break, so a long document's list can window it. */
 const SEGMENT_CHARACTERS = 8192
 
 const isClosingFence = (line: string, marker: string) => {
@@ -38,11 +37,6 @@ function chartAsMarkdown({ spec, labels }: Chart) {
   return [spec.title && `**${spec.title}**`, spec.notes, table].filter(Boolean).join("\n\n")
 }
 
-/**
- * Splits a document into runs of Markdown and the callouts between them, since a callout draws as its own view. A
- * valid chart fence becomes its title, notes and a table of its rows. Fenced code stays as written, an invalid chart
- * and a mermaid diagram included, and a quote is a callout only when its first line holds nothing but the marker.
- */
 export function documentSegments(markdown: string): readonly DocumentSegment[] {
   const lines = rewriteMarkdownExtras(markdown).split(/\r?\n/)
   const segments: DocumentSegment[] = []

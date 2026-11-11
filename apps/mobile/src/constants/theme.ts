@@ -6,24 +6,17 @@ import type { IconName } from "@/components/icon"
 export const Colors = {
   light: {
     text: "#233737",
-    /** A thread row at rest, a step below a row that needs the developer. */
     textResting: "#3e5151",
     textMuted: "#556767",
     background: "#f7f7f2",
-    /** Raised cards and floating bars over the page: tickets, the composer, the thread control bar. */
     card: "#ffffff",
     surface: "#e8e8e0",
     surfaceStrong: "#d0d0c6",
-    /** A switch's off track, 3:1 on `surface` and `background` so the control reads when it is off. */
     controlOff: "#738484",
-    /** A filled control that cannot be pressed yet, under `textMuted`. A step above every surface it sits on. */
     disabled: "#d0d0c6",
-    /** A ghost button's press and the idle send button, the desktop's `bg-foreground/6`. */
     inkWash: "rgba(35, 55, 55, 0.06)",
-    /** A sheet over the scrim, and a selected or pressed row on it. Dark sheets sit a step above the page. */
     sheet: "#f7f7f2",
     sheetRaised: "#e8e8e0",
-    /** Dims the page under a sheet. The dark page is already near black, so it needs a heavier scrim to recede. */
     scrim: "rgba(10, 10, 10, 0.5)",
     border: "#e0e0d7",
     primary: "#c0482c",
@@ -36,15 +29,11 @@ export const Colors = {
     dangerBg: "#fde2e2",
     neutralBg: "#e8e8e0",
     link: "#a73920",
-    /** GitHub's open and merged pull request colors, the desktop's `--pr-open` and `--pr-merged`. */
     prOpen: "#1a7f37",
     prMerged: "#8250df",
-    /** Skills, commands and mentions in the composer, as the desktop's `--syntax-token`. */
     token: "#a73920",
     tokenBg: "rgba(192, 72, 44, 0.12)",
-    /** A search match in a line of code, the desktop's `--color-find-match`. */
     findMatch: "rgba(167, 57, 32, 0.22)",
-    /** The send button's halo, the desktop's `send-halo` in the Hina themes. */
     haloA: "#c0482c",
     haloB: "#c37b00",
     haloC: "#921950",
@@ -97,32 +86,22 @@ const toneColor = (theme: Palette): Record<IndicatorTone, string> => ({
   foreground: theme.text,
   muted: theme.textMuted,
   attention: theme.attention,
-  // The desktop's `--success` is the phone's `running`.
   success: theme.running,
   danger: theme.danger,
   prOpen: theme.prOpen,
   prMerged: theme.prMerged,
 })
 
-/** An indicator from `@shared/threadStatus.ts` as an icon in this theme's color. */
 export const indicatorGlyph = (theme: Palette, { icon, tone }: { icon: IconName; tone: IndicatorTone }) => ({
   name: icon,
   color: toneColor(theme)[tone],
 })
 
-/**
- * Each agent's mark in its own color, the same values as the desktop's `--provider-*` tokens. OpenAI's mark and the
- * magpie are monochrome, so they take the text color.
- */
 export const ProviderColors = {
   light: { claude: "#c15f3c", codex: Colors.light.text, muse: "#0064e0", opencode: "#a16207", magpie: Colors.light.text },
   dark: { claude: "#d97757", codex: Colors.dark.text, muse: "#0081fb", opencode: "#eab308", magpie: Colors.dark.text },
 } as const
 
-/**
- * Code colors per syntax class, from GitHub's light and dark themes. Each reads at 4.5:1 or more on `surface`,
- * the code block background. Operators share the keyword color, as on GitHub.
- */
 export const SyntaxColors = {
   light: {
     plain: Colors.light.text,
@@ -148,11 +127,6 @@ export const SyntaxColors = {
   },
 } as const
 
-/**
- * A document's callout tones: `ink` is the desktop's `--graph-lane-1`, `--graph-lane-2`, `--callout-important`,
- * `--attention` and `--destructive` in the Hina themes. `tint` is the tone over `background`, at 8% in light and 16%
- * in dark. `label` mixes the tone 28% toward `text`, as the desktop does, and reads at 4.5:1 or more on `tint`.
- */
 export const CalloutColors = {
   light: {
     note: { ink: "#2a75ba", tint: "#e7edee", label: "#296393" },
@@ -172,17 +146,12 @@ export const CalloutColors = {
 
 export const mono = Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" })
 
-/** Minimum touch target. */
 export const HIT = 44
 
-/** A status pill's height, for rows that keep its place while it is hidden. */
 export const PILL_HEIGHT = 20
 
-/** Section headings sit under the screen title, which is the only level-1 heading. */
 export const subheading = { "aria-level": 2 } as object
 
-/** The widest a column of prose gets on a tablet, so lines stay readable. Every phone is narrower. */
 export const READABLE_WIDTH = 720
 
-/** Outer radius = inner radius + padding, so nested corners stay concentric. */
 export const radius = { sm: 6, md: 10, lg: 14, xl: 24, full: 999 } as const

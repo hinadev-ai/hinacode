@@ -3,10 +3,8 @@ import { StyleSheet, Text, View } from "react-native"
 import { radius, subheading } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 
-/** A raised card of rows with hairlines between them, starting `inset` points from the leading edge. */
 export function GroupedCard({ inset = 0, children }: { inset?: number; children: ReactNode }) {
   const theme = useTheme()
-  // Children.toArray keys each row by its place among the children, which a hidden row does not shift.
   const rows = Children.toArray(children).filter(isValidElement)
   return (
     <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -20,7 +18,6 @@ export function GroupedCard({ inset = 0, children }: { inset?: number; children:
   )
 }
 
-/** A list section's heading with the number of rows under it. */
 export function SectionHeading({ label, count }: { label: string; count?: number }) {
   const theme = useTheme()
   return (

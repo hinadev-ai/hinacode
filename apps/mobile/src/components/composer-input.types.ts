@@ -18,7 +18,6 @@ export interface ComposerInputProps {
   readonly value: string
   readonly commands: readonly AgentCommand[]
   readonly known: KnownTokens
-  /** Moves the caret when set; leave it unset to let the user's own moves stand. */
   readonly selection?: ComposerSelection
   readonly placeholder: string
   readonly style: StyleProp<TextStyle>

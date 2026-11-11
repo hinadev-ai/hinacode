@@ -10,7 +10,6 @@ import type { StoredServer } from "./stored-target"
 export const RELAY_ACCOUNT_KEY = "hinacode.relayAccount"
 export const DEFAULT_RELAY_URL = "https://relay.hinacode.app"
 
-/** The relay this phone signed in to. Its credential lists every machine the account shows on its devices. */
 export interface RelayAccount {
   readonly serviceUrl: string
   readonly credential: string
@@ -30,7 +29,6 @@ export type RelayMachinesResult =
 
 const decodeList = Schema.decodeUnknownOption(RelayMachineList)
 
-/** Asks the relay for the machines the account shows on its devices. A 401 means this phone was signed out. */
 export async function fetchRelayMachines(
   account: RelayAccount,
   fetch: typeof globalThis.fetch,
@@ -58,12 +56,10 @@ const decodeProfile = Schema.decodeUnknownOption(
 )
 
 export interface RelayProfile {
-  /** The account's name, or its email when it has none. */
   readonly name: string | null
   readonly avatarUrl: string | null
 }
 
-/** Reads who is signed in. Best effort, because the machine list matters more than the name. */
 export async function fetchRelayProfile(
   account: RelayAccount,
   fetch: typeof globalThis.fetch,
@@ -86,7 +82,6 @@ const failed = (message: string): RelayMachinesResult => ({ _tag: "failed", mess
 
 const endpoint = (serviceUrl: string, path: string) => `${serviceUrl.replace(/\/+$/, "")}${path}`
 
-/** The PKCE pair for one sign-in: the relay stores the challenge and hands out a code only the verifier redeems. */
 export const pkcePair = (random: Uint8Array) => {
   const verifier = Base64Url.encode(random)
   return { verifier, challenge: Base64Url.encode(sha256(utf8ToBytes(verifier))) }
@@ -110,7 +105,6 @@ export type RelaySignInResult =
   | { readonly _tag: "signedIn"; readonly credential: string }
   | { readonly _tag: "failed"; readonly message: string }
 
-/** Redeems the code from the sign-in redirect for this phone's credential. The relay spends the code either way. */
 export async function exchangeSignInCode(
   serviceUrl: string,
   code: string,
@@ -134,7 +128,6 @@ export async function exchangeSignInCode(
   return { _tag: "signedIn", credential: exchanged.credential }
 }
 
-/** Ends this phone's sign-in on the relay. Best effort, because signing out must work offline. */
 export const signOutRelayDevice = (account: RelayAccount, fetch: typeof globalThis.fetch) =>
   fetch(endpoint(account.serviceUrl, "/v1/device"), {
     method: "DELETE",
@@ -144,11 +137,6 @@ export const signOutRelayDevice = (account: RelayAccount, fetch: typeof globalTh
     () => undefined,
   )
 
-/**
- * The stored servers after a sync: each listed machine refreshes the server with its environment id or relay
- * hostname, or is added as a relay server, and relay servers the list lost are dropped. QR-paired servers keep
- * their name and are never dropped.
- */
 export function applyRelayMachines(
   servers: readonly StoredServer[],
   machines: readonly RelayMachine[],

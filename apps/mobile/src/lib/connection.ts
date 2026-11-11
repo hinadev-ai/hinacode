@@ -29,26 +29,17 @@ export type ConnectionStatus = TransportStatus
 
 export interface Server extends StoredServer {
   readonly status: ConnectionStatus
-  /** Why the server refused us, shown in Settings and on the pairing screen. */
   readonly error: string | null
-  /** What the server of the latest handshake understands, e.g. `terminal-attach`. */
   readonly features: ReadonlySet<string>
-  /** Counts this server's successful handshakes. */
   readonly generation: number
-  /** Whether this server has answered `threads.list` since the app started, so the ids it owns are known. */
   readonly listed: boolean
 }
 
 interface ConnectionState {
-  /** In the order they were paired. */
   readonly servers: readonly Server[]
-  /** Whether any server would still take a call. */
   readonly paired: boolean
-  /** The best status of any server, for code that only asks whether anything is connected. */
   readonly status: ConnectionStatus
-  /** Counts every server's handshakes. Snapshots are reloaded after each one, since pushes sent meanwhile are lost. */
   readonly generation: number
-  /** What every connected server understands. */
   readonly features: ReadonlySet<string>
 }
 
@@ -88,17 +79,12 @@ const transports = new Map<string, Transport>()
 let foreground = true
 let watching: readonly string[] = []
 const owners = makeOwners()
-/** A server's last answer to each `all` method, by method, with the payload it answered. */
 export type RememberedAnswers = Readonly<Partial<Record<RpcMethod, { readonly payload: string; readonly result: unknown }>>>
 
 const remembered = new Map<string, RememberedAnswers>()
 const rememberListeners = new Set<(serverId: string, answers: RememberedAnswers) => void>()
 const listeners = new Set<(event: PushEvent) => void>()
 
-/**
- * Lists `answers` for a paired server until it answers itself, such as the ones saved before the app last closed,
- * and routes calls on the ids in them to that server. An id another server has already answered with stays its.
- */
 export function restoreAnswers(serverId: string, answers: RememberedAnswers) {
   if (remembered.has(serverId) || !useConnection.getState().servers.some((server) => server.id === serverId)) return
   remembered.set(serverId, answers)
@@ -112,7 +98,6 @@ export function restoreAnswers(serverId: string, answers: RememberedAnswers) {
     learnFromAnswer(unclaimed, serverId, method, undefined, answers[method]?.result)
 }
 
-/** Called whenever a server's remembered answers change, so they can be saved for the next launch. */
 export function onRemembered(listener: (serverId: string, answers: RememberedAnswers) => void) {
   rememberListeners.add(listener)
   return () => {
@@ -155,25 +140,23 @@ function open(server: StoredServer) {
         environmentId: environment?.id ?? current.environmentId,
       }))
       const { servers } = useConnection.getState()
-      // The same machine paired again at another address: the older entry goes.
-      const older = servers.find(
+      const olderPairingOfSameMachine = servers.find(
         (other) => other.id !== server.id && environment !== undefined && other.environmentId === environment.id,
       )
       const self = servers.find((other) => other.id === server.id)
       if (self === undefined) return
-      // The desktop's addresses now, such as the LAN address of the Wi-Fi it joined, and a relay set up or removed.
       const hosts =
         reported === undefined ? self.hosts : (parsePairingUrl(pairingUrl({ ...self, hosts: reported }))?.hosts ?? self.hosts)
-      if (older !== undefined || !sameDials(self, { ...self, relay, hosts }))
+      if (olderPairingOfSameMachine !== undefined || !sameDials(self, { ...self, relay, hosts }))
         setServers(
           servers
-            .filter((other) => other !== older)
+            .filter((other) => other !== olderPairingOfSameMachine)
             .map((other) => (other === self ? { ...other, relay, hosts } : other)),
         )
     },
     onEvent: (event) => {
       learnFromPush(owners, server.id, event)
-      for (const listener of [...listeners]) listener(event)
+      for (const listener of Array.from(listeners)) listener(event)
     },
   })
   transports.set(server.id, transport)
@@ -200,14 +183,8 @@ const toStored = ({ id, name, environmentId, hosts, port, token, relay, source }
   source,
 })
 
-/** The servers as they are saved, without their connection state. */
 export const storedServers = () => useConnection.getState().servers.map(toStored)
 
-/**
- * Keeps one socket open to each of `servers`: opens the new ones, closes the ones no longer listed, redials a
- * server whose port or token changed, and points one whose addresses or relay changed at the new dial plan without
- * dropping its socket. Callers persist the list from `useConnection` themselves.
- */
 export function setServers(servers: readonly StoredServer[]) {
   const previous = new Map(useConnection.getState().servers.map((server) => [server.id, server]))
   for (const id of previous.keys()) if (!servers.some((server) => server.id === id)) close(id)
@@ -215,7 +192,6 @@ export function setServers(servers: readonly StoredServer[]) {
     const existing = previous.get(server.id)
     const stored = toStored(server)
     if (existing !== undefined && sameTarget(existing, server)) {
-      // Only the addresses changed: the open socket and the calls waiting on it stay.
       if (!sameDials(existing, server)) transports.get(server.id)?.setDials(dialPlan(server))
       return { ...existing, ...stored }
     }
@@ -233,12 +209,10 @@ export function setServers(servers: readonly StoredServer[]) {
   for (const server of next) if (!transports.has(server.id)) open(server)
 }
 
-/** Skips the remaining backoff of one server, or of all. */
 export function reconnectNow(id?: string) {
   for (const [serverId, transport] of transports) if (id === undefined || id === serverId) transport.reconnectNow()
 }
 
-/** The device switched networks, so the current sockets are probably dead even if they look open. */
 export const networkChanged = () => transports.forEach((transport) => transport.networkChanged())
 
 export function setForeground(active: boolean) {
@@ -246,7 +220,6 @@ export function setForeground(active: boolean) {
   transports.forEach((transport) => transport.setForeground(active))
 }
 
-/** The threads on screen, whose transcripts every server should stream. */
 export function setWatching(threadIds: readonly string[]) {
   watching = threadIds
   transports.forEach((transport) => transport.setWatching(threadIds))
@@ -264,13 +237,11 @@ const payloadId = (payload: unknown, key: string) => {
   return typeof value === "string" ? value : undefined
 }
 
-/** Whether every server has listed its threads or cannot, so an id none of them claimed belongs to none. */
 const ownersSettled = () =>
   useConnection
     .getState()
     .servers.every((server) => server.listed || server.status === "offline" || server.status === "unauthorized")
 
-/** The server that owns `id`, waiting until the servers have listed what they own. */
 function findOwner(entity: Entity, id: string): Promise<string | null> {
   const check = () => owners.owner(entity, id) ?? (ownersSettled() ? null : undefined)
   const now = check()
@@ -291,7 +262,6 @@ function findOwner(entity: Entity, id: string): Promise<string | null> {
 
 const offline = () => new RpcError("Offline", copy("mobile_connection_no_server"))
 
-/** Sends one call to one server and learns the ids in its answer. */
 async function send(serverId: string, method: RpcMethod, payload: unknown): Promise<RpcEnvelope<unknown>> {
   const transport = transports.get(serverId)
   if (transport === undefined) throw offline()
@@ -307,11 +277,6 @@ const failureOf = (cause: unknown): RpcEnvelope<never> =>
     ? { error: { tag: cause.tag, message: cause.message } }
     : { error: { tag: "Offline", message: String(cause) } }
 
-/**
- * Asks every connected server and concatenates the lists. A server that is not connected, fails, or does not answer
- * within a few seconds, adds its last answer to the same call, so its threads stay listed while it is away. When no
- * server answered and none has a last answer, the call fails with the first server's error.
- */
 async function gather(method: RpcMethod, payload: unknown): Promise<RpcEnvelope<unknown>> {
   const key = JSON.stringify(payload ?? null)
   const answers = await Promise.all(
@@ -337,7 +302,6 @@ async function gather(method: RpcMethod, payload: unknown): Promise<RpcEnvelope<
   return { result: lists.flatMap((answer) => answer.result) }
 }
 
-/** Where a call goes, by the route table the desktop uses (`src/shared/routes.ts`). */
 async function dispatch(method: RpcMethod, payload: unknown, named: string | undefined) {
   const route = routes[method]
   const { servers } = useConnection.getState()
@@ -357,13 +321,6 @@ async function dispatch(method: RpcMethod, payload: unknown, named: string | und
   return send(target.id, method, payload)
 }
 
-/**
- * Calls the server that owns the call's ids, every server for a list, or `options.server` for a call that names
- * one (Add project, settings); unnamed, that is the first connected server. A call on an id no server has claimed yet,
- * such as a transcript card's artifact after a restart, goes to the server it names. While a server's link is down the
- * call waits and is sent after its next handshake, so it runs once. Rejects with `RpcError` carrying the
- * handler's error tag, or `Timeout` after a minute offline.
- */
 export function request<M extends RpcMethod>(
   method: M,
   payload: RpcRequest<M>,
@@ -385,6 +342,5 @@ export function request<M extends RpcMethod>(
   ) as Effect.Effect<RpcResponse<M>, RpcError>
 }
 
-/** `request` as a promise, for event handlers and stores. */
 export const call = <M extends RpcMethod>(method: M, payload: RpcRequest<M>, options?: { readonly server?: string }) =>
   Effect.runPromise(request(method, payload, options))

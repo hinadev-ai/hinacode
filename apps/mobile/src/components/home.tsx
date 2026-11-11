@@ -33,10 +33,6 @@ import {
   useThreads,
 } from "@/stores/threads"
 
-/**
- * Pull requests, New thread and Settings, in the sidebar's header. A thread over the tabs hides the tab bar, so these
- * go back down to the tab they name.
- */
 export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
   return (
     <View style={styles.actions}>
@@ -62,19 +58,13 @@ export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
   )
 }
 
-/**
- * The thread list with its loading and empty states: the Threads tab on a phone, the sidebar in a wide window.
- * `selectedId` marks the thread open next to it.
- */
 export function HomeContent({
   selectedId,
   searchable = false,
   transparent = false,
 }: {
   selectedId?: string
-  /** Shows a search field over the list, for the sidebar, which has no search tab beside it. */
   searchable?: boolean
-  /** Lets the surface behind show through, for the floating glass sidebar. */
   transparent?: boolean
 }) {
   const theme = useTheme()
@@ -283,7 +273,6 @@ function homeItems(
       items.push({ kind: "project", key: `project:${project.id}`, project, open })
       if (!open) continue
       const active = threads.filter((thread) => thread.projectId === project.id && thread.status !== "archived")
-      // Pinned threads are listed above the tabs, so a project of only pinned threads is not empty.
       if (active.length === 0)
         items.push({ kind: "note", key: `note:${project.id}`, text: copy("mobile_home_project_empty") })
       items.push(...threadItems("thread", sortThreads(active.filter((thread) => thread.pinnedAt === null)), false))
@@ -292,7 +281,6 @@ function homeItems(
   return items
 }
 
-/** Points a scroll event must move before it counts as a direction, so a resting finger's jitter does not flicker. */
 const SCROLL_INTENT = 4
 
 function HomeList({
@@ -304,7 +292,6 @@ function HomeList({
   selectedId?: string
   nativeHeader?: boolean
   header?: ReactNode
-  /** Called with `true` when the list scrolls up or reaches the top, `false` when it scrolls down. */
   onScrollDirection?: (up: boolean) => void
 }) {
   const theme = useTheme()
@@ -331,8 +318,6 @@ function HomeList({
     setCollapsed(next)
   }
 
-  // A tab swaps its rows at once, as on the desktop; only moves within a tab slide. The new tab's list opens where the
-  // last one was scrolled, so the tab strip stays under the finger.
   return (
     <LayoutAnimationConfig key={tab} skipEntering>
       <Animated.FlatList
@@ -453,7 +438,6 @@ const homeTabs: readonly Tab<HomeTab>[] = [
   { value: "archived", label: copy("mobile_home_tab_archived") },
 ]
 
-/** A project's group in the Threads tab: tap to fold its threads away, or start a new one in it. */
 function ProjectHeader({ project, open, onToggle }: { project: Project; open: boolean; onToggle: () => void }) {
   const theme = useTheme()
   const server = useProjectServer(project.id)
@@ -467,9 +451,8 @@ function ProjectHeader({ project, open, onToggle }: { project: Project; open: bo
       openThread((await createThread(project)).id)
     } catch (cause) {
       setError(errorText(cause))
-    } finally {
-      setCreating(false)
     }
+    setCreating(false)
   }
 
   return (

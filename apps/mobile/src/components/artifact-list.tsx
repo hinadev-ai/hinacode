@@ -3,7 +3,7 @@ import type { Artifact, ArtifactKind } from "@shared/artifact.ts"
 import { Cause, Effect, Option } from "effect"
 import { AsyncResult, AtomRegistry } from "effect/reactivity"
 import { router, useFocusEffect } from "expo-router"
-import { useCallback, useState } from "react"
+import { useState } from "react"
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { GroupedCard } from "@/components/grouped-card"
 import { Icon, type IconName } from "@/components/icon"
@@ -52,10 +52,6 @@ const loaded = (result: AsyncResult.AsyncResult<readonly Artifact[], RpcError>):
   return { status: "loading" }
 }
 
-/**
- * The artifacts the paired desktops published, newest first, or only `threadId`'s. Documents open here; pages and
- * whiteboards open on the desktop.
- */
 export function ArtifactList({ threadId }: { threadId?: string }) {
   const theme = useTheme()
   const connected = useConnection((state) => state.status === "connected")
@@ -64,20 +60,16 @@ export function ArtifactList({ threadId }: { threadId?: string }) {
   const state = loaded(result)
   const [refreshing, setRefreshing] = useState(false)
 
-  useFocusEffect(
-    useCallback(() => {
-      if (AsyncResult.isNotInitial(registry.get(read))) registry.refresh(read)
-    }, [read]),
-  )
+  useFocusEffect(() => {
+    if (AsyncResult.isNotInitial(registry.get(read))) registry.refresh(read)
+  })
 
-  const refresh = async () => {
+  const refresh = () => {
     setRefreshing(true)
     registry.refresh(read)
-    try {
-      await Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, read, { suspendOnWaiting: true })))
-    } finally {
-      setRefreshing(false)
-    }
+    return Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, read, { suspendOnWaiting: true }))).finally(
+      () => setRefreshing(false),
+    )
   }
 
   return (

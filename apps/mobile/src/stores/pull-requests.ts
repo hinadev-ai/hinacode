@@ -11,43 +11,29 @@ import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { loaderFamily } from "@/lib/remote"
 
-/** A value read from GitHub through the desktop. A refresh keeps the last value until the new one lands. */
 export type Remote<T> =
   | { readonly status: "loading" }
   | { readonly status: "ready"; readonly value: T; readonly at: number }
   | { readonly status: "error"; readonly message: string; readonly at: number }
 
-/** What a thread row needs to color its pull request number. */
 export type PullRequestSummary = Pick<PullRequest, "status" | "checks" | "review" | "mergeable">
 
-/** Every `github.*` read runs `gh` on the desktop, so a pull request is read at most this often. */
 export const SUMMARY_MAX_AGE = 60_000
 export const DETAIL_MAX_AGE = 30_000
 
 export type CodeView = "files" | "guide"
 
 interface PullRequestsState {
-  /** Links per thread, oldest first, so the newest is last. A thread is absent until its links have loaded. */
   readonly linksByThread: Readonly<Record<string, readonly PullRequestLink[]>>
   readonly summaries: Readonly<Record<string, Remote<PullRequestSummary>>>
   readonly pullRequests: Readonly<Record<string, Remote<PullRequest>>>
   readonly details: Readonly<Record<string, Remote<PullRequestDetail>>>
-  /** Changed files per pull request head, see `filesKey`. A push changes the head, so it reads anew. */
   readonly files: Readonly<Record<string, Remote<readonly PullRequestFile[]>>>
-  /** Guide state per pull request, kept current by `pullRequest.guide` pushes once read. */
   readonly guides: Readonly<Record<string, Remote<PullRequestGuideState>>>
-  /** Whether the Code tab lists files or the guide, kept while the app runs. */
   readonly codeView: CodeView
-  /**
-   * Reads every thread's links again on each handshake, since pushes were missed while offline. A failure keeps
-   * the links already shown; the PRs tab loads and reports its own thread.
-   */
   readonly load: () => Promise<void>
-  /** Reads one thread's links. Rejects, so the PRs tab can show why. */
   readonly loadThread: (threadId: string) => Promise<void>
-  /** A `thread.pullRequests` push: the thread's whole list. */
   readonly replace: (threadId: string, links: readonly PullRequestLink[]) => void
-  /** Reads the state of a pull request for a badge, unless a watch snapshot or a recent read already has it. */
   readonly ensureSummary: (url: string) => void
   readonly loadPullRequest: (url: string, options?: { readonly force?: boolean }) => Promise<void>
   readonly loadDetail: (url: string, options?: { readonly force?: boolean }) => Promise<void>
@@ -58,7 +44,6 @@ interface PullRequestsState {
 
 export const filesKey = (url: string, head: string) => `${url}@${head}`
 
-/** A desktop from before the Code tab answers its methods as unknown, which its schema check reports. */
 const codeErrorText = (cause: unknown) =>
   cause instanceof RpcError && cause.tag === "SchemaError" ? copy("mobile_pr_code_update_desktop") : errorText(cause)
 
@@ -71,7 +56,6 @@ const groupByThread = (links: readonly PullRequestLink[]) => {
   return grouped
 }
 
-/** A watched link's last snapshot is a summary the desktop already read, so it costs no `gh` call. */
 const snapshotSummaries = (links: readonly PullRequestLink[]) => {
   const summaries: Record<string, Remote<PullRequestSummary>> = {}
   for (const link of links) {
@@ -85,12 +69,10 @@ const snapshotSummaries = (links: readonly PullRequestLink[]) => {
 
 export const usePullRequests = create<PullRequestsState>()((set, get) => {
   let pushedDuringLoad: Set<string> | null = null
-  /** Bumped by every list a thread receives, so a slower read cannot replace a newer push. */
   const versions = new Map<string, number>()
   const inflight = { pullRequests: new Map<string, Promise<void>>(), details: new Map<string, Promise<void>>() }
   const codeReads = new Map<string, Promise<void>>()
 
-  /** Reads one entry of `files` or `guides` once at a time. A failure keeps a value already shown. */
   function readCode<K extends "files" | "guides", T>(
     slot: K,
     key: string,
@@ -117,7 +99,6 @@ export const usePullRequests = create<PullRequestsState>()((set, get) => {
     return request
   }
 
-  // The connection provider routes the other pushes. Only this store reads guides, so it listens itself.
   onEvent((event) => {
     if (event.type !== "pullRequest.guide") return
     set((state) => ({
@@ -127,12 +108,10 @@ export const usePullRequests = create<PullRequestsState>()((set, get) => {
 
   const writeSummary = (url: string, summary: Remote<PullRequestSummary>) =>
     set((state) => {
-      // A failed read does not hide a summary that a snapshot or an earlier read gave.
       if (summary.status !== "ready" && state.summaries[url]?.status === "ready") return state
       return { summaries: { ...state.summaries, [url]: summary } }
     })
 
-  /** Reads `url` once at a time; a forced read supersedes the one in flight. */
   function fetchInto<T extends PullRequestSummary>(
     key: "pullRequests" | "details",
     url: string,
@@ -246,5 +225,4 @@ export const loadFilesAtom = loaderFamily((url: string, head: string) => usePull
 
 export const loadGuideAtom = loaderFamily((url: string) => usePullRequests.getState().loadGuide(url))
 
-/** The pull request number in a GitHub pull request URL, so a link can show `#123` before GitHub answers. */
 export const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? null

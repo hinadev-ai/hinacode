@@ -16,10 +16,6 @@ interface ToolOutputsState {
 
 export const toolOutputKey = (threadId: string, callId: string) => `${threadId}:${callId}`
 
-/**
- * Compact transcripts ship tool calls without their output, so a row fetches it when someone opens it. Rows
- * unmount as the transcript scrolls, so the result lives here instead of in the row.
- */
 export const useToolOutputs = create<ToolOutputsState>()((set, get) => {
   const put = (key: string, state: ToolOutputState) =>
     set((current) => ({ byCall: { ...current.byCall, [key]: state } }))

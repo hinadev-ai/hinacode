@@ -10,7 +10,6 @@ import { withinFilter } from "@/lib/thread-filter"
 import { useMessages } from "@/stores/messages"
 import { listedThreads, useThreads } from "@/stores/threads"
 
-/** The day at a glance over the thread list: the counts, the threads that wait, then the ones that run. */
 export function HomeOverview() {
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)

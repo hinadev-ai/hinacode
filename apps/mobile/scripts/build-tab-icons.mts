@@ -1,7 +1,3 @@
-// Renders the tab bar's icons from @hinacode/icons, the set the desktop draws, into template PNGs, because native
-// tabs take an image rather than an SVG. iOS gets its own `.ios.png` copies with a thinner stroke, which Metro picks on
-// iOS, so the icons sit beside the glass tab bar's system symbols at their weight. Needs rsvg-convert (librsvg). Run with `pnpm build:tab-icons` from
-// apps/mobile after `pnpm install` at the repository root, and commit the result.
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import { createRequire } from "node:module"
@@ -14,7 +10,6 @@ const out = fileURLToPath(new URL("../assets/images/tabs/", import.meta.url))
 const POINTS = 25
 const IOS_STROKE = "1.8"
 
-// The root's React, the copy Vite's SSR resolves the icons against, rather than this app's own.
 const rootRequire = createRequire(`${root}package.json`)
 const { createElement } = rootRequire("react") as typeof import("react")
 const { renderToStaticMarkup } = rootRequire("react-dom/server") as typeof import("react-dom/server")

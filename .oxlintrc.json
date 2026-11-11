@@ -61,7 +61,7 @@
   },
   "overrides": [
     {
-      "files": ["src/renderer/**"],
+      "files": ["src/renderer/**", "apps/mobile/src/**"],
       "rules": {
         "react/refs": "error",
         "react/purity": "error",
@@ -135,6 +135,14 @@
       }
     },
     {
+      "files": ["apps/mobile/**"],
+      "rules": {
+        "jsx-a11y/no-autofocus": "off",
+        "jsx-a11y/prefer-tag-over-role": "off",
+        "jsx-a11y/role-has-required-aria-props": "off"
+      }
+    },
+    {
       "files": ["src/renderer/components/ui/**"],
       "rules": {
         "jsx-a11y/label-has-associated-control": "off",
@@ -142,13 +150,13 @@
       }
     },
     {
-      "files": ["src/**/*.test.ts", "src/**/fakeAppServer.mjs", "e2e/**", "apps/web/e2e/**"],
+      "files": ["src/**/*.test.ts", "src/**/fakeAppServer.mjs", "e2e/**", "apps/web/e2e/**", "apps/mobile/src/**/*.test.ts"],
       "rules": {
         "hinacode/no-wall-clock-in-test": "error"
       }
     }
   ],
-  "ignorePatterns": ["out/**", "src/renderer/paraglide/**", "e2e/.features-gen/**", "apps/mobile/**"],
+  "ignorePatterns": ["out/**", "src/renderer/paraglide/**", "e2e/.features-gen/**", "apps/mobile/android/**", "apps/mobile/ios/**", "apps/mobile/dist/**"],
   "settings": {
     "tailwindcss": {
       "entryPoint": "src/renderer/index.css"

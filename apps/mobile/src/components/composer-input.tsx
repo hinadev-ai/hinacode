@@ -5,10 +5,9 @@ import type { Palette } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { type ComposerSpan, composerSpans } from "@/lib/composer-text"
 
-/** A trailing newline only takes up a line in the textarea once something follows it. */
+// FIXME: A textarea only gives a trailing newline its line once something follows it, so the highlighted copy appends a zero-width space.
 const TRAILING_LINE = "​"
 
-/** Colors only, never font or spacing: on the web the highlighted copy must wrap exactly like the textarea above it. */
 const spanStyle = (kind: ComposerSpan["kind"], theme: Palette): TextStyle => {
   switch (kind) {
     case "text":
@@ -27,10 +26,6 @@ const spanStyle = (kind: ComposerSpan["kind"], theme: Palette): TextStyle => {
   }
 }
 
-/**
- * The composer's field on the web, with the desktop's highlighting. react-native-web's textarea cannot nest styled
- * text, so its text is transparent over a highlighted copy, as on the desktop. Phones use `composer-input.native`.
- */
 export function ComposerInput({
   ref,
   value,
@@ -75,7 +70,7 @@ export function ComposerInput({
         onFocus={onFocus}
         onBlur={onBlur}
         onScroll={(event) => {
-          // react-native-web passes the DOM scroll event, whose target is the textarea.
+          // FIXME: react-native-web passes the DOM scroll event, whose target is the textarea.
           const { target } = event.nativeEvent as unknown as { target: HTMLElement }
           const copy = copyRef.current as unknown as HTMLElement | null
           if (copy) copy.scrollTop = target.scrollTop

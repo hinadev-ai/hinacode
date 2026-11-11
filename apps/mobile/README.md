@@ -119,7 +119,7 @@ The servers are stored in the secure store (`localStorage` on web) under `hinaco
 - `pnpm build:icons` renders the app icons from the desktop's `assets/icon.svg` with `rsvg-convert`. Run it when the mark changes and commit the result.
 - `pnpm build:tab-icons` renders the tab bar's icons from `@hinacode/icons` into template PNGs with `rsvg-convert`. Run it after `pnpm install` at the repository root when a tab icon changes and commit the result.
 - `pnpm build:send-grain` renders the send button's grain to `assets/images/send-grain.png`. Run it when the grain changes and commit the result.
-- `npx tsc --noEmit`, `npx expo lint`, `npx expo export --platform web`.
+- `npx tsc --noEmit`, `pnpm lint`, `npx expo export --platform web`.
 
 ## Out of scope
 

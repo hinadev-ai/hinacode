@@ -1,6 +1,6 @@
 import type { LinearIssue } from "@shared/domain.ts"
 import { router, useFocusEffect } from "expo-router"
-import { useCallback, useState } from "react"
+import { useState } from "react"
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { GroupedCard, SectionHeading } from "@/components/grouped-card"
 import { Icon, type IconName } from "@/components/icon"
@@ -26,7 +26,6 @@ import { useLinear } from "@/stores/linear"
 import { usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
-/** Each read runs `gh` on the desktop, so the overview keeps only a few of them going at once. */
 const PULL_REQUEST_READS = 4
 
 async function readPullRequests(urls: readonly string[], force: boolean) {
@@ -38,21 +37,14 @@ async function readPullRequests(urls: readonly string[], force: boolean) {
   await Promise.all(Array.from({ length: PULL_REQUEST_READS }, worker))
 }
 
-/**
- * Reads the overview whenever the screen comes into view or the phone reconnects. `urls` is newline-joined, so the
- * reads run again only when the set of pull requests changes. Recent reads are skipped by the stores.
- */
 function useReadOnFocus(connected: boolean, urls: string) {
-  useFocusEffect(
-    useCallback(() => {
-      if (!connected) return
-      void readPullRequests(urls === "" ? [] : urls.split("\n"), false)
-      void useLinear.getState().load()
-    }, [connected, urls]),
-  )
+  useFocusEffect(() => {
+    if (!connected) return
+    void readPullRequests(urls === "" ? [] : urls.split("\n"), false)
+    void useLinear.getState().load()
+  })
 }
 
-/** Which pull requests need the developer, and which Linear tickets are theirs, read through the desktop. */
 export default function PullRequestsScreen() {
   const theme = useTheme()
   const now = useNow()
@@ -66,17 +58,13 @@ export default function PullRequestsScreen() {
   const overview = pullRequestOverview(Object.values(linksByThread).flat(), threads, pullRequests, now)
   useReadOnFocus(connected, overview.urls.join("\n"))
 
-  const refresh = async () => {
+  const refresh = () => {
     setRefreshing(true)
-    try {
-      await Promise.all([
-        usePullRequests.getState().load(),
-        readPullRequests(overview.urls, true),
-        useLinear.getState().load({ force: true }),
-      ])
-    } finally {
-      setRefreshing(false)
-    }
+    return Promise.all([
+      usePullRequests.getState().load(),
+      readPullRequests(overview.urls, true),
+      useLinear.getState().load({ force: true }),
+    ]).finally(() => setRefreshing(false))
   }
 
   const groups = [
@@ -156,7 +144,6 @@ const needLabel: Record<PullRequestNeed, () => string> = {
 
 function PullRequestRow({ row }: { row: OverviewPullRequest }) {
   const theme = useTheme()
-  // GitHub draws pending checks in blue, which the palette has only as the note callout's ink.
   const pending = CalloutColors[useScheme()].note.ink
   const thread = useThreads((state) => state.byId[row.threadId])
   const { pullRequest } = row

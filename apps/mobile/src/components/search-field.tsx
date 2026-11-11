@@ -6,7 +6,6 @@ import { cssEase, duration } from "@/constants/motion"
 import { HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 
-/** A rounded search field whose clear button fades in once there is text. */
 export function SearchField({
   value,
   onChange,
@@ -94,7 +93,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     fontSize: 16,
     paddingVertical: 10,
-    // The field's border shows focus, so the browser's own ring would draw a square inside the rounded field.
+    // FIXME: The browser's focus ring would draw a square inside the rounded field, which shows focus with its border.
     ...Platform.select({ web: { outlineStyle: "none" } as object }),
   },
   clear: { padding: 4 },

@@ -90,7 +90,7 @@ export function IconButton({
   )
 }
 
-/** A switch in the app's colors. react-native-web paints the thumb teal unless told otherwise. */
+// FIXME: react-native-web paints the Switch thumb teal unless told otherwise.
 export function Toggle(props: Omit<SwitchProps, "trackColor" | "thumbColor">) {
   const theme = useTheme()
   const webThumb = { activeThumbColor: "#ffffff" } as object
@@ -181,7 +181,6 @@ const providerName: Record<ProviderId, string> = {
   magpie: copy("mobile_provider_magpie"),
 }
 
-/** The provider's logo and name, muted, for meta rows. */
 export function ProviderLabel({ provider, size = 13 }: { provider: ProviderId; size?: number }) {
   const theme = useTheme()
   return (
@@ -246,7 +245,6 @@ export interface Segment<T extends string> {
 
 const SEGMENT_GAP = 3
 
-/** Equal-width tabs whose selected thumb slides to the one picked. */
 export function SegmentedControl<T extends string>({
   segments,
   value,
@@ -322,7 +320,6 @@ export interface Tab<T extends string> {
 
 type TabLayout = { readonly x: number; readonly width: number }
 
-/** Text tabs with an underline that slides to the selected one, like the desktop sidebar's. */
 export function UnderlineTabs<T extends string>({
   tabs,
   value,
@@ -392,7 +389,6 @@ export function UnderlineTabs<T extends string>({
   )
 }
 
-/** An agent's mark in its brand color, as at the start of a desktop sidebar row. */
 export function ProviderMark({ provider, size = 16 }: { provider: ProviderId; size?: number }) {
   return <Icon name={providerMark[provider]} size={size} color={ProviderColors[useScheme()][provider]} />
 }

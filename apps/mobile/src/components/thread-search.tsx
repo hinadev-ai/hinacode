@@ -44,7 +44,6 @@ const messageSearch = familyOf((query: string) =>
 
 const idleSearch = Atom.make(AsyncResult.initial<readonly ThreadSearchHit[], RpcError>())
 
-/** Messages that contain `query`, asked 150 ms after the last keystroke. An answer to an older query is dropped. */
 function useMessageSearch(query: string): MessageSearch {
   const trimmed = query.trim()
   const searched = trimmed.length >= MIN_MESSAGE_QUERY
@@ -63,7 +62,6 @@ const scopes: readonly { value: SearchScope; label: string }[] = [
   { value: "messages", label: copy("mobile_search_messages") },
 ]
 
-/** Chips that narrow the results to thread titles or to messages. */
 export function ScopeChips({ value, onChange }: { value: SearchScope; onChange: (scope: SearchScope) => void }) {
   const theme = useTheme()
   return (
@@ -94,10 +92,6 @@ export function ScopeChips({ value, onChange }: { value: SearchScope; onChange: 
   )
 }
 
-/**
- * Thread titles that match as the developer types, then messages from every thread. `scope` hides a section and
- * skips its search.
- */
 export function SearchResults({
   query,
   scope = "all",
@@ -188,7 +182,6 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 const dotColor = (theme: Palette, status: Thread["status"]) =>
   status === "awaiting_approval" ? theme.attention : status === "running" ? theme.running : theme.surfaceStrong
 
-/** A thread whose title or project matched: its status dot, the title, then the project and status or age. */
 function ThreadHitRow({ thread, query }: { thread: Thread; query: string }) {
   const theme = useTheme()
   const now = useNow()
@@ -227,7 +220,6 @@ function ThreadHitRow({ thread, query }: { thread: Thread; query: string }) {
   )
 }
 
-/** A message that matched: the thread it is in, then the snippet with the match drawn in the primary color. */
 function MessageHitRow({ hit, query }: { hit: ThreadSearchHit; query: string }) {
   const theme = useTheme()
   const now = useNow()

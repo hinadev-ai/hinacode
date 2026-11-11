@@ -3,10 +3,6 @@ import { call } from "@/lib/connection"
 import { useDrafts } from "@/stores/drafts"
 import { useThreads } from "@/stores/threads"
 
-/**
- * Opens `project`'s draft, which the server lists as a thread only after its first message. The server gives it
- * the options picked for the last new thread, and it starts in a worktree when the last new repository thread did.
- */
 export async function createThread(project: Project) {
   const thread = await call("threads.draft", { projectId: project.id })
   useThreads.getState().upsert(thread)

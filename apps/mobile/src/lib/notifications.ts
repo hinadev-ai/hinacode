@@ -24,7 +24,7 @@ Notifications.setNotificationHandler({
 
 let channel: Promise<unknown> | null = null
 
-/** Android 13 only shows the permission prompt once a channel exists. */
+// FIXME: Android 13 only shows the permission prompt once a notification channel exists.
 const ensureChannel = () => {
   if (Platform.OS !== "android") return Promise.resolve()
   channel ??= Notifications.setNotificationChannelAsync(CHANNEL_ID, {
@@ -34,24 +34,20 @@ const ensureChannel = () => {
   return channel
 }
 
-/** iOS provisional delivery reaches Notification Center quietly, which is enough to count as on. */
 const toPermission = (status: Notifications.NotificationPermissionsStatus): NotificationPermission => {
   if (status.granted || status.ios?.status === IosAuthorizationStatus.PROVISIONAL) return "granted"
   return status.status === "denied" ? "denied" : "undetermined"
 }
 
-/** Whether the system lets this app post notifications. */
 export async function getNotificationPermission(): Promise<NotificationPermission> {
   return toPermission(await Notifications.getPermissionsAsync())
 }
 
-/** Asks the system for permission, and resolves with the answer. */
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
   await ensureChannel()
   return toPermission(await Notifications.requestPermissionsAsync())
 }
 
-/** Shows a system notification right away. A newer one for the same thread replaces the older. */
 export async function presentNotification({ threadId, title, body }: ThreadNotification) {
   await ensureChannel()
   await Notifications.scheduleNotificationAsync({
@@ -61,10 +57,6 @@ export async function presentNotification({ threadId, title, body }: ThreadNotif
   })
 }
 
-/**
- * Reports the thread of each notification the developer taps, including the one that launched the app.
- * Returns the unsubscribe function.
- */
 export function onNotificationOpened(listener: (threadId: string) => void): () => void {
   let active = true
   let opened: string | null = null
@@ -72,11 +64,11 @@ export function onNotificationOpened(listener: (threadId: string) => void): () =
     if (!active || response === null) return
     const { request, date } = response.notification
     const threadId = request.content.data?.threadId
-    // A tap that launches the app can arrive through both the listener and the last response.
+    // FIXME: expo-notifications can deliver the tap that launched the app through both the listener and the last response.
     const key = `${request.identifier}:${date}`
     if (typeof threadId !== "string" || key === opened) return
     opened = key
-    // The launch response stays readable until cleared, so a remount would open the thread again.
+    // FIXME: the launch response stays readable until cleared, so a remount would open the thread again.
     Notifications.clearLastNotificationResponse()
     listener(threadId)
   }

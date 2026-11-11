@@ -1,5 +1,3 @@
-// Renders the desktop send button's feTurbulence grain (fractalNoise, baseFrequency 0.9, 3 octaves) to a PNG for React Native.
-// Usage: node scripts/build-send-grain.mts [out.png] [size]
 import { crc32, deflateSync } from "node:zlib"
 import { writeFileSync } from "node:fs"
 
@@ -31,8 +29,9 @@ function perlin(x: number, y: number) {
   )
 }
 
-// The PNG is drawn at 3x, so one CSS pixel spans three PNG pixels.
-const freq = 0.9 / 3
+const PNG_SCALE = 3
+const freq = 0.9 / PNG_SCALE
+const LINEAR_RGB_MID_GRAY_IN_SRGB = 188
 const raw = Buffer.alloc(size * (size * 4 + 1))
 for (let y = 0; y < size; y++) {
   raw[y * (size * 4 + 1)] = 0
@@ -42,8 +41,7 @@ for (let y = 0; y < size; y++) {
     const r = Math.min(1, Math.max(0, (n + 1) / 2))
     const a = Math.min(1, Math.max(0, 1.6 * r - 0.35))
     const i = y * (size * 4 + 1) + 1 + x * 4
-    // The filter's 0.5 gray is in linearRGB, which is 188 in sRGB. A true mid gray would vanish under overlay.
-    raw[i] = raw[i + 1] = raw[i + 2] = 188
+    raw[i] = raw[i + 1] = raw[i + 2] = LINEAR_RGB_MID_GRAY_IN_SRGB
     raw[i + 3] = Math.round(a * 255)
   }
 }

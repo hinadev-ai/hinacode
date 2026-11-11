@@ -16,10 +16,6 @@ const formatLabels = {
   link: "mobile_composer_format_link",
 } as const
 
-/**
- * The composer's field on iOS and Android: a native editor that draws a leading skill and known commands as the
- * desktop's chips, with its icon, and tints mentions and code, while the text stays exactly what the user typed.
- */
 export function ComposerInput({
   ref,
   value,

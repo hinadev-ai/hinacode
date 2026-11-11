@@ -2,17 +2,14 @@ import type { LinearIssue, PullRequest, PullRequestLink, Thread } from "@shared/
 import { parseGitHubRepository } from "@shared/github.ts"
 import { pullRequestNumber, type Remote } from "@/stores/pull-requests"
 
-/** `owner/repo #123`, read from the URL, so a row can name its pull request before or without GitHub's answer. */
 export function pullRequestReference(url: string) {
   const repository = parseGitHubRepository(url)
   const number = `#${pullRequestNumber(url) ?? "?"}`
   return repository === null ? number : `${repository.owner}/${repository.name} ${number}`
 }
 
-/** Why an open pull request waits on the developer. */
 export type PullRequestNeed = "checks" | "changes" | "conflicts"
 
-/** The one line under an open pull request that says what happens next, most urgent first. */
 export type PullRequestProgress =
   | "conflicts"
   | "checksFailing"
@@ -23,27 +20,19 @@ export type PullRequestProgress =
 
 export interface OverviewPullRequest {
   readonly url: string
-  /** The thread of the newest link, when several threads linked the same pull request. */
   readonly threadId: string
-  /** Null until GitHub answers. */
   readonly pullRequest: PullRequest | null
   readonly error: string | null
   readonly needs: readonly PullRequestNeed[]
-  /** Null for merged pull requests and for open ones nothing is known about yet. */
   readonly progress: PullRequestProgress | null
 }
 
 export interface PullRequestOverview {
-  /** Open pull requests with failing checks, changes requested or conflicts. */
   readonly attention: readonly OverviewPullRequest[]
   readonly open: readonly OverviewPullRequest[]
-  /** Merged since local midnight, newest merge first. */
   readonly mergedToday: readonly OverviewPullRequest[]
-  /** Merged before today, or merged at a time GitHub has not told us yet. */
   readonly merged: readonly OverviewPullRequest[]
-  /** GitHub could not answer and no watch snapshot knows the state, so the row claims none. */
   readonly unknown: readonly OverviewPullRequest[]
-  /** Every pull request worth reading from GitHub: the ones linked to a thread that is not archived. */
   readonly urls: readonly string[]
 }
 
@@ -64,11 +53,6 @@ function progressOf(
   return status === "open" && mergeable === "mergeable" ? "readyToMerge" : null
 }
 
-/**
- * Groups the pull requests of active threads by what they need from the developer, newest link first. Closed ones
- * are left out, since nobody acts on them. GitHub reports mergeability lazily, so an unknown answer falls back to
- * the watch snapshot's.
- */
 export function pullRequestOverview(
   links: readonly PullRequestLink[],
   threads: Readonly<Record<string, Thread>>,
@@ -124,13 +108,10 @@ export function pullRequestOverview(
 }
 
 const stateRank: Readonly<Record<string, number>> = { started: 0, unstarted: 1, triage: 2, backlog: 3 }
-/** Linear's 0 means no priority, which sorts after low. */
-const priorityRank = (priority: number) => (priority === 0 ? 5 : priority)
+const LINEAR_NO_PRIORITY = 0
+const RANK_AFTER_LOW_PRIORITY = 5
+const priorityRank = (priority: number) => (priority === LINEAR_NO_PRIORITY ? RANK_AFTER_LOW_PRIORITY : priority)
 
-/**
- * Issues from every server once each, work in progress first, then by priority and the latest update. Two servers
- * with the same Linear account answer the same issues.
- */
 export function sortIssues(issues: readonly LinearIssue[]): LinearIssue[] {
   const unique = new Map(issues.map((issue) => [issue.id, issue]))
   return [...unique.values()].sort(
@@ -141,5 +122,4 @@ export function sortIssues(issues: readonly LinearIssue[]): LinearIssue[] {
   )
 }
 
-/** The draft a thread started from a ticket begins with. The agent reads the rest with its Linear tool. */
 export const issueDraft = (issue: LinearIssue) => `${issue.identifier} ${issue.title}`

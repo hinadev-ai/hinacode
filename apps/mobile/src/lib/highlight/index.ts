@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react"
+import { useAtomValue } from "@effect/atom-react"
+import { Effect } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
 import { lex } from "@/lib/lexer"
-import { type EngineName, parseOnGpu } from "./engine"
+import { familyOf } from "@/lib/remote"
+import { canParseOnGpu, type EngineName, parseOnGpu } from "./engine"
 
 export type { EngineName } from "./engine"
 
-/** The labels `gpu-lexer` gives a span. Every highlighter here produces these. */
 export type SyntaxClass =
   | "plain"
   | "comment"
@@ -16,7 +18,6 @@ export type SyntaxClass =
   | "constant"
   | "operator"
 
-/** Half-open UTF-16 offsets into the source. Spans cover the source in order. */
 export interface SyntaxSpan {
   readonly type: SyntaxClass
   readonly start: number
@@ -25,12 +26,10 @@ export interface SyntaxSpan {
 
 export interface Highlight {
   readonly spans: readonly SyntaxSpan[]
-  /** The engine that produced `spans`. */
   readonly engine: EngineName
 }
 
 const CACHE_SIZE = 200
-/** Whole files can reach 300 KB; caching them would hold megabytes of source and spans. */
 const MAX_CACHED_LENGTH = 20_000
 const cache = new Map<string, Highlight>()
 
@@ -47,30 +46,23 @@ function remember(path: string, code: string, highlight: Highlight) {
 const lookup = (path: string, code: string) =>
   remember(path, code, cache.get(`${path}\0${code}`) ?? { spans: lex(code, path), engine: "lexer" })
 
-/**
- * Spans for `code`, the contents of the file at `path`, and the engine that made them. It answers at once with the CPU lexer, and on the web swaps in
- * gpu-lexer's spans when they arrive.
- */
-export function useHighlight(path: string, code: string): Highlight {
-  const cpu = useMemo(() => lookup(path, code), [path, code])
-  const [gpu, setGpu] = useState<{ code: string; highlight: Highlight } | null>(null)
-
-  useEffect(() => {
-    if (cpu.engine === "gpu-lexer") return
+const gpuHighlight = familyOf((path: string, code: string) =>
+  Atom.make(() => {
+    const cached = cache.get(`${path}\0${code}`)
+    if (cached?.engine === "gpu-lexer") return Effect.succeed<Highlight | null>(cached)
     const pending = parseOnGpu(code)
-    if (pending === null) return
-    let live = true
-    pending.then(
-      (spans) => {
-        const highlight = remember(path, code, { spans, engine: "gpu-lexer" })
-        if (live) setGpu({ code, highlight })
-      },
-      () => {},
+    if (pending === null) return Effect.succeed(null)
+    return Effect.tryPromise(() => pending).pipe(
+      Effect.map((spans): Highlight | null => remember(path, code, { spans, engine: "gpu-lexer" })),
     )
-    return () => {
-      live = false
-    }
-  }, [path, code, cpu])
+  }),
+)
 
-  return gpu?.code === code ? gpu.highlight : cpu
+const withoutGpu = Atom.make(Effect.succeed<Highlight | null>(null))
+
+export function useHighlight(path: string, code: string): Highlight {
+  const cpu = lookup(path, code)
+  const gpuAtom = canParseOnGpu() ? gpuHighlight(path, code) : withoutGpu
+  const gpu = AsyncResult.getOrElse(useAtomValue(gpuAtom), () => null)
+  return gpu ?? cpu
 }

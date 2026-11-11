@@ -58,10 +58,6 @@ const encode = async (asset: ImagePickerAsset): Promise<{ base64: string; format
   return { base64, format: fit.format }
 }
 
-/**
- * Copies a picked image to the desktop, sized for the agent. An image the agent would refuse fails here, before the
- * prompt is sent, rather than failing the whole turn.
- */
 export const stageImage = async (threadId: string, asset: ImagePickerAsset): Promise<DraftImage> => {
   const { base64, format } = await encode(asset).catch(() => {
     throw new Error(copy("mobile_composer_image_unreadable", { name: attachmentStem(asset.fileName) }))

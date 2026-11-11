@@ -3,7 +3,6 @@ import { copy } from "@/lib/copy"
 
 export type TerminalKey = "escape" | "tab" | "up" | "down" | "left" | "right"
 
-/** The keys a phone keyboard lacks, in the order the key row shows them. Ctrl sits after Tab. */
 export const terminalKeys: readonly { key: TerminalKey; label: string; icon?: IconName }[] = [
   { key: "escape", label: "esc" },
   { key: "tab", label: "tab" },
@@ -15,10 +14,6 @@ export const terminalKeys: readonly { key: TerminalKey; label: string; icon?: Ic
 
 const arrowCodes = { up: "A", down: "B", right: "C", left: "D" } as const
 
-/**
- * What the key sends to the shell. Arrows follow the cursor key mode the program asked for:
- * full-screen programs such as vim and less switch to the `ESC O` form.
- */
 export const keySequence = (key: TerminalKey, applicationCursor: boolean): string => {
   switch (key) {
     case "escape":
@@ -30,7 +25,6 @@ export const keySequence = (key: TerminalKey, applicationCursor: boolean): strin
   }
 }
 
-/** Applies Ctrl to the first character typed, the way a hardware keyboard does: Ctrl+C sends 0x03. */
 export const withCtrl = (data: string): string => {
   const first = data[0]
   if (first === undefined) return data

@@ -25,7 +25,7 @@ import { useThreadRoot, useThreads } from "@/stores/threads"
 type Params = { id: string; artifactId: string; title?: string }
 
 const PADDING = 16
-/** The Markdown renderer trims a segment's last margin, so the space between segments lives here. */
+// FIXME: The Markdown renderer trims a segment's last margin, so the space between segments lives here.
 const SEGMENT_GAP = 14
 const TITLE_INSET = 120
 
@@ -169,7 +169,6 @@ function DocumentText({ thread, markdown }: { thread: Thread; markdown: string }
       keyExtractor={(_, index) => String(index)}
       renderItem={({ item }) => <Segment segment={item} root={root} threadId={thread.id} />}
       ItemSeparatorComponent={SegmentGap}
-      // One segment can hold hundreds of views, so the list mounts a screenful first, as the transcript does.
       initialNumToRender={4}
       maxToRenderPerBatch={2}
       windowSize={9}
