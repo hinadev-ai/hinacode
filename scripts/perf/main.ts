@@ -214,12 +214,13 @@ const summary = (report: Report) => {
 }
 
 const print = (reports: ReadonlyArray<Report>) => {
-  const tables = reports.map(summary)
-  const width = Math.max(...tables[0]!.map(([name]) => name.length))
+  const tables = reports.map((report) => new Map(summary(report)))
+  const names = [...new Set(tables.flatMap((table) => [...table.keys()]))]
+  const width = Math.max(...names.map((name) => name.length))
   console.log(["measurement".padEnd(width), ...reports.map((report) => report.label.padStart(12))].join("  "))
-  tables[0]!.forEach(([name], row) => {
-    console.log([name.padEnd(width), ...tables.map((table) => String(table[row]?.[1] ?? "").padStart(12))].join("  "))
-  })
+  for (const name of names) {
+    console.log([name.padEnd(width), ...tables.map((table) => String(table.get(name) ?? "").padStart(12))].join("  "))
+  }
   const last = reports.at(-1)!
   const slow = last.startups.at(-1)?.slowestQuery
   if (slow) console.log(`\nslowest startup query in ${last.label}: ${slow.ms} ms ${slow.query}`)
