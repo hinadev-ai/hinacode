@@ -50,6 +50,9 @@ function createBridge() {
     send: (patch: BlockPatch) => (handle === null ? pending.push(patch) : deliver(patch)),
     listen: (next: Listeners) => {
       listeners = next
+      return () => {
+        if (listeners === next) listeners = {}
+      }
     },
     changed: () => listeners.onChange?.(),
     selected: (selection: SelectionState) => listeners.onSelectionChange?.(selection),
