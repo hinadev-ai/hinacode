@@ -455,4 +455,18 @@ describe("Projects.ensureGroups", () => {
       expect(readFileSync(join(rootPath, "AGENTS.md"), "utf8")).toBe("Use pnpm.\n")
     }),
   )
+
+  it.live("skips a group id that is not a single folder name", () =>
+    Effect.gen(function* () {
+      const base = emptyDir()
+      const groupsDir = join(base, "groups")
+      const listed = yield* provided(
+        Projects.use((projects) =>
+          projects.ensureGroups([{ id: "../escape", name: "Bad" }], groupsDir).pipe(Effect.andThen(projects.list)),
+        ),
+      )
+      expect(groupRows(listed)).toStrictEqual([])
+      expect(existsSync(join(base, "escape"))).toBe(false)
+    }),
+  )
 })

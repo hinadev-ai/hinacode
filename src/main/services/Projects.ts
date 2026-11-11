@@ -315,7 +315,11 @@ const make = Effect.gen(function* () {
     })
 
   const ensureGroups = (groups: ReadonlyArray<GroupProject>, groupsDir: string) =>
-    Effect.forEach(groups, (group) => ensureGroup(group, groupsDir), { discard: true })
+    Effect.forEach(
+      groups.filter(({ id }) => /^[\w-]+$/.test(id)),
+      (group) => ensureGroup(group, groupsDir),
+      { discard: true },
+    )
 
   const update = (input: UpdateProject) =>
     Effect.gen(function* () {
