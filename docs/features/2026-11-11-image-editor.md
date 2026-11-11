@@ -12,10 +12,10 @@ The device and Tiny VM "Save screenshot" buttons stage an image and then only re
 ## User flow
 
 1. An image lands in the composer by any route. It attaches straight away, as today.
-2. The developer hovers the chip and presses Edit, or focuses it and presses `E`. The editor fills the window over a dark scrim, with the image fitted in the middle and a toolbar under it.
+2. The developer clicks the chip, or tabs to it and presses Enter. A pencil badge on hover says what the click does. The editor fills the window over a dark scrim, with the image fitted in the middle and a toolbar under it.
 3. They press a letter to pick a tool and draw. `A` arrow, `R` rectangle, `E` ellipse, `F` pen, `T` text, `C` numbered marker, `D` redact, `V` select. `1` to `8` pick a color. In select mode they drag a shape to move it, drag its handles to resize it, and drag the handles on the image edge to crop.
-4. `Ctrl+Z` and `Ctrl+Shift+Z` undo and redo. `Delete` removes the selected shape. Right-click returns to select.
-5. `Enter` or Done flattens the edit and replaces the chip with the edited image. `Esc` or Cancel leaves the attachment as it was.
+4. `Ctrl+Z` and `Ctrl+Shift+Z` undo and redo. `Delete` removes the selected shape. Right-click returns to select. A text label returns to select once it is committed, so the next click does not start another label.
+5. `Enter` or Done flattens the edit and replaces the chip with the edited image. `Esc` first deselects, then closes. Closing with `Esc` or Cancel leaves the attachment as it was but remembers the layers.
 6. Pressing Edit again on the edited chip reopens the same layers, so nothing is baked in until the developer is done with it.
 
 ## Design
