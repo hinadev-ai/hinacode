@@ -229,6 +229,10 @@ const make = Effect.gen(function* () {
     return undefined
   }
 
+  const applyChildMessage = (subagents: Subagents, childThreadId: string, method: string, params: unknown) =>
+    applyChildTurn(subagents, childThreadId, method, params, new Date().toISOString()) ??
+    applyChildNotification(subagents, childThreadId, method, params, toolName)
+
   const reportSubagentsOfIdleThreads = (client: CodexClient) => (message: Incoming) => {
     if (message.kind !== "notification") return
     const childThreadId = (message.params as { threadId?: string } | undefined)?.threadId
@@ -238,9 +242,7 @@ const make = Effect.gen(function* () {
     const childScope = message.params as { turnId?: string; turn?: { id: string } }
     const childTurnId = childScope.turnId ?? childScope.turn?.id
     if (childTurnId !== undefined) subagentTurns.set(childThreadId, childTurnId)
-    const changed =
-      applyChildTurn(parent.subagents, childThreadId, message.method, message.params, new Date().toISOString()) ??
-      applyChildNotification(parent.subagents, childThreadId, message.method, message.params, toolName)
+    const changed = applyChildMessage(parent.subagents, childThreadId, message.method, message.params)
     if (changed) Queue.offerUnsafe(subagentChanges, { threadId: parent.threadId, subagent: changed })
   }
 
@@ -781,13 +783,7 @@ const make = Effect.gen(function* () {
                 const childTurnId = childScope.turnId ?? childScope.turn?.id
                 if (childTurnId !== undefined) subagentTurns.set(childThreadId, childTurnId)
                 yield* handleChildTool(childThreadId, message.method, message.params)
-                const changed = applyChildNotification(
-                  subagents,
-                  childThreadId,
-                  message.method,
-                  message.params,
-                  toolName,
-                )
+                const changed = applyChildMessage(subagents, childThreadId, message.method, message.params)
                 if (changed) yield* emitSubagents([changed])
                 return false
               }
