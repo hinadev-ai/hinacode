@@ -143,6 +143,7 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
         }
         return
       }
+      if (editor !== activeEditor) return
       post {
         if (editor === activeEditor && editor.isAttachedToWindow && !editor.hasFocus() && !focusInside()) {
           endEditing(rebind = false)
