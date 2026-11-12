@@ -41,6 +41,13 @@ describe("xdotoolScript", () => {
     )
   })
 
+  it("passes other X keysym names to xdotool unchanged", () => {
+    expect(xdotoolScript([{ type: "key", keys: "Caps_Lock shift+KP_Enter" }])).toBe(
+      "xdotool key --clearmodifiers Caps_Lock\nxdotool key --clearmodifiers 0xffe1+KP_Enter",
+    )
+    expect(() => xdotoolScript([{ type: "key", keys: "ctrl+$(reboot)" }])).toThrow('Unknown key "$(reboot)"')
+  })
+
   it("refuses points outside the boat screen and unknown modifiers", () => {
     expect(() => xdotoolScript([{ type: "move", x: BOAT_SCREEN.width, y: 0 }])).toThrow(
       `x must be between 0 and ${BOAT_SCREEN.width - 1}`,

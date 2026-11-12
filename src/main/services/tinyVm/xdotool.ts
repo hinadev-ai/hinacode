@@ -1,4 +1,4 @@
-import { chordKeysyms, VmInputError, type VmAction } from "./rfb.ts"
+import { resolveChord, unknownKey, VmInputError, type VmAction } from "./rfb.ts"
 
 export const BOAT_SCREEN = { width: 1920, height: 1080 } as const
 
@@ -30,10 +30,13 @@ const checkText = (text: string) => {
   }
 }
 
-const xdotoolChord = (chord: string) =>
-  chordKeysyms(chord)
-    .map((keysym) => `0x${keysym.toString(16)}`)
-    .join("+")
+const hexKeysym = (keysym: number) => `0x${keysym.toString(16)}`
+
+const xdotoolChord = (chord: string) => {
+  const { modifiers, name, keysym } = resolveChord(chord)
+  if (keysym === undefined && !/^[A-Za-z0-9_]+$/.test(name)) throw unknownKey(name, chord)
+  return [...modifiers.map(hexKeysym), keysym === undefined ? name : hexKeysym(keysym)].join("+")
+}
 
 const actionLines = (action: VmAction): ReadonlyArray<string> => {
   switch (action.type) {
