@@ -27,7 +27,7 @@ VARIABLES
   reportDue,         \* a sub-agent finished and Claude has not replied to its report yet
   idleSent,          \* the CLI announced idle and has not started anything since
   bgLeft,
-  \* provider session (index.ts:75-108)
+  \* provider session (index.ts Session)
   turn, turnPrompts, unanswered,
   shown,             \* ghost: the turn the session last had open
   \* AgentRunner
@@ -103,7 +103,7 @@ SendPrompt(k, steer) ==
   /\ unanswered' = unanswered \cup {p}
   /\ stdin' = Append(stdin, Prompt(p, steer))
 
-\* AgentRunner.ts:518-541 sendWhen + 449-516 startTurn (the forked turn.run starts in RunTurn)
+\* AgentRunner.ts sendWhen, startClaimed and startTurn (the forked turn.run starts in RunTurn)
 Send ==
   /\ ~busy /\ sent < MaxSends
   /\ sent' = sent + 1 /\ started' = started + 1
@@ -111,7 +111,8 @@ Send ==
   /\ UNCHANGED <<cliVars, sessionVars, queue, pendingWakes, promptsSent, turnOf, steersLeft, interruptsLeft,
                  abandonsLeft, delivered, droppedContent, abandoned, finished, rejectedSteerWhileRunning>>
 
-\* index.ts:586-644 runTurn, everything after acquireSession; AgentRunner.ts:407-431 turns its error into turn_failed
+\* index.ts runTurn and startTurn, everything after acquireSession; AgentRunner.ts makeTurn follow turns its error
+\* into turn_failed
 RunTurn ==
   /\ consumer = "starting"
   /\ consumer' = "reading"
@@ -126,7 +127,7 @@ RunTurn ==
                  pendingWakes, sent, steersLeft, interruptsLeft, abandonsLeft, delivered, droppedContent, abandoned,
                  finished, rejectedSteerWhileRunning>>
 
-\* AgentRunner.ts:543-546 routes to makeTurn's steer (358-378), which calls index.ts:646-656 steer.
+\* AgentRunner.ts steerWhen routes to makeTurn steer and steerTurn, which call index.ts steer.
 \* With no activeTurns entry it falls back to send, which the Send action already covers.
 Steer ==
   /\ activeTurn # None /\ steersLeft > 0
@@ -139,7 +140,7 @@ Steer ==
   /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, runnerVars, sent, interruptsLeft,
                  abandonsLeft, delivered, droppedContent, abandoned, finished>>
 
-\* AgentRunner.ts:642-648 -> makeTurn's interrupt -> index.ts:570-574 interruptQuery. `interrupted` only
+\* AgentRunner.ts interrupt -> makeTurn interrupt -> index.ts interruptQuery. `interrupted` only
 \* relabels the turn's failure, so it is not modeled.
 Interrupt ==
   /\ activeTurn # None /\ interruptsLeft > 0
@@ -149,8 +150,8 @@ Interrupt ==
                  turnOf, steersLeft, abandonsLeft, delivered, droppedContent, abandoned, finished,
                  rejectedSteerWhileRunning>>
 
-\* index.ts:623-632 finalizer. The consumer stops early when `handle` fails or the FiberMap is torn down;
-\* `finish` still runs through Effect.ensuring (AgentRunner.ts:428).
+\* index.ts abandon, the finalizer startTurn adds. The consumer stops early when `handle` fails or the FiberMap is
+\* torn down; `finish` still runs through Effect.ensuring (AgentRunner.ts makeTurn follow).
 Abandon ==
   /\ consumer = "reading" /\ abandonsLeft > 0
   /\ abandonsLeft' = abandonsLeft - 1
@@ -162,7 +163,7 @@ Abandon ==
                  queue, started, pendingWakes, sent, promptsSent, turnOf, steersLeft, interruptsLeft, delivered,
                  droppedContent, finished, rejectedSteerWhileRunning>>
 
-\* AgentRunner.ts:331-356 handle, one exclusive section per event; a terminal event ends the stream
+\* AgentRunner.ts makeTurn handle, one exclusive section per event; a terminal event ends the stream
 Handle ==
   /\ consumer = "reading" /\ queue[activeTurn] # <<>>
   /\ queue' = [queue EXCEPT ![activeTurn] = Tail(@)]
@@ -171,7 +172,7 @@ Handle ==
      ELSE UNCHANGED <<status, consumer>>
   /\ UNCHANGED <<cliVars, sessionVars, busy, activeTurn, started, pendingWakes, ghostVars>>
 
-\* AgentRunner.ts:380-405 finish, the only place activeTurns is cleared
+\* AgentRunner.ts makeTurn finish, the only place activeTurns is cleared
 Finish ==
   /\ consumer = "ended"
   /\ finished' = finished \cup {activeTurn}
@@ -180,7 +181,7 @@ Finish ==
                  interruptsLeft, abandonsLeft, delivered, droppedContent, abandoned,
                  rejectedSteerWhileRunning>>
 
-\* AgentRunner wake: once the thread is not busy, the runner follows a turn the session opened by itself
+\* AgentRunner.ts startWake: once the thread is not busy, the runner follows a turn the session opened by itself
 \* with the same handle and finish as any turn. A send that raced it failed in RunTurn, since the session
 \* already had a turn.
 RunnerWake ==
@@ -201,7 +202,7 @@ Discard(m) ==
 
 Swallow == UNCHANGED <<turn, turnPrompts, shown, queue, delivered, droppedContent, started, pendingWakes>>
 
-\* index.ts emit; mapMessage.ts makes every result terminal. When the CLI reports its state, route keeps that
+\* index.ts emit; mapMessage.ts mapResult makes every result terminal. When the CLI reports its state, route keeps that
 \* terminal event in session.heldEnd and ends the turn with it at idle. The model does not tell a completed
 \* turn from a failed one, so it keeps no heldEnd.
 Emit(m) ==
@@ -218,14 +219,15 @@ EndTurn ==
   /\ turn' = None /\ turnPrompts' = {}
   /\ UNCHANGED <<shown, delivered, droppedContent, started, pendingWakes>>
 
-\* index.ts route on running with no turn: the CLI started work by itself, e.g. a background shell resumed a
-\* sub-agent. The session opens a turn at once, so nothing that follows is dropped, and hands it to the runner.
+\* index.ts pump hands running with no turn (startsByItself) to wake: the CLI started work by itself, e.g. a
+\* background shell resumed a sub-agent. The session opens a turn at once, so nothing that follows is dropped, and
+\* hands it to the runner.
 Wake ==
   /\ turn' = started + 1 /\ shown' = started + 1 /\ turnPrompts' = {}
   /\ started' = started + 1 /\ pendingWakes' = pendingWakes \cup {started + 1}
   /\ UNCHANGED <<queue, delivered, droppedContent>>
 
-\* index.ts:423-470 route, one Effect.sync per SDK message. A message's `from` stands for the uuids the CLI
+\* index.ts pump and route, one Effect.sync per SDK message. A message's `from` stands for the uuids the CLI
 \* stamped on its response's first message, which route keeps in session.answering. A reply to a finished
 \* sub-agent answers no prompt, so it goes to whichever turn is running.
 Pump ==
