@@ -2720,5 +2720,7 @@
   "mobile_artifact_removed": "這個成品已刪除。",
   "mobile_artifact_crashed": "這個頁面一再讓檢視器當掉。",
   "mobile_whiteboard_empty": "這個白板是空的",
+  "mobile_artifacts_new_document": "新增文件",
+  "mobile_artifacts_create_failed": "無法建立文件：{message}",
   "site_remote_shot_alt": "在 Mac mini 上執行、正在等待核准的對話串"
 }

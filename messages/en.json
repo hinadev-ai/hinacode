@@ -2784,5 +2784,7 @@
   "mobile_artifact_removed": "This artifact was deleted.",
   "mobile_artifact_crashed": "This page keeps crashing the viewer.",
   "mobile_whiteboard_empty": "This whiteboard is empty",
+  "mobile_artifacts_new_document": "New document",
+  "mobile_artifacts_create_failed": "Could not create the document: {message}",
   "site_remote_shot_alt": "A thread running on a Mac mini, waiting for approval in the desktop app"
 }

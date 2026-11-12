@@ -2766,5 +2766,7 @@
   "mobile_artifact_removed": "这个成品已删除。",
   "mobile_artifact_crashed": "这个页面反复让查看器崩溃。",
   "mobile_whiteboard_empty": "这个白板是空的",
+  "mobile_artifacts_new_document": "新建文档",
+  "mobile_artifacts_create_failed": "无法创建文档：{message}",
   "site_remote_shot_alt": "在 Mac mini 上运行、正在等待批准的对话"
 }

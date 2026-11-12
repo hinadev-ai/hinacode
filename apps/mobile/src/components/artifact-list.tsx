@@ -3,17 +3,18 @@ import type { Artifact } from "@shared/artifact.ts"
 import { Cause, Effect, Option } from "effect"
 import { AsyncResult, AtomRegistry } from "effect/reactivity"
 import { useFocusEffect } from "expo-router"
-import { useState } from "react"
+import { useState, useTransition } from "react"
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { GroupedCard } from "@/components/grouped-card"
 import { Icon } from "@/components/icon"
 import { Spinner } from "@/components/motion"
-import { EmptyState, Notice } from "@/components/ui"
+import { Button, EmptyState, Notice } from "@/components/ui"
 import { HIT, READABLE_WIDTH } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
+import { useThreadConnection, useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { artifactKinds, openArtifact } from "@/lib/artifact-kinds"
-import { type RpcError, useConnection } from "@/lib/connection"
+import { call, type RpcError, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { relativeTime } from "@/lib/relative-time"
@@ -79,6 +80,7 @@ export function ArtifactList({ threadId }: { threadId?: string }) {
     >
       <View style={styles.column}>
         {!connected && <Notice text={copy("mobile_overview_offline")} />}
+        {threadId !== undefined && <NewDocument threadId={threadId} />}
         {state.status === "loading" ? (
           connected && (
             <View style={styles.loading}>
@@ -147,7 +149,39 @@ function ArtifactRow({ artifact, showThread }: { artifact: Artifact; showThread:
   )
 }
 
+function NewDocument({ threadId }: { threadId: string }) {
+  const server = useThreadServer(threadId)?.id
+  const connected = useThreadConnection(threadId) === "connected"
+  const [creating, startCreating] = useTransition()
+  const [failure, setFailure] = useState<string | null>(null)
+  const create = () =>
+    startCreating(async () => {
+      setFailure(null)
+      try {
+        const title = copy("mobile_artifact_untitled_document")
+        const created = await call("artifacts.createDocument", { threadId, title }, { server })
+        openArtifact(threadId, { id: created.id, kind: "document", title: created.title })
+      } catch (cause) {
+        setFailure(copy("mobile_artifacts_create_failed", { message: errorText(cause) }))
+      }
+    })
+  return (
+    <View style={styles.create}>
+      <Button
+        testID="new-document"
+        label={copy("mobile_artifacts_new_document")}
+        icon="FileText"
+        busy={creating}
+        disabled={!connected}
+        onPress={create}
+      />
+      {failure !== null && <Notice tone="danger" text={failure} />}
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
+  create: { gap: 8, paddingBottom: 8 },
   page: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32 },
   column: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center", gap: 4 },
   loading: { alignItems: "center", paddingVertical: 24 },
