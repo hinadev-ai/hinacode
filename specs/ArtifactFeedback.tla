@@ -330,7 +330,8 @@ FinishReleases ==
   /\ UNCHANGED <<flagged, status, starting, prov, awaiting, turns, pc, captured, history, budgets>>
 
 ---------------------------------------------------------------------------------------------------------------
-\* The app quits or crashes. Memory is gone, Threads.ts marks a running row idle at the next start, and
+\* The app quits or crashes. Memory is gone, Threads.ts marks a running row interrupted at the next start, which
+\* delivers exactly as idle does, so this model writes idle, and
 \* thread.queue and feedback.json survive. A comment still marked waits for the next start, even one whose delivery
 \* finished before markDelivered ran.
 Crash ==

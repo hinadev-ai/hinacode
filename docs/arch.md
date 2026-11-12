@@ -548,6 +548,10 @@ stateDiagram-v2
     awaiting_approval --> limited: turn_limited
     limited --> running: send / scheduled reset retry
     limited --> archived: archive
+    running --> interrupted: restart
+    awaiting_approval --> interrupted: restart
+    interrupted --> running: resume / send
+    interrupted --> archived: archive
     awaiting_approval --> idle: interrupt
     idle --> archived: archive
     archived --> idle: unarchive
@@ -555,6 +559,8 @@ stateDiagram-v2
 ```
 
 Limited threads persist a typed `usageLimit` in the thread row. A usage limit can carry a provider-confirmed reset time and an opt-in automatic resume flag. Organization spend limits carry no reset schedule. The runner checks due requests in its scoped fiber, consumes each request once, then resends the last user prompt and attachments through the normal send path. Manual sends and archiving clear the limit. Restart preserves limited threads and scheduled requests.
+
+A thread whose turn dies in a restart becomes `interrupted`. After a hard kill, `Threads.resetInterrupted` rewrites `running` and `awaiting_approval` rows at the next start. On a graceful quit, disposing the runtime interrupts each turn fiber, and the turn's finish writes the status. A turn the developer stopped still ends `idle`. Nothing resumes an interrupted thread by itself, and the pull request watcher holds its wakes. `threads.resume` sends one continuation prompt through the normal send path.
 
 A thread's place in the Inbox, as `specs/ThreadLifecycle.tla` models it. `FlowIsLegal` checks that no step leaves this chart. The sidebar shows Working threads inside Ready, dimmed.
 
@@ -564,7 +570,7 @@ stateDiagram-v2
   [*] --> Draft: new thread
   Draft --> Working: first send
   Draft --> Deleted: discard
-  Working --> Ready: turn ends, asks, limited
+  Working --> Ready: turn ends, asks, limited, restart
   Ready --> Working: send, approve
   Ready --> Snoozed: snooze
   Working --> Snoozed: snooze

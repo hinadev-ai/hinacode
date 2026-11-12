@@ -19,7 +19,7 @@ VARIABLES
 
 vars == <<status, settled, snoozed, pinned, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
 
-Statuses == {"draft", "idle", "running", "awaiting_approval", "limited", "archived", "deleted"}
+Statuses == {"draft", "idle", "running", "awaiting_approval", "limited", "interrupted", "archived", "deleted"}
 Phases == {"draft", "working", "ready", "snoozed", "settled", "archived", "deleted"}
 
 Busy == status \in {"running", "awaiting_approval"}
@@ -63,7 +63,8 @@ StartWork(from) ==
   /\ mergeIsNewer' = FALSE
   /\ UNCHANGED <<pinned, seen, pr, sweepPc, sweepSaw, keptOpen>>
 
-Send == StartWork({"draft", "idle", "limited"})
+\* Resume is a send too: AgentRunner.resume sends its prompt through the same path.
+Send == StartWork({"draft", "idle", "limited", "interrupted"})
 
 \* AgentRunner: a message to an archived thread unarchives it first.
 SendToArchived == StartWork({"archived"})
@@ -84,6 +85,13 @@ TurnLimited ==
   /\ status' = "limited" /\ snoozed' = FALSE
   /\ UNCHANGED <<settled, pinned, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
 
+\* HinaCode stops mid-turn. A hard kill leaves the row busy and Threads.resetInterrupted rewrites it at the next
+\* start; a graceful quit interrupts the turn fiber, and its finish writes the same row. Nothing starts it again.
+Restart ==
+  /\ Busy
+  /\ status' = "interrupted" /\ snoozed' = FALSE
+  /\ UNCHANGED <<settled, pinned, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
+
 AskApproval ==
   /\ status = "running"
   /\ status' = "awaiting_approval" /\ snoozed' = FALSE
@@ -101,7 +109,7 @@ Read ==
 
 \* Threads.settle. Also clears the pin and the snooze, and refuses a busy thread.
 SettleByHand ==
-  /\ status \in {"idle", "limited"} /\ ~settled
+  /\ status \in {"idle", "limited", "interrupted"} /\ ~settled
   /\ settled' = TRUE /\ snoozed' = FALSE /\ pinned' = FALSE /\ keptOpen' = FALSE
   /\ UNCHANGED <<status, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw>>
 
@@ -113,7 +121,7 @@ Reopen ==
 
 \* Threads.archive. A busy thread refuses with ThreadBusyError.
 Archive ==
-  /\ status \in {"idle", "limited"}
+  /\ status \in {"idle", "limited", "interrupted"}
   /\ status' = "archived"
   /\ UNCHANGED <<settled, snoozed, pinned, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
 
@@ -125,7 +133,7 @@ Unarchive ==
 
 \* The row's Snooze stays enabled during a turn. Threads.write clears snoozed_until on the next status change.
 Snooze ==
-  /\ Phase \in {"ready", "working"} /\ status \in {"idle", "limited", "running"}
+  /\ Phase \in {"ready", "working"} /\ status \in {"idle", "limited", "interrupted", "running"}
   /\ snoozed' = TRUE
   /\ UNCHANGED <<status, settled, pinned, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
 
@@ -143,7 +151,7 @@ Unsnooze ==
 
 \* Threads.write: pinning a settled thread brings it back.
 Pin ==
-  /\ status \in {"idle", "limited", "running", "awaiting_approval"} /\ ~pinned
+  /\ status \in {"idle", "limited", "interrupted", "running", "awaiting_approval"} /\ ~pinned
   /\ pinned' = TRUE /\ settled' = FALSE
   /\ UNCHANGED <<status, snoozed, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
 
@@ -168,7 +176,7 @@ Merge ==
   /\ pr' = "merged" /\ mergeIsNewer' = TRUE /\ keptOpen' = FALSE
   /\ UNCHANGED <<status, settled, snoozed, pinned, seen, quiet, sweepPc, sweepSaw>>
 
-CanAutoSettle == status \in {"idle", "limited"} /\ ~settled /\ ~pinned
+CanAutoSettle == status \in {"idle", "limited", "interrupted"} /\ ~settled /\ ~pinned
 
 \* AutoSettle.ts settleIfDone: the first canAutoSettle, then the await on github.pullRequest.
 SweepAsks ==
@@ -189,7 +197,7 @@ SweepDecides ==
 
 Next ==
   \/ Send \/ SendToArchived \/ Delete
-  \/ TurnEnds \/ TurnLimited \/ AskApproval \/ ResolveApproval \/ Read
+  \/ TurnEnds \/ TurnLimited \/ Restart \/ AskApproval \/ ResolveApproval \/ Read
   \/ SettleByHand \/ Reopen \/ Archive \/ Unarchive
   \/ Snooze \/ Wake \/ Unsnooze \/ Pin \/ Unpin \/ TimePasses
   \/ OpenPullRequest \/ Merge \/ SweepAsks \/ SweepDecides
