@@ -28,6 +28,16 @@ const account = (id: string) => ({
 
 let listedModels = [model("first"), model("second"), model("third")]
 let codexModels: ReadonlyArray<ModelInfo> | null = null
+const accountLimits = [
+  {
+    provider: "claude",
+    accountId: "one",
+    limits: {
+      windows: [{ window: { kind: "session" }, usedPercent: 40, resetsAt: null }],
+      readAt: "2026-11-01T00:00:00.000Z",
+    },
+  },
+]
 
 const rpc = vi.fn(async (method: string, payload?: unknown) => {
   if (method === "agents.account") return { result: { type: "apiKey" } }
@@ -35,6 +45,7 @@ const rpc = vi.fn(async (method: string, payload?: unknown) => {
   if (method === "threads.switchAccount")
     return { result: { ...thread, accountId: (payload as { accountId: string }).accountId } }
   if (method === "threads.update") return { result: thread }
+  if (method === "limits.list") return { result: accountLimits }
   if (method === "models.list")
     return {
       result: (payload as { provider: string }).provider === "codex" ? (codexModels ?? listedModels) : listedModels,
@@ -143,6 +154,24 @@ test("fits a short model list and keeps its height while the search filters it",
   )
   await userEvent.keyboard("thi")
   await expect.poll(() => document.querySelectorAll("[role=option]").length).toBe(1)
+  expect(popover().offsetHeight).toBe(height)
+  await userEvent.keyboard("zzz")
+  await expect.element(page.getByText("No matching models")).toBeVisible()
+  expect(popover().offsetHeight).toBe(height)
+})
+
+test("keeps its height when leaving an account tab that shows its usage", async () => {
+  await render(
+    <div className="pt-[80vh]">
+      <ThreadPicker thread={thread} canSwitchAgent onError={() => {}} />
+    </div>,
+  )
+  await page.getByRole("button", { name: /second/ }).click()
+  await expect.element(page.getByText("40% used")).toBeVisible()
+  const height = popover().offsetHeight
+  await page.getByRole("tab", { name: "Codex" }).click()
+  await expect.poll(selectedTab).toContain("Codex")
+  await expect.element(page.getByRole("option", { name: "third" })).toBeVisible()
   expect(popover().offsetHeight).toBe(height)
 })
 
