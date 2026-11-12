@@ -280,7 +280,7 @@ describe("call", () => {
 
   it("saves only the lists a relaunch reads back, so a search query never rewrites them", async () => {
     const saves: [string, RememberedAnswers][] = []
-    const stop = onRemembered((serverId, answers) => saves.push([serverId, JSON.parse(JSON.stringify(answers))]))
+    const stop = onRemembered((serverId, answers) => saves.push([serverId, answers]))
     const launchLists = { "projects.list": [], "worktrees.list": [], "threads.list": [thread("t-web", "web")] }
     for (const [method, result] of Object.entries(launchLists)) {
       const listing = call(method as keyof typeof launchLists, undefined)
