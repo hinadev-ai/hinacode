@@ -319,17 +319,16 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
     const saveFromSandbox = (sbx: SandboxClient, sandboxId: string, template: string, quiesce: boolean) =>
       profileSaves.withPermit(
         Effect.gen(function* () {
-          const built = yield* sbx
-            .exec(sandboxId, { script: profileSaveScript(quiesce), timeoutSeconds: PROFILE_SCRIPT_TIMEOUT_SECONDS })
-            .pipe(Effect.mapError(toVmError))
+          const built = yield* sbx.exec(sandboxId, {
+            script: profileSaveScript(quiesce),
+            timeoutSeconds: PROFILE_SCRIPT_TIMEOUT_SECONDS,
+          })
           if (built.exitCode === PROFILE_ABSENT_EXIT) return
           if (built.exitCode !== 0)
             return yield* new VmError({
               message: `Saving the browser profile failed in the VM: ${Buffer.from(built.stderr).toString().trim()}`,
             })
-          const wrapped = yield* sbx
-            .getFiles(sandboxId, `/tmp/${PROFILE_GUEST_ARCHIVE}`)
-            .pipe(Effect.mapError(toVmError))
+          const wrapped = yield* sbx.getFiles(sandboxId, `/tmp/${PROFILE_GUEST_ARCHIVE}`)
           const entries = yield* Effect.try({
             try: () => decodeTar(wrapped),
             catch: (cause) => new VmError({ message: cause instanceof Error ? cause.message : String(cause) }),
@@ -340,18 +339,6 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
           yield* writeStoredProfile(dataDir, entry.data, template)
         }),
       )
-
-    const saveProfile = (threadId: string) =>
-      Effect.gen(function* () {
-        const vm = current(threadId)
-        if (vm.status !== "running") return yield* new VmError({ message: "The VM is not running" })
-        if (vm.profile === "copy")
-          return yield* new VmError({ message: "Another thread's VM saves the browser profile. This VM holds a copy." })
-        if (vm.profile === "off")
-          return yield* new VmError({ message: "The persistent browser profile is off for this VM" })
-        const sbx = yield* sbxClientEffect
-        yield* saveFromSandbox(sbx, vm.sandboxId, vm.template, false)
-      })
 
     const closeScreensOf = (threadId: string) =>
       screens.forEach((screen) => screen.threadId === threadId && screen.socket.destroy())
@@ -364,6 +351,35 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         dropped.delete(threadId)
         releaseProfileOwner(threadId)
         return setVm(threadId, NONE)
+      })
+
+    const guardGone = <A, E extends { readonly _tag: string; readonly message: string }>(
+      threadId: string,
+      sandboxId: string,
+      effect: Effect.Effect<A, E>,
+    ): Effect.Effect<A, VmError> =>
+      effect.pipe(
+        Effect.catchIf(
+          (error) => error._tag === "SandboxGoneError",
+          (error) => Effect.andThen(forget(threadId, sandboxId), Effect.fail(error)),
+        ),
+        Effect.mapError(toVmError),
+      )
+
+    const saveRunningProfile = (threadId: string, vm: Extract<ThreadVm, { status: "running" }>) =>
+      Effect.flatMap(sbxClientEffect, (sbx) =>
+        guardGone(threadId, vm.sandboxId, saveFromSandbox(sbx, vm.sandboxId, vm.template, false)),
+      )
+
+    const saveProfile = (threadId: string) =>
+      Effect.gen(function* () {
+        const vm = current(threadId)
+        if (vm.status !== "running") return yield* new VmError({ message: "The VM is not running" })
+        if (vm.profile === "copy")
+          return yield* new VmError({ message: "Another thread's VM saves the browser profile. This VM holds a copy." })
+        if (vm.profile === "off")
+          return yield* new VmError({ message: "The persistent browser profile is off for this VM" })
+        yield* saveRunningProfile(threadId, vm)
       })
 
     const settle = (threadId: string, done: Deferred.Deferred<ThreadVm>, vm: ThreadVm) =>
@@ -657,19 +673,6 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
               }
         return Effect.as(setVm(threadId, next), next)
       })
-
-    const guardGone = <A, E extends { readonly _tag: string; readonly message: string }>(
-      threadId: string,
-      sandboxId: string,
-      effect: Effect.Effect<A, E>,
-    ): Effect.Effect<A, VmError> =>
-      effect.pipe(
-        Effect.catchIf(
-          (error) => error._tag === "SandboxGoneError",
-          (error) => Effect.andThen(forget(threadId, sandboxId), Effect.fail(error)),
-        ),
-        Effect.mapError(toVmError),
-      )
 
     const performSbx = (sbx: SbxClient, sandboxId: string, actions: ReadonlyArray<VmAction>) =>
       Effect.scoped(
@@ -1072,8 +1075,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
             if (profileOwner === undefined || !profileEnabled) return Effect.void
             const vm = current(profileOwner)
             if (vm.status !== "running" || vm.profile !== "owner") return Effect.void
-            return sbxClientEffect.pipe(
-              Effect.flatMap((sbx) => saveFromSandbox(sbx, vm.sandboxId, vm.template, false)),
+            return saveRunningProfile(profileOwner, vm).pipe(
               Effect.catch((error) => Effect.logWarning("tiny vm: profile autosave failed", error.message)),
             )
           }),
