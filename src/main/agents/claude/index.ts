@@ -454,10 +454,9 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
     const sessionLocks = new Map<string, Semaphore.Semaphore>()
     const wakes = yield* Queue.unbounded<Wake>()
     const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
-    const probedCommands = yield* Cache.make({
-      lookup: probeCommands,
+    const probedCommands = yield* Cache.makeWith(probeCommands, {
       capacity: 32,
-      timeToLive: Duration.minutes(1),
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.minutes(1) : Duration.zero),
     })
 
     const emit = (session: Session, event: AgentEvent) => {

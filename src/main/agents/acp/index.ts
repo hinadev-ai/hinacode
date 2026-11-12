@@ -481,7 +481,10 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
         )
       }).pipe(Effect.scoped)
 
-    const probedCommands = yield* Cache.make({ lookup: probeCommands, capacity: 32, timeToLive: Duration.minutes(1) })
+    const probedCommands = yield* Cache.makeWith(probeCommands, {
+      capacity: 32,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.minutes(1) : Duration.zero),
+    })
 
     const listCommands = ({ threadId, cwd }: { readonly threadId: string; readonly cwd: string }) =>
       Effect.suspend(() => {
