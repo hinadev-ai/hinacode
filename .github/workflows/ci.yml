@@ -130,7 +130,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: actions/cache@v6
         with:
-          path: node_modules/.cache/react-compiler
+          path: node_modules/.cache/react-compiler/apps/web
           key: react-compiler-web-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: react-compiler-web-${{ hashFiles('pnpm-lock.yaml') }}-
       - run: pnpm --dir apps/web deploy:dry-run
@@ -230,7 +230,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: actions/cache@v6
         with:
-          path: node_modules/.cache/react-compiler
+          path: node_modules/.cache/react-compiler/src/renderer
           key: react-compiler-electron-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: react-compiler-electron-${{ hashFiles('pnpm-lock.yaml') }}-
       - uses: actions/cache@v6
@@ -272,7 +272,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: actions/cache@v6
         with:
-          path: node_modules/.cache/react-compiler
+          path: node_modules/.cache/react-compiler/apps/web
           key: react-compiler-web-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: react-compiler-web-${{ hashFiles('pnpm-lock.yaml') }}-
       - uses: actions/cache@v6
