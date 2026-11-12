@@ -97,6 +97,26 @@ const thread = (id: string, projectId: string) => ({
   updatedAt: "2026-10-24T00:00:00.000Z",
 })
 
+const artifact = (id: string) => ({
+  id,
+  title: id,
+  entry: "index.html",
+  version: 1,
+  files: [],
+  createdAt: "2026-10-24T00:00:00.000Z",
+  updatedAt: "2026-10-24T00:00:00.000Z",
+})
+
+const issue = (identifier: string) => ({
+  id: identifier,
+  identifier,
+  title: identifier,
+  url: `https://linear.app/team/issue/${identifier}`,
+  state: { name: "Todo", type: "unstarted" },
+  priority: 0,
+  updatedAt: "2026-10-24T00:00:00.000Z",
+})
+
 const unanswered = (promise: Promise<unknown>) => void promise.catch(() => {})
 
 const PROMISE_HOPS_PER_CALL = 10
@@ -297,6 +317,34 @@ describe("call", () => {
     const offline = call("threads.list", undefined)
     socketOf(1001).fail("threads.list", { tag: "SqlError", message: "locked" })
     expect((await offline).map((entry) => entry.id)).toEqual(["t-web"])
+  })
+
+  it("lists an unreachable server's saved artifacts and Linear issues after a relaunch", async () => {
+    const saved = new Map<string, RememberedAnswers>()
+    const stop = onRemembered((serverId, answers) => saved.set(serverId, answers))
+    const artifacts = call("artifacts.list", undefined)
+    socketOf(1001).answer("artifacts.list", [artifact("art-web")])
+    socketOf(1002).answer("artifacts.list", [artifact("art-api")])
+    await artifacts
+    const issues = call("linear.issues", undefined)
+    socketOf(1001).answer("linear.issues", [])
+    socketOf(1002).answer("linear.issues", [issue("ENG-1")])
+    await issues
+    stop()
+
+    setServers([])
+    setServers([server("a", 1001), server("b", 1002)])
+    restoreAnswers("a", saved.get("a") ?? {})
+    restoreAnswers("b", saved.get("b") ?? {})
+    socketOf(1001).ready({ id: "env-a", name: "studio" })
+    socketOf(1002).onclose?.({ code: 1006 })
+
+    const relaunchedArtifacts = call("artifacts.list", undefined)
+    socketOf(1001).answer("artifacts.list", [artifact("art-web")])
+    expect((await relaunchedArtifacts).map((entry) => entry.id)).toEqual(["art-web", "art-api"])
+    const relaunchedIssues = call("linear.issues", undefined)
+    socketOf(1001).answer("linear.issues", [])
+    expect((await relaunchedIssues).map((entry) => entry.identifier)).toEqual(["ENG-1"])
   })
 
   it("reads an artifact on the thread's server before any server has claimed it", async () => {
