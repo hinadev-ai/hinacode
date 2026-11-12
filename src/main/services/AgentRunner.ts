@@ -68,6 +68,7 @@ import { McpCredentials } from "../mcp/credentials.ts"
 import {
   AgentError,
   type AgentProvider,
+  interruptedTurn,
   type SessionInput,
   type SteerPriority,
   type SubagentChange,
@@ -861,7 +862,7 @@ const make = Effect.gen(function* () {
           Effect.gen(function* () {
             const input = yield* sessionInput(thread, provider, cwd, home, environment)
             if (yield* Deferred.isDone(stop)) {
-              return Stream.succeed<AgentEvent>({ type: "turn_failed", message: "Turn interrupted" })
+              return Stream.succeed(interruptedTurn)
             }
             return provider.runTurn({ ...input, prompt, attachments })
           }),

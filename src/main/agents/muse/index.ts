@@ -31,7 +31,7 @@ import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { installedBinary } from "../binary.ts"
 import { attachmentContext } from "../elementContext.ts"
 import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
-import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
+import { AgentError, type AgentProvider, type BackgroundTasksChange, interruptedTurn, type Wake } from "../provider.ts"
 import { choiceFor, sessionScope, takesNote, toApprovalRequest } from "./approvals.ts"
 import { backgroundTasksAfter, isBackgrounded } from "./backgroundTasks.ts"
 import { toAccount, toModelInfo } from "./catalog.ts"
@@ -82,8 +82,6 @@ const permissionProfiles: Record<AccessMode, string> = {
 }
 
 const museError = (message: string) => new AgentError({ provider: "muse", message })
-
-const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
 
 const SUMMARY_BREAK = "\n\n"
 
@@ -831,7 +829,7 @@ const make = Effect.gen(function* () {
               },
             })
           }
-          if (params.terminal === "cancelled") return yield* emit(interruptedEvent)
+          if (params.terminal === "cancelled") return yield* emit(interruptedTurn)
           const quota = params.error?.quota
           if (quota !== undefined || rateLimited) {
             return yield* emit({
@@ -942,7 +940,7 @@ const make = Effect.gen(function* () {
               Effect.forkIn(providerScope),
             )
           }
-          yield* emit(interruptedEvent)
+          yield* emit(interruptedTurn)
         }
         yield* Queue.end(out)
       }),

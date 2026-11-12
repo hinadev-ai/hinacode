@@ -52,6 +52,7 @@ import {
   type BackgroundTasksChange,
   type SessionInput,
   type SteerPriority,
+  interruptedTurn,
   type Wake,
   tmpEnv,
 } from "../provider.ts"
@@ -471,8 +472,8 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
       if ((event.type === "turn_failed" || event.type === "turn_limited") && session.interrupted)
         event =
           event.type === "turn_failed" && event.sessionLost
-            ? { type: "turn_failed", message: "Interrupted", sessionLost: true }
-            : { type: "turn_failed", message: "Interrupted" }
+            ? { ...interruptedTurn, sessionLost: true }
+            : interruptedTurn
       if (event.type === "turn_completed" && session.sessionId !== null && session.lastAssistantUuid !== null)
         event = { ...event, forkPoint: { sessionId: session.sessionId, checkpoint: session.lastAssistantUuid } }
       Queue.offerUnsafe(session.turn, event)

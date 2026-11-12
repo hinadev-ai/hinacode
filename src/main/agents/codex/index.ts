@@ -41,6 +41,7 @@ import {
   LISTED_SESSIONS,
   MCP_TOOL_TIMEOUT_SECONDS,
   type SessionHistory,
+  interruptedTurn,
   type SubagentChange,
   tmpEnv,
 } from "../provider.ts"
@@ -160,8 +161,6 @@ const copySession = (threadId: string, from: AccountHome | null, to: AccountHome
           ),
     ),
   )
-
-const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
 
 // FIXME: Codex has no notification for background terminals
 const TERMINAL_POLL_INTERVAL = Duration.seconds(2)
@@ -966,7 +965,7 @@ const make = Effect.gen(function* () {
               Effect.forkIn(providerScope),
             )
           }
-          yield* emit(interruptedEvent)
+          yield* emit(interruptedTurn)
         }
         yield* Queue.end(out)
       }),

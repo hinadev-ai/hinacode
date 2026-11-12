@@ -17,7 +17,7 @@ import { providerInfo } from "../../../shared/providers.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
 import { attachmentContext } from "../elementContext.ts"
-import { AgentError, type AgentProvider, tmpEnv } from "../provider.ts"
+import { AgentError, type AgentProvider, interruptedTurn, tmpEnv } from "../provider.ts"
 import { autoAllows, mergePermissionTool, optionFor, permissionOutcome, toApprovalRequest } from "./approvals.ts"
 import { type AcpClient, type AcpFailure, type Incoming, makeAcpClient, type RequestId } from "./client.ts"
 import { AGENT_DEFAULT_EFFORT, effortLevels, effortSelector, modelSelector, toModelInfos } from "./models.ts"
@@ -48,8 +48,6 @@ const CLIENT_VERSION = "0.1.0"
 const INITIALIZE_TIMEOUT = Duration.seconds(30)
 const INTERRUPT_GRACE = Duration.seconds(5)
 const COMMANDS_WAIT = Duration.seconds(5)
-
-const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
 
 interface PendingPermission {
   readonly approvalId: string | null
@@ -331,7 +329,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
         const context = mapper.context()
         switch (stopReason) {
           case "cancelled":
-            return yield* emit(interruptedEvent)
+            return yield* emit(interruptedTurn)
           case "refusal":
             return yield* emit({ type: "turn_failed", message: `${name} refused to continue this turn` })
           case "max_tokens":
@@ -373,7 +371,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
           )
           if (stopped) {
             for (const event of run.mapper?.closeOpenTools("Interrupted") ?? []) yield* emit(event)
-            yield* emit(interruptedEvent)
+            yield* emit(interruptedTurn)
           }
           yield* Queue.end(out)
         }),

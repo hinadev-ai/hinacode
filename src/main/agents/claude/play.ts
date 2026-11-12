@@ -2,6 +2,7 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Deferred, Effect, Stream } from "effect"
 import type { AgentEvent, ApprovalDecision, ApprovalRequest, Question, QuestionRequest } from "../../../shared/agent.ts"
 import { mockModel, nextCallId, toolResult, toolUse } from "./fixtures/sdk.ts"
+import { interruptedTurn } from "../provider.ts"
 import { mapMessage, type MapState } from "./mapMessage.ts"
 
 export type MockStep =
@@ -123,9 +124,7 @@ export function play(steps: ReadonlyArray<MockStep>, controls: PlayControls): St
 
   const interrupted = Stream.unwrap(
     Deferred.isDone(controls.stopped).pipe(
-      Effect.map((stopped) =>
-        stopped ? Stream.succeed<AgentEvent>({ type: "turn_failed", message: "Interrupted" }) : Stream.empty,
-      ),
+      Effect.map((stopped) => (stopped ? Stream.succeed(interruptedTurn) : Stream.empty)),
     ),
   )
   return Stream.fromIterable(steps).pipe(

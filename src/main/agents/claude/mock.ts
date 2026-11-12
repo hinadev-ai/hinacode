@@ -8,7 +8,7 @@ import {
   type RunTurnInput,
   unlistedModel,
 } from "../../../shared/agent.ts"
-import { AgentError, type BackgroundTasksChange } from "../provider.ts"
+import { AgentError, type BackgroundTasksChange, interruptedTurn } from "../provider.ts"
 import {
   usageLimitAssistant,
   usageLimitResult,
@@ -277,8 +277,7 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
         shells.set(threadId, tasks)
         Queue.offerUnsafe(shellChanges, { threadId, tasks })
       }
-      const interrupted: AgentEvent = { type: "turn_failed", message: "Interrupted" }
-      const untilStopped = (stop: Deferred.Deferred<void>) => Deferred.await(stop).pipe(Effect.as(interrupted))
+      const untilStopped = (stop: Deferred.Deferred<void>) => Deferred.await(stop).pipe(Effect.as(interruptedTurn))
 
       const usageLimitTurn = (input: RunTurnInput, scenario: "usage-limit" | "org-spend-limit") => {
         if (attempted.has(input.threadId) || input.resumeSessionId !== null) {
@@ -364,7 +363,7 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
                   Stream.concat(
                     Stream.merge(progress, Stream.fromQueue(pushed)).pipe(Stream.interruptWhen(Deferred.await(stop))),
                   ),
-                  Stream.concat(Stream.make(interrupted)),
+                  Stream.concat(Stream.make(interruptedTurn)),
                 )
               }),
             )
@@ -376,7 +375,7 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
             )
             return Stream.fromIterable(longTurn()).pipe(
               Stream.concat(streaming),
-              Stream.concat(Stream.make(interrupted)),
+              Stream.concat(Stream.make(interruptedTurn)),
             )
           }
           case "artifacts": {
