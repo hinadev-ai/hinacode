@@ -22,6 +22,7 @@ interface FakeBoat {
   readonly resumes: () => number
   readonly stops: () => number
   readonly commands: ReadonlyArray<string>
+  readonly requests: Array<string>
   readonly setFailStop: (fail: boolean) => void
   readonly expireNextResume: () => void
 }
@@ -36,6 +37,7 @@ const readBody = (request: IncomingMessage) =>
 const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(function* () {
   const files = new Map<string, Buffer>()
   const commands: Array<string> = []
+  const requests: Array<string> = []
   const states = new Map<string, string>()
   let created = 0
   let resumes = 0
@@ -105,6 +107,7 @@ const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(fu
     void (async () => {
       const url = new URL(request.url ?? "/", base || "http://127.0.0.1")
       const route = url.pathname
+      requests.push(`${request.method} ${route.replace(/^\/sandboxes\/[^/]+/, "/sandboxes/{id}")}`)
       if (route === "/signed") {
         const path = url.searchParams.get("path") ?? ""
         if (request.method === "PUT") {
@@ -321,6 +324,7 @@ const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(fu
     resumes: () => resumes,
     stops: () => stops,
     commands,
+    requests,
     setFailStop: (fail) => {
       failStop = fail
     },
@@ -413,6 +417,32 @@ it.effect("a boat VM starts, runs, clicks, stops into a snapshot and resumes on 
       expect(resumed).toMatchObject({ status: "running", provider: "boat", sandboxId: "bx_fake0001" })
       expect(fake.created()).toBe(1)
       expect(fake.resumes()).toBe(1)
+    }),
+  ),
+)
+
+it.effect("a click and the screenshot after it cost four boat requests", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fake = yield* startFakeBoat
+      const dir = mkdtempSync(join(tmpdir(), "hinacode-boat-vm-"))
+      const runtime = yield* Effect.acquireRelease(
+        Effect.sync(() => makeRuntime(fake, dir)),
+        (value) => Effect.promise(() => value.dispose()),
+      )
+      const run = <A, E>(effect: Effect.Effect<A, E, TinyVm>) => Effect.promise(() => runtime.runPromise(effect))
+      yield* run(TinyVm.use((vm) => vm.start("thread-1")))
+      fake.requests.length = 0
+
+      yield* run(TinyVm.use((vm) => vm.act("thread-1", [{ type: "click", x: 10, y: 20, button: "left", clicks: 1 }])))
+      expect(Buffer.from(yield* run(TinyVm.use((vm) => vm.screenshot("thread-1"))))).toEqual(FAKE_PNG)
+
+      expect(fake.requests).toEqual([
+        "POST /sandboxes/{id}/commands",
+        "POST /sandboxes/{id}/commands",
+        "GET /sandboxes/{id}/files",
+        "POST /sandboxes/{id}/commands",
+      ])
     }),
   ),
 )

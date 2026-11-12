@@ -536,6 +536,37 @@ describe("boatClient", () => {
     })
   })
 
+  it("exec costs one request plus one per output stream and its cleanup, getFiles three", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-1", "ready")
+      const client = makeClient(fake)
+      const requestsOf = async <A, E>(effect: Effect.Effect<A, E>) => {
+        fake.requests.length = 0
+        await runEffect(effect)
+        return [...fake.requests]
+      }
+      expect(await requestsOf(client.exec("sb-1", { script: "quiet", timeoutSeconds: 30 }))).toEqual([
+        "POST /sandboxes/{id}/commands",
+      ])
+      expect(await requestsOf(client.exec("sb-1", { script: "stdout-only", timeoutSeconds: 30 }))).toEqual([
+        "POST /sandboxes/{id}/commands",
+        "GET /sandboxes/{id}/files",
+        "POST /sandboxes/{id}/commands",
+      ])
+      expect(await requestsOf(client.exec("sb-1", { script: "cat /tmp/pic.png", timeoutSeconds: 30 }))).toEqual([
+        "POST /sandboxes/{id}/commands",
+        "GET /sandboxes/{id}/files",
+        "GET /sandboxes/{id}/files",
+        "POST /sandboxes/{id}/commands",
+      ])
+      expect(await requestsOf(client.getFiles("sb-1", "/home/user/out"))).toEqual([
+        "POST /sandboxes/{id}/commands",
+        "GET /sandboxes/{id}/files",
+        "POST /sandboxes/{id}/commands",
+      ])
+    })
+  })
+
   it("detached exec returns pid and log", async () => {
     await withFake(async (fake) => {
       fake.seedSandbox("sb-1", "ready")
