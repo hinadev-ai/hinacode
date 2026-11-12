@@ -83,7 +83,6 @@ export function PathInput({ id, value, onChange, environment, placeholder, requi
         spellCheck={false}
         autoComplete="off"
         onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
         onKeyDown={(event) => {
           if (event.key !== "Tab" || event.shiftKey || !showing) return
           const pick = suggestions.find((suggestion) => suggestion.path === highlighted.current?.path) ?? suggestions[0]

@@ -116,14 +116,11 @@ const withStagedAttachments = (parts: Array<Record<string, unknown>>) =>
     part.type === "attachment" ? { ...part, attachment: stageAttachment(part.attachment as Attachment) } : part,
   )
 
-const targetColumns = (table: string) =>
-  new Set((target.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(({ name }) => name))
 const insert = (table: string, row: Row) => {
-  const columns = targetColumns(table)
-  const keys = Object.keys(row).filter((key) => columns.has(key))
+  const keys = Object.keys(row)
   target
     .prepare(`INSERT INTO ${table} (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`)
-    .run(...keys.map((key) => row[key] ?? null))
+    .run(...Object.values(row).map((value) => value ?? null))
 }
 const pick = (row: Row, keys: ReadonlyArray<string>) => Object.fromEntries(keys.map((key) => [key, row[key]]))
 
@@ -131,7 +128,7 @@ const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-C", 
 const cloneDir = join(data, "repos", PUBLIC_PROJECT)
 const prepareRepos = () => {
   mkdirSync(join(data, "repos"), { recursive: true })
-  execFileSync("git", ["clone", "-q", "--no-hardlinks", "--single-branch", "--branch", "main", repo, cloneDir])
+  execFileSync("git", ["clone", "-q", "--local", "--single-branch", "--branch", "main", repo, cloneDir])
   git(cloneDir, "remote", "set-url", "origin", "https://github.com/hinadev-ai/hinacode.git")
   projects.forEach((project, index) => {
     if (project === publicProject || project.kind === "chats") return
