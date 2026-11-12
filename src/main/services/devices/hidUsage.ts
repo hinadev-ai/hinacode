@@ -1,3 +1,5 @@
+import type { DeviceButton } from "../../../shared/device.ts"
+
 const letters = Object.fromEntries(
   Array.from({ length: 26 }, (_, index) => [`Key${String.fromCharCode(65 + index)}`, 0x04 + index]),
 )
@@ -47,6 +49,15 @@ const usages: ReadonlyMap<string, number> = new Map(
 )
 
 export const hidUsage = (code: string): number | undefined => usages.get(code)
+
+const consumerUsages: Partial<Record<DeviceButton, number>> = {
+  home: 0x40,
+  lock: 0x30,
+  volumeUp: 0xe9,
+  volumeDown: 0xea,
+}
+
+export const consumerUsage = (button: DeviceButton): number | undefined => consumerUsages[button]
 
 interface Keystroke {
   readonly usage: number
