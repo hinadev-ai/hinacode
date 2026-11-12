@@ -13,7 +13,6 @@ export const unavailableDriver = (support: PlatformSupport): DevicePlatformDrive
     shutdown: refuse,
     remove: refuse,
     connect: refuse,
-    screenshot: refuse,
     describe: refuse,
     launch: refuse,
   }

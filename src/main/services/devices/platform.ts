@@ -36,7 +36,6 @@ export interface DevicePlatformDriver {
   readonly shutdown: (id: DeviceId) => Promise<void>
   readonly remove: (id: DeviceId) => Promise<void>
   readonly connect: (id: DeviceId, onFrame: (frame: Frame) => void) => Promise<DeviceLink>
-  readonly screenshot: (id: DeviceId) => Promise<Buffer>
   readonly describe: (id: DeviceId) => Promise<ReadonlyArray<DeviceElement>>
   readonly launch: (id: DeviceId, app: string) => Promise<void>
 }
