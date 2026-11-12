@@ -2556,7 +2556,6 @@
   "mobile_artifact_writing_hint": "[要写什么]",
   "mobile_artifact_card_document": "文档",
   "mobile_artifact_card_page": "页面",
-  "mobile_artifact_card_whiteboard": "白板",
   "mobile_artifact_card_publishing": "发布中…",
   "mobile_artifact_card_version": "v{version}",
   "mobile_artifact_card_more_sections": "{sections} +{count}",

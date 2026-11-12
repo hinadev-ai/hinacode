@@ -2573,7 +2573,6 @@
   "mobile_artifact_writing_hint": "[what to write]",
   "mobile_artifact_card_document": "Document",
   "mobile_artifact_card_page": "Page",
-  "mobile_artifact_card_whiteboard": "Whiteboard",
   "mobile_artifact_card_publishing": "Publishing…",
   "mobile_artifact_card_version": "v{version}",
   "mobile_artifact_card_more_sections": "{sections} +{count}",

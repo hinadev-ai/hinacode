@@ -2527,7 +2527,6 @@
   "mobile_artifact_writing_hint": "[要寫什麼]",
   "mobile_artifact_card_document": "文件",
   "mobile_artifact_card_page": "頁面",
-  "mobile_artifact_card_whiteboard": "白板",
   "mobile_artifact_card_publishing": "發布中…",
   "mobile_artifact_card_version": "v{version}",
   "mobile_artifact_card_more_sections": "{sections} +{count}",

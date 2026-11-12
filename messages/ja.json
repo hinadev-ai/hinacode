@@ -2509,7 +2509,6 @@
   "mobile_artifact_writing_hint": "[書く内容]",
   "mobile_artifact_card_document": "ドキュメント",
   "mobile_artifact_card_page": "ページ",
-  "mobile_artifact_card_whiteboard": "ホワイトボード",
   "mobile_artifact_card_publishing": "公開中…",
   "mobile_artifact_card_version": "v{version}",
   "mobile_artifact_card_more_sections": "{sections} +{count}",

@@ -33,7 +33,7 @@ const summaryOf = (outline: DocumentOutline | null) => {
 const cardCopy = {
   page: { kind: "mobile_artifact_card_page", untitled: "mobile_artifact_untitled_page" },
   document: { kind: "mobile_artifact_card_document", untitled: "mobile_artifact_untitled_document" },
-  whiteboard: { kind: "mobile_artifact_card_whiteboard", untitled: "mobile_artifact_untitled_whiteboard" },
+  whiteboard: { kind: "mobile_artifacts_whiteboard", untitled: "mobile_artifact_untitled_whiteboard" },
 } as const
 
 const openDocument = (threadId: string, artifactId: string, title: string) =>
