@@ -2,12 +2,12 @@ import { appendFileSync, readFileSync, watch } from "node:fs"
 import { basename } from "node:path"
 import { createInterface } from "node:readline"
 
+let lastControl = {}
 const control = () => {
   try {
-    return JSON.parse(readFileSync(process.env.FAKE_CODEX_CONTROL, "utf8"))
-  } catch {
-    return {}
-  }
+    lastControl = JSON.parse(readFileSync(process.env.FAKE_CODEX_CONTROL, "utf8"))
+  } catch {}
+  return lastControl
 }
 const send = (message) => {
   if (control().noise) process.stdout.write('WARN codex_core: config.toml has an unknown key\n{"id": \n')
