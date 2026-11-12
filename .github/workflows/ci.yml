@@ -78,7 +78,7 @@ jobs:
               - 'tools/resource-monitor/**'
               - '.github/workflows/ci.yml'
 
-  check:
+  static:
     needs: changes
     runs-on: ubuntu-latest
     steps:
@@ -89,12 +89,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cache/electron
-          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-      # FIXME: GitHub's release downloads time out with a 504 now and then, and the Electron binary comes from there
-      - run: for attempt in 1 2 3 4 5; do pnpm exec install-electron && exit 0; sleep $((attempt * 15)); done; exit 1
       - run: pnpm lint
       - run: pnpm format --check
       - if: needs.changes.outputs.app == 'true'
@@ -110,27 +104,68 @@ jobs:
       - if: needs.changes.outputs.relay == 'true'
         run: pnpm --dir relay deploy:dry-run
       - if: needs.changes.outputs.app == 'true'
-        run: pnpm --dir apps/web deploy:dry-run
-      - if: needs.changes.outputs.app == 'true'
-        name: Install search test dependency
-        run: sudo apt-get update && sudo apt-get install --yes ripgrep
-      - if: needs.changes.outputs.app == 'true'
-        name: Install and select the pinned Chromium
-        run: |
-          pnpm exec playwright install --with-deps chromium
-          echo "HINACODE_BROWSER_EXECUTABLE_PATH=$(node -p 'require("playwright").chromium.executablePath()')" >> "$GITHUB_ENV"
-      - if: needs.changes.outputs.app == 'true'
-        name: Allow Chromium sandbox namespaces
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - if: needs.changes.outputs.app == 'true'
-        run: pnpm test
-      - if: needs.changes.outputs.app == 'true'
         name: Verify the server package
         run: |
           node --test scripts/server-package.test.ts
           pnpm build:server
           pnpm stage:server
           pnpm verify:server
+
+  web-build:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir apps/web deploy:dry-run
+
+  test:
+    name: test (${{ matrix.shard }}/3)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      # FIXME: GitHub's release downloads time out with a 504 now and then, and the Electron binary comes from there
+      - run: for attempt in 1 2 3 4 5; do pnpm exec install-electron && exit 0; sleep $((attempt * 15)); done; exit 1
+      - name: Install search test dependency
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+      - name: Install and select the pinned Chromium
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          echo "HINACODE_BROWSER_EXECUTABLE_PATH=$(node -p 'require("playwright").chromium.executablePath()')" >> "$GITHUB_ENV"
+      - name: Allow Chromium sandbox namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: pnpm test --shard ${{ matrix.shard }}/3
+
+  # The main ruleset requires a check named "check", so this job reports the result of the jobs it replaced.
+  check:
+    needs: [changes, static, web-build, test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
 
   executable:
     needs: changes
