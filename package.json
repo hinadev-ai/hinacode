@@ -28,7 +28,6 @@
     "verify:exe": "node scripts/verify-executable.ts",
     "preview": "electron-vite preview",
     "dist": "electron-vite build && electron-builder --publish never",
-    "start:xvfb": "DISPLAY=:99 electron-vite preview -- --no-sandbox --disable-gpu --remote-debugging-port=9222",
     "serve": "vite build --config vite.server.config.ts && node bin/hinacode.mjs serve",
     "stage:server": "node scripts/stage-server-package.ts",
     "verify:server": "node scripts/verify-server-package.ts",
