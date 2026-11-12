@@ -1,10 +1,9 @@
 import { BlockList, isIPv4 } from "node:net"
 import { networkInterfaces } from "node:os"
 import type { NetworkAddress } from "../shared/domain.ts"
+import { isTailscaleHost } from "../shared/remote.ts"
 
 type Interfaces = ReturnType<typeof networkInterfaces>
-
-const isTailscale = (address: string) => address.startsWith("100.")
 
 const isVirtualBridge = (name: string) =>
   /^(docker|br-|veth|virbr|cni|flannel|podman|vboxnet|vmnet|bridge[1-9]\d\d)/.test(name)
@@ -17,7 +16,10 @@ export const networkAddresses = (interfaces: Interfaces = networkInterfaces()): 
         .filter((net) => net.family === "IPv4" && !net.internal)
         .map((net) => ({ name, address: net.address })),
     )
-  return [...addresses.filter((a) => isTailscale(a.address)), ...addresses.filter((a) => !isTailscale(a.address))]
+  return [
+    ...addresses.filter((a) => isTailscaleHost(a.address)),
+    ...addresses.filter((a) => !isTailscaleHost(a.address)),
+  ]
 }
 
 const privateRanges = new BlockList()
@@ -38,4 +40,4 @@ export const privateAddresses = (interfaces: Interfaces = networkInterfaces()): 
     .filter(isPrivateAddress)
 
 export const tailscaleAddress = (interfaces: Interfaces = networkInterfaces()): string | null =>
-  networkAddresses(interfaces).find((a) => isTailscale(a.address))?.address ?? null
+  networkAddresses(interfaces).find((a) => isTailscaleHost(a.address))?.address ?? null
