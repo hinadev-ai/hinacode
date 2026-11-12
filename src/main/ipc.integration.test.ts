@@ -1166,7 +1166,7 @@ const removalHeldOnItsFirstCopy = async () => {
   return { chosen, held, waiting, removal, resume: () => pause.resume.resolve() }
 }
 
-const cachedLogin = (label: string) => existsSync(join(dir, "cache", `${label}.json`))
+const cachedLogin = (accountId: string) => existsSync(join(dir, "cache", `${accountId}.json`))
 
 const history = () => join(dir, "history")
 const inHistory = (...args: Array<string>) =>
@@ -1839,18 +1839,16 @@ describe("agent accounts over rpc", () => {
     await acceptedOnceSettled(() => invoke("accounts.delete", { id: chosen.id }))
   })
 
-  test("drops an account's cached sign-in when it is renamed or removed", async () => {
+  test("keeps an account's cached sign-in through a rename and drops it on removal", async () => {
     const account = result(await invoke("accounts.create", newAccount("codex", "Billing")))
     result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
-    expect(cachedLogin("billing_codex")).toBe(true)
+    expect(cachedLogin(account.id)).toBe(true)
 
     result(await invoke("accounts.rename", { id: account.id, name: "Invoices" }))
-    expect(cachedLogin("billing_codex")).toBe(false)
-    result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
-    expect(cachedLogin("invoices_codex")).toBe(true)
+    expect(cachedLogin(account.id)).toBe(true)
 
     result(await invoke("accounts.delete", { id: account.id }))
-    expect(cachedLogin("invoices_codex")).toBe(false)
+    expect(cachedLogin(account.id)).toBe(false)
   })
 })
 

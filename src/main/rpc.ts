@@ -398,10 +398,7 @@ const handlers: Handlers = {
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),
-  "accounts.rename": ({ id, name }) =>
-    AgentAccounts.use((accounts) => accounts.rename(id, name)).pipe(
-      Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
-    ),
+  "accounts.rename": ({ id, name }) => AgentAccounts.use((accounts) => accounts.rename(id, name)),
   "accounts.delete": ({ id }) =>
     AgentRunner.use((runner) => runner.removeAccount(id)).pipe(
       Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),

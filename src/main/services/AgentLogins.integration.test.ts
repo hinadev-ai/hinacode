@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
@@ -53,19 +53,24 @@ const withLogins = <A, E>(
     cacheDir: string,
     claude: ReturnType<typeof fakeClaude>["state"],
   ) => Effect.Effect<A, E, AgentLogins | AgentAccounts | Settings>,
+  dataDir = mkdtempSync(join(tmpdir(), "kk-logins-test-")),
 ) => {
-  const dataDir = mkdtempSync(join(tmpdir(), "kk-logins-test-"))
   const cacheDir = join(dataDir, "cache")
   const claude = fakeClaude()
   const layer = loginsLayer(cacheDir).pipe(
     Layer.provideMerge(accountsLayer),
     Layer.provideMerge(settingsLayer(dataDir)),
     Layer.provide(claude.layer),
-    Layer.provide(Db.layer(":memory:")),
+    Layer.provide(Db.layer(join(dataDir, "hinacode.db"))),
     Layer.provide(NodeServices.layer),
   )
   return effect(cacheDir, claude.state).pipe(Effect.provide(layer))
 }
+
+const createClaudeAccount = (name: string) =>
+  AgentAccounts.use((accounts) =>
+    accounts.create({ provider: "claude", name, configDir: "/tmp/kk-unused", binary: "claude" }),
+  )
 
 const cached = (path: string) => JSON.parse(readFileSync(path, "utf8")) as { accountId: string | null }
 
@@ -84,7 +89,7 @@ describe("agent logins", () => {
     ),
   )
 
-  it.effect("labels the CLI's own login with its name and an added account with the account's", () =>
+  it.effect("names the CLI's own login after its agent and an added account after its id", () =>
     withLogins((cacheDir) =>
       Effect.gen(function* () {
         yield* Settings.use((settings) =>
@@ -110,10 +115,7 @@ describe("agent logins", () => {
         yield* logins.account("claude", null)
         yield* logins.account("claude", account.id)
 
-        expect(readdirSync(cacheDir).toSorted()).toStrictEqual([
-          "mi-cuenta-personal_claude.json",
-          "work-client_claude.json",
-        ])
+        expect(readdirSync(cacheDir).toSorted()).toStrictEqual([`${account.id}.json`, "default_claude.json"].toSorted())
       }),
     ),
   )
@@ -132,36 +134,64 @@ describe("agent logins", () => {
     ),
   )
 
-  it.effect("ignores a file left by another account under the same label", () =>
-    withLogins((cacheDir, claude) =>
-      Effect.gen(function* () {
-        const logins = yield* AgentLogins
-        yield* logins.account("claude", null)
-        const account = yield* AgentAccounts.use((accounts) =>
-          accounts.create({ provider: "claude", name: "Default", configDir: "/tmp/kk-unused", binary: "claude" }),
-        )
-        claude.answer = { type: "apiKey" }
+  it.effect("on start, deletes caches an older version named after labels and keeps every login", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "kk-logins-test-"))
+    const cacheDir = join(dataDir, "cache")
+    return Effect.gen(function* () {
+      const account = yield* withLogins(() => createClaudeAccount("Default"), dataDir)
+      mkdirSync(cacheDir, { recursive: true })
+      const labelled = {
+        "default_claude.json": account.id,
+        "old-name_claude.json": account.id,
+        "personal_codex.json": null,
+        "removed_claude.json": "an-account-deleted-long-ago",
+      }
+      for (const [file, accountId] of Object.entries(labelled)) {
+        writeFileSync(join(cacheDir, file), JSON.stringify({ accountId, account: work }))
+      }
 
-        expect(yield* logins.account("claude", account.id)).toStrictEqual({ type: "apiKey" })
-        expect(claude.calls).toHaveLength(2)
-        expect(cached(join(cacheDir, "default_claude.json")).accountId).toBe(account.id)
-      }),
-    ),
-  )
+      yield* withLogins(
+        (_, claude) =>
+          Effect.gen(function* () {
+            expect(readdirSync(cacheDir)).toStrictEqual(["default_claude.json"])
+            const logins = yield* AgentLogins
+            claude.answer = { type: "apiKey" }
+
+            expect(yield* logins.account("claude", account.id)).toStrictEqual({ type: "apiKey" })
+            expect(yield* logins.account("claude", null)).toStrictEqual({ type: "apiKey" })
+            expect(claude.calls).toMatchObject([{ dir: "/tmp/kk-unused" }, null])
+            expect(cached(join(cacheDir, "default_claude.json")).accountId).toBeNull()
+            expect(readdirSync(cacheDir).toSorted()).toStrictEqual(
+              [`${account.id}.json`, "default_claude.json"].toSorted(),
+            )
+          }),
+        dataDir,
+      )
+    })
+  })
 
   it.effect("caches two accounts whose names differ only in punctuation and case apart", () =>
     withLogins((_, claude) =>
       Effect.gen(function* () {
-        const create = (name: string) =>
-          AgentAccounts.use((accounts) =>
-            accounts.create({ provider: "claude", name, configDir: "/tmp/kk-unused", binary: "claude" }),
-          )
-        const work = yield* create("Work")
-        const workToo = yield* create("work!")
+        const first = yield* createClaudeAccount("Work")
+        const second = yield* createClaudeAccount("work!")
         const logins = yield* AgentLogins
-        for (const id of [work.id, workToo.id, work.id, workToo.id]) yield* logins.account("claude", id)
+        for (const id of [first.id, second.id, first.id, second.id]) yield* logins.account("claude", id)
 
         expect(claude.calls).toHaveLength(2)
+      }),
+    ),
+  )
+
+  it.effect("refuses an id that is not an account before touching the cache", () =>
+    withLogins((cacheDir, claude) =>
+      Effect.gen(function* () {
+        const logins = yield* AgentLogins
+        const error = yield* Effect.flip(logins.account("claude", "../escaped"))
+
+        expect(error._tag).toBe("NotFoundError")
+        expect(claude.calls).toHaveLength(0)
+        expect(existsSync(join(cacheDir, "..", "escaped.json"))).toBe(false)
       }),
     ),
   )
