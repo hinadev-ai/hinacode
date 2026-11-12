@@ -97,21 +97,49 @@ test("keeps the thread's own agent when it is signed out, and hides other agents
   expect(pickerProviders("muse", ["opencode", "claude"])).toStrictEqual(["claude", "muse", "opencode"])
 })
 
-test("fills the space above the trigger up to 520px, whatever the model count", async () => {
+const popover = () => document.querySelector<HTMLElement>("[data-slot=popover-content]")!
+
+test("fills the space above the trigger up to 520px with a long model list", async () => {
+  const shortList = listedModels
+  listedModels = Array.from({ length: 40 }, (_, index) => model(index === 1 ? "second" : `model-${index}`))
+  try {
+    await render(
+      <div className="pt-[60vh]">
+        <ThreadPicker thread={thread} canSwitchAgent onError={() => {}} />
+      </div>,
+    )
+    await page.getByRole("button", { name: /second/ }).click()
+    await expect.element(page.getByRole("option", { name: "model-39" })).toBeInTheDocument()
+    const trigger = page.getByRole("button", { name: /second/ }).element()
+    const available = Number.parseFloat(getComputedStyle(popover()).getPropertyValue("--available-height"))
+    expect(available).toBeGreaterThan(100)
+    expect(Math.abs(popover().offsetHeight - Math.min(520, available))).toBeLessThan(1)
+    expect(popover().dataset["side"]).toBe("top")
+    expect(trigger.getBoundingClientRect().top - popover().getBoundingClientRect().bottom).toBeGreaterThanOrEqual(0)
+  } finally {
+    listedModels = shortList
+  }
+})
+
+test("fits a short model list and keeps its height while the search filters it", async () => {
   await render(
-    <div className="pt-[60vh]">
+    <div className="pt-[80vh]">
       <ThreadPicker thread={thread} canSwitchAgent onError={() => {}} />
     </div>,
   )
   await page.getByRole("button", { name: /second/ }).click()
-  await expect.element(page.getByRole("option", { name: "first" })).toBeVisible()
-  const popup = document.querySelector<HTMLElement>("[data-slot=popover-content]")!
-  const trigger = page.getByRole("button", { name: /second/ }).element()
-  const available = Number.parseFloat(getComputedStyle(popup).getPropertyValue("--available-height"))
-  expect(available).toBeGreaterThan(100)
-  expect(Math.abs(popup.offsetHeight - Math.min(520, available))).toBeLessThan(1)
-  expect(popup.dataset["side"]).toBe("top")
-  expect(trigger.getBoundingClientRect().top - popup.getBoundingClientRect().bottom).toBeGreaterThanOrEqual(0)
+  await expect.element(page.getByRole("option", { name: "third" })).toBeVisible()
+  const list = page.getByRole("listbox", { name: "Model" }).element()
+  const rows = [...list.querySelectorAll<HTMLElement>("[role=option]")]
+  const lastRow = rows.at(-1)!.getBoundingClientRect()
+  expect(list.getBoundingClientRect().bottom - lastRow.bottom).toBeLessThan(lastRow.height / 2)
+  const height = popover().offsetHeight
+  expect(height).toBeLessThan(
+    Math.min(520, Number.parseFloat(getComputedStyle(popover()).getPropertyValue("--available-height"))),
+  )
+  await userEvent.keyboard("thi")
+  await expect.poll(() => document.querySelectorAll("[role=option]").length).toBe(1)
+  expect(popover().offsetHeight).toBe(height)
 })
 
 test("focuses the search box on the current model and moves through the models with the arrow keys", async () => {
