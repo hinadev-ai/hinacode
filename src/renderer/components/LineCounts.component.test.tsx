@@ -16,3 +16,15 @@ test("the visible counts stay hidden from screen readers", async () => {
   const visible = [...container.querySelectorAll("[aria-hidden]")].map((node) => node.textContent)
   expect(visible).toEqual(["+3", "−1"])
 })
+
+test("copying the counts leaves out the screen reader text", async () => {
+  const { container } = await render(
+    <p>
+      3 files changed <LineCounts added={6} removed={1} /> tail
+    </p>,
+  )
+
+  const selection = getSelection()!
+  selection.selectAllChildren(container)
+  expect(selection.toString().trim()).toBe("3 files changed +6 −1 tail")
+})
