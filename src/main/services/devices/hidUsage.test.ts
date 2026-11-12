@@ -1,5 +1,6 @@
 import { expect, test } from "vitest"
-import { hidUsage, keystrokesFor } from "./hidUsage.ts"
+import { consumerUsage, hidUsage, keystrokesFor } from "./hidUsage.ts"
+import { DeviceError } from "./platform.ts"
 
 test.each([
   ["KeyA", 0x04],
@@ -33,3 +34,7 @@ test("types text as US layout keystrokes", () => {
 })
 
 test("refuses text a US keyboard cannot type", () => expect(keystrokesFor("日本語")).toBeUndefined())
+
+test.each(["back", "recents"] as const)("refuses the %s button, which iOS does not have", (button) =>
+  expect(() => consumerUsage(button)).toThrow(DeviceError),
+)
