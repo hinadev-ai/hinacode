@@ -141,7 +141,7 @@ export const DIRECT_CHECK_TIMEOUT_MS = 2_000
 
 export const CHALLENGE_WAIT_MS = 1_000
 
-const isTailscaleHost = (host: string) => {
+export const isTailscaleHost = (host: string) => {
   const [first, second] = host.split(".")
   return first === "100" && Number(second) >= 64 && Number(second) <= 127
 }
