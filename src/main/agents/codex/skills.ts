@@ -1,11 +1,13 @@
 import { basename, dirname } from "node:path"
 import type { AgentCommand } from "../../../shared/agent.ts"
-import { commandNames, isCommandName } from "../../../shared/composerSyntax.ts"
+import { highlightedCommands, isCommandName } from "../../../shared/composerSyntax.ts"
 import type { SkillMetadata, SkillScope, UserInput } from "./protocol.ts"
 
 const commandScopes: Partial<Record<SkillScope, AgentCommand["scope"]>> = { user: "user", repo: "project" }
 
 const typedName = (skill: SkillMetadata) => (isCommandName(skill.name) ? skill.name : basename(dirname(skill.path)))
+
+const dollarName = (skill: SkillMetadata) => `$${typedName(skill)}`
 
 export const toCommand = (skill: SkillMetadata): AgentCommand => {
   const scope = commandScopes[skill.scope]
@@ -22,8 +24,9 @@ export const toCommand = (skill: SkillMetadata): AgentCommand => {
 
 // FIXME: Codex expands a skill only when it arrives as its own input item next to the $name in the text
 export const skillInputs = (text: string, skills: ReadonlyArray<SkillMetadata>): Array<UserInput> => {
-  const typed = commandNames(text, "$")
-  return skills
-    .filter((skill) => skill.enabled && typed.has(typedName(skill)))
+  const enabled = skills.filter((skill) => skill.enabled)
+  const typed = highlightedCommands(text, new Set(enabled.map(dollarName)))
+  return enabled
+    .filter((skill) => typed.has(dollarName(skill)))
     .map((skill) => ({ type: "skill", name: skill.name, path: skill.path }))
 }
