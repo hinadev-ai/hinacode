@@ -267,6 +267,36 @@ export function UsageLimitCallout({ thread, limit }: { thread: Thread; limit: Us
   )
 }
 
+export function InterruptedCallout({ threadId }: { threadId: string }) {
+  const theme = useTheme()
+  const { busy, error, run } = useAction()
+  return (
+    <Ticket testID="interrupted" accessibilityRole="summary" ageBar={false}>
+      <View style={styles.cardHeading}>
+        <Icon name="Refresh" size={16} color={theme.attention} />
+        <Text
+          accessibilityRole="header"
+          {...subheading}
+          style={[styles.headLabel, styles.shrink, { color: theme.attention }]}
+        >
+          {copy("mobile_chat_interrupted_title")}
+        </Text>
+      </View>
+      <Text style={[styles.cardBody, { color: theme.text }]}>{copy("mobile_chat_interrupted_body")}</Text>
+      <View style={styles.actions}>
+        <Button
+          testID="interrupted-resume"
+          label={copy("mobile_chat_interrupted_resume")}
+          busy={busy}
+          onPress={() => void run(() => call("threads.resume", { id: threadId }))}
+          style={styles.pillButton}
+        />
+      </View>
+      {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
+    </Ticket>
+  )
+}
+
 export function QuestionCard({
   request,
   header,

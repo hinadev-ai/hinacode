@@ -24,7 +24,7 @@ import { useSplitLayout } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { relativeTime } from "@/lib/relative-time"
-import type { Thread, ThreadStatus } from "@shared/domain.ts"
+import { type Thread, type ThreadStatus, waitsOnDeveloper } from "@shared/domain.ts"
 import { useMessages } from "@/stores/messages"
 import { useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
@@ -220,7 +220,7 @@ function ThreadActionsButton({ thread, onOpenTerminal }: { thread: Thread; onOpe
 }
 
 const statusColor = (theme: Palette, status: ThreadStatus) =>
-  status === "awaiting_approval" || status === "limited"
+  waitsOnDeveloper(status)
     ? theme.attention
     : status === "running"
       ? theme.running
