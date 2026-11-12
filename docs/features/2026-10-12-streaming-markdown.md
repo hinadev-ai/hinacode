@@ -10,7 +10,7 @@ A ready thread may have one open window of adjacent text or reasoning deltas and
 
 Approval, terminal, tool, file-change and message-replacement events remain synchronous. Text separated by a tool or reasoning part remains in separate Markdown documents. Every published string and the final string use the existing whole-document renderer.
 
-Scrolling up cancels the list's initial bottom target as well as its automatic following. Legend List 3.6.0 retained the initial target after wheel input, so later streaming updates or a viewport resize could return the reader to the bottom. The patch in `patches/@legendapp__list@3.6.0.patch` cancels that target and synchronizes the observed scroll offset before another update runs. Keep the patch on dependency upgrades until the paced-output scenario passes with native wheel input and a viewport resize on both macOS and Linux.
+Scrolling up cancels the list's initial bottom target as well as its automatic following. Legend List 3.6.0 retained the initial target after wheel input, so later streaming updates or a viewport resize could return the reader to the bottom. The patch in `patches/@legendapp__list@3.6.0.patch` cancels that target and synchronizes the observed scroll offset before another update runs. It also makes the initial reveal re-resolve its end offset when its 8-frame watchdog gives up. Unpatched, the watchdog scrolled to the offset stored at mount, so a reply that grew during the reveal on a slow renderer left the transcript at the top while the list believed it was at the end. Keep the patch on dependency upgrades until the paced-output scenario passes with native wheel input and a viewport resize on both macOS and Linux.
 
 ## Verification
 
