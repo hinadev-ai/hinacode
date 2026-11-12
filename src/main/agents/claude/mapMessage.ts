@@ -17,7 +17,7 @@ import {
   type TokenUsage,
 } from "../../../shared/agent.ts"
 
-const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
+export const FILE_EDIT_TOOLS: ReadonlySet<string> = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
 
 export interface MapState {
   readonly pendingEdits: Map<string, string>

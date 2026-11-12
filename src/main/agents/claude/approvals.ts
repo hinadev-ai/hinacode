@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import type { CanUseTool, PermissionResult } from "@anthropic-ai/claude-agent-sdk"
 import { Deferred, Effect } from "effect"
 import type { AgentEvent, ApprovalDecision, ApprovalKind, ProviderId, SessionScope } from "../../../shared/agent.ts"
+import { FILE_EDIT_TOOLS } from "./mapMessage.ts"
 
 export interface ApprovalSession {
   readonly threadId: string
@@ -18,7 +19,7 @@ interface PendingApproval {
 
 function approvalKind(toolName: string): ApprovalKind {
   if (toolName === "Bash") return "command"
-  if (["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(toolName)) return "patch"
+  if (FILE_EDIT_TOOLS.has(toolName)) return "patch"
   return "tool"
 }
 
