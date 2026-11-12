@@ -61,6 +61,8 @@ const standIn = (body: string) => {
 
 const connects = () => standIn(`${REGISTERED}\nexec sleep 3600`)
 
+const METRICS = 'echo "2026-10-24T00:00:00Z INF Starting metrics server on 127.0.0.1:20241/metrics" >&2'
+
 const ASSET_URL = "https://downloads.test/cloudflared-darwin-arm64.tgz"
 
 const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
@@ -215,7 +217,7 @@ describe("Relay", () => {
           yield* until((status) => status.state === "connected")
 
           expect(cloudflared.read("token")).toBe("connector-secret")
-          expect(cloudflared.read("args")).toBe("tunnel --no-autoupdate --metrics 127.0.0.1:0 run")
+          expect(cloudflared.read("args")).toBe("tunnel --no-autoupdate --protocol http2 --metrics 127.0.0.1:0 run")
           const access = yield* RemoteAccess
           expect((yield* access.status).relay).toStrictEqual({ state: "connected", hostname: HOSTNAME })
           expect((yield* access.pairing).relay).toBe(HOSTNAME)
@@ -262,6 +264,44 @@ describe("Relay", () => {
           })
           yield* TestClock.adjust("1 second")
           yield* until((status) => status.state === "connected")
+        }),
+      )
+    }).pipe(Effect.provide(base)),
+  )
+
+  it.effect("drops back to connecting when Cloudflare loses the tunnel, and restarts cloudflared after 3 minutes", () =>
+    Effect.gen(function* () {
+      yield* seed()
+      const cloudflared = standIn(`${METRICS}\n${REGISTERED}\nexec sleep 3600`)
+      let ready = 503
+      const checks: Array<string> = []
+      const fetch: Fetch = async (url) => {
+        checks.push(url.href)
+        return new Response(null, { status: ready })
+      }
+      yield* withRelay(
+        { cloudflared: cloudflared.path, fetch },
+        Effect.gen(function* () {
+          yield* until((status) => status.state === "connected")
+          const first = Number(cloudflared.read("pid"))
+
+          yield* advanceUntil(() => checks.length === 1)
+          expect(checks).toStrictEqual(["http://127.0.0.1:20241/ready"])
+          expect(yield* until((status) => status.state === "connecting")).toStrictEqual({
+            state: "connecting",
+            hostname: HOSTNAME,
+            error: "cloudflared has no connection to Cloudflare.",
+          })
+
+          yield* advanceUntil(() => checks.length === 6)
+          ready = 200
+          yield* until(
+            (status) => status.state === "connecting" && status.error !== null && status.error.includes("restarted"),
+          )
+          yield* TestClock.adjust("1 second")
+          yield* until((status) => status.state === "connected")
+          expect(Number(cloudflared.read("pid"))).not.toBe(first)
+          expect(isAlive(first)).toBe(false)
         }),
       )
     }).pipe(Effect.provide(base)),
