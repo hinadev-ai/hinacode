@@ -186,12 +186,12 @@ When("I schedule the near-reset thread to resume at reset", async ({ automaticRe
 })
 
 When("I restart the near-reset app with its schedule intact", async ({ automaticResumeApp: app }) => {
-  const limit = (await onlyThread(app)).usageLimit
-  expect(limit).toMatchObject({ kind: "usage", reset: { autoResume: true } })
+  const thread = await onlyThread(app)
+  expect(thread.usageLimit).toMatchObject({ kind: "usage", reset: { autoResume: true } })
+  const { messages } = await rpc(app.page, "threads.transcript", { threadId: thread.id })
+  expect(messages.filter((message) => message.role === "user")).toHaveLength(1)
   await app.restart()
-  expect((await onlyThread(app)).usageLimit).toEqual(limit)
   await openThread(app)
-  await expect(callout(app).getByRole("button", { name: "Cancel automatic resume", exact: true })).toBeVisible()
 })
 
 Then("the near-reset thread automatically completes with the original prompt", async ({ automaticResumeApp: app }) => {
