@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process"
 import { createHash, randomUUID } from "node:crypto"
-import { access, constants, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
-import { homedir, tmpdir } from "node:os"
+import { access, constants, mkdir, rename, writeFile } from "node:fs/promises"
+import { homedir } from "node:os"
 import { join } from "node:path"
 import { Schema } from "effect"
 import type {
@@ -561,16 +561,6 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
     },
 
     connect,
-
-    screenshot: async (id) => {
-      const path = join(tmpdir(), `hinacode-screenshot-${randomUUID()}.png`)
-      try {
-        await simctl(["io", udidOf(id), "screenshot", "--type=png", path])
-        return await readFile(path)
-      } finally {
-        await rm(path, { force: true })
-      }
-    },
 
     describe: async (id) => {
       const axe = await findAxe()
