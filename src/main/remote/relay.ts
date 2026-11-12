@@ -40,11 +40,22 @@ const PUBLISH_EVERY = Duration.minutes(10)
 const READY_EVERY = Duration.seconds(30)
 const READY_TIMEOUT = Duration.seconds(5)
 const NOT_READY_BEFORE_RESTART = 6
+const QUIC_FAILURES_BEFORE_HTTP2 = 6
+const QUIC_FAILURE_WINDOW_MS = 5 * 60_000
+const HTTP2_FOR_MS = 24 * 60 * 60_000
 
 const NO_EDGE = "cloudflared has no connection to Cloudflare."
 const RESTARTED = "cloudflared had no connection to Cloudflare for 3 minutes, so it was restarted."
+export const QUIC_BLOCKED = "QUIC to Cloudflare keeps failing on this network, so cloudflared was restarted on HTTP/2."
 
-const CLOUDFLARED_ARGS = ["tunnel", "--no-autoupdate", "--protocol", "http2", "--metrics", "127.0.0.1:0", "run"]
+const cloudflaredArgs = (http2: boolean) => [
+  "tunnel",
+  "--no-autoupdate",
+  ...(http2 ? ["--protocol", "http2"] : []),
+  "--metrics",
+  "127.0.0.1:0",
+  "run",
+]
 
 export const relayOrigin = ({ bindHost, port }: Pick<SettingsValue["remote"], "bindHost" | "port">) => {
   const host = bindHost === PRIVATE_NETWORKS ? LOOPBACK : bindHost
@@ -52,24 +63,30 @@ export const relayOrigin = ({ bindHost, port }: Pick<SettingsValue["remote"], "b
 }
 
 type CloudflaredLine =
-  | { readonly type: "connected" }
+  | { readonly type: "connected"; readonly protocol: string | null }
   | { readonly type: "metrics"; readonly address: string }
-  | { readonly type: "error"; readonly message: string }
+  | { readonly type: "error"; readonly message: string; readonly quic: boolean }
 
 const METRICS_LINE = /Starting metrics server on (\S+)\/metrics/
+const PROTOCOL = /\bprotocol=(\w+)/
+const QUIC_FAILURE = /failed to dial to edge with quic|timeout: no recent network activity/
 
 const parseCloudflaredLine = (line: string): CloudflaredLine | null => {
-  if (line.includes("Registered tunnel connection")) return { type: "connected" }
+  if (line.includes("Registered tunnel connection")) {
+    return { type: "connected", protocol: PROTOCOL.exec(line)?.[1] ?? null }
+  }
   const address = METRICS_LINE.exec(line)?.[1]
   if (address !== undefined) return { type: "metrics", address }
   const at = line.indexOf(" ERR ")
-  return at === -1 ? null : { type: "error", message: line.slice(at + 5).trim() }
+  if (at === -1) return null
+  return { type: "error", message: line.slice(at + 5).trim(), quic: QUIC_FAILURE.test(line) }
 }
 
 export const RelayTunnel = Schema.Struct({
   hostname: Schema.String,
   origin: Schema.String,
   published: Schema.optionalKey(Schema.String),
+  http2Since: Schema.optionalKey(Schema.Number),
 })
 export type RelayTunnel = typeof RelayTunnel.Type
 
@@ -199,6 +216,26 @@ const make = ({
 
     const republish = Effect.asVoid(FiberHandle.run(publisher, publishPairing))
 
+    const transportChosenByUser = process.env.TUNNEL_TRANSPORT_PROTOCOL !== undefined
+    let quicFailures: ReadonlyArray<number> = []
+
+    const startsOnHttp2 = Effect.map(
+      Clock.currentTimeMillis,
+      (now) => !transportChosenByUser && tunnel?.http2Since !== undefined && now - tunnel.http2Since < HTTP2_FOR_MS,
+    )
+
+    const rememberHttp2 = Effect.gen(function* () {
+      quicFailures = []
+      if (tunnel === null) return
+      yield* save({ ...tunnel, http2Since: yield* Clock.currentTimeMillis })
+    }).pipe(Effect.catch((failure) => Effect.logWarning("Cannot remember the HTTP/2 fallback", failure.message)))
+
+    const quicKeepsFailing = Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis
+      quicFailures = [...quicFailures.filter((at) => now - at < QUIC_FAILURE_WINDOW_MS), now]
+      return quicFailures.length >= QUIC_FAILURES_BEFORE_HTTP2
+    })
+
     const watchReady = (address: string, events: Queue.Queue<ChildEvent>) =>
       Effect.gen(function* () {
         const url = new URL(`http://${address}/ready`)
@@ -217,9 +254,11 @@ const make = ({
     const runOnce = (binary: string, hostname: string, token: string) =>
       Effect.gen(function* () {
         const events = yield* Queue.unbounded<ChildEvent>()
+        const http2 = yield* startsOnHttp2
+        const tryingQuic = !http2 && !transportChosenByUser
         yield* Effect.acquireRelease(
           Effect.sync(() => {
-            const child = spawn(binary, CLOUDFLARED_ARGS, {
+            const child = spawn(binary, cloudflaredArgs(http2), {
               env: { ...process.env, TUNNEL_TOKEN: token },
               stdio: ["ignore", "ignore", "pipe"],
             })
@@ -259,9 +298,18 @@ const make = ({
             continue
           }
           const parsed = parseCloudflaredLine(event.line)
-          if (parsed?.type === "connected") yield* publish({ state: "connected", hostname })
+          if (parsed?.type === "connected") {
+            if (tryingQuic && parsed.protocol === "http2") yield* rememberHttp2
+            yield* publish({ state: "connected", hostname })
+          }
           if (parsed?.type === "metrics") yield* Effect.forkScoped(watchReady(parsed.address, events))
-          if (parsed?.type === "error") lastError = parsed.message
+          if (parsed?.type === "error") {
+            lastError = parsed.message
+            if (tryingQuic && parsed.quic && (yield* quicKeepsFailing)) {
+              yield* rememberHttp2
+              return { type: "exited", error: QUIC_BLOCKED, upMs: yield* upMs } as Outcome
+            }
+          }
         }
       }).pipe(Effect.scoped)
 

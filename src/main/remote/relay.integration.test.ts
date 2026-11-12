@@ -6,7 +6,7 @@ import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, it } from "@effect/vitest"
 import { vi } from "vitest"
-import { Cause, Effect, Exit, Fiber, Layer, Option, Schema, Stream } from "effect"
+import { Cause, Duration, Effect, Exit, Fiber, Layer, Option, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import { TestClock } from "effect/testing"
 import { RemoteStatus, type RelayStatus } from "../../shared/domain.ts"
@@ -20,7 +20,14 @@ import { RemoteAccess } from "./access.ts"
 import { applyServeRelay } from "../serve.ts"
 import { CLOUDFLARED_VERSION } from "./cloudflared.ts"
 import * as RelayModule from "./relay.ts"
-import { CONNECTOR_TOKEN_SECRET, CREDENTIAL_SECRET, Relay, type RelayTunnel, storedTunnel } from "./relay.ts"
+import {
+  CONNECTOR_TOKEN_SECRET,
+  CREDENTIAL_SECRET,
+  QUIC_BLOCKED,
+  Relay,
+  type RelayTunnel,
+  storedTunnel,
+} from "./relay.ts"
 import type { Fetch, RelayLink } from "./relayService.ts"
 
 const HOSTNAME = "3f9c2a1b7d4e5f60.hinacode.app"
@@ -35,6 +42,11 @@ const RemoteStatusDecodedByReleasedDesktops = Schema.Struct({
 
 const tunnel: RelayTunnel = { hostname: HOSTNAME, origin: ORIGIN }
 
+const QUIC_ARGS = "tunnel --no-autoupdate --metrics 127.0.0.1:0 run"
+const HTTP2_ARGS = "tunnel --no-autoupdate --protocol http2 --metrics 127.0.0.1:0 run"
+const QUIC_FAILED =
+  'echo "2026-10-24T00:00:00Z ERR Failed to dial a quic connection error=failed to dial to edge with quic: timeout: handshake did not complete in time connIndex=0" >&2'
+const FELL_BACK = 'echo "2026-10-24T00:00:00Z INF Registered tunnel connection connIndex=0 protocol=http2" >&2'
 const REGISTERED = 'echo "2026-10-24T00:00:00Z INF Registered tunnel connection connIndex=0" >&2'
 const FAILED = 'echo "2026-10-24T00:00:00Z ERR Unauthorized: Invalid tunnel secret" >&2; exit 1'
 
@@ -217,7 +229,7 @@ describe("Relay", () => {
           yield* until((status) => status.state === "connected")
 
           expect(cloudflared.read("token")).toBe("connector-secret")
-          expect(cloudflared.read("args")).toBe("tunnel --no-autoupdate --protocol http2 --metrics 127.0.0.1:0 run")
+          expect(cloudflared.read("args")).toBe(QUIC_ARGS)
           const access = yield* RemoteAccess
           expect((yield* access.status).relay).toStrictEqual({ state: "connected", hostname: HOSTNAME })
           expect((yield* access.pairing).relay).toBe(HOSTNAME)
@@ -305,6 +317,67 @@ describe("Relay", () => {
         }),
       )
     }).pipe(Effect.provide(base)),
+  )
+
+  it.effect("restarts cloudflared on HTTP/2 when QUIC keeps failing, and remembers it", () =>
+    Effect.gen(function* () {
+      yield* seed()
+      const cloudflared = standIn(
+        `case "$*" in *http2*) ${REGISTERED}; exec sleep 3600;; esac\nfor i in 1 2 3 4 5 6; do ${QUIC_FAILED}; done\nexec sleep 3600`,
+      )
+      yield* withRelay(
+        { cloudflared: cloudflared.path },
+        Effect.gen(function* () {
+          yield* until((status) => status.state === "connecting" && status.error === QUIC_BLOCKED)
+          yield* TestClock.adjust("1 second")
+          yield* until((status) => status.state === "connected")
+          expect(cloudflared.read("args")).toBe(HTTP2_ARGS)
+          expect((yield* storedTunnel)?.http2Since).toBe(0)
+        }),
+      )
+    }).pipe(Effect.provide(base)),
+  )
+
+  it.effect("remembers when cloudflared falls back to HTTP/2 by itself", () =>
+    Effect.gen(function* () {
+      yield* seed()
+      const cloudflared = standIn(`${FELL_BACK}\nexec sleep 3600`)
+      yield* withRelay(
+        { cloudflared: cloudflared.path },
+        until((status) => status.state === "connected"),
+      )
+      expect(cloudflared.read("args")).toBe(QUIC_ARGS)
+      expect((yield* storedTunnel)?.http2Since).toBe(0)
+    }).pipe(Effect.provide(base)),
+  )
+
+  it.effect.each([
+    { after: Duration.hours(23), args: HTTP2_ARGS },
+    { after: Duration.hours(25), args: QUIC_ARGS },
+  ])("starts on HTTP/2 for a day after falling back, then runs $args", ({ after, args }) =>
+    Effect.gen(function* () {
+      yield* seed({ http2Since: 0 })
+      yield* TestClock.adjust(after)
+      const cloudflared = connects()
+      yield* withRelay(
+        { cloudflared: cloudflared.path },
+        until((status) => status.state === "connected"),
+      )
+      expect(cloudflared.read("args")).toBe(args)
+    }).pipe(Effect.provide(base)),
+  )
+
+  it.effect("leaves the protocol to TUNNEL_TRANSPORT_PROTOCOL when it is set", () =>
+    Effect.gen(function* () {
+      vi.stubEnv("TUNNEL_TRANSPORT_PROTOCOL", "quic")
+      yield* seed({ http2Since: 0 })
+      const cloudflared = connects()
+      yield* withRelay(
+        { cloudflared: cloudflared.path },
+        until((status) => status.state === "connected"),
+      )
+      expect(cloudflared.read("args")).toBe(QUIC_ARGS)
+    }).pipe(Effect.ensuring(Effect.sync(() => vi.unstubAllEnvs())), Effect.provide(base)),
   )
 
   it.live("names the exit code when cloudflared says nothing", () =>
