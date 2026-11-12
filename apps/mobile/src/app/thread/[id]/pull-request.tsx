@@ -27,6 +27,7 @@ import { useTheme } from "@/hooks/use-theme"
 import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
+import { mergeChoice } from "@/lib/merge-methods"
 import { openWebUrl } from "@/lib/open-url"
 import { reviewLabel, reviewTone, statusGlyph, statusLabel } from "@/lib/pull-request-labels"
 import { filesKey, loadDetailAtom, usePullRequests } from "@/stores/pull-requests"
@@ -526,7 +527,6 @@ const numberLabelOf = (pullRequest: PullRequestDetail) =>
   pullRequestNumberLabel(codeHostOfUrl(pullRequest.url), pullRequest.number)
 
 const mergeLabel = (method: MergeMethod) => copy(`mobile_pr_merge_${method === "merge" ? "commit" : method}`)
-const mergeMethods: readonly MergeMethod[] = ["squash", "merge", "rebase"]
 
 function useGitHubAction(url: string, onChanged: () => Promise<void>) {
   const [busy, setBusy] = useState(false)
@@ -557,7 +557,8 @@ function ActionBar({
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   const [picking, setPicking] = useState(false)
-  const [method, setMethod] = useState<MergeMethod>("squash")
+  const [chosenMethod, setMethod] = useState<MergeMethod>("squash")
+  const { methods, method } = mergeChoice(detail?.url ?? "", chosenMethod)
   const { busy, error, run } = useGitHubAction(detail?.url ?? "", onChanged)
   const canMerge = detail !== null && detail.status === "open" && detail.mergeable !== "conflicting"
 
@@ -613,7 +614,7 @@ function ActionBar({
       <Sheet title={copy("mobile_pr_merge_method")} open={picking} onClose={() => setPicking(false)} fit>
         <View accessibilityRole="radiogroup" accessibilityLabel={copy("mobile_pr_merge_method")}>
           <GroupedCard inset={16}>
-            {mergeMethods.map((option) => (
+            {methods.map((option) => (
               <OptionRow
                 key={option}
                 label={mergeLabel(option)}
