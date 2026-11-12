@@ -25,7 +25,7 @@ import { isThreadBusy, type Project, type Thread, toCheckoutTarget } from "../..
 import { providerInfo } from "../../shared/providers.ts"
 import type { Artifact } from "../../shared/artifact.ts"
 import { mentionableArtifacts, mentionableThreads } from "../../shared/mentions.ts"
-import { errorMessage } from "../lib/errorMessage.ts"
+import { errorMessage, isFolderMissing } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
 import { mentionableTerminals } from "../lib/terminalLabel.ts"
 import { inBrowser } from "../lib/runtime.ts"
@@ -137,9 +137,12 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const commandsResult = useAtomValue(commandsAtom(key))
   const agentCommands = AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => [])
   const commands = [...(isSidechat ? [] : [sidechatCommand()]), ...artifactSkillCommands(), ...agentCommands]
-  const commandsError = AsyncResult.isFailure(commandsResult)
-    ? m.composer_commands_failed({ message: errorMessage(Cause.squash(commandsResult.cause)) })
-    : null
+  const commandsFailure = AsyncResult.isFailure(commandsResult) ? Cause.squash(commandsResult.cause) : null
+  const folderMissing = thread.worktreeId !== null && isFolderMissing(commandsFailure)
+  const commandsError =
+    commandsFailure === null || folderMissing
+      ? null
+      : m.composer_commands_failed({ message: errorMessage(commandsFailure) })
   const filesSource = text.includes("@") ? filesAtom(key) : noFilesAtom
   const files = AsyncResult.getOrElse(useAtomValue(filesSource), (): ReadonlyArray<string> => [])
   const refreshFiles = useAtomRefresh(filesSource)
@@ -365,7 +368,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
         {unstarted ? (
           !isChat && <WorkspacePicker thread={thread} workspace={workspace} />
         ) : (
-          <ComposerStatusLine thread={thread} />
+          <ComposerStatusLine thread={thread} folderMissing={folderMissing} />
         )}
       </form>
     </div>

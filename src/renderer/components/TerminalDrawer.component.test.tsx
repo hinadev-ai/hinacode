@@ -8,7 +8,15 @@ import { useTerminals } from "../stores/terminals.ts"
 import { TerminalDrawer } from "./TerminalDrawer.tsx"
 
 const bridge: HinacodeBridge = {
-  rpc: async (method) => ({ error: { tag: "NotStubbed", message: method } }),
+  rpc: async (method) =>
+    method === "terminal.open"
+      ? {
+          error: {
+            tag: "FolderMissingError",
+            message: "The folder /tmp/repo/kk-gone is missing. It was moved or deleted.",
+          },
+        }
+      : { error: { tag: "NotStubbed", message: method } },
   onEvent: () => () => {},
   pathForFile: () => "",
   liquidGlass: false,
@@ -56,4 +64,20 @@ test("the resize separator reports how tall the drawer can grow", async () => {
   )
 
   await expect.element(page.getByRole("separator", { name: "Resize terminal" })).toHaveAttribute("aria-valuemax", "600")
+})
+
+test("a terminal that cannot start in a missing folder says so without the path", async () => {
+  useTerminals.setState({ byThreadId: { thread: { open: true, sessions: [], activeId: null } }, error: null })
+  await render(
+    <div className="flex h-96 flex-col">
+      <TerminalDrawer threadId="thread" />
+    </div>,
+  )
+
+  await page.getByRole("button", { name: "New terminal", exact: true }).click()
+  await expect.poll(() => useTerminals.getState().byThreadId.thread?.open).toBe(true)
+  await expect
+    .element(page.getByRole("alert"))
+    .toHaveTextContent("Could not start the terminal: The folder was moved or deleted.")
+  await expect.element(page.getByText("/tmp/repo/kk-gone", { exact: false })).not.toBeInTheDocument()
 })

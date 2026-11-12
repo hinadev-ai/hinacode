@@ -481,6 +481,7 @@
   "error_terminal": "无法运行终端：{detail}",
   "error_thread_busy": "该对话仍在运行或等待批准。请先停止再归档。",
   "error_fs_access": "无法读取该文件夹。它可能已被移动或删除。",
+  "error_folder_missing": "文件夹已被移动或删除。",
   "error_details": "详细信息",
   "error_unexpected": "发生意外错误：{detail}",
   "panel_pr_badge": "PR {state}",
