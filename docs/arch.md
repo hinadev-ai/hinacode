@@ -167,7 +167,7 @@ classDiagram
     listSessions?(cwd, home) / readSession?(sessionId, cwd, home)
     listCommands(threadId, cwd, home)
     runTurn(input) Stream~AgentEvent~
-    steer(threadId, text, attachments)
+    steer(threadId, text, attachments) Effect~boolean~
     interrupt(threadId)
     respondApproval(requestId, decision)
     respondQuestion(requestId, answers)
@@ -289,6 +289,7 @@ sequenceDiagram
     Dev->>R: send another message
     R->>AR: rpc threads.steer
     AR->>P: steer (same turn)
+    Note over AR,P: refused before runTurn's onOpen: wait for it, then steer again
     AR->>DB: close assistant msg, insert user msg, open new assistant msg
   end
   P-->>AR: turn_completed or turn_failed

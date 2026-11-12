@@ -346,7 +346,10 @@ const withPreparingThread = async (
         : Effect.sync(() => calls.push({ provider: id, call: "closeSession" })),
     ...(id !== "opencode" && {
       steer: (_threadId: string, text: string, _attachments: unknown, priority: SteerPriority) =>
-        Effect.sync(() => void steers.push({ text, priority })),
+        Effect.sync(() => {
+          steers.push({ text, priority })
+          return true
+        }),
     }),
     interrupt: () =>
       Effect.sync(() => calls.push({ provider: id, call: "interrupt" })).pipe(
@@ -871,7 +874,7 @@ it("warms the session with the same input the next send runs its turn with", asy
     await vi.waitFor(() => Effect.runPromise(runner.send(thread.id, "accepted input", [])))
     await vi.waitFor(() => expect(turns).toHaveLength(2))
 
-    const { prompt: _prompt, attachments: _attachments, ...sent } = turns[1]!.input
+    const { prompt: _prompt, attachments: _attachments, onOpen: _onOpen, ...sent } = turns[1]!.input
     expect(warms).toStrictEqual([sent])
   })
 })
