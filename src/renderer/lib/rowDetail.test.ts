@@ -37,6 +37,10 @@ describe("rowDetail", () => {
     expect(text({ state: "limited" })).toBe("Usage limit")
   })
 
+  test("says a restart stopped an interrupted thread, even with a pull request that needs attention", () => {
+    expect(text({ state: "interrupted", attention: "checksFailing" })).toBe("Stopped by a restart")
+  })
+
   test("shows an agent's activity only when asked", () => {
     const line = { text: "pnpm test", code: true, kind: "activity" } as const
     expect(text({ state: "running", line })).toBeUndefined()

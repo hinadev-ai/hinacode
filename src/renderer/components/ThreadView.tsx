@@ -28,6 +28,7 @@ import { QuestionRequestCard } from "./QuestionCard.tsx"
 import { SecretRequestCard } from "./SecretRequestCard.tsx"
 import { SubagentTranscript, useSubagentLabel } from "./SubagentView.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
+import { InterruptedCallout } from "./InterruptedCallout.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
 import { AccountLimitNotice } from "./AccountSwitch.tsx"
 import { WorktreePreparation } from "./WorktreePreparation.tsx"
@@ -60,17 +61,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
     const history = state.byThread[thread.id]
     return agent === undefined && history?.status === "ready" && history.messages.length === 0
   })
-  const notices = (
-    <>
-      <PendingRequests thread={thread} />
-      {thread.status === "limited" && thread.usageLimit !== null ? (
-        <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
-      ) : (
-        <AccountLimitNotice key={thread.id} thread={thread} />
-      )}
-      <CloudNotice threadId={thread.id} />
-    </>
-  )
+  const notices = <ThreadNotices thread={thread} />
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="@container/thread flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2 window-drag">
@@ -258,6 +249,21 @@ function useDockHeight(regionRef: RefObject<HTMLDivElement | null>, dockRef: Ref
     observer.observe(dock)
     return () => observer.disconnect()
   }, [regionRef, dockRef])
+}
+
+export function ThreadNotices({ thread }: { thread: Thread }) {
+  return (
+    <>
+      <PendingRequests thread={thread} />
+      {thread.status === "interrupted" && <InterruptedCallout threadId={thread.id} />}
+      {thread.status === "limited" && thread.usageLimit !== null ? (
+        <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
+      ) : (
+        <AccountLimitNotice key={thread.id} thread={thread} />
+      )}
+      <CloudNotice threadId={thread.id} />
+    </>
+  )
 }
 
 export function PendingRequests({ thread }: { thread: Thread }) {

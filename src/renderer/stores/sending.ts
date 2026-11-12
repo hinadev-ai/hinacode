@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { isThreadBusy } from "../../shared/domain.ts"
 import { useThreads } from "./threads.ts"
 
 interface SendingState {
@@ -21,7 +22,7 @@ const unmark = (threadId: string) =>
 
 const started = (threadId: string) => {
   const status = useThreads.getState().byId[threadId]?.status
-  return status !== undefined && status !== "idle" && status !== "draft"
+  return status !== undefined && isThreadBusy(status)
 }
 
 const unmarkOnceStarted = (threadId: string) => {
