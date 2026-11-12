@@ -38,19 +38,23 @@ VARIABLES
   queue,             \* queue[k]: events pump emitted into turn k's queue, not yet handled
   started,           \* turns started so far, by a send or by the session itself; the next one gets started + 1
   pendingWakes,      \* turns the session opened by itself that the runner has not followed yet
+  opened,            \* the provider ran the active turn's onOpen
+  steerFor,          \* the turn a steer the provider refused waits on, or None
+  steerAwaits,       \* "open" or "end": what that steer waits for before it tries again
   \* ghost
   sent, promptsSent, turnOf, steersLeft, interruptsLeft, abandonsLeft,
   delivered,         \* an event answering the prompts of turns `from` was offered to turn `to`
   droppedContent,    \* the turns answered by each content message pump discarded
-  abandoned, finished, rejectedSteerWhileRunning
+  abandoned, finished
 
 bgVars == <<background, reportDue, idleSent, bgLeft>>
 cliVars == <<stdin, backlog, cliPhase, answering, contentSent, stdout, bgVars>>
 sessionVars == <<turn, turnPrompts, unanswered, shown>>
 runnerVars == <<busy, activeTurn, status, consumer, queue, started, pendingWakes>>
+steerVars == <<opened, steerFor, steerAwaits>>
 ghostVars == <<sent, promptsSent, turnOf, steersLeft, interruptsLeft, abandonsLeft, delivered, droppedContent,
-               abandoned, finished, rejectedSteerWhileRunning>>
-vars == <<cliVars, sessionVars, runnerVars, ghostVars>>
+               abandoned, finished>>
+vars == <<cliVars, sessionVars, runnerVars, steerVars, ghostVars>>
 
 StdinEntry == [kind : {"prompt", "interrupt"}, prompt : Prompts \cup {None}, steer : BOOLEAN]
 
@@ -75,7 +79,7 @@ TypeOK ==
   /\ delivered \subseteq [to : Turns, from : SUBSET Turns]
   /\ droppedContent \subseteq SUBSET Turns
   /\ abandoned \subseteq Turns /\ finished \subseteq Turns
-  /\ rejectedSteerWhileRunning \in BOOLEAN
+  /\ opened \in BOOLEAN /\ steerFor \in Turns \cup {None} /\ steerAwaits \in {"open", "end"}
 
 Init ==
   /\ stdin = <<>> /\ backlog = <<>> /\ cliPhase = "idle" /\ answering = {} /\ contentSent = 0
@@ -87,7 +91,7 @@ Init ==
   /\ sent = 0 /\ promptsSent = 0 /\ turnOf = [p \in Prompts |-> None]
   /\ steersLeft = MaxSteers /\ interruptsLeft = MaxInterrupts /\ abandonsLeft = MaxAbandons
   /\ delivered = {} /\ droppedContent = {} /\ abandoned = {} /\ finished = {}
-  /\ rejectedSteerWhileRunning = FALSE
+  /\ opened = FALSE /\ steerFor = None /\ steerAwaits = "open"
 
 -----------------------------------------------------------------------------
 
@@ -109,35 +113,58 @@ Send ==
   /\ sent' = sent + 1 /\ started' = started + 1
   /\ busy' = TRUE /\ activeTurn' = started + 1 /\ status' = "running" /\ consumer' = "starting"
   /\ UNCHANGED <<cliVars, sessionVars, queue, pendingWakes, promptsSent, turnOf, steersLeft, interruptsLeft,
-                 abandonsLeft, delivered, droppedContent, abandoned, finished, rejectedSteerWhileRunning>>
+                 abandonsLeft, delivered, droppedContent, abandoned, finished, steerVars>>
 
 \* index.ts runTurn and startTurn, everything after acquireSession; AgentRunner.ts makeTurn follow turns its error
-\* into turn_failed
+\* into turn_failed. startTurn runs onOpen once the turn's prompt is queued.
 RunTurn ==
   /\ consumer = "starting"
   /\ consumer' = "reading"
   /\ IF turn # None
      THEN /\ queue' = [queue EXCEPT ![activeTurn] = <<[type |-> "failed", from |-> {activeTurn}]>>]
-          /\ UNCHANGED <<stdin, sessionVars, promptsSent, turnOf>>
+          /\ UNCHANGED <<stdin, sessionVars, promptsSent, turnOf, opened>>
      ELSE /\ turn' = activeTurn /\ shown' = activeTurn
           /\ SendPrompt(activeTurn, FALSE)
           /\ turnPrompts' = {promptsSent + 1}
+          /\ opened' = TRUE
           /\ UNCHANGED queue
   /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, busy, activeTurn, status, started,
                  pendingWakes, sent, steersLeft, interruptsLeft, abandonsLeft, delivered, droppedContent, abandoned,
-                 finished, rejectedSteerWhileRunning>>
+                 finished, steerFor, steerAwaits>>
 
-\* AgentRunner.ts steerWhen routes to makeTurn steer and steerTurn, which call index.ts steer.
-\* With no activeTurns entry it falls back to send, which the Send action already covers.
+\* AgentRunner.ts makeTurn steerOrHold and steerTurn call index.ts steer, which refuses when the session has no turn:
+\* before onOpen, or after the turn ended. makeTurn steer then waits for onOpen or for the turn to end, whichever
+\* it can still get, and tries again (SteerRetry).
+TrySteer(k) ==
+  IF turn # None
+  THEN /\ SendPrompt(turn, TRUE)
+       /\ steerFor' = None
+       /\ UNCHANGED <<turn, shown, steerAwaits>>
+  ELSE /\ steerFor' = k /\ steerAwaits' = IF opened THEN "end" ELSE "open"
+       /\ UNCHANGED <<stdin, sessionVars, promptsSent, turnOf>>
+
+\* AgentRunner.ts steerWhen routes to makeTurn steer. With no activeTurns entry it falls back to send, which the Send
+\* action already covers. One refused steer waits at a time.
 Steer ==
-  /\ activeTurn # None /\ steersLeft > 0
+  /\ activeTurn # None /\ steersLeft > 0 /\ steerFor = None
   /\ steersLeft' = steersLeft - 1
-  /\ IF turn = None
-     THEN /\ rejectedSteerWhileRunning' = (rejectedSteerWhileRunning \/ status = "running")
-          /\ UNCHANGED <<stdin, sessionVars, promptsSent, turnOf>>
-     ELSE /\ SendPrompt(turn, TRUE)
-          /\ UNCHANGED <<turn, shown, rejectedSteerWhileRunning>>
-  /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, runnerVars, sent, interruptsLeft,
+  /\ TrySteer(activeTurn)
+  /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, runnerVars, opened, sent, interruptsLeft,
+                 abandonsLeft, delivered, droppedContent, abandoned, finished>>
+
+\* makeTurn steer tries a refused steer again once its turn opens or ends. After the end steerOrHold answers
+\* "finished" and steerWhen routes the steer again: to the turn running now, or as a send.
+SteerRetry ==
+  /\ steerFor # None
+  /\ \/ steerFor \in finished
+     \/ steerAwaits = "open" /\ activeTurn = steerFor /\ opened
+  /\ IF steerFor \notin finished \/ activeTurn # None
+     THEN /\ TrySteer(IF steerFor \in finished THEN activeTurn ELSE steerFor)
+          /\ UNCHANGED <<runnerVars, opened>>
+     ELSE /\ steerFor' = None /\ started' = started + 1
+          /\ busy' = TRUE /\ activeTurn' = started + 1 /\ status' = "running" /\ consumer' = "starting"
+          /\ UNCHANGED <<stdin, sessionVars, queue, pendingWakes, promptsSent, turnOf, opened, steerAwaits>>
+  /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, sent, steersLeft, interruptsLeft,
                  abandonsLeft, delivered, droppedContent, abandoned, finished>>
 
 \* AgentRunner.ts interrupt -> makeTurn interrupt -> index.ts interruptQuery. `interrupted` only
@@ -147,8 +174,7 @@ Interrupt ==
   /\ interruptsLeft' = interruptsLeft - 1
   /\ stdin' = Append(stdin, InterruptRequest)
   /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, sessionVars, runnerVars, sent, promptsSent,
-                 turnOf, steersLeft, abandonsLeft, delivered, droppedContent, abandoned, finished,
-                 rejectedSteerWhileRunning>>
+                 turnOf, steersLeft, abandonsLeft, delivered, droppedContent, abandoned, finished, steerVars>>
 
 \* index.ts abandon, the finalizer startTurn adds. The consumer stops early when `handle` fails or the FiberMap is
 \* torn down; `finish` still runs through Effect.ensuring (AgentRunner.ts makeTurn follow).
@@ -161,7 +187,7 @@ Abandon ==
      ELSE UNCHANGED <<turn, turnPrompts, stdin>>
   /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, unanswered, shown, busy, activeTurn, status,
                  queue, started, pendingWakes, sent, promptsSent, turnOf, steersLeft, interruptsLeft, delivered,
-                 droppedContent, finished, rejectedSteerWhileRunning>>
+                 droppedContent, finished, steerVars>>
 
 \* AgentRunner.ts makeTurn handle, one exclusive section per event; a terminal event ends the stream
 Handle ==
@@ -170,16 +196,15 @@ Handle ==
   /\ IF Head(queue[activeTurn]).type \in {"result", "failed"}
      THEN status' = "idle" /\ consumer' = "ended"
      ELSE UNCHANGED <<status, consumer>>
-  /\ UNCHANGED <<cliVars, sessionVars, busy, activeTurn, started, pendingWakes, ghostVars>>
+  /\ UNCHANGED <<cliVars, sessionVars, busy, activeTurn, started, pendingWakes, steerVars, ghostVars>>
 
 \* AgentRunner.ts makeTurn finish, the only place activeTurns is cleared
 Finish ==
   /\ consumer = "ended"
   /\ finished' = finished \cup {activeTurn}
-  /\ busy' = FALSE /\ activeTurn' = None /\ status' = "idle" /\ consumer' = "none"
+  /\ busy' = FALSE /\ activeTurn' = None /\ status' = "idle" /\ consumer' = "none" /\ opened' = FALSE
   /\ UNCHANGED <<cliVars, sessionVars, queue, started, pendingWakes, sent, promptsSent, turnOf, steersLeft,
-                 interruptsLeft, abandonsLeft, delivered, droppedContent, abandoned,
-                 rejectedSteerWhileRunning>>
+                 interruptsLeft, abandonsLeft, delivered, droppedContent, abandoned, steerFor, steerAwaits>>
 
 \* AgentRunner.ts startWake: once the thread is not busy, the runner follows a turn the session opened by itself
 \* with the same handle and finish as any turn. A send that raced it failed in RunTurn, since the session
@@ -189,7 +214,7 @@ RunnerWake ==
   /\ \E k \in pendingWakes :
        /\ pendingWakes' = pendingWakes \ {k}
        /\ busy' = TRUE /\ activeTurn' = k /\ status' = "running" /\ consumer' = "reading"
-  /\ UNCHANGED <<cliVars, sessionVars, queue, started, ghostVars>>
+  /\ UNCHANGED <<cliVars, sessionVars, queue, started, steerVars, ghostVars>>
 
 -----------------------------------------------------------------------------
 
@@ -242,8 +267,7 @@ Pump ==
              [] m.type = "result" /\ turnPrompts \cap left # {} -> Swallow
              [] OTHER -> Emit(m)
   /\ UNCHANGED <<stdin, backlog, cliPhase, answering, contentSent, bgVars, busy, activeTurn, status, consumer, sent,
-                 promptsSent, turnOf, steersLeft, interruptsLeft, abandonsLeft, abandoned, finished,
-                 rejectedSteerWhileRunning>>
+                 promptsSent, turnOf, steersLeft, interruptsLeft, abandonsLeft, abandoned, finished, steerVars>>
 
 -----------------------------------------------------------------------------
 (* The Claude Code CLI, as observed with 2.1.299 by specs/probes/claude-cli.mjs:
@@ -269,7 +293,7 @@ Pump ==
 
 Out(type) == stdout' = Append(stdout, [type |-> type, from |-> answering])
 
-unchangedOutsideCli == <<sessionVars, runnerVars, ghostVars>>
+unchangedOutsideCli == <<sessionVars, runnerVars, steerVars, ghostVars>>
 
 \* What the CLI sends when it starts work: running, if it had announced idle.
 Started == IF CliReportsState /\ idleSent
@@ -350,14 +374,14 @@ CliRead ==
 -----------------------------------------------------------------------------
 
 Next ==
-  \/ Send \/ RunTurn \/ Steer \/ Interrupt \/ Abandon \/ Handle \/ Finish \/ RunnerWake \/ Pump
+  \/ Send \/ RunTurn \/ Steer \/ SteerRetry \/ Interrupt \/ Abandon \/ Handle \/ Finish \/ RunnerWake \/ Pump
   \/ CliStart \/ CliContent \/ CliFinishGenerating \/ CliResult \/ CliSteerAbort \/ CliRead
   \/ CliStartFollowup \/ CliLaunch \/ CliBackgroundDone \/ CliIdle
 
 \* Send, Steer and Interrupt are user actions and Abandon comes from a `handle` failure or FiberMap
 \* teardown, so none of them is forced.
 Fairness ==
-  /\ WF_vars(RunTurn) /\ WF_vars(Handle) /\ WF_vars(Finish) /\ WF_vars(RunnerWake) /\ WF_vars(Pump)
+  /\ WF_vars(RunTurn) /\ WF_vars(SteerRetry) /\ WF_vars(Handle) /\ WF_vars(Finish) /\ WF_vars(RunnerWake) /\ WF_vars(Pump)
   /\ WF_vars(CliStart) /\ WF_vars(CliFinishGenerating) /\ WF_vars(CliResult) /\ WF_vars(CliRead)
   /\ WF_vars(CliStartFollowup) /\ WF_vars(CliBackgroundDone) /\ WF_vars(CliIdle)
 
@@ -377,6 +401,8 @@ TurnsEnd ==
   /\ \A k \in Turns : (k \in 1..started) ~> (k \in finished)
   /\ <>[](status = "idle" /\ activeTurn = None)
 
-SteerNeverRejectedWhileRunning == ~rejectedSteerWhileRunning
+\* A steer the provider refuses while the thread runs is not handed back to the developer. It waits for its turn to
+\* open or end, then reaches a turn.
+SteerNeverRejectedWhileRunning == (steerFor # None) ~> (steerFor = None)
 
 =============================================================================
