@@ -26,12 +26,13 @@ VARIABLES
   mergePc,    \* settleIfDone: idle, waiting on SourceControl.pullRequest, on the port scan, on the worktree lock,
               \* or done and waiting to release
   sawMerged,  \* settleIfDone's found: the pull request it fetched merged after the work_started_at it now reads
+  touched,    \* thread.updated_at moved since settleIfDone read the row
   sendsLeft, wakesLeft, mergesLeft,
   refused,    \* history: a send to a thread that was not archived when the developer sent it was refused
   keptOpen    \* history: the developer reopened the thread and no newer merge or settle has happened since
 
 vars == <<status, settled, pinned, background, listener, claim, lock, sendPc, wakePc, relPc, relKind,
-          merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+          merged, mergePc, sawMerged, touched, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
 
 IsBusy == claim # "none"
 
@@ -43,13 +44,15 @@ Init ==
   /\ background = FALSE /\ listener = FALSE
   /\ claim = "none" /\ lock = "free"
   /\ sendPc = "idle" /\ wakePc = "idle" /\ relPc = "idle" /\ relKind = "settle"
-  /\ merged = FALSE /\ mergePc = "idle" /\ sawMerged = FALSE
+  /\ merged = FALSE /\ mergePc = "idle" /\ sawMerged = FALSE /\ touched = FALSE
   /\ sendsLeft = MaxSends /\ wakesLeft = MaxWakes /\ mergesLeft = MaxMerges
   /\ refused = FALSE /\ keptOpen = FALSE
 
 \* Threads.ts write stamps work_started_at when a thread starts work, is unarchived or is reopened. A merge the
-\* sweep already fetched is older than that stamp, so mergedSince no longer holds for it.
-StampsWorkStarted == merged' = FALSE /\ sawMerged' = FALSE
+\* sweep already fetched is older than that stamp, so mergedSince no longer holds for it. The same write moves
+\* updated_at. The model leaves out the other writes that move it, such as a turn ending, which only lets the merge
+\* pass settle more often than the code does.
+StampsWorkStarted == merged' = FALSE /\ sawMerged' = FALSE /\ touched' = TRUE
 
 ---------------------------------------------------------------------------------------------------------------
 \* The developer's send.
@@ -62,7 +65,7 @@ SendClaims ==
   /\ claim' = "send" /\ sendPc' = "first"
   /\ IF status = "archived"
        THEN status' = "idle" /\ settled' = FALSE /\ StampsWorkStarted
-       ELSE UNCHANGED <<status, settled, merged, sawMerged>>
+       ELSE UNCHANGED <<status, settled, merged, sawMerged, touched>>
   /\ UNCHANGED <<pinned, background, listener, lock, wakePc, relPc, relKind, mergePc, wakesLeft, mergesLeft, refused,
                  keptOpen>>
 
@@ -71,7 +74,7 @@ SendFirstBlock ==
   /\ sendPc = "first" /\ lock = "free"
   /\ sendPc' = "second"
   /\ UNCHANGED <<status, settled, pinned, background, listener, claim, lock, wakePc, relPc, relKind,
-                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
 \* AgentRunner.ts startTurn's second exclusive block refuses an archived thread, or marks it running.
 \* Threads.ts write clears settled_at when a turn starts work.
@@ -80,7 +83,7 @@ SendSecondBlock ==
   /\ sendPc' = "idle"
   /\ IF status = "archived"
        THEN /\ claim' = "none" /\ refused' = TRUE
-            /\ UNCHANGED <<status, settled, merged, sawMerged>>
+            /\ UNCHANGED <<status, settled, merged, sawMerged, touched>>
        ELSE /\ claim' = "turn" /\ status' = "running" /\ settled' = FALSE /\ StampsWorkStarted
             /\ UNCHANGED refused
   /\ UNCHANGED <<pinned, background, listener, lock, wakePc, relPc, relKind, mergePc, sendsLeft, wakesLeft, mergesLeft,
@@ -94,20 +97,20 @@ TurnStartsListener ==
   /\ status = "running" /\ ~listener
   /\ listener' = TRUE
   /\ UNCHANGED <<status, settled, pinned, background, claim, lock, sendPc, wakePc, relPc, relKind,
-                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
 TurnStartsBackground ==
   /\ status = "running" /\ ~background
   /\ background' = TRUE
   /\ UNCHANGED <<status, settled, pinned, listener, claim, lock, sendPc, wakePc, relPc, relKind,
-                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
 \* AgentRunner.ts makeTurn finish, under the thread lock, sets the thread idle and drops the claim.
 TurnEnds ==
   /\ status = "running" /\ lock = "free"
   /\ status' = "idle" /\ claim' = "none"
   /\ UNCHANGED <<settled, pinned, background, listener, lock, sendPc, wakePc, relPc, relKind,
-                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
 \* AgentRunner.ts startWake: a finished background task wakes the agent. It waits out busyThreads and claims.
 WakeClaims ==
@@ -115,14 +118,14 @@ WakeClaims ==
   /\ wakesLeft' = wakesLeft - 1
   /\ claim' = "wake" /\ wakePc' = "waiting" /\ background' = FALSE
   /\ UNCHANGED <<status, settled, pinned, listener, lock, sendPc, relPc, relKind,
-                 merged, mergePc, sawMerged, sendsLeft, mergesLeft, refused, keptOpen>>
+                 merged, mergePc, sawMerged, sendsLeft, mergesLeft, refused, keptOpen, touched>>
 
 \* Under both locks, an archived thread drops the wake, and any other starts a turn.
 WakeAdopts ==
   /\ wakePc = "waiting" /\ lock = "free"
   /\ wakePc' = "idle"
   /\ IF status = "archived"
-       THEN claim' = "none" /\ UNCHANGED <<status, settled, merged, sawMerged>>
+       THEN claim' = "none" /\ UNCHANGED <<status, settled, merged, sawMerged, touched>>
        ELSE claim' = "turn" /\ status' = "running" /\ settled' = FALSE /\ StampsWorkStarted
   /\ UNCHANGED <<pinned, background, listener, lock, sendPc, relPc, relKind, mergePc, sendsLeft, wakesLeft, mergesLeft,
                  refused, keptOpen>>
@@ -135,13 +138,13 @@ Pin ==
   /\ status # "archived" /\ ~pinned
   /\ pinned' = TRUE /\ settled' = FALSE
   /\ UNCHANGED <<status, background, listener, claim, lock, sendPc, wakePc, relPc, relKind,
-                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
 Unpin ==
   /\ pinned
   /\ pinned' = FALSE
   /\ UNCHANGED <<status, settled, background, listener, claim, lock, sendPc, wakePc, relPc, relKind,
-                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
 \* Threads.ts unsettle.
 Reopen ==
@@ -156,7 +159,7 @@ Merge ==
   /\ mergesLeft' = mergesLeft - 1
   /\ merged' = TRUE /\ keptOpen' = FALSE
   /\ UNCHANGED <<status, settled, pinned, background, listener, claim, lock, sendPc, wakePc, relPc, relKind,
-                 mergePc, sawMerged, sendsLeft, wakesLeft, refused>>
+                 mergePc, sawMerged, sendsLeft, wakesLeft, refused, touched>>
 
 ---------------------------------------------------------------------------------------------------------------
 \* The sweep's merge pass, Settle.ts settleIfDone. Unlike the other passes it writes the row first and releases
@@ -165,7 +168,7 @@ Merge ==
 \* It reads the row, checks canAutoSettle and hasAgentWork, then waits on SourceControl.pullRequest.
 MergeAsks ==
   /\ mergePc = "idle" /\ CanAutoSettle /\ ~background
-  /\ mergePc' = "fetching"
+  /\ mergePc' = "fetching" /\ touched' = FALSE
   /\ UNCHANGED <<status, settled, pinned, background, listener, claim, lock, sendPc, wakePc, relPc, relKind,
                  merged, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
 
@@ -175,25 +178,27 @@ MergeFetched ==
   /\ mergePc' = IF merged THEN "scanning" ELSE "idle"
   /\ sawMerged' = merged
   /\ UNCHANGED <<status, settled, pinned, background, listener, claim, lock, sendPc, wakePc, relPc, relKind,
-                 merged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
 \* A listening port ends the pass, and otherwise Threads.settleMerged waits for the worktree lock.
 MergeScanned ==
   /\ mergePc = "scanning"
   /\ mergePc' = IF listener THEN "idle" ELSE "locking"
   /\ UNCHANGED <<status, settled, pinned, background, listener, claim, lock, sendPc, wakePc, relPc, relKind,
-                 merged, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
-\* Threads.ts settleMerged rereads the row and work_started_at under the worktree lock that Pin and Reopen take,
-\* and checks canAutoSettle and mergedSince against what it fetched. It does not ask hasAgentWork again. With
-\* "Remove the worktree when archiving" on, it removes the worktree and checks again, which the model leaves out.
+\* Threads.ts settleMerged rereads the row and work_started_at under the worktree lock that Pin and Reopen take.
+\* Settle.ts isStillDone needs updated_at unchanged since MergeAsks, canAutoSettle, mergedSince against what it
+\* fetched, and no agent work. A turn that ran since the port scan moved updated_at, so the scan still holds
+\* without running it under the lock. With "Remove the worktree when archiving" on, it removes the worktree and
+\* checks again, which the model leaves out.
 MergeSettles ==
   /\ mergePc = "locking"
-  /\ IF CanAutoSettle /\ sawMerged
+  /\ IF CanAutoSettle /\ sawMerged /\ ~touched /\ ~background
        THEN settled' = TRUE /\ mergePc' = "releasing"
        ELSE UNCHANGED settled /\ mergePc' = "idle"
   /\ UNCHANGED <<status, pinned, background, listener, claim, lock, sendPc, wakePc, relPc, relKind,
-                 merged, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
 \* Then it calls release with Terminals.closeThread. release returns at once while isBusy. The model runs one
 \* release at a time, so this waits for a manual settle already in flight, and LiveSpec keeps that from starving it.
@@ -204,7 +209,7 @@ MergeReleases ==
        THEN UNCHANGED <<relPc, relKind>>
        ELSE relPc' = "stopping" /\ relKind' = "merge"
   /\ UNCHANGED <<status, settled, pinned, background, listener, claim, lock, sendPc, wakePc,
-                 merged, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
 ---------------------------------------------------------------------------------------------------------------
 \* Settle and archive, through AgentRunner.ts release.
@@ -221,7 +226,7 @@ ReleaseStarts(kind) ==
        [] kind = "archive" -> settled /\ ~pinned
   /\ relKind' = kind /\ relPc' = "stopping"
   /\ UNCHANGED <<status, settled, pinned, background, listener, claim, lock, sendPc, wakePc,
-                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
 \* stopSubagentsAndTasks stops what the agent left running, then release takes the lock and checks isBusy again.
 \* closeProviderSession ends the CLI and whatever still runs inside it.
@@ -232,7 +237,7 @@ ReleaseLocks ==
        THEN relPc' = "idle" /\ UNCHANGED lock
        ELSE relPc' = "cleaning" /\ lock' = "release"
   /\ UNCHANGED <<status, settled, pinned, listener, claim, sendPc, wakePc, relKind,
-                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
 \* Settle.ts stopProcesses: Terminals.closeThread, then Ports.closeThread, SIGKILL after 3 seconds. The merge pass
 \* closes terminals only, so a listener outside them survives it.
@@ -241,7 +246,7 @@ ReleaseCleans ==
   /\ listener' = (relKind = "merge" /\ listener)
   /\ relPc' = "writing"
   /\ UNCHANGED <<status, settled, pinned, background, claim, lock, sendPc, wakePc, relKind,
-                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen>>
+                 merged, mergePc, sawMerged, sendsLeft, wakesLeft, mergesLeft, refused, keptOpen, touched>>
 
 \* Threads.ts settle, for the manual settle, writes settled: true, which clears pinned_at.
 \* Threads.ts settleIf, for the idle pass, rechecks the row under the worktree lock that Pin takes.
@@ -262,7 +267,7 @@ ReleaseWrites ==
             status' = "archived" /\ UNCHANGED <<settled, pinned, keptOpen>>
        [] OTHER -> UNCHANGED <<status, settled, pinned, keptOpen>>
   /\ UNCHANGED <<background, listener, claim, sendPc, wakePc, relKind, merged, mergePc, sawMerged,
-                 sendsLeft, wakesLeft, mergesLeft, refused>>
+                 sendsLeft, wakesLeft, mergesLeft, refused, touched>>
 
 Next ==
   \/ SendClaims \/ SendFirstBlock \/ SendSecondBlock
@@ -282,7 +287,7 @@ LiveSpec ==
 
 TypeOK ==
   /\ status \in {"idle", "running", "archived"}
-  /\ {settled, pinned, background, listener, merged, sawMerged, refused, keptOpen} \subseteq BOOLEAN
+  /\ {settled, pinned, background, listener, merged, sawMerged, touched, refused, keptOpen} \subseteq BOOLEAN
   /\ claim \in {"none", "send", "wake", "turn"}
   /\ lock \in {"free", "release"}
   /\ sendPc \in {"idle", "first", "second"}
