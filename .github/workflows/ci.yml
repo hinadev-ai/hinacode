@@ -140,6 +140,8 @@ jobs:
       matrix:
         shard: [1, 2, 3]
     steps:
+      - name: Start installing ripgrep for the search tests
+        run: (sudo apt-get update && sudo apt-get install --yes ripgrep; echo $? > "$RUNNER_TEMP/apt.exit") > "$RUNNER_TEMP/apt.log" 2>&1 &
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
@@ -153,8 +155,6 @@ jobs:
           key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       # FIXME: GitHub's release downloads time out with a 504 now and then, and the Electron binary comes from there
       - run: for attempt in 1 2 3 4 5; do pnpm exec install-electron && exit 0; sleep $((attempt * 15)); done; exit 1
-      - name: Install search test dependency
-        run: sudo apt-get update && sudo apt-get install --yes ripgrep
       - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
@@ -165,6 +165,8 @@ jobs:
           echo "HINACODE_BROWSER_EXECUTABLE_PATH=$(node -p 'require("playwright").chromium.executablePath()')" >> "$GITHUB_ENV"
       - name: Allow Chromium sandbox namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Wait for apt
+        run: until [ -s "$RUNNER_TEMP/apt.exit" ]; do sleep 1; done; cat "$RUNNER_TEMP/apt.log"; exit "$(cat "$RUNNER_TEMP/apt.exit")"
       - run: pnpm test --shard ${{ matrix.shard }}/3
 
   # The main ruleset requires a check named "check", so this job reports the result of the jobs it replaced.
@@ -211,14 +213,15 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6]
     steps:
+      # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
+      - name: Start installing xvfb, openbox, ripgrep
+        run: (sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep; echo $? > "$RUNNER_TEMP/apt.exit") > "$RUNNER_TEMP/apt.log" 2>&1 &
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
-      # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
-      - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep
       - run: pnpm install --frozen-lockfile
       - uses: actions/cache@v6
         with:
@@ -232,6 +235,8 @@ jobs:
       # FIXME: GitHub's release downloads time out with a 504 now and then, and the Electron binary comes from there
       - run: for attempt in 1 2 3 4 5; do pnpm exec install-electron && exit 0; sleep $((attempt * 15)); done; exit 1
       - run: pnpm exec bddgen -c e2e/playwright.config.ts
+      - name: Wait for apt
+        run: until [ -s "$RUNNER_TEMP/apt.exit" ]; do sleep 1; done; cat "$RUNNER_TEMP/apt.log"; exit "$(cat "$RUNNER_TEMP/apt.exit")"
       # A shard runs every test of the projects its tests depend on, so desktop runs as its own pass instead.
       - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --workers 3 --shard ${{ matrix.shard }}/6'
       - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project desktop --no-deps --shard ${{ matrix.shard }}/6'
