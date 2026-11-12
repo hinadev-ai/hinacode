@@ -304,8 +304,8 @@ sequenceDiagram
   AR->>DB: final persist
   AR-->>R: thread.updated(idle)
   opt turn completed, not stopped, queue not empty
-    AR->>DB: take the oldest queued message, keep the busyThreads claim
-    AR->>AR: start the next turn with it
+    AR->>AR: pick the oldest queued message, keep the busyThreads claim
+    AR->>DB: one transaction: insert it as the user msg, remove it from thread.queue
   end
 ```
 

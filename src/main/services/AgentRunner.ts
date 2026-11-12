@@ -456,16 +456,19 @@ const make = Effect.gen(function* () {
   const updateThread = (input: Parameters<typeof threads.update>[0]) =>
     threads.update(input).pipe(Effect.tap((thread) => push.publish({ type: "thread.updated", thread })))
 
-  const takeQueued = (threadId: string) =>
+  const nextQueued = (threadId: string) =>
     Effect.gen(function* () {
       const { queue } = yield* threads.get(threadId)
-      if (queue.length === 0) return undefined
-      const [first, ...rest] = yield* Effect.filter(queue, (queued) =>
-        Effect.map(messages.has(queued.id), (sent) => !sent),
-      )
-      yield* updateThread({ id: threadId, queue: rest })
-      return first
+      const unsent = yield* Effect.filter(queue, (queued) => Effect.map(messages.has(queued.id), (sent) => !sent))
+      if (unsent.length < queue.length) yield* updateThread({ id: threadId, queue: unsent })
+      return unsent[0]
     })
+
+  const isQueued = (threadId: string, id: string) =>
+    threads.get(threadId).pipe(
+      Effect.map(({ queue }) => queue.some((queued) => queued.id === id)),
+      Effect.catchTag("NotFoundError", () => Effect.succeed(false)),
+    )
 
   const removeScheduled = (threadId: string, id: string) =>
     Effect.gen(function* () {
@@ -824,7 +827,7 @@ const make = Effect.gen(function* () {
       if (closed !== last) yield* publishTranscript({ type: "message.updated", message: closed })
       if (isThreadBusy(status)) yield* updateThread({ id: thread.id, status: "idle" })
       if (!completed || (yield* Deferred.isDone(stop))) return
-      next = yield* takeQueued(thread.id)
+      next = yield* nextQueued(thread.id)
     }).pipe(
       Effect.catch((error) => Effect.logError("failed to finish turn", error)),
       Effect.ensuring(
@@ -1178,7 +1181,12 @@ const make = Effect.gen(function* () {
                 yield* messages.insert(user)
                 if (options.scheduledId !== undefined) yield* removeScheduled(threadId, options.scheduledId)
                 yield* messages.insert(assistant)
-                return yield* threads.update({ id: threadId, status: "running" })
+                const { queue } = yield* threads.get(threadId)
+                return yield* threads.update({
+                  id: threadId,
+                  status: "running",
+                  queue: queue.filter((queued) => queued.id !== user.id),
+                })
               }),
             )
             yield* publishTranscript({ type: "message.created", message: user })
@@ -1275,26 +1283,27 @@ const make = Effect.gen(function* () {
     }).pipe(exclusive(threadId))
 
   const startQueued = (threadId: string, message: QueuedMessage): Effect.Effect<void> =>
-    startClaimed(threadId, message.text, message.attachments, { messageId: message.id }, Effect.succeed(true)).pipe(
-      Effect.asVoid,
-      Effect.catch((error) =>
-        Effect.gen(function* () {
-          yield* Effect.logWarning("queued message did not start", error)
-          if (!(yield* messages.has(message.id))) {
-            const thread = yield* threads.get(threadId)
-            yield* updateThread({ id: threadId, queue: [message, ...thread.queue] })
-            return undefined
-          }
-          if (busyThreads.has(threadId)) return undefined
-          const next = yield* takeQueued(threadId)
-          if (next !== undefined) busyThreads.add(threadId)
-          return next
-        }).pipe(
-          exclusive(threadId),
-          Effect.flatMap((next) => (next === undefined ? Effect.void : Effect.forkDetach(startQueued(threadId, next)))),
-          Effect.catch((cause) => Effect.logError("failed to put back a queued message", cause)),
-        ),
-      ),
+    startClaimed(
+      threadId,
+      message.text,
+      message.attachments,
+      { messageId: message.id },
+      isQueued(threadId, message.id),
+    ).pipe(
+      Effect.catch((error) => Effect.logWarning("queued message did not start", error).pipe(Effect.as(false))),
+      Effect.flatMap((started) => (started ? Effect.void : startNextQueued(threadId, message))),
+    )
+
+  const startNextQueued = (threadId: string, skipped: QueuedMessage) =>
+    Effect.gen(function* () {
+      if (busyThreads.has(threadId) || (yield* isQueued(threadId, skipped.id))) return undefined
+      const next = yield* nextQueued(threadId)
+      if (next !== undefined) busyThreads.add(threadId)
+      return next
+    }).pipe(
+      exclusive(threadId),
+      Effect.flatMap((next) => (next === undefined ? Effect.void : Effect.forkDetach(startQueued(threadId, next)))),
+      Effect.catch((cause) => Effect.logError("failed to start the next queued message", cause)),
     )
 
   const steerWhen: typeof AgentRunner.Service.steerWhen = (input) =>
