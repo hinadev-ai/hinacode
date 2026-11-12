@@ -2525,7 +2525,7 @@
   "site_pricing_item_7": "Routines on a schedule or a webhook",
   "site_pricing_item_8": "Remote machines and the phone app",
   "site_pricing_costs_title": "What you pay for",
-  "site_pricing_costs_body": "Your agent plans. HinaCode runs the Claude Code, Codex and Muse Code CLIs you're signed in to, so usage counts against those plans or API keys, the same as in a terminal.",
+  "site_pricing_costs_body": "Your agent plans. HinaCode runs the Claude Code, Codex, Muse Code and opencode CLIs you're signed in to, so usage counts against those plans or API keys, the same as in a terminal.",
   "mobile_pairing_lead": "On the desktop, open Settings, Connections, and turn on Allow remote control. Scan the QR code it shows, or paste the pairing URL. A cloud prints its QR code when you run hinacode serve, or hinacode pair later.",
   "mobile_pairing_scan": "Scan QR code",
   "mobile_pairing_url": "Pairing URL",

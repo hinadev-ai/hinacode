@@ -2461,7 +2461,7 @@
   "site_pricing_item_7": "スケジュールや webhook で動くルーティン",
   "site_pricing_item_8": "リモートマシンとスマートフォンアプリ",
   "site_pricing_costs_title": "支払いが必要なもの",
-  "site_pricing_costs_body": "エージェントのプランです。HinaCode はサインイン済みの Claude Code、Codex、Muse Code の CLI を動かすので、使用量はターミナルと同じく、それぞれのプランや API キーに計上されます。",
+  "site_pricing_costs_body": "エージェントのプランです。HinaCode はサインイン済みの Claude Code、Codex、Muse Code、opencode の CLI を動かすので、使用量はターミナルと同じく、それぞれのプランや API キーに計上されます。",
   "mobile_pairing_lead": "デスクトップの「設定」から「接続」を開き、「リモート操作を許可」をオンにしてください。表示された QR コードを読み取るか、ペアリング用 URL を貼り付けます。クラウドでは hinacode serve の実行時、または後から hinacode pair を実行すると QR コードが表示されます。",
   "mobile_pairing_scan": "QR コードを読み取る",
   "mobile_pairing_url": "ペアリング用 URL",

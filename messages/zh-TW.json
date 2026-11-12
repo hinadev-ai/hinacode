@@ -2479,7 +2479,7 @@
   "site_pricing_item_7": "依排程或 webhook 執行的例行任務",
   "site_pricing_item_8": "遠端機器和手機應用程式",
   "site_pricing_costs_title": "你需要付費的部分",
-  "site_pricing_costs_body": "你的代理方案。HinaCode 執行你已登入的 Claude Code、Codex 和 Muse Code CLI，所以用量算在那些方案或 API 金鑰上，和在終端機裡一樣。",
+  "site_pricing_costs_body": "你的代理方案。HinaCode 執行你已登入的 Claude Code、Codex、Muse Code 和 opencode CLI，所以用量算在那些方案或 API 金鑰上，和在終端機裡一樣。",
   "mobile_pairing_lead": "在桌面版開啟「設定」中的「連線」，並開啟「允許遠端控制」。掃描畫面上的 QR 碼，或貼上配對網址。雲端機器會在執行 hinacode serve 時，或之後執行 hinacode pair 時印出 QR 碼。",
   "mobile_pairing_scan": "掃描 QR 碼",
   "mobile_pairing_url": "配對網址",
