@@ -7,6 +7,7 @@ import { vi } from "vitest"
 import { Effect, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
+import { signedOut, signedOutMessage } from "./fixtures/transcript.ts"
 import { usageLimitResult } from "./fixtures/usageLimit.ts"
 import type { GatewayModel, GatewayTarget } from "../magpie/gateway.ts"
 import { MagpieProvider } from "../magpie/index.ts"
@@ -1266,6 +1267,22 @@ describe("Claude background sub-agents", () => {
   )
 })
 
+describe("Claude commands", () => {
+  it.effect("lists commands again after a failed probe", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.supportedCommands = () => Promise.reject(new Error("spawn claude ENOENT"))
+        yield* provider.listCommands({ threadId: "thread-1", cwd: "/repo", home: null }).pipe(Effect.flip)
+
+        sdk.supportedCommands = () => Promise.resolve([{ name: "review", description: "", argumentHint: "" }])
+        const listed = yield* provider.listCommands({ threadId: "thread-1", cwd: "/repo", home: null })
+        expect(listed.map((command) => command.name)).toEqual(["review"])
+      }),
+    ),
+  )
+})
+
 describe("Claude models", () => {
   it.effect("asks the CLI again after a failed listing, so a fresh install shows its models", () =>
     lifecycle(
@@ -1323,6 +1340,29 @@ describe("magpie", () => {
         expect(yield* provider.account(null)).toStrictEqual({ type: "signedOut" })
       }),
     ),
+  )
+
+  it.effect("leaves Claude's login command out of a signed-out turn on a Claude model", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        const signedOutMessages = signedOut().flatMap((step) => (step.type === "sdk" ? [step.message] : []))
+        sdk.respond = (cli) => cli.push(init("session-1"), ...signedOutMessages)
+        const provider = yield* MagpieProvider
+        const events = yield* provider.runTurn(turnInput({ model: "claude-opus-5-5" })).pipe(Stream.runCollect)
+        expect([...events].at(-1)).toStrictEqual({ type: "turn_failed", message: signedOutMessage, signedOut: true })
+      }),
+    ),
+  )
+
+  it.effect("names magpie in the errors its harness raises", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        sdk.supportedCommands = () => Promise.reject(new Error("spawn claude ENOENT"))
+        const provider = yield* MagpieProvider
+        const error = yield* provider.listCommands({ threadId: "thread-1", cwd: "/repo", home: null }).pipe(Effect.flip)
+        expect(error.provider).toBe("magpie")
+      }),
+    ).pipe(Effect.ensuring(Effect.sync(() => (sdk.supportedCommands = () => Promise.resolve([]))))),
   )
 
   it.effect("starts Claude Code with the gateway in its flag settings, over the user's settings.json", () =>

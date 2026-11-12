@@ -24,6 +24,11 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   loginCommand: Schema.optional(Schema.String),
 }) {}
 
+export const interruptedTurn: Extract<AgentEvent, { type: "turn_failed" }> = {
+  type: "turn_failed",
+  message: "Turn interrupted",
+}
+
 export type SteerPriority = "now" | "next"
 
 export interface Wake {

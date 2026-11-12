@@ -232,7 +232,7 @@ describe("Claude Code CLI failures", () => {
         yield* provider.interrupt("t1")
         yield* Fiber.join(turn.fiber)
         expect(turn.events).toContainEqual({ type: "approval_resolved", requestId: request.id })
-        expect(ended(turn.events)).toStrictEqual({ type: "turn_failed", message: "Interrupted" })
+        expect(ended(turn.events)).toStrictEqual({ type: "turn_failed", message: "Turn interrupted" })
         expect(yield* provider.respondApproval(request.id, "allow")).toBe(false)
 
         expect(ended(yield* runToEnd(provider, input(home)))).toMatchObject({ type: "turn_completed" })
