@@ -294,6 +294,7 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
           subagents: new Map(),
           subagentRequests: new Map(),
           lastRequest: null,
+          provider: "claude",
           home: null,
           model: mockModel,
           limitMessage: null,

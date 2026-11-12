@@ -50,6 +50,7 @@ export function play(steps: ReadonlyArray<MockStep>, controls: PlayControls): St
     subagents: new Map(),
     subagentRequests: new Map(),
     lastRequest: null,
+    provider: "claude",
     home: null,
     model: mockModel,
     limitMessage: null,

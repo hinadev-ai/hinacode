@@ -1354,6 +1354,17 @@ describe("magpie", () => {
     ),
   )
 
+  it.effect("names magpie in the errors its harness raises", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        sdk.supportedCommands = () => Promise.reject(new Error("spawn claude ENOENT"))
+        const provider = yield* MagpieProvider
+        const error = yield* provider.listCommands({ threadId: "thread-1", cwd: "/repo", home: null }).pipe(Effect.flip)
+        expect(error.provider).toBe("magpie")
+      }),
+    ).pipe(Effect.ensuring(Effect.sync(() => (sdk.supportedCommands = () => Promise.resolve([]))))),
+  )
+
   it.effect("starts Claude Code with the gateway in its flag settings, over the user's settings.json", () =>
     onMagpie(
       Effect.gen(function* () {
