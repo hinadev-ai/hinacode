@@ -12,6 +12,9 @@ concurrency:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       app: ${{ steps.app.outputs.app }}
       desktop: ${{ steps.app.outputs.desktop }}
@@ -19,7 +22,9 @@ jobs:
       relay: ${{ steps.relay.outputs.relay }}
       resource-monitor: ${{ steps.resource-monitor.outputs.resource-monitor }}
     steps:
-      - uses: actions/checkout@v7
+      # paths-filter reads a pull request's files from the API
+      - if: github.event_name != 'pull_request'
+        uses: actions/checkout@v7
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: app
         with:
