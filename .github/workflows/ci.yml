@@ -238,7 +238,7 @@ jobs:
       - name: Wait for apt
         run: until [ -s "$RUNNER_TEMP/apt.exit" ]; do sleep 1; done; cat "$RUNNER_TEMP/apt.log"; exit "$(cat "$RUNNER_TEMP/apt.exit")"
       # A shard runs every test of the projects its tests depend on, so desktop runs as its own pass instead.
-      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --workers 3 --shard ${{ matrix.shard }}/6'
+      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --workers 4 --shard ${{ matrix.shard }}/6'
       - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project desktop --no-deps --shard ${{ matrix.shard }}/6'
       - if: failure()
         uses: actions/upload-artifact@v7

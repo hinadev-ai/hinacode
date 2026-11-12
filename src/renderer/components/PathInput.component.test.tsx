@@ -27,12 +27,14 @@ const completions = (path: string) => {
 
 const requested: Array<unknown> = []
 const otherMachine = Promise.withResolvers<ReadonlyArray<DirectorySuggestion>>()
+const slowFolder = Promise.withResolvers<ReadonlyArray<DirectorySuggestion>>()
 
 const bridge: HinacodeBridge = {
   rpc: async (method, payload, environment) => {
     if (method === "fs.completeDirectory") {
       requested.push(payload)
       if (environment === "other-machine") return { result: await otherMachine.promise }
+      if ((payload as { path: string }).path === "~/slow") return { result: await slowFolder.promise }
       return { result: completions((payload as { path: string }).path) }
     }
     return { error: { tag: "NotStubbed", message: method } }
@@ -117,6 +119,29 @@ test("a GitHub owner/repo never asks for suggestions", async () => {
 
   expect(requested).toEqual([])
   await expect.element(page.getByRole("listbox")).not.toBeInTheDocument()
+})
+
+test("folders that arrive after the field lost focus stay closed", async () => {
+  requested.length = 0
+  await render(
+    <>
+      <Harness />
+      <label htmlFor="next">Next</label>
+      <input id="next" />
+    </>,
+  )
+  await input().fill("~/slow")
+  await expect.poll(() => requested).toContainEqual({ path: "~/slow" })
+  await page.getByLabelText("Next").click()
+
+  slowFolder.resolve([{ path: "~/slower", name: "slower", repository: false }])
+  await slowFolder.promise
+  await new Promise(requestAnimationFrame)
+  await new Promise(requestAnimationFrame)
+  await expect.element(page.getByRole("listbox")).not.toBeInTheDocument()
+
+  await input().click()
+  await expect.element(option("slower")).toBeVisible()
 })
 
 test("switching machines drops the previous machine's folders", async () => {
