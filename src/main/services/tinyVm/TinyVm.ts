@@ -754,10 +754,10 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         Effect.gen(function* () {
           if (hostPaths.length === 0) return [] as ReadonlyArray<string>
           const archives: Array<{ readonly base: string; readonly tar: Uint8Array }> = []
-          let remaining = MAX_TRANSFER_BYTES
+          let usedBytes = 0
           for (const hostPath of hostPaths) {
-            const entries = yield* readTree(hostPath, remaining).pipe(Effect.mapError(toVmError))
-            remaining -= entries.reduce((sum, entry) => sum + (entry.type === "file" ? entry.data.length : 0), 0)
+            const entries = yield* readTree(hostPath, MAX_TRANSFER_BYTES, usedBytes).pipe(Effect.mapError(toVmError))
+            usedBytes += entries.reduce((sum, entry) => sum + (entry.type === "file" ? entry.data.length : 0), 0)
             const tar = yield* Effect.try({
               try: () => encodeTar(entries),
               catch: (cause) => new VmError({ message: cause instanceof Error ? cause.message : String(cause) }),
