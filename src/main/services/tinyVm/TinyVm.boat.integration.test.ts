@@ -60,8 +60,16 @@ const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(fu
       const stdout = command.includes("import -window root")
         ? FAKE_PNG
         : Buffer.from(command.includes("printf hello") ? "hello" : "")
+      const stderr = Buffer.from(
+        [...command.matchAll(/xdotool key --clearmodifiers ([^\s']+)/g)]
+          .flatMap((match) => (match[1] ?? "").split("+"))
+          .filter((name) => !/^0x[0-9a-f]+$/.test(name) && name !== "Caps_Lock")
+          .map((name) => `(symbol) No such key name '${name}'. Ignoring it.\n`.repeat(2))
+          .join(""),
+      )
       if (stdout.length > 0) files.set(out, stdout)
-      files.delete(err)
+      if (stderr.length > 0) files.set(err, stderr)
+      else files.delete(err)
       const exitCode = command.includes("exit 7") ? 7 : 0
       return sendJson(response, 200, {
         ok: true,
@@ -69,7 +77,7 @@ const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(fu
         success: true,
         exitCode,
         timedOut: false,
-        stdout: `hinacode-output-sizes ${stdout.length} 0\n`,
+        stdout: `hinacode-output-sizes ${stdout.length} ${stderr.length}\n`,
       })
     }
     if (command.includes("tar -cf")) {
@@ -437,6 +445,27 @@ it.effect("a click and the screenshot after it cost four boat requests", () =>
         "GET /sandboxes/{id}/files",
         "POST /sandboxes/{id}/commands",
       ])
+    }),
+  ),
+)
+
+it.effect("a key name xdotool does not know fails like it does on sbx instead of reporting success", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fake = yield* startFakeBoat
+      const dir = mkdtempSync(join(tmpdir(), "hinacode-boat-vm-"))
+      const runtime = yield* Effect.acquireRelease(
+        Effect.sync(() => makeRuntime(fake, dir)),
+        (value) => Effect.promise(() => value.dispose()),
+      )
+      const run = <A, E>(effect: Effect.Effect<A, E, TinyVm>) => Effect.promise(() => runtime.runPromise(effect))
+      yield* run(TinyVm.use((vm) => vm.start("thread-1")))
+
+      expect(yield* run(TinyVm.use((vm) => vm.act("thread-1", [{ type: "key", keys: "Caps_Lock" }])))).toBe("done")
+      const error = yield* run(
+        Effect.flip(TinyVm.use((vm) => vm.act("thread-1", [{ type: "key", keys: "ctrl+capslock" }]))),
+      )
+      expect(error.message).toContain('Unknown key "capslock" in "ctrl+capslock"')
     }),
   ),
 )
