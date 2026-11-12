@@ -11,6 +11,7 @@ import { Boat, BOAT_API_KEY_SECRET, boatClient, layer as boatLayer } from "./Boa
 const API_KEY = "test-key"
 
 const BINARY_STDOUT = Buffer.from([0x89, 0x00, 0x50, 0x4e, 0x47, 0xff, 0x00, 0x68, 0x69])
+const BIG_STDOUT = Buffer.alloc(5 * 1024 * 1024 + 7, 7)
 const TAR_BYTES = Buffer.from("fake-tar-bytes-for-get-files-round-trip-0123456789")
 
 interface FakeSandboxRecord {
@@ -26,12 +27,14 @@ interface FakeBoat {
   readonly createBodies: Array<Record<string, unknown>>
   readonly createIdempotencyKeys: Array<string | undefined>
   readonly commands: Array<string>
+  readonly requests: Array<string>
   readonly files: Map<string, Buffer>
   readonly deletedConfirmHeaders: Array<string | undefined>
   readonly stopped: Array<string>
   readonly resumed: Array<Record<string, unknown>>
   readonly desktopCalls: () => number
   readonly dropSignedFetches: (count: number) => void
+  readonly failFileReads: (count: number) => void
   readonly seedSandbox: (id: string, state: string) => void
   readonly close: () => Promise<void>
 }
@@ -76,12 +79,14 @@ const startFakeBoat = (): Promise<FakeBoat> =>
     const createBodies: Array<Record<string, unknown>> = []
     const createIdempotencyKeys: Array<string | undefined> = []
     const commands: Array<string> = []
+    const requests: Array<string> = []
     const deletedConfirmHeaders: Array<string | undefined> = []
     const stopped: Array<string> = []
     const resumed: Array<Record<string, unknown>> = []
     const sockets = new Set<Socket>()
     let desktopCallCount = 0
     let signedDrops = 0
+    let failedFileReads = 0
     let createdCount = 0
     let origin = ""
 
@@ -92,13 +97,42 @@ const startFakeBoat = (): Promise<FakeBoat> =>
         if (command.includes("empty-detached")) return sendJson(response, 200, {})
         return sendJson(response, 200, { success: true, pid: 4321, logPath: "/tmp/detached.log" })
       }
+      const reportSizes = () => {
+        const sizes = [/'(\/tmp\/\.hinacode-[^']+\.out)'/, /'(\/tmp\/\.hinacode-[^']+\.err)'/].map((pattern) => {
+          const path = pattern.exec(command)?.[1] ?? ""
+          const size = files.get(path)?.length ?? 0
+          if (size === 0) files.delete(path)
+          return size
+        })
+        return `hinacode-output-sizes ${sizes.join(" ")}\n`
+      }
+      if (command.startsWith("o=$(stat ")) {
+        return sendJson(response, 200, {
+          success: true,
+          exitCode: 0,
+          timedOut: false,
+          stdout: reportSizes(),
+          stderr: "",
+        })
+      }
       if (command.includes("bash -lc ") && command.includes(".hinacode-")) {
         const outMatch = /'(\/tmp\/\.hinacode-[^']+\.out)'/.exec(command)
         const errMatch = /'(\/tmp\/\.hinacode-[^']+\.err)'/.exec(command)
-        if (outMatch?.[1]) files.set(outMatch[1], BINARY_STDOUT)
-        if (errMatch?.[1]) files.set(errMatch[1], Buffer.from("warn\n"))
+        const quiet = command.includes("quiet")
+        const stdout = command.includes("big-stdout") ? BIG_STDOUT : quiet ? Buffer.alloc(0) : BINARY_STDOUT
+        const stderr = quiet || command.includes("stdout-only") ? Buffer.alloc(0) : Buffer.from("warn\n")
+        if (outMatch?.[1]) files.set(outMatch[1], stdout)
+        if (errMatch?.[1]) files.set(errMatch[1], stderr)
+        if (command.includes("time-out"))
+          return sendJson(response, 200, { success: false, exitCode: null, timedOut: true, stdout: "", stderr: "" })
         const exitCode = command.includes("exit 3") ? 3 : 0
-        return sendJson(response, 200, { success: exitCode === 0, exitCode, timedOut: false, stdout: "", stderr: "" })
+        return sendJson(response, 200, {
+          success: exitCode === 0,
+          exitCode,
+          timedOut: false,
+          stdout: reportSizes(),
+          stderr: "",
+        })
       }
       if (command.includes("tar -cf ") && command.includes("stat -c%s")) {
         const tarMatch = /tar -cf '([^']+)'/.exec(command)
@@ -110,19 +144,6 @@ const startFakeBoat = (): Promise<FakeBoat> =>
           stdout: `${TAR_BYTES.length}\n`,
           stderr: "",
         })
-      }
-      const statMatch = /^stat -c %s '([^']+)'$/.exec(command)
-      if (statMatch?.[1]) {
-        const bytes = files.get(statMatch[1])
-        return bytes === undefined
-          ? sendJson(response, 200, { success: false, exitCode: 1, timedOut: false, stdout: "", stderr: "no file" })
-          : sendJson(response, 200, {
-              success: true,
-              exitCode: 0,
-              timedOut: false,
-              stdout: `${bytes.length}\n`,
-              stderr: "",
-            })
       }
       if (command.includes("tar -xf")) {
         return sendJson(response, 200, { success: true, exitCode: 0, timedOut: false, stdout: "", stderr: "" })
@@ -140,6 +161,9 @@ const startFakeBoat = (): Promise<FakeBoat> =>
       const requestUrl = new URL(request.url ?? "/", "http://fake")
       const pathname = requestUrl.pathname
       const body = await readRequestBody(request)
+      requests.push(
+        `${request.method} ${pathname.startsWith("/signed/") ? "/signed" : pathname.replace(/^\/api\/v1/, "").replace(/^\/sandboxes\/[^/?]+/, "/sandboxes/{id}")}`,
+      )
 
       if (pathname.startsWith("/signed/")) {
         if (signedDrops > 0) {
@@ -267,6 +291,10 @@ const startFakeBoat = (): Promise<FakeBoat> =>
       if (suffix === "/commands" && request.method === "POST") return handleCommand(sandboxId, jsonBody, response)
 
       if (suffix === "/files" && request.method === "GET") {
+        if (failedFileReads > 0) {
+          failedFileReads -= 1
+          return sendJson(response, 503, errorEnvelope(503, "unavailable", "try later", "req-file-503"))
+        }
         const guestPath = requestUrl.searchParams.get("path") ?? ""
         const bytes = files.get(guestPath)
         if (bytes === undefined)
@@ -326,11 +354,6 @@ const startFakeBoat = (): Promise<FakeBoat> =>
         })
       }
 
-      if (suffix === "/host" && request.method === "POST") {
-        const port = typeof jsonBody["port"] === "number" ? jsonBody["port"] : 0
-        return sendJson(response, 200, { ok: true, url: `https://${sandboxId}-${port}.boat.dev` })
-      }
-
       return sendJson(response, 404, errorEnvelope(404, "not_found", "route not found", "req-route-404"))
     })
 
@@ -348,6 +371,7 @@ const startFakeBoat = (): Promise<FakeBoat> =>
         createBodies,
         createIdempotencyKeys,
         commands,
+        requests,
         files,
         deletedConfirmHeaders,
         stopped,
@@ -355,6 +379,9 @@ const startFakeBoat = (): Promise<FakeBoat> =>
         desktopCalls: () => desktopCallCount,
         dropSignedFetches: (count) => {
           signedDrops = count
+        },
+        failFileReads: (count) => {
+          failedFileReads = count
         },
         seedSandbox: (id, state) => void sandboxes.set(id, { id, name: "seeded", state, getCount: 99 }),
         close: () =>
@@ -491,17 +518,71 @@ describe("boatClient", () => {
     })
   })
 
-  it("retries a dropped signed download for a file over the direct limit", async () => {
+  it("retries a dropped signed download for output over the direct limit", async () => {
     await withFake(async (fake) => {
       fake.seedSandbox("sb-1", "ready")
-      const big = Buffer.alloc(5 * 1024 * 1024 + 7, 7)
-      fake.files.set("/tmp/big.bin", big)
       fake.dropSignedFetches(1)
-      const client = makeClient(fake)
-      const bytes = await runEffect(client.readFileBytes("sb-1", "/tmp/big.bin"))
-      expect(Buffer.from(bytes)).toEqual(big)
+      const result = await runEffect(makeClient(fake).exec("sb-1", { script: "big-stdout", timeoutSeconds: 30 }))
+      expect(Buffer.from(result.stdout)).toEqual(BIG_STDOUT)
     })
   }, 60000)
+
+  it("measures the output again after a timed-out exec and still returns it", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-1", "ready")
+      const result = await runEffect(makeClient(fake).exec("sb-1", { script: "time-out", timeoutSeconds: 1 }))
+      expect(result.exitCode).toBe(124)
+      expect(Buffer.from(result.stdout)).toEqual(BINARY_STDOUT)
+      expect([...fake.files.keys()].filter((path) => path.startsWith("/tmp/.hinacode-"))).toEqual([])
+    })
+  })
+
+  it("exec and getFiles remove their guest temp files when a read fails", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-1", "ready")
+      const client = makeClient(fake)
+      const tempFiles = () => [...fake.files.keys()].filter((path) => path.startsWith("/tmp/.hinacode-"))
+      fake.failFileReads(1)
+      expect((await runFlip(client.exec("sb-1", { script: "cat /tmp/pic.png", timeoutSeconds: 30 })))._tag).toBe(
+        "BoatError",
+      )
+      expect(tempFiles()).toEqual([])
+      fake.failFileReads(1)
+      expect((await runFlip(client.getFiles("sb-1", "/home/user/out")))._tag).toBe("BoatError")
+      expect(tempFiles()).toEqual([])
+    })
+  })
+
+  it("exec costs one request plus one per output stream and its cleanup, getFiles three", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-1", "ready")
+      const client = makeClient(fake)
+      const requestsOf = async <A, E>(effect: Effect.Effect<A, E>) => {
+        fake.requests.length = 0
+        await runEffect(effect)
+        return [...fake.requests]
+      }
+      expect(await requestsOf(client.exec("sb-1", { script: "quiet", timeoutSeconds: 30 }))).toEqual([
+        "POST /sandboxes/{id}/commands",
+      ])
+      expect(await requestsOf(client.exec("sb-1", { script: "stdout-only", timeoutSeconds: 30 }))).toEqual([
+        "POST /sandboxes/{id}/commands",
+        "GET /sandboxes/{id}/files",
+        "POST /sandboxes/{id}/commands",
+      ])
+      expect(await requestsOf(client.exec("sb-1", { script: "cat /tmp/pic.png", timeoutSeconds: 30 }))).toEqual([
+        "POST /sandboxes/{id}/commands",
+        "GET /sandboxes/{id}/files",
+        "GET /sandboxes/{id}/files",
+        "POST /sandboxes/{id}/commands",
+      ])
+      expect(await requestsOf(client.getFiles("sb-1", "/home/user/out"))).toEqual([
+        "POST /sandboxes/{id}/commands",
+        "GET /sandboxes/{id}/files",
+        "POST /sandboxes/{id}/commands",
+      ])
+    })
+  })
 
   it("detached exec returns pid and log", async () => {
     await withFake(async (fake) => {
@@ -587,7 +668,7 @@ describe("boatClient", () => {
     })
   }, 15000)
 
-  it("limits, status, hostPort and file bytes have the expected shapes", async () => {
+  it("limits and status have the expected shapes", async () => {
     await withFake(async (fake) => {
       fake.seedSandbox("sb-1", "ready")
       fake.seedSandbox("sb-2", "provisioning")
@@ -596,10 +677,6 @@ describe("boatClient", () => {
       expect(client.url).toBe(fake.baseUrl)
       expect(await runEffect(client.limits())).toEqual({ canStart: true, maxSandboxes: 100 })
       expect(await runEffect(client.status)).toEqual({ sandboxes: 2, maxSandboxes: 100 })
-      expect(await runEffect(client.hostPort("sb-1", 8080))).toBe("https://sb-1-8080.boat.dev")
-      fake.files.set("/home/user/note.txt", Buffer.from("hello-bytes"))
-      const downloaded = await runEffect(client.readFileBytes("sb-1", "/home/user/note.txt"))
-      expect(Buffer.from(downloaded).toString()).toBe("hello-bytes")
     })
   })
 })
@@ -626,26 +703,19 @@ const withBoat = <A, E>(
 
 describe("Boat service", () => {
   it("fails with BoatNotConfiguredError when neither env nor secret has a key", async () => {
-    const result = await withBoat({}, null, (boat) =>
-      Effect.all({ configured: boat.configured, error: Effect.flip(boat.client) }),
-    )
-    expect(result.configured).toBe(false)
-    expect(result.error._tag).toBe("BoatNotConfiguredError")
-    expect(result.error.message).toContain("BOAT_API_KEY")
+    const error = await withBoat({}, null, (boat) => Effect.flip(boat.client))
+    expect(error._tag).toBe("BoatNotConfiguredError")
+    expect(error.message).toContain("BOAT_API_KEY")
   })
 
-  it("env key wins and configured reports presence only", async () => {
+  it("BOAT_API_KEY and BOAT_API_BASE configure the client", async () => {
     const env = { BOAT_API_KEY: "env-key", BOAT_API_BASE: "http://127.0.0.1:9/api/v1/" }
-    const result = await withBoat(env, null, (boat) =>
-      Effect.all({ configured: boat.configured, url: Effect.map(boat.client, (client) => client.url) }),
-    )
-    expect(result).toStrictEqual({ configured: true, url: "http://127.0.0.1:9/api/v1" })
+    const result = await withBoat(env, null, (boat) => Effect.map(boat.client, (client) => client.url))
+    expect(result).toBe("http://127.0.0.1:9/api/v1")
   })
 
   it("reads the key from Secrets when the env has none", async () => {
-    const result = await withBoat({}, "stored-key", (boat) =>
-      Effect.all({ configured: boat.configured, url: Effect.map(boat.client, (client) => client.url) }),
-    )
-    expect(result).toStrictEqual({ configured: true, url: "https://boat.dev/api/v1" })
+    const result = await withBoat({}, "stored-key", (boat) => Effect.map(boat.client, (client) => client.url))
+    expect(result).toBe("https://boat.dev/api/v1")
   })
 })
