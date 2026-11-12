@@ -3,7 +3,7 @@ import { expect, test } from "vitest"
 import { page } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import { type HinacodeBridge, RpcMethods } from "../../shared/contract.ts"
-import { defaultClientSettings, type Thread } from "../../shared/domain.ts"
+import { defaultClientSettings, type Message, type Thread } from "../../shared/domain.ts"
 import "../index.css"
 import { useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
@@ -135,4 +135,25 @@ test("Folder missing in a side chat opens Details for the thread it belongs to",
 
   await page.getByRole("button", { name: "Folder missing", exact: true }).click()
   expect(useUi.getState().sidePanelViews["main-thread"]).toBe("details")
+})
+
+test("a started thread on the project root keeps the commands line, since Details has no missing hint for it", async () => {
+  const thread = { ...threadWith("folder-missing-root", "idle"), worktreeId: null }
+  useMessages.setState({
+    byThread: {
+      [thread.id]: {
+        status: "ready",
+        messages: [{ role: "user", parts: [] } as unknown as Message],
+        approvals: [],
+        questions: [],
+        secretRequests: [],
+      },
+    },
+  })
+  await render(<Composer thread={thread} />)
+
+  await expect
+    .element(page.getByText("Could not load commands and skills: The folder was moved or deleted."))
+    .toBeVisible()
+  await expect.element(page.getByRole("button", { name: "Folder missing", exact: true })).not.toBeInTheDocument()
 })

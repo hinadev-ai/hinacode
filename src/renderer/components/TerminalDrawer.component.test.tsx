@@ -66,7 +66,7 @@ test("the resize separator reports how tall the drawer can grow", async () => {
   await expect.element(page.getByRole("separator", { name: "Resize terminal" })).toHaveAttribute("aria-valuemax", "600")
 })
 
-test("a missing folder leaves the notice to the composer instead of repeating it in the drawer", async () => {
+test("a terminal that cannot start in a missing folder says so without the path", async () => {
   useTerminals.setState({ byThreadId: { thread: { open: true, sessions: [], activeId: null } }, error: null })
   await render(
     <div className="flex h-96 flex-col">
@@ -76,5 +76,8 @@ test("a missing folder leaves the notice to the composer instead of repeating it
 
   await page.getByRole("button", { name: "New terminal", exact: true }).click()
   await expect.poll(() => useTerminals.getState().byThreadId.thread?.open).toBe(true)
-  await expect.element(page.getByRole("alert")).not.toBeInTheDocument()
+  await expect
+    .element(page.getByRole("alert"))
+    .toHaveTextContent("Could not start the terminal: The folder was moved or deleted.")
+  await expect.element(page.getByText("/tmp/repo/kk-gone", { exact: false })).not.toBeInTheDocument()
 })
