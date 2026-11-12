@@ -7,7 +7,7 @@ import type {
   PullRequestLink,
   PullRequestStatus,
 } from "@shared/domain.ts"
-import { pullRequestNumberLabelOfUrl } from "@shared/codeHost.ts"
+import { codeHostOfUrl, pullRequestNumberLabel, pullRequestNumberLabelOfUrl } from "@shared/codeHost.ts"
 import { linearReviewUrl } from "@shared/github.ts"
 import { providerInfo } from "@shared/providers.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "@shared/pullRequestPrompts.ts"
@@ -163,7 +163,7 @@ function PullRequestView({
       <View style={styles.header}>
         <View style={styles.headline}>
           <StatePill status={detail.status} />
-          <Text style={[styles.number, { color: theme.textMuted }]}>#{detail.number}</Text>
+          <Text style={[styles.number, { color: theme.textMuted }]}>{numberLabelOf(detail)}</Text>
           <LineCounts added={detail.additions} removed={detail.deletions} />
           {isOpen(detail) && detail.review !== null && (
             <Pill label={reviewLabel(detail.review)} tone={reviewTone[detail.review]} />
@@ -520,6 +520,9 @@ function confirm(title: string, message: string, action: string, destructive: bo
   ])
 }
 
+const numberLabelOf = (pullRequest: PullRequestDetail) =>
+  pullRequestNumberLabel(codeHostOfUrl(pullRequest.url), pullRequest.number)
+
 const mergeLabel = (method: MergeMethod) => copy(`mobile_pr_merge_${method === "merge" ? "commit" : method}`)
 const mergeMethods: readonly MergeMethod[] = ["squash", "merge", "rebase"]
 
@@ -559,7 +562,7 @@ function ActionBar({
   const merge = (picked: MergeMethod) => {
     if (detail === null) return
     confirm(
-      copy("mobile_pr_merge_title", { method: mergeLabel(picked), number: String(detail.number) }),
+      copy("mobile_pr_merge_title", { method: mergeLabel(picked), number: numberLabelOf(detail) }),
       copy("mobile_pr_merge_body", { head: detail.headRef, base: detail.baseRef }),
       mergeLabel(picked),
       false,
@@ -628,7 +631,7 @@ function CloseButton({ detail, onChanged }: { detail: PullRequestDetail; onChang
   const { busy, error, run } = useGitHubAction(detail.url, onChanged)
   const close = () =>
     confirm(
-      copy("mobile_pr_close_title", { number: String(detail.number) }),
+      copy("mobile_pr_close_title", { number: numberLabelOf(detail) }),
       copy("mobile_pr_close_body"),
       copy("mobile_pr_close_confirm"),
       true,
