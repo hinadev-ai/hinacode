@@ -450,6 +450,10 @@ export const pullRequestStatusAtom = gitHubLookup((environment: EnvironmentId, u
   return call("github.pullRequest", { url }, { environment })
 })
 
+export const issueAtom = gitHubLookup(
+  (environment: EnvironmentId, url: string) => () => call("github.issue", { url }, { environment }),
+)
+
 export const pullRequestStatusesAtom = familyOf((environment: EnvironmentId, urls: ReadonlyArray<string>) =>
   Atom.make((get) =>
     urls.map((url) => {
