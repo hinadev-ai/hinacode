@@ -22,8 +22,6 @@ export class BoatSnapshotExpiredError extends Schema.TaggedError<BoatSnapshotExp
   }
 }
 
-export { SandboxGoneError }
-
 interface BoatSandbox {
   readonly id: string
   readonly name: string
@@ -31,7 +29,8 @@ interface BoatSandbox {
   readonly labels: Readonly<Record<string, string>>
 }
 
-const BOAT_READY_STATES = ["ready", "idle", "running"] as const
+const BOAT_READY_STATES: ReadonlyArray<string> = ["ready", "idle", "running"]
+export const isBoatReady = (state: string) => BOAT_READY_STATES.includes(state)
 
 const REQUEST_TIMEOUT_SECONDS = 15
 const FILES_TIMEOUT_SECONDS = 300
@@ -114,8 +113,6 @@ const DesktopResponse = Schema.Struct({
   provisioning: Schema.optional(Schema.Boolean),
   message: Schema.optional(Schema.String),
 })
-
-const HostResponse = Schema.Struct({ url: Schema.String })
 
 const LimitsResponse = Schema.Struct({
   canStart: Schema.Boolean,
@@ -342,7 +339,7 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
       attempt: number,
     ): Effect.Effect<{ readonly id: string }, BoatError | SandboxGoneError | BoatSnapshotExpiredError> =>
       Effect.flatMap(getSandbox(id), (sandbox) => {
-        if ((BOAT_READY_STATES as ReadonlyArray<string>).includes(sandbox.state)) return Effect.succeed({ id })
+        if (isBoatReady(sandbox.state)) return Effect.succeed({ id })
         if (sandbox.state === "cancelled") return Effect.fail(new SandboxGoneError({ id }))
         if (sandbox.state === "error")
           return Effect.fail(new BoatError({ message: `boat sandbox ${id} entered state error` }))
@@ -666,15 +663,6 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
     return attempt(DESKTOP_MAX_ATTEMPTS)
   }
 
-  const hostPort = (id: string, port: number) =>
-    jsonRequest(HostResponse, "POST /sandboxes/{id}/host", "POST", sandboxPath(id, "/host"), {
-      sandboxId: id,
-      body: { port },
-    }).pipe(
-      within(REQUEST_TIMEOUT_SECONDS),
-      Effect.map(({ url }) => url),
-    )
-
   const limits = () =>
     jsonRequest(LimitsResponse, "GET /limits", "GET", "/limits").pipe(
       within(REQUEST_TIMEOUT_SECONDS),
@@ -731,7 +719,6 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
     stop,
     resume,
     desktopUrl,
-    hostPort,
     listAll,
     limits,
     getSandbox,
@@ -745,7 +732,6 @@ export class Boat extends Context.Service<
   Boat,
   {
     readonly client: Effect.Effect<BoatClient, BoatNotConfiguredError | BoatError>
-    readonly configured: Effect.Effect<boolean>
   }
 >()("hinacode/Boat") {}
 
@@ -773,12 +759,7 @@ const make = (env: Readonly<Record<string, string | undefined>>) =>
 
     const client = Effect.map(resolveApiKey, (apiKey) => boatClient({ baseUrl, apiKey: Redacted.make(apiKey) }))
 
-    const configured = Effect.match(resolveApiKey, {
-      onFailure: () => false,
-      onSuccess: () => true,
-    })
-
-    return Boat.of({ client, configured })
+    return Boat.of({ client })
   })
 
 export const layer = (env: Readonly<Record<string, string | undefined>>) => Layer.effect(Boat, make(env))

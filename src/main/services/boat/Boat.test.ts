@@ -354,11 +354,6 @@ const startFakeBoat = (): Promise<FakeBoat> =>
         })
       }
 
-      if (suffix === "/host" && request.method === "POST") {
-        const port = typeof jsonBody["port"] === "number" ? jsonBody["port"] : 0
-        return sendJson(response, 200, { ok: true, url: `https://${sandboxId}-${port}.boat.dev` })
-      }
-
       return sendJson(response, 404, errorEnvelope(404, "not_found", "route not found", "req-route-404"))
     })
 
@@ -673,7 +668,7 @@ describe("boatClient", () => {
     })
   }, 15000)
 
-  it("limits, status and hostPort have the expected shapes", async () => {
+  it("limits and status have the expected shapes", async () => {
     await withFake(async (fake) => {
       fake.seedSandbox("sb-1", "ready")
       fake.seedSandbox("sb-2", "provisioning")
@@ -682,7 +677,6 @@ describe("boatClient", () => {
       expect(client.url).toBe(fake.baseUrl)
       expect(await runEffect(client.limits())).toEqual({ canStart: true, maxSandboxes: 100 })
       expect(await runEffect(client.status)).toEqual({ sandboxes: 2, maxSandboxes: 100 })
-      expect(await runEffect(client.hostPort("sb-1", 8080))).toBe("https://sb-1-8080.boat.dev")
     })
   })
 })
@@ -709,26 +703,19 @@ const withBoat = <A, E>(
 
 describe("Boat service", () => {
   it("fails with BoatNotConfiguredError when neither env nor secret has a key", async () => {
-    const result = await withBoat({}, null, (boat) =>
-      Effect.all({ configured: boat.configured, error: Effect.flip(boat.client) }),
-    )
-    expect(result.configured).toBe(false)
-    expect(result.error._tag).toBe("BoatNotConfiguredError")
-    expect(result.error.message).toContain("BOAT_API_KEY")
+    const error = await withBoat({}, null, (boat) => Effect.flip(boat.client))
+    expect(error._tag).toBe("BoatNotConfiguredError")
+    expect(error.message).toContain("BOAT_API_KEY")
   })
 
-  it("env key wins and configured reports presence only", async () => {
+  it("BOAT_API_KEY and BOAT_API_BASE configure the client", async () => {
     const env = { BOAT_API_KEY: "env-key", BOAT_API_BASE: "http://127.0.0.1:9/api/v1/" }
-    const result = await withBoat(env, null, (boat) =>
-      Effect.all({ configured: boat.configured, url: Effect.map(boat.client, (client) => client.url) }),
-    )
-    expect(result).toStrictEqual({ configured: true, url: "http://127.0.0.1:9/api/v1" })
+    const result = await withBoat(env, null, (boat) => Effect.map(boat.client, (client) => client.url))
+    expect(result).toBe("http://127.0.0.1:9/api/v1")
   })
 
   it("reads the key from Secrets when the env has none", async () => {
-    const result = await withBoat({}, "stored-key", (boat) =>
-      Effect.all({ configured: boat.configured, url: Effect.map(boat.client, (client) => client.url) }),
-    )
-    expect(result).toStrictEqual({ configured: true, url: "https://boat.dev/api/v1" })
+    const result = await withBoat({}, "stored-key", (boat) => Effect.map(boat.client, (client) => client.url))
+    expect(result).toBe("https://boat.dev/api/v1")
   })
 })

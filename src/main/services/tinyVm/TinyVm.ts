@@ -14,7 +14,7 @@ import {
   type VmProfile,
   type VmProvider,
 } from "../../../shared/domain.ts"
-import { Boat, type BoatClient, BoatError, BoatSnapshotExpiredError } from "../boat/Boat.ts"
+import { Boat, type BoatClient, BoatError, BoatSnapshotExpiredError, isBoatReady } from "../boat/Boat.ts"
 import { Events, PushBroadcast } from "../Events.ts"
 import { Settings } from "../Settings.ts"
 import { encodeAction, handshake, type VmAction, VmInputError, writeSteps } from "./rfb.ts"
@@ -458,8 +458,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         if (existing !== undefined) {
           const adopted = yield* boat.getSandbox(existing).pipe(
             Effect.flatMap((sandbox) => {
-              if (sandbox.state === "ready" || sandbox.state === "idle" || sandbox.state === "running")
-                return Effect.succeed({ id: existing, fresh: false })
+              if (isBoatReady(sandbox.state)) return Effect.succeed({ id: existing, fresh: false })
               if (sandbox.state === "archived" || sandbox.state === "archiving")
                 return Effect.as(boat.resume(existing), { id: existing, fresh: false })
               if (sandbox.state === "error" || sandbox.state === "cancelled") return Effect.succeed(undefined)
