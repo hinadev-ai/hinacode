@@ -51,13 +51,17 @@ function DesktopOnlyVmScreen() {
   )
 }
 
+const vmScreenKind = (vm: RunningVm) => (vm.provider === "boat" ? "boat" : inBrowser() ? "desktopOnly" : "noVnc")
+
 export function VmScreen({ vm, ...rest }: VmScreenProps) {
-  if (vm.provider !== "boat" && inBrowser()) return <DesktopOnlyVmScreen />
-  return vm.provider === "boat" ? (
-    <BoatVmScreen control={vm.control} sandboxId={vm.sandboxId} {...rest} />
-  ) : (
-    <TinyVmScreen control={vm.control} {...rest} />
-  )
+  switch (vmScreenKind(vm)) {
+    case "boat":
+      return <BoatVmScreen control={vm.control} sandboxId={vm.sandboxId} {...rest} />
+    case "desktopOnly":
+      return <DesktopOnlyVmScreen />
+    case "noVnc":
+      return <TinyVmScreen control={vm.control} {...rest} />
+  }
 }
 
 export const HAND_BACK_CHORD = "Mod+Escape"
@@ -353,7 +357,7 @@ export function ControlButton({ threadId, vm, pending, run }: ControlButtonProps
       ) : (
         <>
           {m.vm_hand_back()}
-          <ChordKeys chord={HAND_BACK_CHORD} />
+          {vmScreenKind(vm) === "noVnc" && <ChordKeys chord={HAND_BACK_CHORD} />}
         </>
       )}
     </Button>
