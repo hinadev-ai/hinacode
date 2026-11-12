@@ -69,21 +69,23 @@ const secret: SecretRequest = {
 const limit = { kind: "usage", message: "You've hit your limit", reset: null } as const
 
 describe("asksFrom", () => {
-  test("joins waiting threads with their open requests, and lists limited threads", () => {
+  test("joins waiting threads with their open requests, and lists limited and interrupted threads", () => {
     const waiting = thread("t1", { status: "awaiting_approval" })
     const asking = thread("t2", { status: "awaiting_approval" })
     const limited = thread("t3", { status: "limited", usageLimit: limit })
+    const interrupted = thread("t5", { status: "interrupted" })
     const transcripts = new Map([
       ["t1", { approvals: [approval("a1", "t1")], questions: [], secretRequests: [secret] }],
       ["t2", { approvals: [], questions: [question], secretRequests: [] }],
       ["t4", { approvals: [approval("stale", "t4")], questions: [], secretRequests: [] }],
     ])
-    const asks = asksFrom([waiting, asking, limited, thread("t4")], transcripts)
+    const asks = asksFrom([waiting, asking, limited, thread("t4"), interrupted], transcripts)
     expect(asks).toStrictEqual([
       { kind: "approval", threadId: "t1", request: approval("a1", "t1") },
       { kind: "secret", threadId: "t1", request: secret },
       { kind: "question", threadId: "t2", request: question },
       { kind: "limited", thread: limited },
+      { kind: "interrupted", thread: interrupted },
     ])
   })
 })

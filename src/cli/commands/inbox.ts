@@ -40,6 +40,6 @@ export const inbox = Command.make("inbox", {}, () =>
   ),
 ).pipe(
   Command.withDescription(
-    "Print what waits on a human: open approvals, questions and secret requests, limited threads, and how many threads run or idle.",
+    "Print what waits on a human: open approvals, questions and secret requests, limited and interrupted threads, and how many threads run or idle.",
   ),
 )
