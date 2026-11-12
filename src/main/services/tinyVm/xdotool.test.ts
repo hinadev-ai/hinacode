@@ -26,12 +26,12 @@ describe("xdotoolScript", () => {
     )
   })
 
-  it("quotes typed text and keys for the shell", () => {
+  it("quotes typed text for the shell and sends keys as keysyms", () => {
     expect(xdotoolScript([{ type: "type", text: "it's $HOME" }])).toBe(
       `xdotool type --clearmodifiers --delay 1 -- 'it'\\''s $HOME'`,
     )
     expect(xdotoolScript([{ type: "key", keys: "ctrl+l Return" }])).toBe(
-      "xdotool key --clearmodifiers 'ctrl+l'\nxdotool key --clearmodifiers 'Return'",
+      "xdotool key --clearmodifiers 0xffe3+0x6c\nxdotool key --clearmodifiers 0xff0d",
     )
   })
 

@@ -1,11 +1,10 @@
-import { VmInputError, type VmAction } from "./rfb.ts"
+import { chordKeysyms, VmInputError, type VmAction } from "./rfb.ts"
 
 export const BOAT_SCREEN = { width: 1920, height: 1080 } as const
 
 const BUTTONS = { left: 1, middle: 2, right: 3 } as const
 const WHEEL = { up: 4, down: 5, left: 6, right: 7 } as const
 const DRAG_MOVES = 10
-const MODIFIERS = new Set(["ctrl", "control", "shift", "alt", "super", "win", "cmd", "meta"])
 
 const shellQuote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`
 
@@ -31,21 +30,10 @@ const checkText = (text: string) => {
   }
 }
 
-const checkChord = (chord: string) => {
-  const parts =
-    chord === "+" ? ["+"] : chord.endsWith("++") ? [...chord.slice(0, -2).split("+"), "+"] : chord.split("+")
-  const name = parts.at(-1)!
-  for (const modifier of parts.slice(0, -1)) {
-    if (!MODIFIERS.has(modifier.toLowerCase()))
-      throw new VmInputError({
-        message: `Unknown key "${modifier}" in "${chord}". Use names like Return, Tab, Escape, BackSpace, Delete, Left, Page_Down, F5 or space, or a single character, with modifiers ctrl, shift, alt or super, for example ctrl+shift+t.`,
-      })
-  }
-  if ([...name].length !== 1 && !/^[A-Za-z0-9_]+$/.test(name))
-    throw new VmInputError({
-      message: `Unknown key "${name}" in "${chord}". Use names like Return, Tab, Escape, BackSpace, Delete, Left, Page_Down, F5 or space, or a single character, with modifiers ctrl, shift, alt or super, for example ctrl+shift+t.`,
-    })
-}
+const xdotoolChord = (chord: string) =>
+  chordKeysyms(chord)
+    .map((keysym) => `0x${keysym.toString(16)}`)
+    .join("+")
 
 const actionLines = (action: VmAction): ReadonlyArray<string> => {
   switch (action.type) {
@@ -81,8 +69,7 @@ const actionLines = (action: VmAction): ReadonlyArray<string> => {
       const chords = action.keys.trim().split(/\s+/).filter(Boolean)
       if (chords.length === 0)
         throw new VmInputError({ message: "keys is empty. Pass a key such as Return or ctrl+l." })
-      chords.forEach(checkChord)
-      return chords.map((chord) => `xdotool key --clearmodifiers ${shellQuote(chord)}`)
+      return chords.map((chord) => `xdotool key --clearmodifiers ${xdotoolChord(chord)}`)
     }
   }
 }

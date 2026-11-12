@@ -124,7 +124,7 @@ const unknownKey = (name: string, chord: string) =>
     message: `Unknown key "${name}" in "${chord}". Use names like Return, Tab, Escape, BackSpace, Delete, Left, Page_Down, F5 or space, or a single character, with modifiers ctrl, shift, alt or super, for example ctrl+shift+t.`,
   })
 
-const chordSteps = (chord: string): Array<Uint8Array> => {
+export const chordKeysyms = (chord: string): ReadonlyArray<number> => {
   const parts =
     chord === "+" ? ["+"] : chord.endsWith("++") ? [...chord.slice(0, -2).split("+"), "+"] : chord.split("+")
   const name = parts.at(-1)!
@@ -141,6 +141,13 @@ const chordSteps = (chord: string): Array<Uint8Array> => {
     keysym = characterKeysym(letter)
   } else keysym = NAMED_KEYS[name.toLowerCase()]
   if (keysym === undefined) throw unknownKey(name, chord)
+  return [...modifiers, keysym]
+}
+
+const chordSteps = (chord: string): Array<Uint8Array> => {
+  const keysyms = chordKeysyms(chord)
+  const modifiers = keysyms.slice(0, -1)
+  const keysym = keysyms.at(-1)!
   return [
     ...modifiers.map((modifier) => keyEvent(modifier, true)),
     ...tap(keysym),
