@@ -17,7 +17,7 @@ import { providerInfo } from "../../../shared/providers.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
 import { attachmentContext } from "../elementContext.ts"
-import { AgentError, type AgentProvider } from "../provider.ts"
+import { AgentError, type AgentProvider, tmpEnv } from "../provider.ts"
 import { autoAllows, mergePermissionTool, optionFor, permissionOutcome, toApprovalRequest } from "./approvals.ts"
 import { type AcpClient, type AcpFailure, type Incoming, makeAcpClient, type RequestId } from "./client.ts"
 import { AGENT_DEFAULT_EFFORT, effortLevels, effortSelector, modelSelector, toModelInfos } from "./models.ts"
@@ -186,22 +186,24 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       }
     }
 
-    const startAgent = Effect.gen(function* () {
-      const binaryPath = config.binary ?? (yield* installedBinary(config.id, providerInfo[config.id].binary))
-      const client = yield* makeAcpClient({ binaryPath, args: config.args, env: { ...process.env, ...config.env } })
-      const initialized = yield* call(
-        client,
-        "initialize",
-        {
-          protocolVersion: PROTOCOL_VERSION,
-          clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-          clientInfo: { name: "hinacode", title: "HinaCode", version: CLIENT_VERSION },
-        },
-        InitializeResponse,
-        INITIALIZE_TIMEOUT,
-      )
-      return { client, capabilities: initialized.agentCapabilities ?? {} }
-    })
+    const startAgent = (tmpDirectory: string | null) =>
+      Effect.gen(function* () {
+        const binaryPath = config.binary ?? (yield* installedBinary(config.id, providerInfo[config.id].binary))
+        const env = { ...process.env, ...config.env, ...tmpEnv(tmpDirectory) }
+        const client = yield* makeAcpClient({ binaryPath, args: config.args, env })
+        const initialized = yield* call(
+          client,
+          "initialize",
+          {
+            protocolVersion: PROTOCOL_VERSION,
+            clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+            clientInfo: { name: "hinacode", title: "HinaCode", version: CLIENT_VERSION },
+          },
+          InitializeResponse,
+          INITIALIZE_TIMEOUT,
+        )
+        return { client, capabilities: initialized.agentCapabilities ?? {} }
+      })
 
     const openSession = (client: AcpClient, input: RunTurnInput) => {
       const { resumeSessionId: sessionId, cwd } = input
@@ -382,7 +384,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
         Effect.gen(function* () {
           if (input.home !== null) return yield* agentError(`${name} runs on its CLI login only`)
           accessModes.set(input.threadId, input.accessMode)
-          const { client, capabilities } = yield* startAgent
+          const { client, capabilities } = yield* startAgent(input.tmpDirectory)
           yield* Effect.acquireRelease(
             Effect.sync(() => registerAgentPid(input.threadId, client.pid)),
             (unregister) => Effect.sync(unregister),
@@ -434,7 +436,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       )
 
     const probeModels = Effect.gen(function* () {
-      const { client } = yield* startAgent
+      const { client } = yield* startAgent(null)
       const probe = yield* call(client, "session/new", { cwd: homedir(), mcpServers: [] }, NewSessionResponse)
       const selector = modelSelector(probe)
       const efforts = new Map<string, ReadonlyArray<string>>()
@@ -467,7 +469,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
 
     const probeCommands = (cwd: string) =>
       Effect.gen(function* () {
-        const { client } = yield* startAgent
+        const { client } = yield* startAgent(null)
         const announced = yield* Deferred.make<ReadonlyArray<AgentCommand>>()
         yield* client.subscribe((message) => {
           const update = commandsOf(message)
