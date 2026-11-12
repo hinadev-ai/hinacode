@@ -50,4 +50,13 @@ describe("skillInputs", () => {
     ])
     expect(skillInputs("x$review", [review])).toStrictEqual([])
   })
+
+  test("leaves out a $name inside a fenced code block", () => {
+    const review = { ...createPr, name: "review", path: "/home/u/.agents/skills/review/SKILL.md" }
+    expect(skillInputs("```\n$review\n```", [review])).toStrictEqual([])
+    expect(skillInputs("see\n```sh\n$review\n", [review])).toStrictEqual([])
+    expect(skillInputs("```\n$create-pr\n```\nthen $review", [review, createPr])).toStrictEqual([
+      { type: "skill", name: "review", path: review.path },
+    ])
+  })
 })
