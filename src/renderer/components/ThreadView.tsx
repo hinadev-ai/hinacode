@@ -84,7 +84,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           agent === undefined ? "[container:thread/size]" : "@container-size",
         )}
       >
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+        <div className="flex min-h-0 flex-1 scrollbar-gutter-auto flex-col overflow-auto">
           <ThreadRepository value={repository}>
             <ThreadFolder value={folder}>
               <Transcript thread={thread} agent={agent} />
@@ -265,7 +265,7 @@ export function PendingRequests({ thread }: { thread: Thread }) {
   const label = providerLabel[thread.provider]()
   if (history?.status !== "ready") return null
   return (
-    <div aria-live="polite" className="min-h-0 shrink overflow-auto empty:hidden">
+    <div aria-live="polite" className="min-h-0 shrink scrollbar-gutter-auto overflow-auto empty:hidden">
       {history.approvals.map((request) => (
         <ApprovalCard key={request.id} request={request} providerLabel={label} />
       ))}

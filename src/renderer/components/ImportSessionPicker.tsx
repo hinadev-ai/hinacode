@@ -150,7 +150,7 @@ export default function ImportSessionPicker({ project, onClose }: { project: Pro
                 ? m.import_session_no_match()
                 : ""}
         </p>
-        <Autocomplete.List className="min-h-0 scroll-py-1 overflow-y-auto overscroll-contain p-1.5 data-empty:hidden">
+        <Autocomplete.List className="min-h-0 scroll-py-1 scrollbar-gutter-stable overflow-y-auto overscroll-contain p-1.5 data-empty:hidden">
           {(session: ExternalSession) => (
             <SessionRow
               key={sessionKey(session)}

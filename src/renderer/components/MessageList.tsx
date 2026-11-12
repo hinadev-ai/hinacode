@@ -108,7 +108,7 @@ export function MessageList({
               {...listProps}
               ListHeaderComponent={header ?? edgeSpacer}
               ListFooterComponent={endSpacer}
-              className="min-h-0 flex-1 scroll-fade"
+              className="min-h-0 flex-1 scroll-fade scrollbar-gutter-stable"
             />
             <Button
               variant="outline"

@@ -82,7 +82,7 @@ export function TodoActivity({ thread }: { thread: Thread }) {
       {expanded && (
         <ul
           aria-label={m.composer_todos_label()}
-          className="flex max-h-[20cqh] flex-col gap-1 overflow-y-auto px-1 pt-1 pb-1.5 text-xs"
+          className="flex max-h-[20cqh] scrollbar-gutter-stable flex-col gap-1 overflow-y-auto px-1 pt-1 pb-1.5 text-xs"
         >
           {todos.map((todo, index) => (
             <TodoRow key={`${index}-${todo.text}`} todo={todo} />

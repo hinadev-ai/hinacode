@@ -267,7 +267,7 @@ export function ComposerInput({
           id={listId}
           role="listbox"
           aria-label={listLabel[completion.trigger]()}
-          className="absolute inset-x-0 bottom-full mb-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-md"
+          className="absolute inset-x-0 bottom-full mb-2 max-h-72 scrollbar-gutter-stable overflow-y-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-md"
         >
           {suggestions.map((suggestion, index) => (
             <div

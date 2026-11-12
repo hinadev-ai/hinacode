@@ -85,7 +85,6 @@ interface Probe {
   readonly turnBase: () => Promise<string | null>
   readonly storedMessages: (threadId: string) => Promise<ReadonlyArray<Message>>
   readonly failNextInsert: (matches: (message: Message) => boolean) => void
-  readonly recordAfterCheck: (message: Message) => void
 }
 
 const streamedWords = Array.from({ length: 400 }, (_, index) => `word${index} `)
@@ -151,7 +150,6 @@ const withPreparingThread = async (
   const snapshot = () => snapshotReady.resolve()
   let holdInsertion = options.pauseInsertion ?? false
   let failingInsert: ((message: Message) => boolean) | undefined
-  let recordedAfterCheck: Message | undefined
   let holdSnapshot = options.pauseSnapshot ?? false
   let updateHold:
     | { readonly reached: PromiseWithResolvers<void>; readonly resumed: PromiseWithResolvers<void> }
@@ -480,16 +478,6 @@ const withPreparingThread = async (
                   }
                   yield* messages.insert(message)
                 }),
-              has: (id) =>
-                Effect.gen(function* () {
-                  const sent = yield* messages.has(id)
-                  const late = recordedAfterCheck
-                  if (late?.id === id) {
-                    recordedAfterCheck = undefined
-                    yield* messages.insert(late)
-                  }
-                  return sent
-                }),
               update: (message, previous) =>
                 Effect.gen(function* () {
                   const hold = updateHold
@@ -576,9 +564,6 @@ const withPreparingThread = async (
         storedMessages: (threadId) => domainRuntime.runPromise(messages.list(threadId)),
         failNextInsert: (matches) => {
           failingInsert = matches
-        },
-        recordAfterCheck: (message) => {
-          recordedAfterCheck = message
         },
         turnBase: () =>
           domainRuntime.runPromise(
@@ -1786,30 +1771,53 @@ const queuedAfter = async ({ runner, threads, thread }: Probe, queue: Thread["qu
   await Effect.runPromise(runner.send(thread.id, "first accepted input", []))
 }
 
-it("drops a queued message the transcript got before it started, and starts the next one", async () => {
+it("does not start a queued message the user takes back as the turn ends, and starts the next one", async () => {
   await withPreparingThread(async (probe) => {
-    const { threads, thread, release, turns, storedMessages, recordAfterCheck } = probe
+    const { runner, threads, thread, release, turns, storedMessages, pauseNextUpdate } = probe
     release()
-    const now = new Date(0).toISOString()
-    recordAfterCheck({
-      id: "already-sent",
-      threadId: thread.id,
-      role: "user",
-      parts: [{ type: "text", text: "already sent accepted input" }],
-      createdAt: now,
-      completedAt: now,
-      usage: null,
-      forkPoint: null,
-    })
-
+    const finishing = pauseNextUpdate()
     await queuedAfter(probe, [
-      { id: "already-sent", text: "already sent accepted input", attachments: [] },
+      { id: "taken", text: "taken accepted input", attachments: [] },
       { id: "waiting", text: "waiting accepted input", attachments: [] },
     ])
+    await finishing.reached
 
+    const taking = Effect.runPromise(runner.unqueue(thread.id, "taken"))
+    finishing.resume()
+
+    expect(await taking).toMatchObject({ id: "taken" })
     await vi.waitFor(() => expect(turns.map(({ input }) => input.prompt)).toContain("waiting accepted input"))
+    expect(turns.map(({ input }) => input.prompt)).not.toContain("taken accepted input")
     expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([])
-    expect((await storedMessages(thread.id)).filter((message) => message.id === "already-sent")).toHaveLength(1)
+    expect((await storedMessages(thread.id)).some((message) => message.id === "taken")).toBe(false)
+  })
+})
+
+it("keeps a queued message stored until its turn starts it, so a quit before then cannot lose it", async () => {
+  await withPreparingThread(async (probe) => {
+    const { runner, threads, thread, release, turns, storedMessages } = probe
+    release()
+    const finishing = probe.pauseNextUpdate()
+    await queuedAfter(probe, [{ id: "waiting", text: "keeps running", attachments: [] }])
+    await finishing.reached
+    probe.pauseSnapshot()
+    finishing.resume()
+    await probe.snapshotting
+
+    const beforeStart = {
+      queued: (await Effect.runPromise(threads.get(thread.id))).queue.map((message) => message.id),
+      recorded: (await storedMessages(thread.id)).filter((message) => message.id === "waiting").length,
+    }
+    expect(beforeStart).toStrictEqual({ queued: ["waiting"], recorded: 0 })
+
+    probe.snapshot()
+    await vi.waitFor(() => expect(turns).toHaveLength(2))
+    const whileRunning = {
+      queued: (await Effect.runPromise(threads.get(thread.id))).queue.map((message) => message.id),
+      recorded: (await storedMessages(thread.id)).filter((message) => message.id === "waiting").length,
+    }
+    expect(whileRunning).toStrictEqual({ queued: [], recorded: 1 })
+    await Effect.runPromise(runner.interrupt(thread.id))
   })
 })
 

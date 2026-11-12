@@ -296,7 +296,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             {comments.length > 0 && (
               <ul
                 aria-label={m.comment_pending_label()}
-                className="flex max-h-20 min-h-0 flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
+                className="flex max-h-20 min-h-0 scrollbar-gutter-stable flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
               >
                 {comments.map((comment) => (
                   <li key={comment.id}>
@@ -311,7 +311,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             {attachments.length > 0 && (
               <ul
                 aria-label={m.attachment_pending_label()}
-                className="flex max-h-20 min-h-0 flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
+                className="flex max-h-20 min-h-0 scrollbar-gutter-stable flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
               >
                 {attachments.map((attachment) => (
                   <li key={attachment.id}>
