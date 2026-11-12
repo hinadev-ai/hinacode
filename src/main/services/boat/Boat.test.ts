@@ -376,7 +376,7 @@ const withFake = async (run: (fake: FakeBoat) => Promise<void>) => {
 }
 
 const makeClient = (fake: FakeBoat, apiKey = API_KEY) =>
-  boatClient({ baseUrl: fake.baseUrl, apiKey: Redacted.make(apiKey) })
+  boatClient({ baseUrl: fake.baseUrl, apiKey: Redacted.make(apiKey), pollSeconds: 0, signedRetrySeconds: [0, 0, 0, 0] })
 
 const runEffect = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect)
 const runFlip = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(Effect.flip(effect))
@@ -499,7 +499,7 @@ describe("boatClient", () => {
       fake.dropSignedFetches(1)
       const client = makeClient(fake)
       const bytes = await runEffect(client.readFileBytes("sb-1", "/tmp/big.bin"))
-      expect(Buffer.from(bytes)).toEqual(big)
+      expect(Buffer.from(bytes).equals(big)).toBe(true)
     })
   }, 60000)
 

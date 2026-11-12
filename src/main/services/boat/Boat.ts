@@ -232,8 +232,15 @@ const errorOf = (status: number, body: string, sandboxId: string | undefined) =>
   return new BoatError({ message: `boat: request failed (HTTP ${status}, code ${code}).${suffix}` })
 }
 
-export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: Redacted.Redacted<string> }) => {
+export const boatClient = (input: {
+  readonly baseUrl: string
+  readonly apiKey: Redacted.Redacted<string>
+  readonly pollSeconds?: number
+  readonly signedRetrySeconds?: ReadonlyArray<number>
+}) => {
   const base = input.baseUrl.replace(/\/+$/, "")
+  const pollSeconds = input.pollSeconds ?? WAIT_READY_POLL_SECONDS
+  const signedRetrySeconds = input.signedRetrySeconds ?? SIGNED_FETCH_RETRY_SECONDS
   const authorization = () => `Bearer ${Redacted.value(input.apiKey)}`
 
   const request = (
@@ -334,7 +341,7 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
           return Effect.fail(
             new BoatError({ message: `boat sandbox ${id} did not become ready; last state is ${sandbox.state}` }),
           )
-        return Effect.sleep(`${WAIT_READY_POLL_SECONDS} seconds`).pipe(Effect.andThen(poll(attempt + 1)))
+        return Effect.sleep(`${pollSeconds} seconds`).pipe(Effect.andThen(poll(attempt + 1)))
       })
     return poll(1)
   }
@@ -362,7 +369,7 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
   const retrySigned = <A>(once: Effect.Effect<A, SignedAttemptFailure>): Effect.Effect<A, BoatError> => {
     const attempt = (index: number): Effect.Effect<A, BoatError> =>
       Effect.catch(once, ({ retryable, error }: SignedAttemptFailure) => {
-        const delay = SIGNED_FETCH_RETRY_SECONDS[index]
+        const delay = signedRetrySeconds[index]
         return retryable && delay !== undefined
           ? Effect.sleep(`${delay} seconds`).pipe(Effect.andThen(attempt(index + 1)))
           : Effect.fail(error)
@@ -649,7 +656,7 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
           if (response.provisioning !== true && candidate.length > 0) return Effect.succeed(withOverlayZero(candidate))
           if (remaining <= 1)
             return Effect.fail(new BoatError({ message: "boat desktop is still provisioning. Try again in a moment." }))
-          return Effect.sleep(`${WAIT_READY_POLL_SECONDS} seconds`).pipe(Effect.andThen(attempt(remaining - 1)))
+          return Effect.sleep(`${pollSeconds} seconds`).pipe(Effect.andThen(attempt(remaining - 1)))
         }),
       )
     return attempt(DESKTOP_MAX_ATTEMPTS)
