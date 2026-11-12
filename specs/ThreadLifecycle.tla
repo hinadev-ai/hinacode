@@ -10,11 +10,12 @@ VARIABLES
   status,  \* thread.status; running and awaiting_approval are busy per domain.ts isThreadBusy
   settled, \* thread.settled_at is set
   snoozed, \* thread.snoozed_until is in the future
-  pinned   \* thread.pinned_at is set
+  pinned,  \* thread.pinned_at is set
+  interrupted \* thread.interrupted_at is set
 
-vars == <<status, settled, snoozed, pinned>>
+vars == <<status, settled, snoozed, pinned, interrupted>>
 
-Statuses == {"draft", "idle", "running", "awaiting_approval", "limited", "interrupted", "archived", "deleted"}
+Statuses == {"draft", "idle", "running", "awaiting_approval", "limited", "archived", "deleted"}
 Phases == {"draft", "working", "ready", "snoozed", "settled", "archived", "deleted"}
 
 Busy == status \in {"running", "awaiting_approval"}
@@ -42,17 +43,17 @@ Edges ==
     <<"settled", "ready">>, <<"settled", "working">>, <<"settled", "archived">>, <<"settled", "deleted">>,
     <<"archived", "ready">>, <<"archived", "working">>, <<"archived", "deleted">> }
 
-Init == status = "draft" /\ settled = FALSE /\ snoozed = FALSE /\ pinned = FALSE
+Init == status = "draft" /\ settled = FALSE /\ snoozed = FALSE /\ pinned = FALSE /\ interrupted = FALSE
 
-\* AgentRunner.ts startTurn through Threads.ts write: startsWork clears settled_at, and the status change clears
-\* snoozed_until.
+\* AgentRunner.ts startTurn through Threads.ts write: startsWork clears settled_at, and the busy status clears
+\* snoozed_until and interrupted_at.
 StartWork(from) ==
   /\ status \in from
-  /\ status' = "running" /\ settled' = FALSE /\ snoozed' = FALSE
+  /\ status' = "running" /\ settled' = FALSE /\ snoozed' = FALSE /\ interrupted' = FALSE
   /\ UNCHANGED pinned
 
 \* Resume is a send too: AgentRunner.resume sends its prompt through the same path.
-Send == StartWork({"draft", "idle", "limited", "interrupted"})
+Send == StartWork({"draft", "idle", "limited"})
 
 \* rpc.ts threads.send unarchives an archived thread first.
 SendToArchived == StartWork({"archived"})
@@ -61,89 +62,90 @@ SendToArchived == StartWork({"archived"})
 Delete ==
   /\ ~Busy /\ status # "deleted"
   /\ status' = "deleted"
-  /\ UNCHANGED <<settled, snoozed, pinned>>
+  /\ UNCHANGED <<settled, snoozed, pinned, interrupted>>
 
 TurnEnds ==
   /\ status = "running"
   /\ status' = "idle" /\ snoozed' = FALSE
-  /\ UNCHANGED <<settled, pinned>>
+  /\ UNCHANGED <<settled, pinned, interrupted>>
 
 TurnLimited ==
   /\ Busy
   /\ status' = "limited" /\ snoozed' = FALSE
-  /\ UNCHANGED <<settled, pinned>>
+  /\ UNCHANGED <<settled, pinned, interrupted>>
 
 \* HinaCode stops mid-turn. A hard kill leaves the row busy and Threads.resetInterrupted rewrites it at the next
-\* start; a graceful quit interrupts the turn fiber, and its finish writes the same row. Nothing starts it again.
+\* start; a graceful quit interrupts the turn fiber, and its finish writes the same row. The status stays idle so
+\* older clients can read it. Nothing starts it again.
 Restart ==
   /\ Busy
-  /\ status' = "interrupted" /\ snoozed' = FALSE
+  /\ status' = "idle" /\ snoozed' = FALSE /\ interrupted' = TRUE
   /\ UNCHANGED <<settled, pinned>>
 
 AskApproval ==
   /\ status = "running"
   /\ status' = "awaiting_approval" /\ snoozed' = FALSE
-  /\ UNCHANGED <<settled, pinned>>
+  /\ UNCHANGED <<settled, pinned, interrupted>>
 
 ResolveApproval ==
   /\ status = "awaiting_approval"
   /\ status' = "running"
-  /\ UNCHANGED <<settled, snoozed, pinned>>
+  /\ UNCHANGED <<settled, snoozed, pinned, interrupted>>
 
 \* Settle.ts settle through Threads.ts settle, which refuses a busy thread. Writing settled: true also clears the
 \* pin and the snooze.
 SettleByHand ==
-  /\ status \in {"idle", "limited", "interrupted"} /\ ~settled
+  /\ status \in {"idle", "limited"} /\ ~settled
   /\ settled' = TRUE /\ snoozed' = FALSE /\ pinned' = FALSE
-  /\ UNCHANGED status
+  /\ UNCHANGED <<status, interrupted>>
 
 \* Settle.ts settleIfDone (Threads.ts settleMerged) and settleIfIdle (Threads.ts settleIf) need canAutoSettle.
 SweepSettles ==
-  /\ status \in {"idle", "limited", "interrupted"} /\ ~settled /\ ~pinned
+  /\ status \in {"idle", "limited"} /\ ~settled /\ ~pinned
   /\ settled' = TRUE /\ snoozed' = FALSE
-  /\ UNCHANGED <<status, pinned>>
+  /\ UNCHANGED <<status, pinned, interrupted>>
 
 \* Threads.ts unsettle.
 Reopen ==
   /\ Phase = "settled"
   /\ settled' = FALSE
-  /\ UNCHANGED <<status, snoozed, pinned>>
+  /\ UNCHANGED <<status, snoozed, pinned, interrupted>>
 
 \* Threads.ts archiveIf, for the row's Archive and Settle.ts archiveIfSettledLong. A busy thread refuses with
 \* ThreadBusyError.
 Archive ==
-  /\ status \in {"idle", "limited", "interrupted"}
+  /\ status \in {"idle", "limited"}
   /\ status' = "archived"
-  /\ UNCHANGED <<settled, snoozed, pinned>>
+  /\ UNCHANGED <<settled, snoozed, pinned, interrupted>>
 
 \* Threads.ts unarchive clears settled_at and snoozed_until.
 Unarchive ==
   /\ status = "archived"
-  /\ status' = "idle" /\ settled' = FALSE /\ snoozed' = FALSE
+  /\ status' = "idle" /\ settled' = FALSE /\ snoozed' = FALSE /\ interrupted' = FALSE
   /\ UNCHANGED pinned
 
 \* The row's Snooze stays enabled during a turn. Threads.ts write clears snoozed_until on the next status change.
 Snooze ==
-  /\ Phase \in {"ready", "working"} /\ status \in {"idle", "limited", "interrupted", "running"}
+  /\ Phase \in {"ready", "working"} /\ status \in {"idle", "limited", "running"}
   /\ snoozed' = TRUE
-  /\ UNCHANGED <<status, settled, pinned>>
+  /\ UNCHANGED <<status, settled, pinned, interrupted>>
 
 \* The snooze time passes, or the developer unsnoozes.
 Wake ==
   /\ snoozed
   /\ snoozed' = FALSE
-  /\ UNCHANGED <<status, settled, pinned>>
+  /\ UNCHANGED <<status, settled, pinned, interrupted>>
 
 \* Threads.ts write: pinning a settled thread brings it back.
 Pin ==
-  /\ status \in {"idle", "limited", "interrupted", "running", "awaiting_approval"} /\ ~pinned
+  /\ status \in {"idle", "limited", "running", "awaiting_approval"} /\ ~pinned
   /\ pinned' = TRUE /\ settled' = FALSE
-  /\ UNCHANGED <<status, snoozed>>
+  /\ UNCHANGED <<status, snoozed, interrupted>>
 
 Unpin ==
   /\ pinned
   /\ pinned' = FALSE
-  /\ UNCHANGED <<status, settled, snoozed>>
+  /\ UNCHANGED <<status, settled, snoozed, interrupted>>
 
 Next ==
   \/ Send \/ SendToArchived \/ Delete
@@ -162,7 +164,7 @@ LiveSpec ==
 
 TypeOK ==
   /\ status \in Statuses
-  /\ {settled, snoozed, pinned} \subseteq BOOLEAN
+  /\ {settled, snoozed, pinned, interrupted} \subseteq BOOLEAN
   /\ Phase \in Phases
 
 \* A working thread is never Settled, and a question ends any snooze.
@@ -173,6 +175,9 @@ QuestionsStayVisible == status = "awaiting_approval" => Phase = "ready"
 
 \* Pinning means keep this here: nothing settles a pinned thread, and settling by hand removes the pin.
 PinnedIsNeverSettled == pinned => ~settled
+
+\* Only a resting row carries the restart mark, so a turn that runs again is never shown as stopped.
+InterruptedIsResting == interrupted => status \in {"idle", "archived", "deleted"}
 
 \* A draft has no turn to rest from.
 DraftsHaveNoHistory == status = "draft" => ~settled /\ ~snoozed

@@ -455,6 +455,7 @@ erDiagram
     int sort_index
     text pinned_at "null = not pinned"
     text snoozed_until "out of the Inbox until then, null or past = not snoozed"
+    text interrupted_at "a restart stopped its turn, cleared by the next start"
     text queue "JSON QueuedMessage[], oldest first"
     text turn_base_tree "git tree at latest turn start"
     text side_of FK "CASCADE, unique, set = side chat of that thread"
@@ -548,10 +549,8 @@ stateDiagram-v2
     awaiting_approval --> limited: turn_limited
     limited --> running: send / scheduled reset retry
     limited --> archived: archive
-    running --> interrupted: restart
-    awaiting_approval --> interrupted: restart
-    interrupted --> running: resume / send
-    interrupted --> archived: archive
+    running --> idle: restart, sets interrupted_at
+    awaiting_approval --> idle: restart, sets interrupted_at
     awaiting_approval --> idle: interrupt
     idle --> archived: archive
     archived --> idle: unarchive
@@ -560,7 +559,7 @@ stateDiagram-v2
 
 Limited threads persist a typed `usageLimit` in the thread row. A usage limit can carry a provider-confirmed reset time and an opt-in automatic resume flag. Organization spend limits carry no reset schedule. The runner checks due requests in its scoped fiber, consumes each request once, then resends the last user prompt and attachments through the normal send path. Manual sends and archiving clear the limit. Restart preserves limited threads and scheduled requests.
 
-A thread whose turn dies in a restart becomes `interrupted`. After a hard kill, `Threads.resetInterrupted` rewrites `running` and `awaiting_approval` rows at the next start. On a graceful quit, disposing the runtime interrupts each turn fiber, and the turn's finish writes the status. A turn the developer stopped still ends `idle`. Nothing resumes an interrupted thread by itself, and the pull request watcher holds its wakes. `threads.resume` sends one continuation prompt through the normal send path.
+A thread whose turn dies in a restart ends `idle` with `interrupted_at` set, and `isInterrupted` in `domain.ts` reads it. The status stays `idle` so that phones, peers and CLIs from before the column decode the row. After a hard kill, `Threads.resetInterrupted` rewrites `running` and `awaiting_approval` rows at the next start. On a graceful quit, disposing the runtime interrupts each turn fiber, and the turn's finish writes the row. A turn the developer stopped ends `idle` without the mark. Any busy status, and unarchiving, clear it. Nothing resumes an interrupted thread by itself, and the pull request watcher holds its wakes. `threads.resume` sends one continuation prompt through the normal send path.
 
 A thread's place in the Inbox, as `specs/ThreadLifecycle.tla` models it. `FlowIsLegal` checks that no step leaves this chart. The sidebar shows Working threads inside Ready, dimmed.
 
