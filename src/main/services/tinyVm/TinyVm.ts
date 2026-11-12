@@ -590,7 +590,10 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         if (vm.status === "running" && vm.provider === "sbx" && vm.profile === "owner" && profileEnabled) {
           yield* sbxClientEffect.pipe(
             Effect.flatMap((sbx) => saveFromSandbox(sbx, vm.sandboxId, vm.template, true)),
-            Effect.timeoutOrElse({ duration: profileSaveBudget, orElse: () => Effect.void }),
+            Effect.timeoutOrElse({
+              duration: profileSaveBudget,
+              orElse: () => Effect.logWarning("tiny vm: profile save ran out of time, stopping the VM without it"),
+            }),
             Effect.catch((error) => Effect.logWarning("tiny vm: profile save on stop failed", error.message)),
           )
         }
