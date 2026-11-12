@@ -123,6 +123,11 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v6
+        with:
+          path: node_modules/.cache/react-compiler
+          key: react-compiler-web-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: react-compiler-web-${{ hashFiles('pnpm-lock.yaml') }}-
       - run: pnpm --dir apps/web deploy:dry-run
 
   test:
@@ -217,6 +222,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: actions/cache@v6
         with:
+          path: node_modules/.cache/react-compiler
+          key: react-compiler-electron-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: react-compiler-electron-${{ hashFiles('pnpm-lock.yaml') }}-
+      - uses: actions/cache@v6
+        with:
           path: ~/.cache/electron
           key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       # FIXME: GitHub's release downloads time out with a 504 now and then, and the Electron binary comes from there
@@ -247,6 +257,11 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v6
+        with:
+          path: node_modules/.cache/react-compiler
+          key: react-compiler-web-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: react-compiler-web-${{ hashFiles('pnpm-lock.yaml') }}-
       - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
