@@ -9,6 +9,7 @@ test.each([
   ["Digit9", 0x26],
   ["Digit0", 0x27],
   ["Enter", 0x28],
+  ["NumpadEnter", 0x28],
   ["Space", 0x2c],
   ["Slash", 0x38],
   ["ArrowUp", 0x52],
