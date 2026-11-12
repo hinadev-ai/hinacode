@@ -120,7 +120,7 @@ export default function TimePicker({
         <output id={problemId} className="block px-3.5 pt-2 text-xs text-muted-foreground empty:hidden">
           {problem}
         </output>
-        <Autocomplete.List className="min-h-0 scroll-py-1 overflow-y-auto overscroll-contain p-1.5">
+        <Autocomplete.List className="min-h-0 scroll-py-1 scrollbar-gutter-stable overflow-y-auto overscroll-contain p-1.5">
           {(choice: TimeChoice) => (
             <Autocomplete.Item
               key={choice.id}

@@ -231,7 +231,7 @@ export function RemoteBrowserPage({ threadId, tabId, initialUrl, active }: Remot
         </Button>
       </div>
       <div ref={viewportRef} className="relative min-h-0 flex-1">
-        <div className={cn("absolute inset-0 flex", device && "overflow-auto bg-muted p-3")}>
+        <div className={cn("absolute inset-0 flex", device && "scrollbar-gutter-both overflow-auto bg-muted p-3")}>
           <div
             style={device ? { width: device.width, height: device.height } : undefined}
             className={cn(device ? "m-auto shrink-0 shadow-md" : "min-h-0 min-w-0 flex-1", !ready && "invisible")}

@@ -118,7 +118,7 @@ function AgentList({ selected, onSelect }: { selected: ProviderId; onSelect: (pr
     <Panel title={m.settings_agents()}>
       <ul
         aria-label={m.settings_agents()}
-        className="flex max-h-96 min-h-0 flex-col gap-0.5 overflow-y-auto p-1.5 @4xl:max-h-none"
+        className="flex max-h-96 min-h-0 scrollbar-gutter-stable flex-col gap-0.5 overflow-y-auto p-1.5 @4xl:max-h-none"
       >
         {ProviderId.literals.map((provider) => (
           <AgentRow
@@ -200,12 +200,12 @@ function AgentDetail({ provider, ref }: { provider: ProviderId; ref: Ref<HTMLEle
       className="self-start @4xl:max-h-full"
     >
       {binary?.installed === false ? (
-        <div className="flex min-h-0 flex-col divide-y divide-foreground/8 @4xl:overflow-y-auto">
+        <div className="flex min-h-0 scrollbar-gutter-stable flex-col divide-y divide-foreground/8 @4xl:overflow-y-auto">
           <MissingAgentNotice provider={provider} />
           {owner === provider && <BinaryPathField provider={provider} />}
         </div>
       ) : providerEnabled[provider] ? (
-        <div className="flex min-h-0 flex-col divide-y divide-foreground/8 @4xl:overflow-y-auto">
+        <div className="flex min-h-0 scrollbar-gutter-stable flex-col divide-y divide-foreground/8 @4xl:overflow-y-auto">
           {owner === provider && <BinaryPathField provider={provider} />}
           <AccountsSection provider={provider} />
           {provider === "magpie" && (

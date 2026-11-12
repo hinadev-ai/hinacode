@@ -146,7 +146,7 @@ export function CommentInput({
           id={listId}
           role="listbox"
           aria-label={m.composer_mentions_label()}
-          className="absolute inset-x-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md"
+          className="absolute inset-x-0 top-full z-10 mt-1 max-h-56 scrollbar-gutter-stable overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md"
         >
           {matches.map((thread, index) => (
             <div

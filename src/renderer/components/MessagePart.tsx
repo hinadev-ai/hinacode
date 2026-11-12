@@ -617,7 +617,9 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
         <Chevron />
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1">
-        <pre className="max-h-80 overflow-auto rounded-md bg-muted/50 p-2 font-mono text-xs">{diff}</pre>
+        <pre className="max-h-80 scrollbar-gutter-stable overflow-auto rounded-md bg-muted/50 p-2 font-mono text-xs">
+          {diff}
+        </pre>
       </CollapsibleContent>
     </Collapsible>
   )

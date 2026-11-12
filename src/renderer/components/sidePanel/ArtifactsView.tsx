@@ -364,7 +364,7 @@ function ArtifactProblems({
           {m.artifacts_ask_to_fix()}
         </Button>
       </div>
-      <ul className="min-h-0 overflow-y-auto font-mono text-xs text-muted-foreground">
+      <ul className="min-h-0 scrollbar-gutter-stable overflow-y-auto font-mono text-xs text-muted-foreground">
         {problems.map((problem) => (
           <li key={problem} className="wrap-anywhere">
             {problem}

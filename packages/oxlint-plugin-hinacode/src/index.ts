@@ -7,6 +7,7 @@ import { noPromiseStateInEffect } from "./noPromiseStateInEffect.ts"
 import { noResponsivePaddingOnScroller } from "./noResponsivePaddingOnScroller.ts"
 import { noWallClockInTest } from "./noWallClockInTest.ts"
 import { preferStartTransition } from "./preferStartTransition.ts"
+import { stableScrollbarGutter } from "./stableScrollbarGutter.ts"
 
 export default definePlugin({
   meta: { name: "hinacode" },
@@ -19,5 +20,6 @@ export default definePlugin({
     "no-responsive-padding-on-scroller": noResponsivePaddingOnScroller,
     "no-wall-clock-in-test": noWallClockInTest,
     "prefer-start-transition": preferStartTransition,
+    "stable-scrollbar-gutter": stableScrollbarGutter,
   },
 })
