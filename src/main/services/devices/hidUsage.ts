@@ -13,6 +13,7 @@ const usages: ReadonlyMap<string, number> = new Map(
     ...letters,
     ...digits,
     Enter: 0x28,
+    NumpadEnter: 0x28,
     Escape: 0x29,
     Backspace: 0x2a,
     Tab: 0x2b,
