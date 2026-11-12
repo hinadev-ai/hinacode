@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util"
 import { Context, Effect, Layer, Schedule, Semaphore } from "effect"
-import type { PullRequestLink, PullRequestWatch } from "../../shared/domain.ts"
+import { type PullRequestLink, type PullRequestWatch, waitsOnDeveloper } from "../../shared/domain.ts"
 import { AgentRunner } from "./AgentRunner.ts"
 import { nowIso } from "./clock.ts"
 import { SourceControl } from "./SourceControl.ts"
@@ -62,7 +62,7 @@ const make = Effect.gen(function* () {
   const stopWithWake = (link: PullRequestLink, watch: PullRequestWatch, reason: string) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(link.threadId)
-      if (thread.status !== "archived" && thread.status !== "awaiting_approval" && thread.status !== "limited") {
+      if (thread.status !== "archived" && !waitsOnDeveloper(thread.status)) {
         if (yield* stillCurrent(link.id, watch.generation)) {
           yield* wake(link, watch.generation, watchStoppedMessage(link.url, reason))
         }
@@ -107,7 +107,7 @@ const make = Effect.gen(function* () {
           : record(link, watch, { snapshot, failures: 0, lastPolledAt: now })
         return
       }
-      if (thread.status === "awaiting_approval" || thread.status === "limited") {
+      if (waitsOnDeveloper(thread.status)) {
         yield* record(link, watch, { failures: 0, lastPolledAt: now })
         return
       }

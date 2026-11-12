@@ -297,6 +297,7 @@ export const RpcMethods = {
     Schema.Struct({ id: Schema.String, removeWorktree: Schema.optional(Schema.Boolean) }),
     Schema.Void,
   ),
+  "threads.resume": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "threads.resumeAtReset": rpc(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }), Thread),
   "threads.switchAccount": rpc(
     Schema.Struct({
@@ -768,6 +769,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "threads.draft": "mutation",
   "threads.update": "mutation",
   "threads.delete": "mutation",
+  "threads.resume": "mutation",
   "threads.resumeAtReset": "mutation",
   "threads.switchAccount": "mutation",
   "worktrees.list": "read",

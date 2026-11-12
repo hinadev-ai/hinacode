@@ -275,6 +275,7 @@ const handlers: Handlers = {
       Effect.andThen(Events.use((events) => events.publish({ type: "thread.removed", id }))),
     ),
 
+  "threads.resume": ({ id }) => AgentRunner.use((runner) => runner.resume(id)),
   "threads.resumeAtReset": ({ id, enabled }) => AgentRunner.use((runner) => runner.resumeAtReset(id, enabled)),
   "threads.switchAccount": ({ id, accountId, resend }) =>
     AgentRunner.use((runner) => runner.switchAccount(id, accountId, { resend: resend ?? false })).pipe(

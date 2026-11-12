@@ -331,7 +331,7 @@ describe("PullRequestWatcher queued delivery", () => {
       }),
     )
 
-    for (const status of ["awaiting_approval", "limited"] as const) {
+    for (const status of ["awaiting_approval", "limited", "interrupted"] as const) {
       it.effect(`defers queued watch delivery when a thread becomes ${status}`, () =>
         Effect.gen(function* () {
           const { threadId, asked, link } = yield* watchedThread(`became-${status}`)
