@@ -1,19 +1,18 @@
 import { resolve } from "node:path"
-import { type CompilerOptions, paraglideVitePlugin } from "@inlang/paraglide-js"
+import { paraglideVitePlugin } from "@inlang/paraglide-js"
 import type { Plugin } from "vite"
 
 const outdir = resolve(import.meta.dirname, "src/renderer/paraglide")
 const messageIndex = resolve(outdir, "messages/_index.js")
 const localeCatalogs = resolve(import.meta.dirname, "src/renderer/lib/localeCatalogs.ts")
 
-export const paraglideOptions = {
-  project: resolve(import.meta.dirname, "project.inlang"),
-  outdir,
-  strategy: ["globalVariable", "baseLocale"],
-  outputStructure: "locale-modules",
-} satisfies CompilerOptions
-
-export const paraglide = () => (process.env["HINACODE_PARAGLIDE_COMPILED"] ? [] : paraglideVitePlugin(paraglideOptions))
+export const paraglide = () =>
+  paraglideVitePlugin({
+    project: resolve(import.meta.dirname, "project.inlang"),
+    outdir,
+    strategy: ["globalVariable", "baseLocale"],
+    outputStructure: "locale-modules",
+  })
 
 const localeImport = /^import \* as __(?!en\b)\w+ from "\.\/[\w-]+\.js"\n/gm
 const dispatch =
