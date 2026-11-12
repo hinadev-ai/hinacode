@@ -150,9 +150,13 @@ jobs:
       - run: for attempt in 1 2 3 4 5; do pnpm exec install-electron && exit 0; sleep $((attempt * 15)); done; exit 1
       - name: Install search test dependency
         run: sudo apt-get update && sudo apt-get install --yes ripgrep
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install and select the pinned Chromium
         run: |
-          pnpm exec playwright install --with-deps chromium
+          pnpm exec playwright install chromium
           echo "HINACODE_BROWSER_EXECUTABLE_PATH=$(node -p 'require("playwright").chromium.executablePath()')" >> "$GITHUB_ENV"
       - name: Allow Chromium sandbox namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
@@ -243,7 +247,11 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm exec playwright install chromium
       - run: pnpm test:e2e:web --workers 4
       - if: failure()
         uses: actions/upload-artifact@v7
