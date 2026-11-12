@@ -1,27 +1,128 @@
 import { createHash } from "node:crypto"
 import { APP_ICONS, HERMES_PNG } from "./appIcons.ts"
 
-const COPY = {
-  wantsToConnect: (app: string) => `${app} wants to connect to HinaCode`,
-  returnsTo: (host: string) => `Sends you back to ${host}`,
-  lead: "Approving lets it:",
-  grants: [
-    "Read your projects and threads",
-    "Start agents that run code on this machine",
-    "Send messages to threads and stop them",
-    "Stay connected until you remove it in HinaCode",
-  ],
-  signInToApprove: "Sign in to approve",
-  orInApp: "Or approve it in HinaCode, under Settings > Connections > Apps.",
-  approve: "Approve",
-  deny: "Deny",
-  signedInAs: "Signed in as",
-  yourAccount: "your HinaCode account",
-  signInFailedTitle: "Sign-in did not finish",
-  notStartedTitle: "Start in HinaCode",
-  notStarted: "Open HinaCode, go to Settings > Connections > Apps, choose Copy URL, then connect again.",
-  brokenLinkTitle: "This link does not work",
-  brokenLink: "The app that sent you here has not registered with this HinaCode, or its link is incomplete.",
+export type PageLocale = "en" | "zh-TW" | "ja"
+
+type Copy = {
+  readonly wantsToConnect: (app: string) => string
+  readonly returnsTo: (host: string) => string
+  readonly lead: string
+  readonly grants: ReadonlyArray<string>
+  readonly signInToApprove: string
+  readonly orInApp: string
+  readonly approve: string
+  readonly deny: string
+  readonly signedInAs: string
+  readonly yourAccount: string
+  readonly signInFailedTitle: string
+  readonly signInFailedDetail: string
+  readonly signInLost: string
+  readonly notStartedTitle: string
+  readonly notStarted: string
+  readonly brokenLinkTitle: string
+  readonly brokenLink: string
+}
+
+const COPY: Readonly<Record<PageLocale, Copy>> = {
+  en: {
+    wantsToConnect: (app) => `${app} wants to connect to HinaCode`,
+    returnsTo: (host) => `Sends you back to ${host}`,
+    lead: "Approving lets it:",
+    grants: [
+      "Read your projects and threads",
+      "Start agents that run code on this machine",
+      "Send messages to threads and stop them",
+      "Stay connected until you remove it in HinaCode",
+    ],
+    signInToApprove: "Sign in to approve",
+    orInApp: "Or approve it in HinaCode, under Settings > Connections > Apps.",
+    approve: "Approve",
+    deny: "Deny",
+    signedInAs: "Signed in as",
+    yourAccount: "your HinaCode account",
+    signInFailedTitle: "Sign-in did not finish",
+    signInFailedDetail: "Open the app's sign-in page again, then choose Sign in to approve.",
+    signInLost: "Open the app's sign-in page again, then choose Sign in to approve.",
+    notStartedTitle: "Start in HinaCode",
+    notStarted: "Open HinaCode, go to Settings > Connections > Apps, choose Copy URL, then connect again.",
+    brokenLinkTitle: "This link does not work",
+    brokenLink: "The app that sent you here has not registered with this HinaCode, or its link is incomplete.",
+  },
+  "zh-TW": {
+    wantsToConnect: (app) => `${app} 想要連接 HinaCode`,
+    returnsTo: (host) => `完成後會帶你回到 ${host}`,
+    lead: "核准後，它將可以：",
+    grants: [
+      "讀取你的專案與對話串",
+      "啟動代理程式，在這台機器上執行程式碼",
+      "傳送訊息到對話串，並停止對話串",
+      "保持連線，直到你在 HinaCode 中移除它",
+    ],
+    signInToApprove: "登入並核准",
+    orInApp: "或在 HinaCode 的「設定」>「連線」>「應用程式」中核准。",
+    approve: "核准",
+    deny: "拒絕",
+    signedInAs: "登入身分：",
+    yourAccount: "你的 HinaCode 帳號",
+    signInFailedTitle: "登入未完成",
+    signInFailedDetail: "登入時發生問題，請重新開啟應用程式的登入頁面再試一次。",
+    signInLost: "請重新開啟應用程式的登入頁面，然後選擇「登入並核准」。",
+    notStartedTitle: "請從 HinaCode 開始",
+    notStarted: "開啟 HinaCode，前往「設定」>「連線」>「應用程式」，選擇「複製網址」，然後重新連接。",
+    brokenLinkTitle: "此連結無法使用",
+    brokenLink: "將你帶到這裡的應用程式尚未向這台 HinaCode 註冊，或連結不完整。",
+  },
+  ja: {
+    wantsToConnect: (app) => `${app} が HinaCode への接続を求めています`,
+    returnsTo: (host) => `完了後、${host} に戻ります`,
+    lead: "承認すると、次のことが許可されます：",
+    grants: [
+      "プロジェクトとスレッドの読み取り",
+      "このマシンでコードを実行するエージェントの起動",
+      "スレッドへのメッセージ送信とスレッドの停止",
+      "HinaCode で削除するまで接続を維持",
+    ],
+    signInToApprove: "サインインして承認",
+    orInApp: "または HinaCode の「設定」>「接続」>「アプリ」で承認することもできます。",
+    approve: "承認",
+    deny: "拒否",
+    signedInAs: "サインイン中：",
+    yourAccount: "あなたの HinaCode アカウント",
+    signInFailedTitle: "サインインが完了しませんでした",
+    signInFailedDetail: "サインイン中に問題が発生しました。アプリのサインインページをもう一度開いてお試しください。",
+    signInLost: "アプリのサインインページをもう一度開き、「サインインして承認」を選択してください。",
+    notStartedTitle: "HinaCode から開始してください",
+    notStarted: "HinaCode を開き、「設定」>「接続」>「アプリ」で「URL をコピー」を選び、もう一度接続してください。",
+    brokenLinkTitle: "このリンクは使用できません",
+    brokenLink: "このページを開いたアプリは、この HinaCode に登録されていないか、リンクが不完全です。",
+  },
+}
+
+const matchLocale = (tag: string): PageLocale | undefined => {
+  const [language, ...subtags] = tag.toLowerCase().split("-")
+  if (language === "en") return "en"
+  if (language === "ja") return "ja"
+  if (language === "zh" && (subtags[0] === "tw" || subtags[0] === "hant")) return "zh-TW"
+  return undefined
+}
+
+export const localeOf = (acceptLanguage: string | undefined): PageLocale => {
+  const ranges = (acceptLanguage ?? "")
+    .split(",")
+    .flatMap((range) => {
+      const [tag = "", ...params] = range.trim().split(";")
+      if (tag === "") return []
+      const quality = params.find((param) => param.trim().startsWith("q="))
+      return [{ tag, quality: quality === undefined ? 1 : Number(quality.trim().slice(2)) }]
+    })
+    .filter(({ quality }) => quality > 0)
+    .toSorted((a, b) => b.quality - a.quality)
+  for (const { tag } of ranges) {
+    if (tag === "*") return "en"
+    const locale = matchLocale(tag)
+    if (locale !== undefined) return locale
+  }
+  return "en"
 }
 
 const REFRESH_SECONDS = 2
@@ -161,10 +262,10 @@ const appTile = (appName: string, redirectHost: string) => {
   )
 }
 
-const document = (title: string, body: Markup, head = NOTHING) => ({
+const document = (locale: PageLocale, title: string, body: Markup, head = NOTHING) => ({
   headers: HEADERS,
   html: markup`<!doctype html>
-<html lang="en">
+<html lang="${locale}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -180,45 +281,60 @@ export type Approver =
   | { readonly signedIn: false; readonly signInPath: string }
   | { readonly signedIn: true; readonly email: string | null; readonly answerPath: string; readonly request: string }
 
-const actions = (approver: Approver) =>
+const actions = (approver: Approver, copy: Copy) =>
   approver.signedIn
     ? markup`<form class="actions" method="post" action="${approver.answerPath}">
 <input type="hidden" name="request" value="${approver.request}">
-<button class="primary" name="decision" value="approve">${COPY.approve}</button>
-<button class="ghost" name="decision" value="deny">${COPY.deny}</button>
+<button class="primary" name="decision" value="approve">${copy.approve}</button>
+<button class="ghost" name="decision" value="deny">${copy.deny}</button>
 </form>`
-    : markup`<div class="actions"><a class="primary" href="${approver.signInPath}">${COPY.signInToApprove}</a></div>
-<p class="hint">${COPY.orInApp}</p>`
+    : markup`<div class="actions"><a class="primary" href="${approver.signInPath}">${copy.signInToApprove}</a></div>
+<p class="hint">${copy.orInApp}</p>`
 
 export const waitingPage = (input: {
   readonly appName: string
   readonly redirectHost: string
   readonly approver: Approver
-}) =>
-  document(
-    COPY.wantsToConnect(input.appName),
+  readonly locale: PageLocale
+}) => {
+  const copy = COPY[input.locale]
+  return document(
+    input.locale,
+    copy.wantsToConnect(input.appName),
     markup`<article class="card">
 <div class="mark">${appTile(input.appName, input.redirectHost)}<span class="wire"></span>${brandTile}</div>
-<h1>${COPY.wantsToConnect(input.appName)}</h1>
-<p class="detail">${COPY.returnsTo(input.redirectHost)}</p>
+<h1>${copy.wantsToConnect(input.appName)}</h1>
+<p class="detail">${copy.returnsTo(input.redirectHost)}</p>
 <section class="request">
-<p class="lead">${COPY.lead}</p>
-<ul class="grants">${COPY.grants.map((grant) => markup`<li>${CHECK}${grant}</li>`)}</ul>
-${actions(input.approver)}
+<p class="lead">${copy.lead}</p>
+<ul class="grants">${copy.grants.map((grant) => markup`<li>${CHECK}${grant}</li>`)}</ul>
+${actions(input.approver, copy)}
 </section>
 </article>
-${input.approver.signedIn ? markup`<footer>${COPY.signedInAs} <strong>${input.approver.email ?? COPY.yourAccount}</strong></footer>` : NOTHING}`,
+${input.approver.signedIn ? markup`<footer>${copy.signedInAs} <strong>${input.approver.email ?? copy.yourAccount}</strong></footer>` : NOTHING}`,
     input.approver.signedIn ? NOTHING : markup`<meta http-equiv="refresh" content="${String(REFRESH_SECONDS)}">`,
   )
+}
 
-const notice = (title: string, detail: string) =>
+const notice = (locale: PageLocale, title: string, detail: string) =>
   document(
+    locale,
     title,
     markup`<article class="card"><div class="mark">${brandTile}</div><h1>${title}</h1><p class="detail">${detail}</p></article>`,
   )
 
-export const notStartedPage = () => notice(COPY.notStartedTitle, COPY.notStarted)
+export const notStartedPage = (locale: PageLocale) => {
+  const copy = COPY[locale]
+  return notice(locale, copy.notStartedTitle, copy.notStarted)
+}
 
-export const brokenLinkPage = () => notice(COPY.brokenLinkTitle, COPY.brokenLink)
+export const brokenLinkPage = (locale: PageLocale) => {
+  const copy = COPY[locale]
+  return notice(locale, copy.brokenLinkTitle, copy.brokenLink)
+}
 
-export const signInFailedPage = (reason: string) => notice(COPY.signInFailedTitle, reason)
+export const signInFailedPage = (locale: PageLocale, reason: string) =>
+  notice(locale, COPY[locale].signInFailedTitle, locale === "en" ? reason : COPY[locale].signInFailedDetail)
+
+export const signInLostPage = (locale: PageLocale) =>
+  notice(locale, COPY[locale].signInFailedTitle, COPY[locale].signInLost)
