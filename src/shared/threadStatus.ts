@@ -51,6 +51,7 @@ export const rowState = (
 export const rowEmphasis = {
   awaiting_approval: "attention",
   limited: "attention",
+  interrupted: "attention",
   unseen_completed: "attention",
   unseen_failed: "attention",
   pr_conflicting: "attention",
@@ -80,6 +81,7 @@ export const rowStatusIndicator = {
   background: { icon: "RiTimeLine", tone: "muted" },
   awaiting_approval: { icon: "RiQuestionFill", tone: "foreground" },
   limited: { icon: "RiHourglassFill", tone: "attention" },
+  interrupted: { icon: "RiRestartFill", tone: "attention" },
   unseen_completed: { icon: "RiCheckboxCircleFill", tone: "success" },
   unseen_failed: { icon: "RiErrorWarningFill", tone: "foreground" },
   pr_conflicting: { icon: "RiGitMergeFill", tone: "foreground" },
