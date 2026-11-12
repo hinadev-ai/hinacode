@@ -5,7 +5,7 @@ import { Cause, Duration, Effect, Fiber, FiberHandle, Layer, Stream } from "effe
 import type { WebSocket } from "ws"
 import { newNonce } from "../../shared/proof.ts"
 import { PRIVATE_NETWORKS, type Settings as SettingsValue } from "../../shared/domain.ts"
-import { isAddressNotUpYet } from "../../shared/remote.ts"
+import { isAddressNotUpYet, RemoteFeature } from "../../shared/remote.ts"
 import { AppConnections } from "../apps/AppConnections.ts"
 import { isPrivateAddress } from "../network.ts"
 import { dispatch } from "../rpc.ts"
@@ -65,7 +65,7 @@ const make = Effect.gen(function* () {
     call: (raw) => dispatch(raw, null),
     subscribe: broadcast.subscribe,
     environment: access.identity,
-    features: ["heartbeat", "call-keys", "terminal-attach", "asks", "watch"],
+    features: RemoteFeature,
   })
   const countConnected = () => runFork(access.report({ connected: sessions.count() }))
 
