@@ -29,7 +29,7 @@ import {
   sbxClient,
 } from "./sbx.ts"
 import { decodeTar, encodeTar, readTree, type WrittenTree, writeTree } from "./tar.ts"
-import { xdotoolScript } from "./xdotool.ts"
+import { ignoredKeyError, xdotoolScript } from "./xdotool.ts"
 
 type SandboxClientError = SandboxGoneError | SbxError | BoatError | BoatSnapshotExpiredError
 
@@ -706,10 +706,13 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         })
         if (script === "") return
         const result = yield* boat.exec(sandboxId, { script, timeoutSeconds: 120 })
+        const stderr = Buffer.from(result.stderr).toString().trim()
         if (result.exitCode !== 0)
           return yield* new VmError({
-            message: `Driving the boat desktop failed with exit code ${result.exitCode}: ${Buffer.from(result.stderr).toString().trim()}`,
+            message: `Driving the boat desktop failed with exit code ${result.exitCode}: ${stderr}`,
           })
+        const ignored = ignoredKeyError(actions, stderr)
+        if (ignored !== undefined) return yield* ignored
       })
 
     const perform = (threadId: string, actions: ReadonlyArray<VmAction>) =>

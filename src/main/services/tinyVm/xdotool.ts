@@ -38,6 +38,17 @@ const xdotoolChord = (chord: string) => {
   return [...modifiers.map(hexKeysym), keysym === undefined ? name : hexKeysym(keysym)].join("+")
 }
 
+const keyChords = (keys: string) => keys.trim().split(/\s+/).filter(Boolean)
+
+export const ignoredKeyError = (actions: ReadonlyArray<VmAction>, stderr: string) => {
+  const name = /No such key name '([^']*)'/.exec(stderr)?.[1]
+  if (name === undefined) return undefined
+  const chord = actions
+    .flatMap((action) => (action.type === "key" ? keyChords(action.keys) : []))
+    .find((candidate) => resolveChord(candidate).name === name)
+  return unknownKey(name, chord ?? name)
+}
+
 const actionLines = (action: VmAction): ReadonlyArray<string> => {
   switch (action.type) {
     case "move":
@@ -69,7 +80,7 @@ const actionLines = (action: VmAction): ReadonlyArray<string> => {
       checkText(action.text)
       return action.text === "" ? [] : [`xdotool type --clearmodifiers --delay 1 -- ${shellQuote(action.text)}`]
     case "key": {
-      const chords = action.keys.trim().split(/\s+/).filter(Boolean)
+      const chords = keyChords(action.keys)
       if (chords.length === 0)
         throw new VmInputError({ message: "keys is empty. Pass a key such as Return or ctrl+l." })
       return chords.map((chord) => `xdotool key --clearmodifiers ${xdotoolChord(chord)}`)
