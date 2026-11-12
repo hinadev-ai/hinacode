@@ -149,6 +149,23 @@ describe("agent logins", () => {
     ),
   )
 
+  it.effect("caches two accounts whose names differ only in punctuation and case apart", () =>
+    withLogins((_, claude) =>
+      Effect.gen(function* () {
+        const create = (name: string) =>
+          AgentAccounts.use((accounts) =>
+            accounts.create({ provider: "claude", name, configDir: "/tmp/kk-unused", binary: "claude" }),
+          )
+        const work = yield* create("Work")
+        const workToo = yield* create("work!")
+        const logins = yield* AgentLogins
+        for (const id of [work.id, workToo.id, work.id, workToo.id]) yield* logins.account("claude", id)
+
+        expect(claude.calls).toHaveLength(2)
+      }),
+    ),
+  )
+
   it.effect("asks the CLI again for a file it cannot read", () =>
     withLogins((cacheDir, claude) =>
       Effect.gen(function* () {
