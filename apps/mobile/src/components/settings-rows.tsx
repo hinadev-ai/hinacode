@@ -59,14 +59,12 @@ export function SettingsRow({
   value,
   monospace = false,
   disabled = false,
-  labelLines,
   onPress,
   children,
 }: {
   icon?: IconName
   iconColor?: string
   label: string
-  labelLines?: number
   value?: string
   monospace?: boolean
   disabled?: boolean
@@ -77,7 +75,7 @@ export function SettingsRow({
   const content = (
     <>
       {icon !== undefined && <IconTile icon={icon} color={disabled ? theme.textMuted : iconColor} />}
-      <Text numberOfLines={labelLines} style={[styles.label, { color: disabled ? theme.textMuted : theme.text }]}>
+      <Text style={[styles.label, { color: disabled ? theme.textMuted : theme.text }]}>
         {label}
       </Text>
       {value !== undefined && (
