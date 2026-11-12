@@ -72,6 +72,28 @@ it.effect("shutdown saves the owner's latest browser profile before destroying e
   ),
 )
 
+it.effect("saving the profile of a VM the host destroyed forgets the VM", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fake = yield* startFakeSbx
+      const dir = mkdtempSync(join(tmpdir(), "hinacode-vm-profile-"))
+      const runtime = yield* Effect.acquireRelease(
+        Effect.sync(() => makeRuntime(fake, dir)),
+        (value) => Effect.promise(() => value.dispose()),
+      )
+      const run = <A, E>(effect: Effect.Effect<A, E, TinyVm>) => Effect.promise(() => runtime.runPromise(effect))
+      const owner = yield* run(TinyVm.use((vm) => vm.start("owner")))
+      if (owner.status !== "running") throw new Error("VM did not start")
+      fake.expire(owner.sandboxId)
+
+      const error = yield* run(Effect.flip(TinyVm.use((vm) => vm.saveProfile("owner"))))
+
+      expect(error._tag).toBe("VmError")
+      expect(yield* run(TinyVm.use((vm) => vm.get("owner")))).toEqual({ status: "none" })
+    }),
+  ),
+)
+
 it.effect("overlapping profile saves all finish without racing the archive file", () =>
   Effect.scoped(
     Effect.gen(function* () {
