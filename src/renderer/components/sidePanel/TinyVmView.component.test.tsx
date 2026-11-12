@@ -3,7 +3,7 @@ import { page } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import type { HinacodeBridge } from "../../../shared/contract.ts"
 import "../../index.css"
-import { ControlButton, type RunningVm, VmScreen } from "./TinyVmView.tsx"
+import { ControlButton, type RunningVm, useVmDrop, VmScreen } from "./TinyVmView.tsx"
 
 let runtime: HinacodeBridge["runtime"] = { kind: "web" }
 const bridge: HinacodeBridge = {
@@ -28,18 +28,14 @@ const tinyVm: RunningVm = {
 
 const boatVm: RunningVm = { ...tinyVm, provider: "boat" }
 
+function BrowserVmScreen() {
+  const drop = useVmDrop("t-1", () => undefined)
+  return <VmScreen threadId="t-1" vm={tinyVm} onHandBack={() => undefined} onReconnect={() => undefined} drop={drop} />
+}
+
 test("a browser shows that the Tiny VM screen needs the desktop app instead of a dead stream", async () => {
   runtime = { kind: "web" }
-  await render(
-    <VmScreen
-      threadId="t-1"
-      vm={tinyVm}
-      onHandBack={() => undefined}
-      onReconnect={() => undefined}
-      onDropFiles={() => undefined}
-      dropping={false}
-    />,
-  )
+  await render(<BrowserVmScreen />)
   await expect.element(page.getByText("The Tiny VM screen opens only in the desktop app.")).toBeVisible()
   expect(page.getByRole("region", { name: "Tiny VM screen" }).elements()).toEqual([])
 })

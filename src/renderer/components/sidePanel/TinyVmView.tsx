@@ -1,7 +1,7 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
-import { lazy, type ReactNode, Suspense, useState, useTransition } from "react"
+import { type DragEvent, lazy, type ReactNode, Suspense, useRef, useState, useTransition } from "react"
 import type { Thread, ThreadVm, VmControl, VmTemplate } from "../../../shared/domain.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
@@ -24,6 +24,7 @@ import {
   PipIcon,
   SaveIcon,
   SpinnerIcon,
+  UploadIcon,
   WarningIcon,
 } from "@hinacode/icons"
 import { withCode } from "../withCode.tsx"
@@ -39,8 +40,7 @@ interface VmScreenProps {
   readonly fullscreenControls?: ReactNode
   readonly onHandBack: () => void
   readonly onReconnect: () => void
-  readonly onDropFiles: (paths: ReadonlyArray<string>) => void
-  readonly dropping: boolean
+  readonly drop: VmDrop
 }
 
 function DesktopOnlyVmScreen() {
@@ -88,9 +88,14 @@ export function TinyVmView({ thread }: { thread: Thread }) {
   )
 }
 
+const carriesFiles = (event: DragEvent<HTMLElement>) => event.dataTransfer.types.includes("Files")
+
 export function useVmDrop(threadId: string, run: (action: () => Promise<unknown>) => void) {
+  const dragDepth = useRef(0)
+  const [fileDrag, setFileDrag] = useState(false)
   const [dropping, setDropping] = useState(false)
-  const onDropFiles = (paths: ReadonlyArray<string>) => {
+
+  const copyIntoVm = (paths: ReadonlyArray<string>) => {
     setDropping(true)
     run(async () => {
       try {
@@ -101,7 +106,56 @@ export function useVmDrop(threadId: string, run: (action: () => Promise<unknown>
       }
     })
   }
-  return { dropping, onDropFiles }
+
+  const dropTarget = {
+    onDragEnter: (event: DragEvent<HTMLElement>) => {
+      if (!carriesFiles(event)) return
+      dragDepth.current += 1
+      setFileDrag(true)
+    },
+    onDragLeave: (event: DragEvent<HTMLElement>) => {
+      if (!carriesFiles(event)) return
+      dragDepth.current -= 1
+      if (dragDepth.current <= 0) {
+        dragDepth.current = 0
+        setFileDrag(false)
+      }
+    },
+    onDragOver: (event: DragEvent<HTMLElement>) => {
+      if (carriesFiles(event)) event.preventDefault()
+    },
+    onDrop: (event: DragEvent<HTMLElement>) => {
+      if (!carriesFiles(event)) return
+      event.preventDefault()
+      dragDepth.current = 0
+      setFileDrag(false)
+      const paths = [...event.dataTransfer.files].map((file) => window.hinacode.pathForFile(file))
+      copyIntoVm(paths.filter((path) => path !== ""))
+    },
+  }
+
+  return { fileDrag, dropping, dropTarget }
+}
+
+export type VmDrop = ReturnType<typeof useVmDrop>
+
+export function VmDropOverlay({ drop }: { drop: VmDrop }) {
+  if (drop.fileDrag) {
+    return (
+      <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/80 p-6 text-center outline-2 -outline-offset-8 outline-working outline-dashed">
+        <UploadIcon aria-hidden className="size-6" />
+        <p className="text-sm">{m.vm_drop_hint()}</p>
+      </div>
+    )
+  }
+  if (drop.dropping) {
+    return (
+      <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background/60">
+        <Spinner label={m.vm_drop_copying()} />
+      </div>
+    )
+  }
+  return null
 }
 
 export function useVmAction() {
@@ -247,7 +301,7 @@ function NoVm({ threadId }: { threadId: string }) {
 
 function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const { pending, error, run } = useVmAction()
-  const { dropping, onDropFiles } = useVmDrop(threadId, run)
+  const drop = useVmDrop(threadId, run)
   const floating = useUi((state) => state.vmPlacements[threadId] === "floating")
   const setPlacement = useUi((state) => state.setVmPlacement)
   const [attempt, setAttempt] = useState(0)
@@ -304,8 +358,7 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
               fullscreenControls={control}
               onHandBack={() => run(() => callPromise("vm.control", { threadId, control: "agent" }))}
               onReconnect={() => setAttempt((count) => count + 1)}
-              onDropFiles={onDropFiles}
-              dropping={dropping}
+              drop={drop}
             />
           </Suspense>
         </div>
