@@ -60,22 +60,16 @@ const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(fu
       const stdout = command.includes("import -window root")
         ? FAKE_PNG
         : Buffer.from(command.includes("printf hello") ? "hello" : "")
-      files.set(out, stdout)
-      files.set(err, Buffer.alloc(0))
+      if (stdout.length > 0) files.set(out, stdout)
+      files.delete(err)
       const exitCode = command.includes("exit 7") ? 7 : 0
-      return sendJson(response, 200, { ok: true, type: "command.finished", success: true, exitCode, timedOut: false })
-    }
-    const statPath = /^stat -c %s '([^']+)'$/.exec(command)?.[1]
-    if (statPath !== undefined) {
-      const bytes = files.get(statPath)
       return sendJson(response, 200, {
         ok: true,
         type: "command.finished",
-        success: bytes !== undefined,
-        exitCode: bytes === undefined ? 1 : 0,
-        stdout: bytes === undefined ? "" : `${bytes.length}\n`,
-        stderr: "",
+        success: true,
+        exitCode,
         timedOut: false,
+        stdout: `hinacode-output-sizes ${stdout.length} 0\n`,
       })
     }
     if (command.includes("tar -cf")) {

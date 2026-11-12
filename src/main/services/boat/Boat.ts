@@ -42,6 +42,8 @@ const DEFAULT_TTL_SECONDS = 7200
 const SIGNED_URL_TTL_SECONDS = 900
 const DIRECT_FILE_MAX_BYTES = 5 * 1024 * 1024
 const SIGNED_FETCH_RETRY_SECONDS = [1, 2, 4, 8] as const
+const OUTPUT_SIZES_MARKER = "hinacode-output-sizes"
+const OUTPUT_SIZES_LINE = new RegExp(`^${OUTPUT_SIZES_MARKER} (\\d+) (\\d+)$`, "m")
 const BOAT_SIZES = ["small", "default", "large", "xlarge"] as const
 
 const SandboxObject = Schema.Struct({
@@ -162,6 +164,20 @@ const signedFailure = (kind: "download" | "upload", cause: unknown) => {
 }
 
 const shellQuote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`
+
+const reportOutputSizes = (outPath: string, errPath: string) =>
+  [
+    `o=$(stat -c %s ${shellQuote(outPath)} 2>/dev/null || echo 0)`,
+    `e=$(stat -c %s ${shellQuote(errPath)} 2>/dev/null || echo 0)`,
+    `[ "$o" = 0 ] && rm -f ${shellQuote(outPath)}`,
+    `[ "$e" = 0 ] && rm -f ${shellQuote(errPath)}`,
+    `echo "${OUTPUT_SIZES_MARKER} $o $e"`,
+  ].join("; ")
+
+const parseOutputSizes = (stdout: string) => {
+  const match = OUTPUT_SIZES_LINE.exec(stdout)
+  return match === null ? undefined : { out: Number(match[1]), err: Number(match[2]) }
+}
 
 const resolveGuestPath = (guestPath: string) => {
   if (guestPath.startsWith("/")) return guestPath
@@ -434,27 +450,12 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
       Effect.flatMap(({ url }) => downloadSigned(url)),
     )
 
-  const guestFileSize = (id: string, guestPath: string) =>
-    rawCommand(id, `stat -c %s ${shellQuote(guestPath)}`, REQUEST_TIMEOUT_SECONDS).pipe(
-      Effect.map((result) => {
-        const size = Number(result.stdout.trim().split(/\s+/).filter(Boolean).pop() ?? "")
-        return result.exitCode === 0 && Number.isFinite(size) ? size : undefined
-      }),
-      Effect.catch(() => Effect.succeed(undefined)),
-    )
-
-  const readFileBytes = (id: string, guestPath: string) =>
-    Effect.flatMap(guestFileSize(id, guestPath), (size) =>
-      size !== undefined && size > DIRECT_FILE_MAX_BYTES
+  const readFileBytes = (id: string, guestPath: string, size: number) =>
+    size === 0
+      ? Effect.succeed(Buffer.alloc(0))
+      : size > DIRECT_FILE_MAX_BYTES
         ? readFileSigned(id, guestPath)
-        : size === undefined
-          ? Effect.catch(
-              readFileDirect(id, guestPath),
-              (error: BoatError | SandboxGoneError | BoatSnapshotExpiredError) =>
-                error._tag === "BoatError" ? readFileSigned(id, guestPath) : Effect.fail(error),
-            )
-          : readFileDirect(id, guestPath),
-    )
+        : readFileDirect(id, guestPath)
 
   const writeFileDirect = (id: string, guestPath: string, bytes: Uint8Array) =>
     jsonRequest(FileWriteResponse, "PUT /sandboxes/{id}/files", "PUT", sandboxPath(id, "/files"), {
@@ -480,10 +481,12 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
       : writeFileSigned(id, guestPath, bytes)
 
   const cleanupGuestFiles = (id: string, paths: ReadonlyArray<string>) =>
-    rawCommand(id, `rm -f ${paths.map(shellQuote).join(" ")}`, REQUEST_TIMEOUT_SECONDS).pipe(
-      Effect.catch(() => Effect.succeed({ stdout: "", stderr: "", exitCode: 0, timedOut: false, success: true })),
-      Effect.asVoid,
-    )
+    paths.length === 0
+      ? Effect.void
+      : rawCommand(id, `rm -f ${paths.map(shellQuote).join(" ")}`, REQUEST_TIMEOUT_SECONDS).pipe(
+          Effect.catch(() => Effect.succeed({ stdout: "", stderr: "", exitCode: 0, timedOut: false, success: true })),
+          Effect.asVoid,
+        )
 
   const createSandbox = (options: {
     readonly type: string
@@ -563,17 +566,33 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
     const token = randomUUID()
     const outPath = `/tmp/.hinacode-${token}.out`
     const errPath = `/tmp/.hinacode-${token}.err`
-    const command = `DISPLAY=:0 bash -lc ${shellQuote(execInput.script)} >${shellQuote(outPath)} 2>${shellQuote(errPath)}`
-    return Effect.gen(function* () {
+    const reportSizes = reportOutputSizes(outPath, errPath)
+    const command = `DISPLAY=:0 bash -lc ${shellQuote(execInput.script)} >${shellQuote(outPath)} 2>${shellQuote(errPath)}; rc=$?; ${reportSizes}; exit $rc`
+    const measureAgain = rawCommand(id, reportSizes, REQUEST_TIMEOUT_SECONDS).pipe(
+      Effect.flatMap((result) => {
+        const sizes = parseOutputSizes(result.stdout)
+        return sizes === undefined
+          ? Effect.fail(
+              new BoatError({ message: "boat sent an unexpected response from POST /sandboxes/{id}/commands" }),
+            )
+          : Effect.succeed(sizes)
+      }),
+    )
+    const run = Effect.gen(function* () {
       const result = yield* rawCommand(id, command, execInput.timeoutSeconds)
-      const stdout = yield* readFileBytes(id, outPath)
-      const stderr = yield* readFileBytes(id, errPath)
-      return {
-        stdout,
-        stderr,
-        exitCode: result.timedOut ? 124 : result.exitCode,
-      } satisfies ExecResult
-    }).pipe(Effect.ensuring(cleanupGuestFiles(id, [outPath, errPath])))
+      const sizes = parseOutputSizes(result.stdout) ?? (yield* measureAgain)
+      return { exitCode: result.timedOut ? 124 : result.exitCode, sizes }
+    }).pipe(Effect.onError(() => cleanupGuestFiles(id, [outPath, errPath])))
+    return Effect.flatMap(run, ({ exitCode, sizes }) =>
+      Effect.all([readFileBytes(id, outPath, sizes.out), readFileBytes(id, errPath, sizes.err)], {
+        concurrency: "unbounded",
+      }).pipe(
+        Effect.ensuring(
+          cleanupGuestFiles(id, [...(sizes.out > 0 ? [outPath] : []), ...(sizes.err > 0 ? [errPath] : [])]),
+        ),
+        Effect.map(([stdout, stderr]): ExecResult => ({ stdout, stderr, exitCode })),
+      ),
+    )
   }
 
   const exec = (
@@ -623,7 +642,7 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
           return yield* new BoatError({
             message: `the archive is larger than ${Math.round(maxBytes / 1024 / 1024)} MB`,
           })
-        return yield* readFileBytes(id, tmpPath)
+        return yield* readFileBytes(id, tmpPath, size)
       }).pipe(Effect.ensuring(cleanupGuestFiles(id, [tmpPath])))
     })
 
@@ -714,7 +733,6 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
     desktopUrl,
     hostPort,
     listAll,
-    readFileBytes,
     limits,
     getSandbox,
     waitReady,
