@@ -48,6 +48,7 @@ import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts
 import { type PullRequestSection, type PullRequestTab, useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { Markdown } from "./Markdown.tsx"
+import { LineCounts } from "./LineCounts.tsx"
 import { Avatar, PullRequestMetadata } from "./PullRequestMetadata.tsx"
 import {
   AlertDialog,
@@ -363,9 +364,8 @@ function LinkedPullRequestRow({ url, children }: { url: string; children: ReactN
             </span>
           )}
           {pullRequest && (
-            <span className="ms-auto shrink-0 font-mono tabular-nums">
-              <span className="text-success">+{pullRequest.additions}</span>{" "}
-              <span className="text-destructive">−{pullRequest.deletions}</span>
+            <span className="ms-auto shrink-0">
+              <LineCounts added={pullRequest.additions} removed={pullRequest.deletions} />
             </span>
           )}
         </span>
@@ -623,12 +623,8 @@ function PullRequestHeader({
             {pullRequest.changedFiles}
             <span className="sr-only">{m.pr_code_summary({ count: pullRequest.changedFiles })}</span>
           </span>
-          <span
-            className="font-mono"
-            title={m.pr_card_size({ additions: pullRequest.additions, deletions: pullRequest.deletions })}
-          >
-            <span className="text-success">+{pullRequest.additions}</span>{" "}
-            <span className="text-destructive">−{pullRequest.deletions}</span>
+          <span title={m.pr_card_size({ additions: pullRequest.additions, deletions: pullRequest.deletions })}>
+            <LineCounts added={pullRequest.additions} removed={pullRequest.deletions} />
           </span>
         </span>
         {open && (

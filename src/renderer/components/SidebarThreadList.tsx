@@ -403,7 +403,7 @@ function DraftRow({ thread, title, project }: { thread: Thread; title: string; p
   }
 
   return (
-    <SidebarRow data-emphasis="resting" data-meta={false} data-show-project={project !== null} className={rowClassName}>
+    <SidebarRow data-emphasis="resting" data-show-project={project !== null} className={rowClassName}>
       {project !== null && (
         <ProjectLine
           project={project}
@@ -608,10 +608,8 @@ const ThreadRow = memo(function ThreadRow({
       data-emphasis={rowEmphasis[state]}
       data-dimmed={dimmed}
       data-show-project={meta.project !== null}
-      data-archived={archived}
       data-nested={nested}
       data-stale={isStale(cloud)}
-      data-meta={hasMeta}
       onPointerEnter={(event) => scrollTitle(event.currentTarget)}
       onPointerLeave={(event) => stopTitle(event.currentTarget)}
       className={rowClassName}
