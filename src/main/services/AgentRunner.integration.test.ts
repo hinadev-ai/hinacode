@@ -1813,6 +1813,34 @@ it("drops a queued message the transcript got before it started, and starts the 
   })
 })
 
+it("keeps a queued message stored until its turn starts it, so a quit before then cannot lose it", async () => {
+  await withPreparingThread(async (probe) => {
+    const { runner, threads, thread, release, turns, storedMessages } = probe
+    release()
+    const finishing = probe.pauseNextUpdate()
+    await queuedAfter(probe, [{ id: "waiting", text: "keeps running", attachments: [] }])
+    await finishing.reached
+    probe.pauseSnapshot()
+    finishing.resume()
+    await probe.snapshotting
+
+    const beforeStart = {
+      queued: (await Effect.runPromise(threads.get(thread.id))).queue.map((message) => message.id),
+      recorded: (await storedMessages(thread.id)).filter((message) => message.id === "waiting").length,
+    }
+    expect(beforeStart).toStrictEqual({ queued: ["waiting"], recorded: 0 })
+
+    probe.snapshot()
+    await vi.waitFor(() => expect(turns).toHaveLength(2))
+    const whileRunning = {
+      queued: (await Effect.runPromise(threads.get(thread.id))).queue.map((message) => message.id),
+      recorded: (await storedMessages(thread.id)).filter((message) => message.id === "waiting").length,
+    }
+    expect(whileRunning).toStrictEqual({ queued: [], recorded: 1 })
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
 it("writes nothing for a queued message whose turn failed to start, and keeps it queued", async () => {
   await withPreparingThread(async (probe) => {
     const { threads, thread, release, storedMessages, failNextInsert } = probe
