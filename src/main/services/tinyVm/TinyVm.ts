@@ -6,7 +6,7 @@ import { join } from "node:path"
 import { Context, Deferred, type Duration, Effect, Exit, Layer, Option, Schema, Semaphore, Stream } from "effect"
 import type { PushEvent } from "../../../shared/contract.ts"
 import {
-  type BoatVmSize,
+  BoatVmSize,
   defaultSettings,
   type ThreadVm,
   type VmControl,
@@ -139,7 +139,7 @@ const PROFILE_RESTORE_SCRIPT = [
 const DROP_DIR = "Downloads"
 export const MAX_TRANSFER_BYTES = 200 * 1024 * 1024
 const PULLED_DIR = "pulled"
-const SCREENSHOT_SCRIPT = "import -window root png:-"
+export const SCREENSHOT_SCRIPT = "import -window root png:-"
 const SCREENSHOT_TIMEOUT_SECONDS = 30
 const BOAT_SANDBOXES_FILE = "boat-sandboxes.json"
 const BOAT_PREPARE_SCRIPT = [
@@ -148,8 +148,7 @@ const BOAT_PREPARE_SCRIPT = [
 ].join("\n")
 const BOAT_PREPARE_TIMEOUT_SECONDS = 600
 const BoatSandboxMap = Schema.fromJsonString(Schema.Record(Schema.String, Schema.String))
-const BOAT_SIZES: ReadonlyArray<BoatVmSize> = ["small", "default", "large", "xlarge"]
-const isBoatSize = (value: string | undefined): value is BoatVmSize => BOAT_SIZES.some((size) => size === value)
+const isBoatSize = Schema.is(BoatVmSize)
 const FLUSH_INTERVAL_MS = 16
 const FLUSH_SIZE = 256 * 1024
 export const HAND_BACK_GRACE = "2 seconds"

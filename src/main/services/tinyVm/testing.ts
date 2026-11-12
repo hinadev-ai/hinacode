@@ -5,6 +5,7 @@ import type { AddressInfo, Socket } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Context, Effect, Layer, Option, Schema } from "effect"
+import { SCREENSHOT_SCRIPT } from "./TinyVm.ts"
 
 export type RfbEvent =
   | { readonly type: "pointer"; readonly x: number; readonly y: number; readonly mask: number }
@@ -54,8 +55,6 @@ export const FAKE_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
   "base64",
 )
-
-export const SCREENSHOT_SCRIPT = "import -window root png:-"
 
 const decodeExecRequest = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ script: Schema.String, detach: Schema.optional(Schema.Boolean) })),

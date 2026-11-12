@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto"
 import { Context, Effect, Layer, Option, Redacted, Schema } from "effect"
 import { Secrets } from "../Secrets.ts"
-import { SandboxGoneError, type ExecInput, type ExecResult } from "../tinyVm/sbx.ts"
+import { BoatVmSize } from "../../../shared/domain.ts"
+import { describeCause, SandboxGoneError, type ExecInput, type ExecResult } from "../tinyVm/sbx.ts"
 
 export const BOAT_API_KEY_SECRET = "boat.apiKey"
 
@@ -43,7 +44,6 @@ const DIRECT_FILE_MAX_BYTES = 5 * 1024 * 1024
 const SIGNED_FETCH_RETRY_SECONDS = [1, 2, 4, 8] as const
 const OUTPUT_SIZES_MARKER = "hinacode-output-sizes"
 const OUTPUT_SIZES_LINE = new RegExp(`^${OUTPUT_SIZES_MARKER} (\\d+) (\\d+)$`, "m")
-const BOAT_SIZES = ["small", "default", "large", "xlarge"] as const
 
 const SandboxObject = Schema.Struct({
   id: Schema.String,
@@ -137,12 +137,6 @@ const ErrorEnvelope = Schema.Struct({
 })
 
 const decodeErrorEnvelope = Schema.decodeUnknownOption(Schema.fromJsonString(ErrorEnvelope))
-
-const describeCause = (cause: unknown) => {
-  if (!(cause instanceof Error)) return String(cause)
-  const inner = cause.cause instanceof Error ? `: ${cause.cause.message}` : ""
-  return `${cause.message}${inner}`
-}
 
 const fetchCauseCode = (cause: unknown): string | undefined => {
   let current: unknown = cause
@@ -491,7 +485,7 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
     readonly name?: string
     readonly labels?: Readonly<Record<string, string>>
   }) => {
-    const type = (BOAT_SIZES as ReadonlyArray<string>).includes(options.type) ? options.type : "default"
+    const type = Schema.is(BoatVmSize)(options.type) ? options.type : "default"
     return jsonRequest(CreateResponse, "POST /sandboxes", "POST", "/sandboxes", {
       body: {
         type,
