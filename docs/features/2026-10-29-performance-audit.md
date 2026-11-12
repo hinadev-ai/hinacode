@@ -1,6 +1,6 @@
 # Bundle size and performance audit
 
-Status: Building
+Status: Shipped
 Date: 2026-10-29
 
 The measurements below compare `ce4565c4` with `0708258a`, before integration with main at `6d3f309c`.

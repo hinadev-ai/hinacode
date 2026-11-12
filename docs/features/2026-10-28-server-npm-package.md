@@ -1,6 +1,6 @@
 # Server npm package
 
-Status: Building
+Status: Shipped
 Date: 2026-10-28
 
 ## Problem

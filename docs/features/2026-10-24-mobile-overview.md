@@ -1,6 +1,6 @@
 # Mobile overview: pull requests and Linear tickets
 
-Status: Building
+Status: Shipped
 Date: 2026-10-24
 
 ## Problem

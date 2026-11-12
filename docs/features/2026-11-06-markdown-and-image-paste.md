@@ -1,6 +1,6 @@
 # Markdown and image paste
 
-Status: Building
+Status: Shipped
 Date: 2026-11-06
 
 ## Problem

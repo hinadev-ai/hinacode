@@ -1,6 +1,6 @@
 # Pull request watch
 
-Status: Building
+Status: Shipped
 Date: 2026-10-14
 
 ## Problem

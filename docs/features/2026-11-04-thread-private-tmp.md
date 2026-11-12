@@ -1,5 +1,8 @@
 # A private tmp folder per thread
 
+Status: Shipped
+Date: 2026-11-04
+
 ## Problem
 
 Agents and the tools they run (test suites, copied databases, isolated app instances, TLC, Chromium profiles) write into the shared `/tmp`. On a Linux box where `/tmp` is a small tmpfs, a few busy threads fill it, and every other thread then fails with `disk I/O error` or `EDQUOT`. Archiving a thread removes its scratch folder but leaves everything it put in `/tmp`, and nothing records which `/tmp` entry came from which thread, so cleaning up by guessing would delete other threads' work.

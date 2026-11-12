@@ -1,6 +1,6 @@
 # Image editor for attachments
 
-Status: Building
+Status: Shipped
 Date: 2026-11-11
 
 ## Problem

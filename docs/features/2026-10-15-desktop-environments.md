@@ -1,6 +1,6 @@
 # Desktop environments: every machine in one window
 
-Status: Building
+Status: Shipped
 Date: 2026-10-15
 
 ## Problem

@@ -1,6 +1,6 @@
 # GitLab merge requests in the source control tab
 
-Status: Building
+Status: Shipped
 Date: 2026-11-09
 
 ## Problem

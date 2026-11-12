@@ -1,5 +1,8 @@
 # Agent tasks above the composer
 
+Status: Shipped
+Date: 2026-10-13
+
 ## Problem
 
 Agents keep a task list while they work (Claude `TaskCreate`/`TaskUpdate` and legacy `TodoWrite`,

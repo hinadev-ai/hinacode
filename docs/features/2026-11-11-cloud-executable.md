@@ -1,6 +1,6 @@
 # Cloud as an executable
 
-Status: Building
+Status: Shipped
 Date: 2026-11-11
 
 ## Problem

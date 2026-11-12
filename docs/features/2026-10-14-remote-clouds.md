@@ -1,6 +1,6 @@
 # Remote clouds: daemon, relay and multi-cloud clients
 
-Status: Building (slice 1)
+Status: Shipped
 Date: 2026-10-14
 
 ## Problem

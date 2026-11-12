@@ -1,5 +1,8 @@
 # HTML in Markdown
 
+Status: Shipped
+Date: 2026-10-31
+
 ## Problem
 
 Markdown reaches the renderer from sources with different conventions.

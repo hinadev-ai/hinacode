@@ -1,6 +1,6 @@
 # Native document editor on the phone
 
-Status: Draft
+Status: Shipped
 Date: 2026-11-10
 
 ## Problem

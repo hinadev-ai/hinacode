@@ -1,5 +1,8 @@
 # Bound Markdown updates during streaming
 
+Status: Shipped
+Date: 2026-10-12
+
 Issue #12 reports repeated full parsing of the growing trailing text part. The current component memo reuses unchanged parts, but each new trailing string requires another ReactMarkdown parse.
 
 The measured production Electron workload sends 20,000 characters in 160 deltas of 125 characters, 20 ms apart. A fixed publication cadence reduces the frequency of full parses. It reduces parser invocations without changing the parser, GFM configuration, reference resolution or component rendering.

@@ -1,6 +1,6 @@
 # Boat sandboxes for Tiny VM
 
-Status: Building (experiment)
+Status: Shipped
 Date: 2026-10-30
 
 ## Problem

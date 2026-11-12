@@ -1,6 +1,6 @@
 # Prefer the local network over the relay
 
-Status: Building
+Status: Shipped
 Date: 2026-10-24
 
 ## Problem

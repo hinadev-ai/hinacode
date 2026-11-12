@@ -1,6 +1,6 @@
 # Relay machines: sign in once, see every machine
 
-Status: Building
+Status: Shipped
 Date: 2026-10-24
 
 ## Problem

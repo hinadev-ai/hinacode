@@ -1,6 +1,6 @@
 # Artifacts
 
-Status: Building
+Status: Shipped
 Date: 2026-11-02
 
 ## Problem

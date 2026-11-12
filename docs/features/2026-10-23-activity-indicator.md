@@ -1,6 +1,6 @@
 # Activity indicator
 
-Status: Building
+Status: Shipped
 Date: 2026-10-23
 
 ## Problem
