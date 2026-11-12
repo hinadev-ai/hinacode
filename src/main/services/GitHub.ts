@@ -25,6 +25,7 @@ import type {
   CloneProgress,
   GitHubAuth,
   GitHubRateLimit,
+  Issue,
   Mergeable,
   MergeMethod,
   PullRequest,
@@ -44,6 +45,7 @@ import type {
 import { DiffSide, PullRequestComment, PullRequestLabel, PullRequestReviewer as Reviewer } from "../../shared/domain.ts"
 import {
   type GitHubRepository,
+  parseGitHubIssueUrl,
   parseGitHubPullRequestUrl,
   parseGitHubRepository,
   PULL_REQUEST_REFRESH,
@@ -97,6 +99,14 @@ export class PullRequestUrlInvalidError extends Schema.TaggedError<PullRequestUr
 ) {
   override get message(): string {
     return `${this.url} is not a GitHub pull request URL (https://github.com/<owner>/<repo>/pull/<number>) or a GitLab merge request URL (https://<host>/<project>/-/merge_requests/<iid>)`
+  }
+}
+
+export class IssueUrlInvalidError extends Schema.TaggedError<IssueUrlInvalidError>()("IssueUrlInvalidError", {
+  url: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.url} is not a GitHub issue URL (https://github.com/<owner>/<repo>/issues/<number>)`
   }
 }
 
@@ -361,6 +371,41 @@ const decodePullRequestsResponse = Schema.decodeUnknownEffect(
   ),
 )
 const decodeGraphQLPullRequest = Schema.decodeUnknownEffect(GraphQLPullRequest)
+
+const ISSUE_QUERY = `query Issue($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { issue(number: $number) { url number title state stateReason author { login } } }
+}`
+
+const GraphQLIssue = Schema.Struct({
+  url: Schema.String,
+  number: Schema.Number,
+  title: Schema.String,
+  state: Schema.Literals(["OPEN", "CLOSED"]),
+  stateReason: Schema.NullOr(Schema.String),
+  author: GraphQLAuthor,
+})
+
+const decodeIssueResponse = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      data: Schema.NullOr(
+        Schema.Struct({ repository: Schema.NullOr(Schema.Struct({ issue: Schema.NullOr(GraphQLIssue) })) }),
+      ),
+    }),
+  ),
+)
+
+const NOT_PLANNED_REASONS = new Set(["NOT_PLANNED", "DUPLICATE"])
+
+const toIssue = ({ url, number, title, state, stateReason, author }: typeof GraphQLIssue.Type): Issue => ({
+  url,
+  number,
+  title,
+  status: state === "OPEN" ? "open" : NOT_PLANNED_REASONS.has(stateReason ?? "") ? "notPlanned" : "completed",
+  author: author?.login ?? "ghost",
+})
+
+const ISSUE_TTL = "5 minutes"
 
 class PullRequestRead extends Request.Class<
   { readonly url: string },
@@ -729,6 +774,7 @@ export class GitHub extends Context.Service<
     readonly pullRequest: (
       url: string,
     ) => Effect.Effect<PullRequest, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
+    readonly issue: (url: string) => Effect.Effect<Issue, GitHubError | IssueUrlInvalidError | Schema.SchemaError>
     readonly pullRequestDetail: (
       url: string,
       options?: { readonly fresh?: boolean | undefined },
@@ -1096,6 +1142,32 @@ const make = Effect.gen(function* () {
       fresh ? Effect.andThen(Cache.get(freshReads, url), Cache.get(reads, url)) : Cache.get(reads, url),
     )
 
+  const issueReads = yield* Cache.makeWith(
+    (url: string) =>
+      Effect.gen(function* () {
+        const [owner = "", name = "", , number = ""] = new URL(url).pathname.slice(1).split("/")
+        const { body, errors } = yield* ghApi([
+          "graphql",
+          "-f",
+          `query=${ISSUE_QUERY}`,
+          "-f",
+          `owner=${owner}`,
+          "-f",
+          `name=${name}`,
+          "-F",
+          `number=${number}`,
+        ])
+        const { data } = yield* decodeIssueResponse(body)
+        const issue = data?.repository?.issue
+        if (!issue) {
+          const detail = errors.map((error) => error.message).join("\n")
+          return yield* new GitHubApiError({ detail: detail || "GitHub did not return this issue" })
+        }
+        return toIssue(issue)
+      }),
+    { capacity: 1000, timeToLive: (exit) => (Exit.isFailure(exit) ? 0 : ISSUE_TTL) },
+  )
+
   const openInRepository = (url: string) =>
     Effect.map(Cache.keys(reads), (keys) => {
       const repository = url.slice(0, url.lastIndexOf("/") + 1)
@@ -1133,6 +1205,10 @@ const make = Effect.gen(function* () {
     ),
     run: gh,
     pullRequest: (raw) => Effect.map(read(raw), toPullRequest),
+    issue: (raw) => {
+      const url = parseGitHubIssueUrl(raw.trim())
+      return url === undefined ? Effect.fail(new IssueUrlInvalidError({ url: raw })) : Cache.get(issueReads, url)
+    },
     pullRequestDetail: (raw, options) => Effect.map(read(raw, options?.fresh), toPullRequestDetail),
     pullRequestDiff: (raw) =>
       ghByUrl(raw, (url) => ["pr", "diff", url, "--color=never"]).pipe(

@@ -13,7 +13,7 @@ import {
   toPullRequestDetail,
 } from "./GitHub.ts"
 import type { PushEvent } from "../../shared/contract.ts"
-import { parseGitHubPullRequestUrl } from "../../shared/github.ts"
+import { parseGitHubIssueUrl, parseGitHubPullRequestUrl } from "../../shared/github.ts"
 import { Events } from "./Events.ts"
 
 const account = (overrides: Partial<{ state: string; active: boolean; login: string }>) => ({
@@ -216,6 +216,14 @@ describe("parseGitHubPullRequestUrl", () => {
     expect(parseGitHubPullRequestUrl("https://gitlab.com/hinadev-ai/hinacode/pull/12")).toBeUndefined()
     expect(parseGitHubPullRequestUrl("https://github.com/hinadev-ai/hinacode/pull/abc")).toBeUndefined()
     expect(parseGitHubPullRequestUrl("not a url")).toBeUndefined()
+  })
+})
+
+describe("parseGitHubIssueUrl", () => {
+  test("canonicalizes issue URLs and rejects pull requests", () => {
+    const canonical = "https://github.com/hinadev-ai/hinacode/issues/756"
+    expect(parseGitHubIssueUrl("https://www.github.com/hinadev-ai/hinacode/issues/756#issuecomment-1")).toBe(canonical)
+    expect(parseGitHubIssueUrl("https://github.com/hinadev-ai/hinacode/pull/756")).toBeUndefined()
   })
 })
 
@@ -977,6 +985,62 @@ const withMergeable = (reply: ReturnType<typeof graphqlPullRequest>, mergeable: 
 })
 
 const isPullRequestPush = (event: PushEvent) => event.type === "github.pullRequest"
+
+describe("issue reads", () => {
+  const ISSUE_URL = "https://github.com/o/r/issues/756"
+  const graphqlIssue = (state: string, stateReason: string | null) => ({
+    data: {
+      repository: {
+        issue: { url: ISSUE_URL, number: 756, title: "Old owner table", state, stateReason, author: null },
+      },
+    },
+  })
+
+  it.effect("reads an issue's title, author and whether it closed as completed or not planned", () => {
+    const replies = [
+      graphqlIssue("OPEN", null),
+      graphqlIssue("CLOSED", "COMPLETED"),
+      graphqlIssue("CLOSED", "DUPLICATE"),
+    ]
+    const gh = fakeGh(() => apiReply(replies.shift()))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      expect(yield* github.issue(ISSUE_URL)).toStrictEqual({
+        url: ISSUE_URL,
+        number: 756,
+        title: "Old owner table",
+        status: "open",
+        author: "ghost",
+      })
+      yield* TestClock.adjust("5 minutes")
+      expect((yield* github.issue(ISSUE_URL)).status).toBe("completed")
+      yield* TestClock.adjust("5 minutes")
+      expect((yield* github.issue(ISSUE_URL)).status).toBe("notPlanned")
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a number that is a pull request fails with GitHub's own error", () => {
+    const gh = fakeGh(() =>
+      apiReply({
+        data: { repository: { issue: null } },
+        errors: [{ type: "NOT_FOUND", path: ["repository", "issue"], message: "Could not resolve to an Issue" }],
+      }),
+    )
+    return Effect.gen(function* () {
+      const error = yield* Effect.flip((yield* GitHub).issue(ISSUE_URL))
+      expect(error.message).toContain("Could not resolve to an Issue")
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("rejects a URL that is not an issue before running gh", () => {
+    const gh = fakeGh(() => apiReply(graphqlIssue("OPEN", null)))
+    return Effect.gen(function* () {
+      const error = yield* Effect.flip((yield* GitHub).issue("https://github.com/o/r/pull/756"))
+      expect(error._tag).toBe("IssueUrlInvalidError")
+      expect(gh.runs).toHaveLength(0)
+    }).pipe(Effect.provide(gh.layer))
+  })
+})
 
 describe("rate limits", () => {
   it.effect("does not run gh again until a used-up rate limit resets", () => {

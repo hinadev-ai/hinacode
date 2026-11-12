@@ -76,6 +76,7 @@ import {
   ProjectAction,
   GitHubAuth,
   GitHubRateLimit,
+  Issue,
   PullRequest,
   PullRequestCandidates,
   PullRequestDetail,
@@ -542,6 +543,7 @@ export const RpcMethods = {
 
   "github.auth": rpc(Schema.Void, GitHubAuth),
   "github.pullRequest": rpc(Schema.Struct({ url: Schema.String }), PullRequest),
+  "github.issue": rpc(Schema.Struct({ url: Schema.String }), Issue),
   "github.pullRequestDetail": rpc(
     Schema.Struct({ url: Schema.String, fresh: Schema.optionalKey(Schema.Boolean) }),
     PullRequestDetail,
@@ -884,6 +886,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "pullRequests.unwatch": "mutation",
   "github.auth": "read",
   "github.pullRequest": "read",
+  "github.issue": "read",
   "github.pullRequestDetail": "read",
   "github.pullRequestFiles": "read",
   "github.merge": "mutation",
