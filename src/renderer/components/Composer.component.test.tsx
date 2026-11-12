@@ -6,15 +6,24 @@ import { type HinacodeBridge, RpcMethods } from "../../shared/contract.ts"
 import { defaultClientSettings, type Thread } from "../../shared/domain.ts"
 import "../index.css"
 import { useDrafts } from "../stores/drafts.ts"
+import { useUi } from "../stores/ui.ts"
 import { Composer } from "./Composer.tsx"
 
 const calls: Array<{ method: string; payload: unknown }> = []
+const missingFolder = "/tmp/repo/.hinacode-worktrees/repo/kk-fix-login-form-b21a5dbc"
 
 const bridge: HinacodeBridge = {
   rpc: async (method, payload) => {
     calls.push({ method, payload })
     if (method === "clientSettings.get")
       return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
+    if (method === "commands.list" && (payload as { threadId: string }).threadId === "folder-missing")
+      return {
+        error: {
+          tag: "FolderMissingError",
+          message: `The folder ${missingFolder} is missing. It was moved or deleted.`,
+        },
+      }
     if (method === "attachments.stage")
       return {
         result: { id: "a-1", name: "notes.txt", path: "/tmp/notes.txt", mime: "text/plain", kind: "file", bytes: 1 },
@@ -92,4 +101,16 @@ test("accepts files dropped on the toolbar, not only on the text line", async ()
     threadId: thread.id,
     source: { name: "notes.txt" },
   })
+})
+
+test("a missing folder shows one Folder missing link to Details instead of its path", async () => {
+  const thread = threadWith("folder-missing", "idle")
+  await render(<Composer thread={thread} />)
+
+  const notice = page.getByRole("button", { name: "Folder missing", exact: true })
+  await expect.element(notice).toBeVisible()
+  await expect.element(page.getByText(missingFolder, { exact: false })).not.toBeInTheDocument()
+
+  await notice.click()
+  expect(useUi.getState().sidePanelViews[thread.id]).toBe("details")
 })
