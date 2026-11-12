@@ -559,22 +559,22 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
       }),
     )
 
-  const execSync = (id: string, execInput: ExecInput) =>
-    Effect.gen(function* () {
-      const token = randomUUID()
-      const outPath = `/tmp/.hinacode-${token}.out`
-      const errPath = `/tmp/.hinacode-${token}.err`
-      const command = `DISPLAY=:0 bash -lc ${shellQuote(execInput.script)} >${shellQuote(outPath)} 2>${shellQuote(errPath)}`
+  const execSync = (id: string, execInput: ExecInput) => {
+    const token = randomUUID()
+    const outPath = `/tmp/.hinacode-${token}.out`
+    const errPath = `/tmp/.hinacode-${token}.err`
+    const command = `DISPLAY=:0 bash -lc ${shellQuote(execInput.script)} >${shellQuote(outPath)} 2>${shellQuote(errPath)}`
+    return Effect.gen(function* () {
       const result = yield* rawCommand(id, command, execInput.timeoutSeconds)
       const stdout = yield* readFileBytes(id, outPath)
       const stderr = yield* readFileBytes(id, errPath)
-      yield* cleanupGuestFiles(id, [outPath, errPath])
       return {
         stdout,
         stderr,
         exitCode: result.timedOut ? 124 : result.exitCode,
       } satisfies ExecResult
-    })
+    }).pipe(Effect.ensuring(cleanupGuestFiles(id, [outPath, errPath])))
+  }
 
   const exec = (
     id: string,
@@ -607,32 +607,24 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
         return yield* Effect.fail(new BoatError({ message: `boat: cannot download ${guestPath}` }))
       const tmpPath = `/tmp/.hinacode-${randomUUID()}.tar`
       const command = `tar -cf ${shellQuote(tmpPath)} --format=pax -C ${shellQuote(parent)} ${shellQuote(baseName)} && stat -c%s ${shellQuote(tmpPath)}`
-      const result = yield* rawCommand(id, command)
-      if (result.exitCode !== 0) {
-        yield* cleanupGuestFiles(id, [tmpPath])
-        return yield* Effect.fail(
-          new BoatError({
+      return yield* Effect.gen(function* () {
+        const result = yield* rawCommand(id, command)
+        if (result.exitCode !== 0)
+          return yield* new BoatError({
             message: `boat: failed to archive files in sandbox: ${result.stderr || result.stdout || `exit ${result.exitCode}`}`,
-          }),
-        )
-      }
-      const sizeText = result.stdout.trim().split(/\s+/).filter(Boolean).pop() ?? ""
-      const size = Number(sizeText)
-      if (!Number.isFinite(size)) {
-        yield* cleanupGuestFiles(id, [tmpPath])
-        return yield* Effect.fail(
-          new BoatError({ message: "boat sent an unexpected response from POST /sandboxes/{id}/commands" }),
-        )
-      }
-      if (maxBytes !== undefined && size > maxBytes) {
-        yield* cleanupGuestFiles(id, [tmpPath])
-        return yield* Effect.fail(
-          new BoatError({ message: `the archive is larger than ${Math.round(maxBytes / 1024 / 1024)} MB` }),
-        )
-      }
-      const bytes = yield* readFileBytes(id, tmpPath)
-      yield* cleanupGuestFiles(id, [tmpPath])
-      return bytes
+          })
+        const sizeText = result.stdout.trim().split(/\s+/).filter(Boolean).pop() ?? ""
+        const size = Number(sizeText)
+        if (!Number.isFinite(size))
+          return yield* new BoatError({
+            message: "boat sent an unexpected response from POST /sandboxes/{id}/commands",
+          })
+        if (maxBytes !== undefined && size > maxBytes)
+          return yield* new BoatError({
+            message: `the archive is larger than ${Math.round(maxBytes / 1024 / 1024)} MB`,
+          })
+        return yield* readFileBytes(id, tmpPath)
+      }).pipe(Effect.ensuring(cleanupGuestFiles(id, [tmpPath])))
     })
 
   const desktopUrl = (id: string) => {
