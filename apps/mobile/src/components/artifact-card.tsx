@@ -1,4 +1,4 @@
-import { isPublishDocumentTool, outputText, publishedArtifact } from "@shared/agent.ts"
+import { outputText, publishedArtifact, publishedKind } from "@shared/agent.ts"
 import { publishPreview } from "@shared/compactTranscript.ts"
 import type { MessagePart } from "@shared/domain.ts"
 import { type DocumentOutline, type OutlineBlock, outlineSections } from "@shared/documentOutline.ts"
@@ -30,18 +30,24 @@ const summaryOf = (outline: DocumentOutline | null) => {
   return more > 0 ? copy("mobile_artifact_card_more_sections", { sections: listed, count: String(more) }) : listed
 }
 
+const cardCopy = {
+  page: { kind: "mobile_artifact_card_page", untitled: "mobile_artifact_untitled_page" },
+  document: { kind: "mobile_artifact_card_document", untitled: "mobile_artifact_untitled_document" },
+  whiteboard: { kind: "mobile_artifact_card_whiteboard", untitled: "mobile_artifact_untitled_whiteboard" },
+} as const
+
 const openDocument = (threadId: string, artifactId: string, title: string) =>
   router.push({ pathname: "/thread/[id]/document", params: { id: threadId, artifactId, title } })
 
 export function ArtifactCard({ part, threadId }: { part: ToolCall; threadId: string }) {
   const theme = useTheme()
-  const isDocument = isPublishDocumentTool(part.name)
+  const artifactKind = publishedKind(part.name) ?? "page"
+  const isDocument = artifactKind === "document"
   const preview = publishPreview(part.input)
   const published = part.output === undefined ? null : publishedArtifact(outputText(part.output))
-  const untitled = copy(isDocument ? "mobile_artifact_untitled_document" : "mobile_artifact_untitled_page")
-  const title = preview.title ?? preview.outline?.title ?? untitled
+  const title = preview.title ?? preview.outline?.title ?? copy(cardCopy[artifactKind].untitled)
   const summary = summaryOf(preview.outline)
-  const kind = copy(isDocument ? "mobile_artifact_card_document" : "mobile_artifact_card_page")
+  const kind = copy(cardCopy[artifactKind].kind)
   const publishing = part.status === "running"
   const openable = isDocument && published !== null
 
