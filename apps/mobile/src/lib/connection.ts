@@ -104,7 +104,7 @@ export function restoreAnswers(serverId: string, answers: RememberedAnswers) {
       if (owners.owner(entity, id) === undefined) owners.teach(environmentId, entity, id)
     },
   }
-  for (const method of ["projects.list", "threads.list", "worktrees.list"] as const)
+  for (const method of relaunchLists)
     learnFromAnswer(unclaimed, serverId, method, undefined, answers[method]?.result)
 }
 
