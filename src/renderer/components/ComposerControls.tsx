@@ -10,6 +10,7 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { toast } from "sonner"
 import {
+  type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
   startTransition,
@@ -260,6 +261,8 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const tab = tabs.find((candidate) => candidate.value === tabValue) ?? tabs[0]!
   const models = usePickerModels(environment, tab.provider, tab.provider === thread.provider ? thread.model : null)
   const ownModels = usePickerModels(environment, thread.provider, null)
+  const [listRows, setListRows] = useState(0)
+  if (open && models.length > listRows) setListRows(models.length)
   const set = (patch: Omit<RpcRequest<"threads.update">, "id">) => void update({ ...patch, id: thread.id }, onError)
   const registry = use(RegistryContext)
   const tabProviders = [...new Set(tabs.map((candidate) => candidate.provider))]
@@ -273,6 +276,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     setFocus(picker)
     setTabValue(threadTab)
     setQuery("")
+    setListRows(0)
     setOpen(true)
   }
 
@@ -427,7 +431,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
         align="start"
         sideOffset={6}
         collisionAvoidance={{ side: "none", fallbackAxisSide: "none" }}
-        className="h-[min(520px,var(--available-height))] w-90 max-w-[calc(100vw-1rem)] gap-3 p-2"
+        className="max-h-[min(520px,var(--available-height))] w-90 max-w-[calc(100vw-1rem)] gap-3 p-2"
         initialFocus={() =>
           (focus === "effort"
             ? popupRef.current?.querySelector<HTMLElement>("[data-slot=slider-thumb] input")
@@ -502,14 +506,15 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           />
           <Combobox.List
             aria-label={m.thread_model_picker()}
-            className="flex min-h-0 flex-1 scroll-fade-y scroll-py-1 flex-col gap-0.5 overflow-y-auto"
+            style={{ "--rows": listRows } as CSSProperties}
+            className="flex min-h-0 basis-[calc(var(--rows)*2.125rem)] scroll-fade-y scroll-py-1 flex-col gap-0.5 overflow-y-auto"
           >
             {(model: ModelInfo) => (
               <Combobox.Item
                 key={model.id}
                 value={model}
                 aria-disabled={picking}
-                className="group flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none select-none aria-disabled:opacity-50 aria-selected:font-medium data-highlighted:bg-accent data-disabled:opacity-50"
+                className="group flex h-8 shrink-0 cursor-default items-center gap-2 rounded-md px-2 text-sm outline-none select-none aria-disabled:opacity-50 aria-selected:font-medium data-highlighted:bg-accent data-disabled:opacity-50"
               >
                 <span className="min-w-0 flex-1 truncate">{model.label}</span>
                 <CheckIcon aria-hidden className="invisible size-4 shrink-0 group-aria-selected:visible" />

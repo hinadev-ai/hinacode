@@ -27,6 +27,7 @@ const account = (id: string) => ({
 })
 
 let listedModels = [model("first"), model("second"), model("third")]
+let codexModels: ReadonlyArray<ModelInfo> | null = null
 
 const rpc = vi.fn(async (method: string, payload?: unknown) => {
   if (method === "agents.account") return { result: { type: "apiKey" } }
@@ -34,7 +35,10 @@ const rpc = vi.fn(async (method: string, payload?: unknown) => {
   if (method === "threads.switchAccount")
     return { result: { ...thread, accountId: (payload as { accountId: string }).accountId } }
   if (method === "threads.update") return { result: thread }
-  if (method === "models.list") return { result: listedModels }
+  if (method === "models.list")
+    return {
+      result: (payload as { provider: string }).provider === "codex" ? (codexModels ?? listedModels) : listedModels,
+    }
   return { error: { tag: "NotStubbed", message: method } }
 })
 vi.stubGlobal("hinacode", { rpc, onEvent: () => () => {}, pathForFile: () => "", liquidGlass: false })
@@ -140,6 +144,33 @@ test("fits a short model list and keeps its height while the search filters it",
   await userEvent.keyboard("thi")
   await expect.poll(() => document.querySelectorAll("[role=option]").length).toBe(1)
   expect(popover().offsetHeight).toBe(height)
+})
+
+test("grows for a longer agent's list and does not shrink back while open", async () => {
+  codexModels = Array.from({ length: 8 }, (_, index) => ({ ...model(`codex-${index}`), provider: "codex" }))
+  try {
+    await render(
+      <div className="pt-[80vh]">
+        <ThreadPicker thread={thread} canSwitchAgent onError={() => {}} />
+      </div>,
+    )
+    await page.getByRole("button", { name: /second/ }).click()
+    await expect.element(page.getByRole("option", { name: "third" })).toBeVisible()
+    const short = popover().offsetHeight
+    await page.getByRole("tab", { name: "Codex" }).click()
+    await expect.element(page.getByRole("option", { name: "codex-7" })).toBeVisible()
+    const tall = popover().offsetHeight
+    expect(tall).toBeGreaterThan(short)
+    await page.getByRole("tab", { name: /account name one/ }).click()
+    await expect.element(page.getByRole("option", { name: "third" })).toBeVisible()
+    expect(popover().offsetHeight).toBe(tall)
+    await userEvent.keyboard("{Escape}")
+    await page.getByRole("button", { name: /second/ }).click()
+    await expect.element(page.getByRole("option", { name: "third" })).toBeVisible()
+    expect(popover().offsetHeight).toBe(short)
+  } finally {
+    codexModels = null
+  }
 })
 
 test("focuses the search box on the current model and moves through the models with the arrow keys", async () => {
