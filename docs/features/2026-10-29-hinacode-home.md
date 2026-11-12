@@ -1,6 +1,6 @@
 # One home for HinaCode data
 
-Status: Building
+Status: Shipped
 Date: 2026-10-29
 
 ## Problem

@@ -1,5 +1,8 @@
 # Sign in on the web app
 
+Status: Shipped
+Date: 2026-11-07
+
 ## Problem
 
 The web app at `code.hinacode.app` signs in the way a phone does. It opens the relay's `/link` page in a new tab, the person signs in there, presses Approve, and the web app polls the relay every five seconds until it can claim a credential. The person is already in a browser, so the second tab, the Approve click and the polling buy nothing.

@@ -22,8 +22,6 @@ A delightful workstation for running Claude Code, Codex, Muse Code, opencode, an
 
 </div>
 
-<!-- Replace with a product screenshot or short demo GIF -->
-<!-- <p align="center"><img src="assets/screenshot.png" alt="HinaCode" width="90%" /></p> -->
 <p align="center">
   <img src="site/public/og.png" alt="HinaCode: run coding agents in parallel" width="90%" />
 </p>
@@ -40,7 +38,7 @@ Running one agent in a terminal works. Running five stops working: you lose trac
 HinaCode is a **delightful workstation for coding agents**. It handles the work around each agent: where it runs, when it needs you, what it changed, and how it ships. That way you can run agents in parallel and stay in control.
 
 - **Free and open source** under the MIT license. No markup, no proxy.
-- **Uses the agents you already pay for.** HinaCode runs the `claude`, `codex`, `muse`, and `opencode` CLIs you are signed in to. Usage goes to those plans or API keys, exactly as it does in a terminal.
+- **Uses the agents you already pay for.** HinaCode runs the `claude`, `codex`, `muse`, and `opencode` CLIs you are signed in to, and runs `claude` through your magpie gateway for magpie threads. Usage goes to those plans, API keys, or gateway, exactly as it does in a terminal.
 - **Local by default.** Your code only goes where those CLIs already send it. HinaCode keeps its data in a single SQLite file on your machine.
 - **Built with HinaCode, every day.** If the workflow hurts, we feel it first.
 
@@ -123,7 +121,7 @@ The daemon prints pairing URLs on startup. Add the machine in **Settings** on th
 ### Prerequisites
 
 - **Node** 24.22.1 or later (26.12.1 or later on Node 26) and **pnpm**
-- The agent CLIs you want to run (`claude`, `codex`, `muse`, and/or `opencode`), signed in and on your `PATH`
+- The agent CLIs you want to run (`claude`, `codex`, `muse`, and/or `opencode`), signed in and on your `PATH`. magpie threads need `claude` and a running magpie gateway.
 - **ripgrep** (`rg`) on your `PATH`, for global file search and its integration tests
 - Chrome or Chromium, only for Remote Browser tabs and their integration tests (`pnpm exec playwright install --with-deps chromium`)
 
@@ -168,7 +166,7 @@ Unpackaged runs (`pnpm dev`, e2e, and the command above) never touch the login K
 | `pnpm test`             | Both Vitest projects.                                                                                                                                          |
 | `pnpm test:e2e`         | Playwright drives the built Electron app through Gherkin scenarios in `e2e/features`. Needs a display: `DISPLAY` or an `Xvfb :99`, or run under `xvfb-run -a`. |
 
-Effect code is tested with `@effect/vitest`: `it.effect` runs under the test clock, `it.live` on the real one, and `layer(...)` shares a built layer across a block. Every e2e worker starts its own HinaCode on a throwaway `HINACODE_USER_DATA`, seeds preconditions through `window.hinacode.rpc` or straight into SQLite, and drives the behavior under test through the UI.
+Effect code is tested with `@effect/vitest`: `it.effect` runs under the test clock, `it.live` on the real one, and `layer(...)` shares a built layer across a block. Every e2e worker starts its own HinaCode on a throwaway `HINACODE_USER_DATA`, seeds preconditions through `window.hinacode.rpc` or straight into SQLite, and drives the behavior under test through the UI. It also sets `HINACODE_SKIP_AGENT_UPDATES=1`, so the app never asks npm for new agent CLI releases.
 
 Remote Browser tabs and their integration tests need Chrome or Chromium on the host. To install Playwright's Chromium and its Linux dependencies, run `pnpm exec playwright install --with-deps chromium`. A cloud installed from npm can use `npx playwright install --with-deps chromium`. Set `HINACODE_BROWSER_EXECUTABLE_PATH` when the browser lives elsewhere. The browser runs on the thread's machine, so its `localhost` reaches that machine's services.
 
@@ -224,7 +222,7 @@ Contributions are welcome. Read [AGENTS.md](AGENTS.md) first, then:
 Nothing. Every feature is free, and the code is open source under the MIT license.
 
 **Which agents does it run?**
-Claude Code, Codex, Muse Code, and opencode. Install each CLI you want to use and sign in to it.
+Claude Code, Codex, Muse Code, opencode, and magpie. Install each CLI you want to use and sign in to it. magpie runs Claude Code through its gateway.
 
 **Does my code leave my machine?**
 Only where the agent CLIs already send it. HinaCode runs locally and keeps its data in a SQLite file on your machine.

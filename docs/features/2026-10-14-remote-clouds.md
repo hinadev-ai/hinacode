@@ -1,6 +1,6 @@
 # Remote clouds: daemon, relay and multi-cloud clients
 
-Status: Building (slice 1)
+Status: Shipped
 Date: 2026-10-14
 
 ## Problem
@@ -50,7 +50,7 @@ The cloud is the source of truth and the server is a pipe. See [ADR 0016](../adr
 
 ### Slice 1: `hinacode serve`, a headless cloud in the existing binary (replaced by slice 2)
 
-- `src/main/serve.ts` reads the mode from argv (`serve`, `--port`, `--host`, `--rotate-token`) or the environment (`HINACODE_SERVE`, `HINACODE_SERVE_PORT`, `HINACODE_SERVE_HOST`, `HINACODE_SERVE_ROTATE_TOKEN`). Anything invalid fails at boot with the reason, the same way a bad `HINACODE_MOCK_CLAUDE` does.
+- `src/main/serve.ts` reads the mode from argv (`serve`, `--port`, `--host`, `--rotate-token`) or the environment (`HINACODE_SERVE_PORT`, `HINACODE_SERVE_HOST`, `HINACODE_SERVE_ROTATE_TOKEN`). Anything invalid fails at boot with the reason, the same way a bad `HINACODE_MOCK_CLAUDE` does.
 - In serve mode `src/main/index.ts` builds the same runtime and then: no window, no dock icon, no protocol handlers for the renderer, no auto-updater (a stub `Updates` layer reports `unsupported`), and `SIGINT` or `SIGTERM` quits through the existing dispose path. The single-instance lock already prevents a desktop and a cloud from sharing one `HINACODE_USER_DATA`.
 - Serve mode forces its own listener on by writing `settings.remote` (enabled, with the flag host and port when given) while the app layer is built, below the remote listener. The listener's first read of its settings already has the cloud's address, so it binds once and the existing listener and its auth are reused rather than forked. Once it is bound, `RemoteAccess.pairing` mints or reads the token and the daemon prints one `hinacode://connect` URL with every reachable host for phones, and one per host for desktops. A bind failure exits 1 with the reason. `--rotate-token` rotates before the listener starts, so every client paired so far must pair again.
 - Everything else is inherited: threads, approvals, questions, steering, terminals, PRs and merge, automations, the PR watcher and the MCP thread tools, because they already run in the layer graph with no window. `desktopOnlyMethods` keeps refusing window-only calls.

@@ -1,6 +1,6 @@
 # Plan limits
 
-Status: Building
+Status: Shipped
 Date: 2026-10-12
 
 ## Problem

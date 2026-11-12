@@ -1,6 +1,6 @@
 # Thread setup in the composer
 
-Status: Building
+Status: Shipped
 Date: 2026-10-12
 
 ## Problem

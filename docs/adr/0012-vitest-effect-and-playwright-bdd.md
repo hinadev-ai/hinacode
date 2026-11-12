@@ -1,6 +1,6 @@
 # 0012. Vitest with @effect/vitest, plus Playwright BDD against the real app
 
-Status: Proposed (branch `feat/testing`)
+Status: Accepted
 Date: 2026-10-12
 
 ## Context

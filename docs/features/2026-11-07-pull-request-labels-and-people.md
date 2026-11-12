@@ -1,6 +1,6 @@
 # Pull request labels, assignees and reviewers
 
-Status: Building
+Status: Shipped
 Date: 2026-11-07
 
 ## Problem

@@ -54,7 +54,7 @@ flowchart LR
 ```
 
 - **The renderer is a view.** It never touches the file system, git, or the agents. Everything goes through `rpc`.
-- **Agents call back over MCP.** Both agents get the built-in MCP server, and the bearer credential alone decides which thread a call acts as.
+- **Agents call back over MCP.** Every agent gets the built-in MCP server, and the bearer credential alone decides which thread a call acts as.
 - **Outside apps get a second MCP server.** A chat app or agent harness the developer connected reaches the app server through the relay hostname, with an OAuth token and a tool list of its own. See [App MCP server](#app-mcp-server).
 - **Git and GitHub go through the CLIs** (`git`, `gh`), so hinacode uses the user's existing auth and config.
 - **Linear goes through one service.** `services/Linear.ts` reads the machine's `linear.apiKey` from `Secrets` and loads the SDK on first use. The MCP tools and the `linear.issues` rpc both use it, and the key never leaves the main process. `HINACODE_MOCK_LINEAR=1` answers demo tickets.
@@ -114,7 +114,7 @@ flowchart LR
 - A cloud reaches the user's other machines through a connected desktop. A cloud lists `asks` in `ready`, the desktop answers with a `hub` frame, and from then on the cloud can send it `ask` frames for the calls the MCP thread tools make (`AskableMethod` in `src/shared/remote.ts`). The desktop runs each one through `route` (`src/main/environments/route.ts`) like a window call and replies with `answer`. `Peers` (`src/main/remote/peers.ts`) gives the MCP thread tools one `ask` for both directions. See `features/2026-10-26-cross-machine-threads.md`.
 - Every data directory has an id (setting row `environment.id`, read by `RemoteAccess`), sent in the `ready` frame. The desktop keys its `environment` rows by it, so pairing the same cloud again updates one row. Tokens are the secrets `environment.<id>.token`.
 
-Any machine with remote control on can also run a relay (`src/main/remote/relay.ts`): a Cloudflare named tunnel that the relay service creates in HinaCode's account, served by a `cloudflared` child that points at the remote listener. Its hostname travels as `relay` in the pairing URL and the `ready` frame, so clients paired before it existed learn it. Both clients dial with `dialPlan`: every direct address at once and the relay half a second later, and the first socket to open wins. Over the relay they check the direct addresses every minute and move over when one answers. The protocol over the tunnel is the same one. See `features/2026-10-24-relay.md` and [ADR 0020](adr/0020-cloudflare-tunnel-as-the-relay.md).
+Any machine with remote control on can also run a relay (`src/main/remote/relay.ts`): a Cloudflare named tunnel that the relay service creates in HinaCode's account, served by a `cloudflared` child that points at the remote listener. Its hostname travels as `relay` in the pairing URL and the `ready` frame, so clients paired before it existed learn it. Both clients dial with `dialPlan`. Direct addresses go at once, a Tailscale address waits 150 ms when the machine also has a LAN one, and the relay waits half a second. The first socket to open wins. Over the relay they check the direct addresses every minute and move over when one answers. The protocol over the tunnel is the same one. See `features/2026-10-24-relay.md` and [ADR 0020](adr/0020-cloudflare-tunnel-as-the-relay.md).
 
 The remote listener answers 404 to plain HTTP, with one exception: a request that is not an upgrade and whose `Host` is the relay hostname is piped to the app server's loopback port (`forwardToApps` in `src/main/remote/server.ts`). The proxy passes the method, path, headers and both bodies as they are and adds no forwarded headers. See [App MCP server](#app-mcp-server).
 
@@ -130,27 +130,18 @@ The main process is one Effect layer graph, built by `src/main/app.ts`. The desk
 
 Both receive a data directory as `userData`: `HINACODE_USER_DATA`, else `~/.hinacode` (`~/.hinacode-dev` unpackaged) for the desktop and `~/.hinacode-cloud` for the daemon. The database, `chats/`, `attachments/`, `accounts/`, `tiny-vm/` and `cloudflared/` sit at its top. The desktop points Electron's `userData` at `<dataDir>/chromium`, so Chromium's profile and its `SingletonLock` stay in there. On the first launch without the override, `dataDir.ts` moves the old `<appData>/kkcode` (or `kkcode-dev`) profile into this layout and rewrites the paths the database stored under it.
 
+The diagram names the layers that `makeAppLayer` in `src/main/app.ts` builds. Read that function for the services in each one.
+
 ```mermaid
 flowchart BT
-  node["NodeServices"]
-  db["Db.layer<br/>SQLite + migrations"]
-  infra["ClaudeProvider, CodexProvider,<br/>MuseProvider, OpencodeProvider,<br/>Git, Events"]
-  domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
-  features["McpCredentials, Ports, RemoteAccess,<br/>AppConnections"]
-  runner["AgentRunner"]
-  autos["Routines, Scheduler, Settle, ArtifactFeedback,<br/>PullRequestWatcher, PullRequestGuides,<br/>Updates"]
-  mcp["Thread MCP server"]
-  apps["App MCP server"]
-  remote["Remote listener"]
+  base["Db, Events, Git, GitHub, SourceControl,<br/>agent providers"]
+  domain["domain"]
+  features["features"]
+  agents["agents: AgentRunner"]
+  services["services: automations, Updates,<br/>thread MCP server, app MCP server"]
+  remote["RemoteServer, CliSocket"]
 
-  node --> db --> domain
-  infra --> domain
-  domain --> features --> runner
-  domain --> runner
-  runner --> autos
-  runner --> mcp
-  runner --> apps
-  autos & mcp & apps --> remote
+  base --> domain --> features --> agents --> services --> remote
 ```
 
 On the desktop, `Updates` only runs in a packaged app. It checks this repository's GitHub releases at launch and every 4 hours, downloads in the background, and pushes `update.changed` when readiness changes. An updater error clears readiness. Squirrel.Mac validates the bundle before installation. See [ADR 0018](adr/0018-releases-next-to-the-source.md). On a cloud it checks npm, installs into the cloud's own global prefix, and restarts in place with `process.execve` (`features/2026-10-20-update-clouds.md`).
@@ -267,7 +258,7 @@ sequenceDiagram
     end
     AR-->>R: push thread.event (seq)
     AR->>AR: foldTranscript in memory
-    AR->>DB: persist the changed parts of dirty messages every 500 ms, or 10x the last persist time if longer
+    AR->>DB: persist the changed parts of dirty messages after 500 ms, or after the last write's bytes at 256 KiB per second if longer
   end
   opt approval
     P-->>AR: approval_requested
@@ -320,7 +311,7 @@ A first send waiting for setup keeps its private send claim and cancellation sig
 
 ## Renderer sync: snapshot plus pushes
 
-The database lags a running turn by up to 500 ms, or ten times the last persist time once a write takes longer than 50 ms, so `threads.transcript` overlays the in-memory turn on top of persisted rows and returns the thread's current `seq`. The runner numbers transcript pushes per thread, so each thread's pushes count 1, 2, 3 with no holes. The snapshot says so with `sequenceScope: "thread"`.
+The database lags a running turn by 500 ms, or by the time the last write's bytes take at 256 KiB per second when that is longer (`PERSIST_BYTES_PER_SECOND` in `AgentRunner.ts`). So `threads.transcript` overlays the in-memory turn on top of persisted rows and returns the thread's current `seq`. The runner numbers transcript pushes per thread, so each thread's pushes count 1, 2, 3 with no holes. The snapshot says so with `sequenceScope: "thread"`.
 
 ```mermaid
 sequenceDiagram
@@ -428,6 +419,8 @@ erDiagram
   routine ||--o{ routine_run : records
   thread |o--o{ routine_run : "started by"
   agent_account |o--o{ thread : "bills"
+  thread ||--o{ thread_device : "drives"
+  message ||--o| message_cjk_stale : "awaits CJK reindex"
 
   app_connection {
     text id PK "thread.created_by = app:id"
@@ -454,7 +447,7 @@ erDiagram
   thread {
     text id PK
     text worktree_id FK "SET NULL"
-    text provider "claude|codex|muse"
+    text provider "claude|codex|muse|opencode|magpie"
     text account_id FK "null = CLI login, delete refused"
     text model
     text provider_session_id
@@ -473,6 +466,14 @@ erDiagram
     text parts "JSON, '[]' while open"
     text completed_at
     text usage "JSON"
+  }
+  message_cjk_stale {
+    int rowid PK "message rowid, its CJK grams are rebuilt before the next CJK search"
+  }
+  thread_device {
+    text thread_id PK "no FK, Devices releases rows of archived or deleted threads"
+    text device_id PK
+    int owned "1 = detaching deletes the device"
   }
   message_part {
     text message_id FK "CASCADE"
@@ -647,7 +648,7 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-  agent["Agent (Claude or Codex)"] -- "POST /mcp<br/>Authorization: Bearer threadId.secret" --> auth{"timingSafeEqual<br/>per thread"}
+  agent["Agent (any provider)"] -- "POST /mcp<br/>Authorization: Bearer threadId.secret" --> auth{"timingSafeEqual<br/>per thread"}
   auth -- "valid → threadId" --> tools
   auth -- invalid --> deny["401"]
   subgraph tools["Tools, scoped to threadId"]
@@ -657,7 +658,7 @@ flowchart LR
     secret["request_secret"]
     create["create_thread, list_machines"]
     run["run_agent, wait_agent"]
-    control["list_threads, read_thread,<br/>send_to_thread, stop_thread"]
+    control["list_threads, search_threads, read_thread,<br/>send_to_thread, stop_thread"]
     terms["list_terminals, read_terminal"]
   end
   review --> ws["makeActiveWorkspace → git diff"]
@@ -681,6 +682,7 @@ How each agent gets its credential ([ADR 0007](adr/0007-per-thread-mcp-credentia
 - **Codex** receives it as a header in its thread config over stdin. Codex asks before each MCP call with `mcpServer/elicitation/request`, which hinacode shows as an approval.
 - **Muse Code** receives it as a header in the session's `config.mcpServers` over stdin, which needs the `sessionMcp` capability. Muse treats the server as required and fails the turn if it cannot reach it.
 - **opencode** receives it as a header of the `http` entry in ACP `session/new` and `session/load`.
+- **magpie** runs the Claude harness, so it connects through the same forwarder.
 
 ## App MCP server
 

@@ -1,6 +1,6 @@
 # Scheduled messages
 
-Status: Building
+Status: Shipped
 Date: 2026-11-03
 
 ## Problem

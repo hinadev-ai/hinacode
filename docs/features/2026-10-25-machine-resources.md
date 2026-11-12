@@ -1,6 +1,6 @@
 # Machine resources
 
-Status: Building
+Status: Shipped
 Date: 2026-10-25
 
 ## Problem

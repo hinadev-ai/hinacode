@@ -1,6 +1,6 @@
 # Native document editor on the phone
 
-Status: Draft
+Status: Shipped
 Date: 2026-11-10
 
 ## Problem
@@ -22,7 +22,7 @@ Tiptap has no native runtime, and a WebView editor costs 0.9 to 9 s before it is
 
 ### One model, the desktop's own
 
-The phone runs the desktop's model. `prosemirror-model`, `-transform`, `-state`, `-history`, `-commands`, `-schema-list` and `-tables` run on Hermes without a DOM, and so do `@tiptap/core`'s `getSchema` and `@tiptap/markdown`'s `MarkdownManager`. Only `prosemirror-view` needs a DOM, and the phone never creates one. The probe in `.context/probe/hermes-probe.ts` ran on the release Hermes VM (`hermes-ios-260318099.0.4`, macOS framework, Mac CPU).
+The phone runs the desktop's model. `prosemirror-model`, `-transform`, `-state`, `-history`, `-commands`, `-schema-list` and `-tables` run on Hermes without a DOM, and so do `@tiptap/core`'s `getSchema` and `@tiptap/markdown`'s `MarkdownManager`. Only `prosemirror-view` needs a DOM, and the phone never creates one. A throwaway probe ran on the release Hermes VM (`hermes-ios-260318099.0.4`, macOS framework, Mac CPU).
 
 | Measurement on Hermes                           | 2 KB    | 30 KB       | 300 KB         |
 | ----------------------------------------------- | ------- | ----------- | -------------- |
@@ -35,7 +35,7 @@ The phone runs the desktop's model. `prosemirror-model`, `-transform`, `-state`,
 
 `undo`, `redo`, `splitListItem` and `addRowAfter` ran and gave valid documents. So the phone shares the schema, the commands and the Markdown serializer with the desktop, and behavior cannot drift between two implementations. The hand written Markdown parser from the first plan is not needed and will not be built. `prosemirror-kotlin` and a hand written native model stay unbuilt unless the typing prototype (below) shows the JS model is too slow.
 
-The schema moves to shared code. `src/shared/documentSchema.ts` holds the extension list both apps use: StarterKit with the same options, the callout and the callout-aware blockquote, the code block, task list and item, tables and image, each with its Markdown parse and render rules and without node views. The desktop adds its node views with `.extend({ addNodeView })`. Nothing else in the tree is new: the render tree, the edit model and the saved file all come from one ProseMirror `Node`.
+The schema moves to shared code. `src/shared/document/schema.ts` holds the extension list both apps use: StarterKit with the same options, the callout and the callout-aware blockquote, the code block, task list and item, tables and image, each with its Markdown parse and render rules and without node views. The desktop adds its node views with `.extend({ addNodeView })`. Nothing else in the tree is new: the render tree, the edit model and the saved file all come from one ProseMirror `Node`.
 
 ProseMirror already holds every rule the editor needs: flat positions in UTF-16 units, merged text runs with no empty text, mark ranks and `excludes`, content expressions checked by `check()`, `storedMarks`, text, node and all selections, and steps that map and invert. The phone does not re-implement any of them.
 

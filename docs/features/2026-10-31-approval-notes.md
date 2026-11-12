@@ -1,6 +1,6 @@
 # Approval notes
 
-Status: Building
+Status: Shipped
 Date: 2026-10-31
 
 ## Problem
@@ -49,5 +49,4 @@ No trust boundary changes. The note is a string decoded by the rpc schema and se
 - `src/main/agents/claude/approvals.test.ts`: a deny note becomes the deny message; an allow note is reported as not delivered.
 - `src/main/agents/muse/approvals.test.ts`: feedback goes out only on choices with `acceptsFeedback`.
 - `src/main/services/AgentRunner.integration.test.ts`: a steer during an approval is queued, then steered once the approval resolves; an undelivered note steers ahead of it.
-- `src/renderer/components/ApprovalCard.test.ts`: the card renders the note field.
 - In the real app with `verify-hinacode`: start a Claude thread in ask mode, have it run a command, deny with a reason, and screenshot the agent acting on the reason.

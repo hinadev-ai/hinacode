@@ -1,6 +1,6 @@
 # Foldable simulators
 
-Status: Building
+Status: Shipped
 Date: 2026-10-29
 
 ## Problem

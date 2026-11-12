@@ -1,6 +1,6 @@
 # New threads are drafts until their first message
 
-Status: Building
+Status: Shipped
 Date: 2026-11-01
 
 ## Problem
