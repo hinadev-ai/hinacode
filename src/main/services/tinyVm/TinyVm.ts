@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { createServer, type Server } from "node:http"
 import type { Socket } from "node:net"
 import { join } from "node:path"
-import { Context, Deferred, Effect, Exit, Layer, Option, Schema, Semaphore, Stream } from "effect"
+import { Context, Deferred, type Duration, Effect, Exit, Layer, Option, Schema, Semaphore, Stream } from "effect"
 import type { PushEvent } from "../../../shared/contract.ts"
 import {
   type BoatVmSize,
@@ -94,6 +94,9 @@ const PROFILE_GUEST_ARCHIVE = "hinacode-chromium-profile.tgz"
 const PROFILE_STORE = "chromium-profile.tgz"
 const PROFILE_META = "chromium-profile.json"
 const PROFILE_SCRIPT_TIMEOUT_SECONDS = 120
+const PROFILE_SAVE_ON_STOP: Duration.Input = "60 seconds"
+const PROFILE_SAVE_ON_QUIT: Duration.Input = "2 seconds"
+const QUIT_TIMEOUT: Duration.Input = "3 seconds"
 const SETUP_SCRIPT_TIMEOUT_SECONDS = 600
 const SETUP_OUTPUT_TAIL = 2000
 const PROFILE_EXCLUDES = [
@@ -579,7 +582,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         )
       })
 
-    const stop = (threadId: string) =>
+    const stopWith = (threadId: string, profileSaveBudget: Duration.Input) =>
       Effect.gen(function* () {
         const vm = current(threadId)
         creations.delete(threadId)
@@ -589,7 +592,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         if (vm.status === "running" && vm.provider === "sbx" && vm.profile === "owner" && profileEnabled) {
           yield* sbxClientEffect.pipe(
             Effect.flatMap((sbx) => saveFromSandbox(sbx, vm.sandboxId, vm.template, true)),
-            Effect.timeoutOrElse({ duration: "60 seconds", orElse: () => Effect.void }),
+            Effect.timeoutOrElse({ duration: profileSaveBudget, orElse: () => Effect.void }),
             Effect.catch((error) => Effect.logWarning("tiny vm: profile save on stop failed", error.message)),
           )
         }
@@ -618,9 +621,16 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         )
       })
 
-    const stopAll = Effect.suspend(() =>
-      Effect.forEach(new Set([...vms.keys(), ...creations.keys()]), stop, { concurrency: "unbounded", discard: true }),
-    )
+    const stop = (threadId: string) => stopWith(threadId, PROFILE_SAVE_ON_STOP)
+
+    const stopAll = (profileSaveBudget: Duration.Input) =>
+      Effect.suspend(() =>
+        Effect.forEach(
+          new Set([...vms.keys(), ...creations.keys()]),
+          (threadId) => stopWith(threadId, profileSaveBudget),
+          { concurrency: "unbounded", discard: true },
+        ),
+      )
 
     const refreshWaiting = (threadId: string) =>
       Effect.suspend(() => {
@@ -1061,7 +1071,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
           configuredEnv = value.experimental.tinyVmEnv
           setupScript = value.experimental.tinyVmSetupScript
           profileEnabled = value.experimental.tinyVmProfile
-          return (was && !enabled) || wasProvider !== provider ? stopAll : Effect.void
+          return (was && !enabled) || wasProvider !== provider ? stopAll(PROFILE_SAVE_ON_STOP) : Effect.void
         }),
       ),
       Effect.forkIn(scope),
@@ -1087,8 +1097,8 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
       Effect.gen(function* () {
         screens.forEach((screen) => screen.socket.destroy())
         desktopServer?.close()
-        yield* stopAll
-      }).pipe(Effect.ignore, Effect.timeoutOrElse({ duration: "3 seconds", orElse: () => Effect.void })),
+        yield* stopAll(PROFILE_SAVE_ON_QUIT)
+      }).pipe(Effect.ignore, Effect.timeoutOrElse({ duration: QUIT_TIMEOUT, orElse: () => Effect.void })),
     )
 
     return TinyVm.of({
