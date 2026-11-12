@@ -14,7 +14,7 @@ Scrolling up cancels the list's initial bottom target as well as its automatic f
 
 ## Verification
 
-Compare candidate cadences against the same visible Electron IPC workload. Measure frame spacing, parser invocations, total parsed characters and parser time. Check references across blocks, open fences and tables, exact final DOM, tool boundaries, approval and terminal events, scrolling, typing, and unload/reload behavior. Keep raw measurements and traces under `.context/perf/`, and check logs and summaries under `.context/issue-12/`.
+Compare candidate cadences against the same visible Electron IPC workload. Measure frame spacing, parser invocations, total parsed characters and parser time. Check references across blocks, open fences and tables, exact final DOM, tool boundaries, approval and terminal events, scrolling, typing, and unload/reload behavior. Keep raw measurements and traces under `.context/perf/`.
 
 The 50 ms candidate reduced parsing but increased gaps above 33 ms in its comparison. The 100 ms candidate reduced both. Keep the existing whole-document renderer rather than add completed-block caching. A later reference definition can change an earlier block, and a single open fence or table can keep growing. This fix reduces parse frequency; it does not make an individual large parse cheaper.
 

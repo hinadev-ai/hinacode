@@ -34,7 +34,7 @@ On Linux, mobile store and protocol probes must be labeled as synthetic. They ca
 
 ## Baseline and accepted bundle experiments
 
-Base is `0708258a`. The saved production artifact is `.context/perf/base-out`; named profiling builds use `base-names-out`.
+Base is `0708258a`.
 The production baseline has 2,909,276 bytes of startup JavaScript and 393,952 bytes of CSS.
 All renderer JavaScript totals 14,757,747 bytes. Baseline gzip startup JavaScript is 937,007 bytes using Node's default gzip settings.
 
@@ -152,8 +152,7 @@ Main includes Release mobile background-CPU and traffic captures in the linked b
 capture native mobile startup, RSS or React commit times on its Linux host.
 The [Release phone harness](../../scripts/perf/README.md#profile-the-phone-app) requires a Mac, Xcode and a simulator.
 It should next capture long-thread parse/layout, retained memory after 25 visits, and reconnecting one of two paired
-servers. The local detailed audits and probes are in `.context/perf/mobile-audit.md` and
-`.context/perf/remote-audit.md`.
+servers.
 
 ## Verification record
 
@@ -176,7 +175,6 @@ confirmed each font family loaded after its locale was selected, and returned to
 The first terminal loaded its engine and executed `printf audit-terminal-ready` through the real PTY.
 The browser and enabled empty VM view loaded. Highlighted code in the 200-turn thread retained syntax colors.
 The running/floating VM screen was not exercised because this audit did not create a sandbox.
-Screenshots are in `.context/shots/performance-*.png`; logs are in `.context/` and `.context/e2e-notification-wm/`.
 
 An independent source review found and corrected a packaged-profiler artifact hash error. No open correctness
 findings remain. The review also removed eight lines that narrated lazy imports and component structure.

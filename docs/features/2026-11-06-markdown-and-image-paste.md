@@ -41,5 +41,5 @@ A pasted image is stored with its document, not inlined:
 ## Verification
 
 - `packages/artifacts/src/store.test.ts` covers storing, serving and rejecting images.
-- `src/renderer/lib/clipboardMarkdown.test.ts` covers the HTML rules.
+- `src/renderer/components/ComposerInput.component.test.tsx` pastes a formatted web page as markdown.
 - In the real app, paste formatted HTML into the composer, and paste markdown and a PNG into a document. The image survives a reload and appears in the PDF export.
