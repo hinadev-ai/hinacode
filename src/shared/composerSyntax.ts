@@ -57,11 +57,13 @@ export const isUnorderedBullet = (marker: string) => /^[-*+]$/.test(marker)
 
 export const isCommandName = (name: string) => WHOLE_NAME.test(name)
 
-export const commandNames = (text: string, trigger: AgentCommand["trigger"]) =>
+const noTokens: ReadonlySet<string> = new Set()
+
+export const highlightedCommands = (text: string, commands: ReadonlySet<string>) =>
   new Set(
-    Array.from(text.matchAll(INLINE), ([token]) => token)
-      .filter((token) => token.startsWith(trigger))
-      .map((token) => token.slice(trigger.length)),
+    highlight(text, { commands, files: noTokens, threads: noTokens, terminals: noTokens, artifacts: noTokens })
+      .filter((segment) => segment.kind === "command")
+      .map(segmentText),
   )
 
 const TRAILING_PUNCTUATION = /[,.;:!?)\]]+$/
