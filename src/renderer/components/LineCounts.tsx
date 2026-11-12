@@ -9,7 +9,7 @@ export function LineCounts({ added, removed }: { added: number; removed: number 
       <span aria-hidden className="text-destructive">
         −{removed}
       </span>
-      <span className="sr-only">{m.diff_line_counts({ added, removed })}</span>
+      <span className="sr-only select-none">{m.diff_line_counts({ added, removed })}</span>
     </span>
   )
 }
