@@ -7,6 +7,7 @@ import { vi } from "vitest"
 import { Effect, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
+import { signedOut, signedOutMessage } from "./fixtures/transcript.ts"
 import { usageLimitResult } from "./fixtures/usageLimit.ts"
 import type { GatewayModel, GatewayTarget } from "../magpie/gateway.ts"
 import { MagpieProvider } from "../magpie/index.ts"
@@ -1337,6 +1338,18 @@ describe("magpie", () => {
         expect(yield* provider.account(null)).toStrictEqual({ type: "external", service: "magpie" })
         gateway.origin = null
         expect(yield* provider.account(null)).toStrictEqual({ type: "signedOut" })
+      }),
+    ),
+  )
+
+  it.effect("leaves Claude's login command out of a signed-out turn on a Claude model", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        const signedOutMessages = signedOut().flatMap((step) => (step.type === "sdk" ? [step.message] : []))
+        sdk.respond = (cli) => cli.push(init("session-1"), ...signedOutMessages)
+        const provider = yield* MagpieProvider
+        const events = yield* provider.runTurn(turnInput({ model: "claude-opus-5-5" })).pipe(Stream.runCollect)
+        expect([...events].at(-1)).toStrictEqual({ type: "turn_failed", message: signedOutMessage, signedOut: true })
       }),
     ),
   )
