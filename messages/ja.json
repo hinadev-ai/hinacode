@@ -1827,7 +1827,6 @@
   "mobile_pr_merge_title": "{number} をマージしますか？（{method}）",
   "mobile_pr_merge_body": "{host} 上で {head} を {base} にマージします。",
   "mobile_pr_merge_blocked_draft": "ドラフトはマージできません。先に {host} でレビュー可能にしてください。",
-  "mobile_pr_cancel": "キャンセル",
   "mobile_pr_close": "プルリクエストをクローズ",
   "mobile_pr_close_title": "{number} をクローズしますか？",
   "mobile_pr_close_body": "マージせずに {host} 上でクローズします。{host} から再オープンできます。",

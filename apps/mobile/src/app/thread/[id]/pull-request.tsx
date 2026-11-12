@@ -13,7 +13,7 @@ import { providerInfo } from "@shared/providers.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "@shared/pullRequestPrompts.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { type ReactNode, useState } from "react"
-import { Alert, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
@@ -25,6 +25,7 @@ import { Button, IconButton, Notice, Pill, Toggle, UnderlineTabs } from "@/compo
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call } from "@/lib/connection"
+import { confirmAction } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { mergeChoice } from "@/lib/merge-methods"
@@ -511,18 +512,6 @@ function WatchRow({
   )
 }
 
-// FIXME: Alert.alert has no buttons on react-native-web.
-function confirm(title: string, message: string, action: string, destructive: boolean, onConfirm: () => void) {
-  if (Platform.OS === "web") {
-    if (window.confirm(`${title}\n\n${message}`)) onConfirm()
-    return
-  }
-  Alert.alert(title, message, [
-    { text: copy("mobile_pr_cancel"), style: "cancel" },
-    { text: action, style: destructive ? "destructive" : "default", onPress: onConfirm },
-  ])
-}
-
 const numberLabelOf = (pullRequest: PullRequestDetail) =>
   pullRequestNumberLabel(codeHostOfUrl(pullRequest.url), pullRequest.number)
 
@@ -564,12 +553,12 @@ function ActionBar({
 
   const merge = (picked: MergeMethod) => {
     if (detail === null) return
-    confirm(
+    confirmAction(
       copy("mobile_pr_merge_title", { method: mergeLabel(picked), number: numberLabelOf(detail) }),
       copy("mobile_pr_merge_body", { head: detail.headRef, base: detail.baseRef, host: hostNameOf(detail.url) }),
       mergeLabel(picked),
-      false,
       () => void run(() => call("github.merge", { url: detail.url, method: picked })),
+      { destructive: false },
     )
   }
 
@@ -633,12 +622,12 @@ function ActionBar({
 function CloseButton({ detail, onChanged }: { detail: PullRequestDetail; onChanged: () => Promise<void> }) {
   const { busy, error, run } = useGitHubAction(detail.url, onChanged)
   const close = () =>
-    confirm(
+    confirmAction(
       copy("mobile_pr_close_title", { number: numberLabelOf(detail) }),
       copy("mobile_pr_close_body", { host: hostNameOf(detail.url) }),
       copy("mobile_pr_close_confirm"),
-      true,
       () => void run(() => call("github.close", { url: detail.url })),
+      { destructive: true },
     )
   return (
     <View style={styles.section}>

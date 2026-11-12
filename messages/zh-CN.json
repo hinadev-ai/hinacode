@@ -1872,7 +1872,6 @@
   "mobile_pr_merge_title": "要{method} {number} 吗？",
   "mobile_pr_merge_body": "在 {host} 上将 {head} 合并到 {base}。",
   "mobile_pr_merge_blocked_draft": "草稿无法合并。请先在 {host} 上将其标记为可供审查。",
-  "mobile_pr_cancel": "取消",
   "mobile_pr_close": "关闭拉取请求",
   "mobile_pr_close_title": "要关闭 {number} 吗？",
   "mobile_pr_close_body": "将在 {host} 上关闭且不合并，之后可以在那里重新打开。",
