@@ -1,4 +1,5 @@
 import type { DeviceButton } from "../../../shared/device.ts"
+import { DeviceError } from "./platform.ts"
 
 const letters = Object.fromEntries(
   Array.from({ length: 26 }, (_, index) => [`Key${String.fromCharCode(65 + index)}`, 0x04 + index]),
@@ -50,14 +51,22 @@ const usages: ReadonlyMap<string, number> = new Map(
 
 export const hidUsage = (code: string): number | undefined => usages.get(code)
 
-const consumerUsages: Partial<Record<DeviceButton, number>> = {
+const consumerUsages: Record<DeviceButton, number | null> = {
   home: 0x40,
   lock: 0x30,
   volumeUp: 0xe9,
   volumeDown: 0xea,
+  back: null,
+  recents: null,
 }
 
-export const consumerUsage = (button: DeviceButton): number | undefined => consumerUsages[button]
+export const consumerUsage = (button: DeviceButton): number => {
+  const usage = consumerUsages[button]
+  if (usage === null) {
+    throw new DeviceError(`The ${button} button exists on Android only. On iOS, use the app's own controls or a swipe.`)
+  }
+  return usage
+}
 
 interface Keystroke {
   readonly usage: number

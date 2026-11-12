@@ -420,7 +420,7 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
         }
         case "button": {
           const usage = consumerUsage(command.button)
-          return usage === undefined ? undefined : input(`consumer ${usage} down`, `consumer ${usage} up`)
+          return input(`consumer ${usage} down`, `consumer ${usage} up`)
         }
         case "rotate":
           orientation = orientation === PORTRAIT ? LANDSCAPE_LEFT : PORTRAIT
