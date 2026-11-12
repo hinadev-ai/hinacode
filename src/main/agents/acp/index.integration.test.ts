@@ -466,6 +466,17 @@ describe("makeAcpProvider", () => {
     }).pipe(Effect.scoped),
   )
 
+  it.live("lists commands again after a failed probe", () =>
+    Effect.gen(function* () {
+      const { provider: make, received } = setup({ FAKE_ACP_AUTH: "required" })
+      const provider = yield* make
+      const cwd = mkdtempSync(join(tmpdir(), "kk-acp-project-"))
+      yield* provider.listCommands({ threadId: "t1", cwd, home: null }).pipe(Effect.flip)
+      yield* provider.listCommands({ threadId: "t1", cwd, home: null }).pipe(Effect.flip)
+      expect(received().filter((message) => message.method === "session/new")).toHaveLength(2)
+    }).pipe(Effect.scoped),
+  )
+
   it.live("sets the effort a turn asks for, and refuses one the model does not offer", () =>
     Effect.gen(function* () {
       const { provider: make, received } = setup()

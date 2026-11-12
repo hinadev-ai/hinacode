@@ -1266,6 +1266,22 @@ describe("Claude background sub-agents", () => {
   )
 })
 
+describe("Claude commands", () => {
+  it.effect("lists commands again after a failed probe", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.supportedCommands = () => Promise.reject(new Error("spawn claude ENOENT"))
+        yield* provider.listCommands({ threadId: "thread-1", cwd: "/repo", home: null }).pipe(Effect.flip)
+
+        sdk.supportedCommands = () => Promise.resolve([{ name: "review", description: "", argumentHint: "" }])
+        const listed = yield* provider.listCommands({ threadId: "thread-1", cwd: "/repo", home: null })
+        expect(listed.map((command) => command.name)).toEqual(["review"])
+      }),
+    ),
+  )
+})
+
 describe("Claude models", () => {
   it.effect("asks the CLI again after a failed listing, so a fresh install shows its models", () =>
     lifecycle(
