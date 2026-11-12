@@ -180,18 +180,20 @@ Queue(c) ==
 ---------------------------------------------------------------------------------------------------------------
 \* The send a comment or the queue starts.
 
-\* A send that fails: startClaimed frees busyThreads. A comment's own send returns the AgentError to deliver, a
-\* retry is logged, and startQueued puts its message back in front.
+\* A send that fails: startClaimed frees busyThreads. A comment's own send returns the AgentError to deliver and a
+\* retry is logged. startQueued's message never left the queue, so it waits there for the developer.
 SendFails ==
   /\ busy' = FALSE /\ stopped' = FALSE /\ send' = NoSend
   /\ CASE send.origin = "deliver" -> pc' = [pc EXCEPT ![send.c] = "queue2"] /\ UNCHANGED queue
        [] send.origin = "retry"   -> pc' = [pc EXCEPT ![send.c] = IF stopped THEN "cancelled" ELSE "dropped"]
                                      /\ UNCHANGED queue
-       [] send.origin = "queued"  -> queue' = <<[c |-> send.c, steer |-> FALSE]>> \o queue /\ UNCHANGED pc
+       [] send.origin = "queued"  -> UNCHANGED <<queue, pc>>
 
 \* AgentRunner.ts startTurn's first locked block checks the stop. The worktree wait after it races the stop too.
 \* deliver passes its `when` to every send it starts, through steerWhen and through queue. Such a send returns false
-\* when `when` finds the comment handed over, and startClaimed frees busyThreads. startQueued's send has none.
+\* when `when` finds the comment handed over, and startClaimed frees busyThreads. startQueued's `when` declines a
+\* message that left the queue, which only the developer's unqueue does before the turn starts, so the model leaves it
+\* out.
 Declines == send.origin # "queued" /\ HandedOver(send.c)
 
 SendDeclined ==
@@ -210,8 +212,8 @@ SendPending ==
               /\ UNCHANGED <<busy, stopped, queue, pc>>
   /\ UNCHANGED <<flagged, status, active, starting, prov, ended, awaiting, lock, turns, captured, history, budgets>>
 
-\* AgentRunner.ts startTurn's second locked block refuses an archived thread, or writes the prompt as the turn's
-\* user message, marks the thread running and sets activeTurns.
+\* AgentRunner.ts startTurn's second locked block refuses an archived thread, or in one transaction writes the prompt
+\* as the turn's user message, removes the queue entry with its id and marks the thread running, then sets activeTurns.
 SendAdmit ==
   /\ send.pc = "admit" /\ lock = "free" /\ turns < MaxTurns
   /\ IF stopped \/ status = "archived" \/ Declines
@@ -221,8 +223,9 @@ SendAdmit ==
             /\ status' = "running"
             /\ Deliver(send.c, turns + 1, turns + 1)
             /\ send' = NoSend
+            /\ queue' = SelectSeq(queue, LAMBDA m : m.c # send.c)
             /\ pc' = IF send.origin = "queued" THEN pc ELSE [pc EXCEPT ![send.c] = "done"]
-            /\ UNCHANGED <<busy, stopped, queue>>
+            /\ UNCHANGED <<busy, stopped>>
   /\ UNCHANGED <<flagged, prov, ended, awaiting, lock, captured, budgets>>
 
 ---------------------------------------------------------------------------------------------------------------
@@ -310,8 +313,8 @@ FinishStarts ==
   /\ UNCHANGED <<flagged, status, busy, active, starting, prov, ended, stopped, queue, send, turns, pc, captured,
                  history, budgets>>
 
-\* A completed turn that was not stopped drops queued messages the transcript already has, takes the first of the
-\* rest and keeps busyThreads for startQueued.
+\* A completed turn that was not stopped drops queued messages the transcript already has, starts the first of the
+\* rest without taking it off the queue, and keeps busyThreads for startQueued.
 FinishReleases ==
   /\ lock = "finish"
   /\ lock' = "free" /\ active' = 0 /\ ended' = "no" /\ stopped' = FALSE
@@ -319,7 +322,7 @@ FinishReleases ==
          unsent == SelectSeq(queue, LAMBDA m : m.c \notin recorded)
      IN IF takes /\ unsent # <<>>
           THEN /\ send' = [pc |-> "pending", c |-> Head(unsent).c, origin |-> "queued"]
-               /\ queue' = Tail(unsent)
+               /\ queue' = unsent
                /\ UNCHANGED busy
           ELSE /\ busy' = FALSE
                /\ queue' = IF takes THEN unsent ELSE queue
