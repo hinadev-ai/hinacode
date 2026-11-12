@@ -72,6 +72,23 @@ it.effect("shutdown saves the owner's latest browser profile before destroying e
   ),
 )
 
+it.effect("quitting destroys the profile owner's VM even while its profile save stalls", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fake = yield* startFakeSbx
+      const dir = mkdtempSync(join(tmpdir(), "hinacode-vm-profile-"))
+      const runtime = makeRuntime(fake, dir)
+      const owner = yield* Effect.promise(() => runtime.runPromise(TinyVm.use((vm) => vm.start("owner"))))
+      expect(owner).toMatchObject({ status: "running", profile: "owner" })
+      fake.stallExecs("tar -czf")
+
+      yield* Effect.promise(() => runtime.dispose())
+
+      expect(fake.sandboxes.size).toBe(0)
+    }),
+  ),
+)
+
 it.effect("saving the profile of a VM the host destroyed forgets the VM", () =>
   Effect.scoped(
     Effect.gen(function* () {

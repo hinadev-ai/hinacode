@@ -122,6 +122,7 @@ export interface FakeSbx {
   readonly fileAt: (sandboxId: string, path: string) => Buffer | undefined
   readonly inputs: Array<{ readonly sandboxId: string; readonly event: RfbEvent }>
   readonly expire: (id: string) => void
+  readonly stallExecs: (scriptFragment: string) => void
   readonly whenRemoved: (id: string) => Promise<void>
 }
 
@@ -157,6 +158,7 @@ export const startFakeSbx = Effect.acquireRelease(
       if (removal === undefined) removals.set(id, (removal = Promise.withResolvers<void>()))
       return removal
     }
+    const stalledFragments: Array<string> = []
     let created = 0
 
     const server = createServer(async (request, response) => {
@@ -215,6 +217,7 @@ export const startFakeSbx = Effect.acquireRelease(
       if (Option.isNone(exec)) return json(response, 400, { error: "invalid exec request" })
       const { script, detach = false } = exec.value
       execs.push({ sandboxId: id, script, detach })
+      if (stalledFragments.some((fragment) => script.includes(fragment))) return
       response.writeHead(200, { "content-type": "application/octet-stream" })
       if (detach) {
         response.end(frame(3, Buffer.from(JSON.stringify({ exit_code: 0, pid: 4242, log: "/tmp/sbx-4242.log" }))))
@@ -275,6 +278,7 @@ export const startFakeSbx = Effect.acquireRelease(
             fileAt: (sandboxId, path) => files.get(fileKey(sandboxId, path)),
             inputs,
             expire: (id) => void sandboxes.delete(id),
+            stallExecs: (scriptFragment) => void stalledFragments.push(scriptFragment),
             whenRemoved: (id) => removalOf(id).promise,
           },
           close: () => {
