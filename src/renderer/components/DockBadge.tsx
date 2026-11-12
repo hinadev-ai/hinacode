@@ -29,7 +29,7 @@ export function useAttentionCount() {
     (thread, index) =>
       thread.settledAt === null &&
       needsAttention(
-        rowState(thread.status, (background[thread.id]?.length ?? 0) > 0, unseen[thread.id], pullRequests[index]),
+        rowState(thread, (background[thread.id]?.length ?? 0) > 0, unseen[thread.id], pullRequests[index]),
       ),
   ).length
 }

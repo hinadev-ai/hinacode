@@ -1,5 +1,5 @@
 import type { AgentEvent } from "./agent.ts"
-import type { ChecksStatus, PullRequest, PullRequestStatus, ThreadStatus } from "./domain.ts"
+import type { ChecksStatus, PullRequest, PullRequestStatus, Thread, ThreadStatus } from "./domain.ts"
 
 export type Outcome = "completed" | "failed"
 
@@ -33,15 +33,16 @@ export const pullRequestAttention = (
     pullRequests.some((pullRequest) => pullRequest !== undefined && needs(pullRequest, attention)),
   )
 
-export type RowState = ThreadStatus | "background" | `unseen_${Outcome}` | `pr_${PullRequestAttention}`
+export type RowState = ThreadStatus | "interrupted" | "background" | `unseen_${Outcome}` | `pr_${PullRequestAttention}`
 
 export const rowState = (
-  status: ThreadStatus,
+  { status, interruptedAt }: Pick<Thread, "status" | "interruptedAt">,
   background: boolean,
   unseen: Outcome | undefined,
   pullRequest: PullRequestAttention | undefined,
 ): RowState => {
   if (status !== "idle") return status
+  if (interruptedAt !== null) return "interrupted"
   if (unseen === "failed") return "unseen_failed"
   if (background) return "background"
   if (unseen !== undefined) return `unseen_${unseen}`

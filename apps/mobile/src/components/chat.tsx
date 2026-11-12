@@ -3,6 +3,7 @@ import type { Compaction } from "@shared/agent.ts"
 import { collapsedParts } from "@shared/activityFold.ts"
 import { formatWorkDuration } from "@shared/workDuration.ts"
 import {
+  isInterrupted,
   type Message,
   type MessagePart,
   publishesArtifact,
@@ -60,7 +61,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
   const [dockHeight, setDockHeight] = useState(0)
   const hasRequests =
     thread.usageLimit !== null ||
-    thread.status === "interrupted" ||
+    isInterrupted(thread) ||
     (history?.status === "ready" && history.approvals.length + history.questions.length > 0)
 
   return (
@@ -123,7 +124,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
             style={styles.requests}
             contentContainerStyle={styles.requestList}
           >
-            {thread.status === "interrupted" && (
+            {isInterrupted(thread) && (
               <InterruptedCallout key={`interrupted-${thread.id}`} threadId={thread.id} />
             )}
             {thread.usageLimit !== null && (

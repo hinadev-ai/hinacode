@@ -4,7 +4,7 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, type RefObject, useEffect, useRef } from "react"
 import type { AgentCommand } from "../../shared/agent.ts"
-import type { Thread } from "../../shared/domain.ts"
+import { isInterrupted, type Thread } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
@@ -255,7 +255,7 @@ export function ThreadNotices({ thread }: { thread: Thread }) {
   return (
     <>
       <PendingRequests thread={thread} />
-      {thread.status === "interrupted" && <InterruptedCallout threadId={thread.id} />}
+      {isInterrupted(thread) && <InterruptedCallout threadId={thread.id} />}
       {thread.status === "limited" && thread.usageLimit !== null ? (
         <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
       ) : (

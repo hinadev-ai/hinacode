@@ -331,10 +331,15 @@ describe("PullRequestWatcher queued delivery", () => {
       }),
     )
 
-    for (const status of ["awaiting_approval", "limited", "interrupted"] as const) {
-      it.effect(`defers queued watch delivery when a thread becomes ${status}`, () =>
+    const waiting = [
+      ["awaiting_approval", { status: "awaiting_approval", interruptedAt: null }],
+      ["limited", { status: "limited", interruptedAt: null }],
+      ["interrupted", { status: "idle", interruptedAt: "2026-11-10T03:00:00.000Z" }],
+    ] as const
+    for (const [state, patch] of waiting) {
+      it.effect(`defers queued watch delivery when a thread becomes ${state}`, () =>
         Effect.gen(function* () {
-          const { threadId, asked, link } = yield* watchedThread(`became-${status}`)
+          const { threadId, asked, link } = yield* watchedThread(`became-${state}`)
           const busy = yield* hold
           transcriptHolds.set(threadId, busy)
           const reading = yield* Effect.forkChild(AgentRunner.use((runner) => runner.transcript(threadId)))
@@ -342,12 +347,12 @@ describe("PullRequestWatcher queued delivery", () => {
           const polling = yield* Effect.forkChild(sweep)
           yield* Deferred.await(asked)
 
-          yield* Threads.use((threads) => threads.update({ id: threadId, status }))
+          yield* Threads.use((threads) => threads.update({ id: threadId, ...patch }))
           yield* Deferred.succeed(busy.release, undefined)
           yield* Fiber.join(reading)
           yield* Fiber.join(polling)
 
-          expect((yield* Threads.use((threads) => threads.get(threadId))).status).toBe(status)
+          expect(yield* Threads.use((threads) => threads.get(threadId))).toMatchObject(patch)
           expect((yield* AgentRunner.use((runner) => runner.transcript(threadId))).messages).toStrictEqual([])
           expect((yield* PullRequests.use((pullRequests) => pullRequests.find(link.id)))?.watch?.snapshot).toBeNull()
           expect(starts.filter((input) => input.threadId === threadId)).toStrictEqual([])

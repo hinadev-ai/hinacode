@@ -1027,7 +1027,7 @@ const usePullRequestAttention = (thread: Thread) => {
 
 export function useThreadRowState(thread: Thread): RowState {
   return rowState(
-    thread.status,
+    thread,
     useBackgroundTasks((state) => (state.byThreadId[thread.id]?.length ?? 0) > 0),
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
     usePullRequestAttention(thread),

@@ -74,6 +74,7 @@ const thread: Thread = {
   sortIndex: 0,
   pinnedAt: null,
   settledAt: null,
+  interruptedAt: null,
   snoozedUntil: null,
   queue: [],
   scheduled: [],

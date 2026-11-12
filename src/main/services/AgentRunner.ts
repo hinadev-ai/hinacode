@@ -47,7 +47,7 @@ import type {
   ThreadStatus,
   WorkspaceChoice,
 } from "../../shared/domain.ts"
-import { enabledProviders, isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
+import { enabledProviders, isInterrupted, isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
 import { previewPush } from "../../shared/compactTranscript.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { resumeGraceMs } from "../../shared/limits.ts"
@@ -803,7 +803,7 @@ const make = Effect.gen(function* () {
 
     let next: QueuedMessage | undefined
     let finishing = false
-    let shutDown = false
+    let interruptedByRuntime = false
     const withdraw = (event: AgentEvent) => publishTranscript({ type: "thread.event", threadId: thread.id, event })
     const finish = Effect.gen(function* () {
       finishing = true
@@ -835,8 +835,8 @@ const make = Effect.gen(function* () {
       yield* persist
       if (closed !== last) yield* publishTranscript({ type: "message.updated", message: closed })
       const stopped = yield* Deferred.isDone(stop)
-      if (isThreadBusy(status))
-        yield* updateThread({ id: thread.id, status: shutDown && !stopped ? "interrupted" : "idle" })
+      const interruptedAt = interruptedByRuntime && !stopped ? yield* nowIso : null
+      if (isThreadBusy(status)) yield* updateThread({ id: thread.id, status: "idle", interruptedAt })
       if (!completed || stopped) return
       next = yield* nextQueued(thread.id)
     }).pipe(
@@ -865,7 +865,7 @@ const make = Effect.gen(function* () {
         Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
         Effect.onInterrupt(() =>
           Effect.sync(() => {
-            shutDown = true
+            interruptedByRuntime = true
           }),
         ),
         Effect.ensuring(finish),
@@ -1338,7 +1338,7 @@ const make = Effect.gen(function* () {
   const resume = (threadId: string) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
-      if (thread.status !== "interrupted") {
+      if (!isInterrupted(thread)) {
         return yield* new AgentError({ provider: "hinacode", message: "This thread was not interrupted" })
       }
       yield* send(threadId, RESUME_PROMPT, [])

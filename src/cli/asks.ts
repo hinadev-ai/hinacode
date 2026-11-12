@@ -1,7 +1,7 @@
 import { Schema } from "effect"
 import { ApprovalRequest, QuestionRequest, SecretRequest } from "../shared/agent.ts"
 import type { RpcResponse } from "../shared/contract.ts"
-import { Thread } from "../shared/domain.ts"
+import { isInterrupted, Thread } from "../shared/domain.ts"
 
 export const Ask = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("approval"), threadId: Schema.String, request: ApprovalRequest }),
@@ -26,7 +26,7 @@ export const asksFrom = (
 ): ReadonlyArray<Ask> =>
   threads.flatMap((thread): ReadonlyArray<Ask> => {
     if (thread.status === "limited") return [{ kind: "limited", thread }]
-    if (thread.status === "interrupted") return [{ kind: "interrupted", thread }]
+    if (isInterrupted(thread)) return [{ kind: "interrupted", thread }]
     const pending = transcripts.get(thread.id)
     return thread.status === "awaiting_approval" && pending !== undefined ? pendingAsks(thread.id, pending) : []
   })

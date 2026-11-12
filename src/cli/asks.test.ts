@@ -23,6 +23,7 @@ const thread = (id: string, patch: Partial<Thread> = {}): Thread => ({
   sortIndex: 0,
   pinnedAt: null,
   settledAt: null,
+  interruptedAt: null,
   snoozedUntil: null,
   queue: [],
   scheduled: [],
@@ -73,7 +74,7 @@ describe("asksFrom", () => {
     const waiting = thread("t1", { status: "awaiting_approval" })
     const asking = thread("t2", { status: "awaiting_approval" })
     const limited = thread("t3", { status: "limited", usageLimit: limit })
-    const interrupted = thread("t5", { status: "interrupted" })
+    const interrupted = thread("t5", { interruptedAt: "2026-11-10T03:00:00.000Z" })
     const transcripts = new Map([
       ["t1", { approvals: [approval("a1", "t1")], questions: [], secretRequests: [secret] }],
       ["t2", { approvals: [], questions: [question], secretRequests: [] }],

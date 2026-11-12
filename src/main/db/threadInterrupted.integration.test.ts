@@ -1,27 +1,34 @@
 import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { SqlClient } from "effect/sql"
+import { ThreadStatus } from "../../shared/domain.ts"
 import * as Db from "./client.ts"
-import threadInterrupted from "./migrations/0049_thread_interrupted.ts"
+import { runMigrations } from "./migrator.ts"
 import { seedThread } from "./testing.ts"
 
-it.effect("allows the interrupted status and keeps every thread's state and related rows", () =>
+const SNOOZED_UNTIL = "2999-01-01T00:00:00.000Z"
+
+const threadRows = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient
+  return yield* sql`SELECT id, status, snoozed_until, interrupted_at FROM thread ORDER BY id`
+})
+
+it.effect("adds interrupted_at as null to threads in every status, and leaves their status and snooze alone", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
-    const { threadId } = yield* seedThread({ rootPath: "/repo" })
-    yield* sql`UPDATE thread SET status = 'limited', usage_limit = '{"kind":"usage","message":"wait","reset":null}'`
-    yield* sql`INSERT INTO message (id, thread_id, role, parts, created_at) VALUES ('message', ${threadId}, 'user', '[]', 'now')`
-    yield* sql`INSERT INTO pull_request_link (id, thread_id, url, created_at) VALUES ('pr', ${threadId}, 'https://github.com/a/b/pull/1', 'now')`
+    yield* sql`ALTER TABLE thread DROP COLUMN interrupted_at`
+    yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id >= 49`
+    const first = yield* seedThread({ rootPath: "/repo" })
+    for (const status of ThreadStatus.literals) {
+      const { threadId } =
+        status === "idle" ? first : yield* seedThread({ rootPath: "/repo", projectId: first.projectId })
+      yield* sql`UPDATE thread SET status = ${status}, snoozed_until = ${SNOOZED_UNTIL} WHERE id = ${threadId}`
+    }
+    const before = yield* sql`SELECT id, status, snoozed_until FROM thread ORDER BY id`
 
-    yield* sql.withTransaction(threadInterrupted)
+    expect(yield* runMigrations).toStrictEqual([[49, "thread_interrupted"]])
 
-    expect(yield* sql`SELECT status, usage_limit FROM thread`).toEqual([
-      { status: "limited", usageLimit: '{"kind":"usage","message":"wait","reset":null}' },
-    ])
-    expect(yield* sql`SELECT thread_id FROM message`).toEqual([{ threadId }])
-    expect(yield* sql`SELECT thread_id FROM pull_request_link`).toEqual([{ threadId }])
-    yield* sql`UPDATE thread SET status = 'interrupted'`
-    const invalid = yield* sql`UPDATE thread SET status = 'settled'`.pipe(Effect.result)
-    expect(invalid._tag).toBe("Failure")
+    expect(yield* threadRows).toStrictEqual(before.map((row) => ({ ...row, interruptedAt: null })))
+    expect(before.map((row) => row.status).toSorted()).toStrictEqual(ThreadStatus.literals.toSorted())
   }).pipe(Effect.provide(Db.layer(":memory:"))),
 )

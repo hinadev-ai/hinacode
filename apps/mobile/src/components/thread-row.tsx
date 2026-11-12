@@ -80,7 +80,7 @@ export function ThreadRow({
   const branch = threadBranch(worktree, rootBranch)
   const links = usePullRequests((pullRequests) => pullRequests.linksByThread[thread.id]) ?? noLinks
   const state = rowState(
-    thread.status,
+    thread,
     PHONE_RECEIVES_BACKGROUND_TASKS,
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
     usePullRequestAttention(links),

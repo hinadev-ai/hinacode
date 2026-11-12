@@ -23,11 +23,12 @@ const interrupted: Thread = {
   forkedFrom: null,
   sideOf: null,
   parentId: null,
-  status: "interrupted",
+  status: "idle",
   usageLimit: null,
   sortIndex: 0,
   pinnedAt: null,
   settledAt: null,
+  interruptedAt: "2026-11-10T03:00:00.000Z",
   snoozedUntil: null,
   queue: [],
   scheduled: [],
@@ -39,7 +40,7 @@ const interrupted: Thread = {
 const bridge: HinacodeBridge = {
   rpc: async (method) => {
     if (method !== "threads.resume") return { error: { tag: "NotStubbed", message: method } }
-    useThreads.getState().upsert({ ...interrupted, status: "running" })
+    useThreads.getState().upsert({ ...interrupted, status: "running", interruptedAt: null })
     return { result: undefined }
   },
   onEvent: () => () => {},
