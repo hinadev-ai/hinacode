@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import type { TerminalSession } from "../../shared/domain.ts"
-import { errorMessage, isFolderMissing } from "../lib/errorMessage.ts"
+import { errorMessage } from "../lib/errorMessage.ts"
 import { loadSize, saveSize, TERMINAL_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { attachTerminalOutput, disposeTerminal, focusTerminal } from "../lib/terminalScreens.ts"
@@ -46,7 +46,7 @@ export const useTerminals = create<TerminalsState>()((set, get) => {
     })
 
   const fail = (threadId: string, error: unknown) => {
-    set({ error: isFolderMissing(error) ? null : errorMessage(error) })
+    set({ error: errorMessage(error) })
     update(threadId, () => ({ open: true }))
   }
 

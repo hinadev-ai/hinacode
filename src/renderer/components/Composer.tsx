@@ -138,7 +138,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const agentCommands = AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => [])
   const commands = [...(isSidechat ? [] : [sidechatCommand()]), ...artifactSkillCommands(), ...agentCommands]
   const commandsFailure = AsyncResult.isFailure(commandsResult) ? Cause.squash(commandsResult.cause) : null
-  const folderMissing = !unstarted && isFolderMissing(commandsFailure)
+  const folderMissing = thread.worktreeId !== null && isFolderMissing(commandsFailure)
   const commandsError =
     commandsFailure === null || folderMissing
       ? null
