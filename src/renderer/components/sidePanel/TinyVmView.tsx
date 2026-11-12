@@ -291,7 +291,7 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           </Button>
         </Centered>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto p-3">
+        <div className="min-h-0 flex-1 scrollbar-gutter-stable overflow-auto p-3">
           <Suspense fallback={<ScreenFallback />}>
             <VmScreen
               key={`${vm.sandboxId}:${attempt}`}

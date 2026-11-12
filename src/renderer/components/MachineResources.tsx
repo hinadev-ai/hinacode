@@ -77,7 +77,7 @@ export function MachineResourcesButton() {
 function MachineTable() {
   const clouds = useClouds()
   return (
-    <div className="max-h-[min(28rem,70vh)] overflow-y-auto pb-1">
+    <div className="max-h-[min(28rem,70vh)] scrollbar-gutter-stable overflow-y-auto pb-1">
       <table className="w-full table-fixed text-xs tabular-nums">
         <colgroup>
           <col />

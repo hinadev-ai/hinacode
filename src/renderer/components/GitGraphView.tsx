@@ -196,7 +196,7 @@ function GraphWithDiff({ root, branch, commits, onEndReached }: GraphWithDiffPro
           recycleItems
           onEndReached={onEndReached}
           onEndReachedThreshold={2}
-          className="min-h-0 flex-1"
+          className="min-h-0 flex-1 scrollbar-gutter-stable"
         />
       </div>
       {showDiff ? (

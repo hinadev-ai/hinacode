@@ -89,7 +89,7 @@ interface RoutineDialogProps {
 export function RoutineDialog({ state, projects, onClose }: RoutineDialogProps) {
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-xl scrollbar-gutter-stable overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {state.mode === "create" ? m.routines_dialog_create_title() : m.routines_dialog_edit_title()}

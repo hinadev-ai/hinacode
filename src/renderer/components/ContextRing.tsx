@@ -84,7 +84,7 @@ export function ContextRing({ threadId, provider }: { threadId: string; provider
       <PopoverContent
         side="top"
         align="end"
-        className="max-h-(--available-height) w-80 gap-3 overflow-y-auto tabular-nums *:shrink-0"
+        className="max-h-(--available-height) w-80 scrollbar-gutter-stable gap-3 overflow-y-auto tabular-nums *:shrink-0"
       >
         <PopoverTitle>{m.thread_context_window()}</PopoverTitle>
         {provider === "claude" || provider === "magpie" ? (
