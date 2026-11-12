@@ -22,7 +22,8 @@ const turnCompleted = (threadId, turnId, status) => ({
   params: { threadId, turn: { id: turnId, status, error: null } },
 })
 const completeTurn = (threadId, turnId, status) => send(turnCompleted(threadId, turnId, status))
-const sendInOneWrite = (messages) => process.stdout.write(messages.map((message) => `${JSON.stringify(message)}\n`).join(""))
+const sendInOneWrite = (messages) =>
+  process.stdout.write(messages.map((message) => `${JSON.stringify(message)}\n`).join(""))
 
 const sandboxPolicy = (mode) =>
   mode === "danger-full-access"
@@ -68,7 +69,7 @@ const spawnSubagent = (threadId, turnId) => {
   childItem("item/completed", { item: { ...command, status: "completed", aggregatedOutput: null, exitCode: 0 } })
 }
 
-const subagentFinished = () => {
+const subagentFinishMessages = () => {
   const child = "codex-child-thread"
   const message = { type: "agentMessage", id: "child-reply", text: "218 lines" }
   return [
@@ -236,7 +237,7 @@ const reply = ({ id, method, params }) => {
       }
       if (control().subagentEndsWithTurn) {
         subagentFinishSent = true
-        return sendInOneWrite([turnCompleted(params.threadId, turnId, "completed"), ...subagentFinished()])
+        return sendInOneWrite([turnCompleted(params.threadId, turnId, "completed"), ...subagentFinishMessages()])
       }
       if (!control().holdTurn) {
         for (const tokenUsage of turnTokenUsage) {
@@ -308,6 +309,6 @@ watch(process.env.FAKE_CODEX_CONTROL, () => {
   if (held.length > 0 && control().release) held.splice(0).forEach(reply)
   if (control().finishSubagent && !subagentFinishSent) {
     subagentFinishSent = true
-    subagentFinished().forEach(send)
+    subagentFinishMessages().forEach(send)
   }
 })
