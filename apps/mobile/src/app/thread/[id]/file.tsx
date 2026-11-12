@@ -1,8 +1,11 @@
 import type { RpcResponse } from "@shared/contract.ts"
 import type { FsFileContent, Thread } from "@shared/domain.ts"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { sha256 } from "@noble/hashes/sha2.js"
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js"
 import { Effect } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
+import { File, Paths } from "expo-file-system"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { FlatList, Image, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
@@ -12,13 +15,14 @@ import { SvgXml } from "react-native-svg"
 import { Failure, Loading } from "@/components/files"
 import { Markdown } from "@/components/markdown"
 import { EmptyState, Notice, type Segment, SegmentedControl } from "@/components/ui"
+import { VideoPlayer } from "@/components/video-player"
 import { cssEase } from "@/constants/motion"
 import { mono, READABLE_WIDTH, SyntaxColors } from "@/constants/theme"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { type CodeLine, codeLines } from "@/lib/code-lines"
 import type { RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
-import { basename, dirname, fileKind, svgAspectRatio } from "@/lib/file-kinds"
+import { basename, dirname, extension, fileKind, svgAspectRatio } from "@/lib/file-kinds"
 import { useHighlight } from "@/lib/highlight"
 import { asLoaded, familyOf, rpcFamily } from "@/lib/remote"
 import { useThreadRoot, useThreads } from "@/stores/threads"
@@ -80,6 +84,8 @@ function FileBody({ thread, path, line }: { thread: Thread; path: string; line: 
       return <ImageFile root={root} path={path} />
     case "svg":
       return <SvgFile root={root} path={path} />
+    case "video":
+      return <VideoFile root={root} path={path} />
     case "markdown":
       return <MarkdownFile root={root} path={path} line={line} threadId={thread.id} />
     case "text":
@@ -333,6 +339,33 @@ function FittedImage({ uri, label }: { uri: string; label: string }) {
       ]}
     />
   )
+}
+
+// FIXME: AVPlayer and ExoPlayer cannot open a data URL, so the native apps play a copy in the cache.
+async function playableUri(root: string, path: string, dataUrl: string) {
+  if (Platform.OS === "web") return dataUrl
+  const name = bytesToHex(sha256(utf8ToBytes(`${root}\0${path}`)))
+  const file = new File(Paths.cache, `video-${name}.${extension(path)}`)
+  await file.write(dataUrl.slice(dataUrl.indexOf(",") + 1), { encoding: "base64" })
+  return file.uri
+}
+
+const videoFiles = familyOf((root: string, path: string) =>
+  Atom.make((get) =>
+    get
+      .result(fileReads["fs.preview"]({ root, path }))
+      .pipe(Effect.flatMap(({ dataUrl }) => Effect.promise(() => playableUri(root, path, dataUrl)))),
+  ),
+)
+
+function VideoFile({ root, path }: { root: string; path: string }) {
+  const video = videoFiles(root, path)
+  const result = asLoaded(useAtomValue(video))
+  const retry = useAtomRefresh(fileReads["fs.preview"]({ root, path }))
+  if (result === null) return <Loading label={copy("mobile_files_loading_file")} />
+  if ("error" in result) return <Failure message={result.error} onRetry={retry} />
+  const label = copy("mobile_files_video_label", { name: basename(path) })
+  return <VideoPlayer key={result.value} uri={result.value} label={label} />
 }
 
 function SvgFile({ root, path }: { root: string; path: string }) {
