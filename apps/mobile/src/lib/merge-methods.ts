@@ -1,5 +1,7 @@
+import { codeHostOfUrl, mergeMethodsFor, offeredMergeMethod } from "@shared/codeHost.ts"
 import type { MergeMethod } from "@shared/domain.ts"
 
-const mergeMethods: readonly MergeMethod[] = ["squash", "merge", "rebase"]
-
-export const mergeChoice = (_url: string, chosen: MergeMethod) => ({ methods: mergeMethods, method: chosen })
+export const mergeChoice = (url: string, chosen: MergeMethod) => {
+  const methods = mergeMethodsFor(codeHostOfUrl(url))
+  return { methods, method: offeredMergeMethod(chosen, methods) }
+}
