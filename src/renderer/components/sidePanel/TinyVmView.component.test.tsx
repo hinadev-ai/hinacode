@@ -45,7 +45,14 @@ test("a browser shows that the Tiny VM screen needs the desktop app instead of a
 })
 
 const renderHandBack = (vm: RunningVm) =>
-  render(<ControlButton threadId="t-1" vm={{ ...vm, control: "user" }} pending={false} run={() => undefined} />)
+  render(
+    <ControlButton
+      threadId="t-1"
+      vm={{ ...vm, control: "user", agentWaiting: false }}
+      pending={false}
+      run={() => undefined}
+    />,
+  )
 
 test("the desktop app's Tiny VM hand-back button names the chord that hands back", async () => {
   runtime = { kind: "desktop" }
