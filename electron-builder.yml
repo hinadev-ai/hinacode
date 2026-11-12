@@ -10,14 +10,12 @@ asarUnpack:
   - "**/node_modules/node-pty/**"
 # Each platform lists its whole file set, with no top-level `files`. electron-builder keeps a top-level list
 # apart from a platform one, and a platform list of only exclusions then packages the entire repo.
-# Claude threads run the user's own `claude`, which updates faster than hinacode ships, so the SDK's binary is left out.
 # Packages' TypeScript sources and source maps never run.
 mac:
   files:
     - out/**
     - package.json
     - "!out/server/**"
-    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
     - "!**/node_modules/node-pty/prebuilds/{win32,linux,darwin-x64}*/**"
     - "!**/node_modules/electron-liquid-glass/{js,src,prebuilds/darwin-x64}/**"
@@ -49,7 +47,6 @@ win:
     - out/**
     - package.json
     - "!out/server/**"
-    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
     - "!**/node_modules/node-pty/prebuilds/{darwin,linux,win32-arm64}*/**"
     - "!**/node_modules/node-pty/build/**"
@@ -65,7 +62,6 @@ linux:
     - out/**
     - package.json
     - "!out/server/**"
-    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
     - "!**/node_modules/node-pty/prebuilds/{darwin,win32,linux-arm64}*/**"
   target:
