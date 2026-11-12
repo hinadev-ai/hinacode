@@ -149,7 +149,7 @@ jobs:
       # FIXME: GitHub's release downloads time out with a 504 now and then, and the Electron binary comes from there
       - run: for attempt in 1 2 3 4 5; do pnpm exec install-electron && exit 0; sleep $((attempt * 15)); done; exit 1
       - name: Install search test dependency
-        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+        run: sudo apt-get install --yes ripgrep || { sudo apt-get update && sudo apt-get install --yes ripgrep; }
       - name: Install and select the pinned Chromium
         run: |
           pnpm exec playwright install --with-deps chromium
@@ -223,7 +223,7 @@ jobs:
           node-version: 24
           cache: pnpm
       # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
-      - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep
+      - run: sudo apt-get install --yes xvfb openbox ripgrep || { sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep; }
       - run: pnpm install --frozen-lockfile
       - uses: actions/cache@v6
         with:
