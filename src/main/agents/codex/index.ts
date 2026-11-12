@@ -233,9 +233,12 @@ const make = Effect.gen(function* () {
     applyChildTurn(subagents, childThreadId, method, params, new Date().toISOString()) ??
     applyChildNotification(subagents, childThreadId, method, params, toolName)
 
+  const childThreadIdOf = (message: Incoming) =>
+    message.kind === "notification" ? (message.params as { threadId?: string } | undefined)?.threadId : undefined
+
   const reportSubagentsOfIdleThreads = (client: CodexClient) => (message: Incoming) => {
     if (message.kind !== "notification") return
-    const childThreadId = (message.params as { threadId?: string } | undefined)?.threadId
+    const childThreadId = childThreadIdOf(message)
     const parent = childThreadId === undefined ? undefined : parentOf(childThreadId)
     if (childThreadId === undefined || parent === undefined || threadsInTurn.has(parent.threadId)) return
     subagentClients.set(childThreadId, client)
@@ -244,6 +247,18 @@ const make = Effect.gen(function* () {
     if (childTurnId !== undefined) subagentTurns.set(childThreadId, childTurnId)
     const changed = applyChildMessage(parent.subagents, childThreadId, message.method, message.params)
     if (changed) Queue.offerUnsafe(subagentChanges, { threadId: parent.threadId, subagent: changed })
+  }
+
+  const leaveTurn = (client: CodexClient, threadId: string, inbox: Queue.Dequeue<Incoming>) => {
+    threadsInTurn.delete(threadId)
+    const report = reportSubagentsOfIdleThreads(client)
+    const children = subagentsByThread.get(threadId)
+    let unread = Queue.takeUnsafe(inbox)
+    while (unread !== undefined && Exit.isSuccess(unread)) {
+      const childThreadId = childThreadIdOf(unread.value)
+      if (childThreadId !== undefined && children?.has(childThreadId)) report(unread.value)
+      unread = Queue.takeUnsafe(inbox)
+    }
   }
 
   const listTerminals = (terminals: Terminals) =>
@@ -512,7 +527,7 @@ const make = Effect.gen(function* () {
           yield* client.subscribe((message) => Queue.offerUnsafe(inbox, message))
           yield* Effect.acquireRelease(
             Effect.sync(() => threadsInTurn.add(input.threadId)),
-            () => Effect.sync(() => threadsInTurn.delete(input.threadId)),
+            () => Effect.sync(() => leaveTurn(client, input.threadId, inbox)),
           )
 
           const overrides = {

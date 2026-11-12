@@ -41,6 +41,7 @@ type Control = {
   subagent?: boolean
   subagentPending?: boolean
   finishSubagent?: boolean
+  subagentEndsWithTurn?: boolean
   plan?: boolean
   compaction?: boolean
   backgroundTerminal?: boolean
@@ -625,6 +626,30 @@ describe("Codex sub-agents", () => {
         )
 
         setControl({ subagent: true, finishSubagent: true })
+
+        expect(yield* Fiber.join(finished)).toMatchObject(
+          Option.some({
+            threadId: "subagent-thread",
+            subagent: { id: "codex-child-thread", status: "completed", summary: "218 lines" },
+          }),
+        )
+      }),
+    ),
+  )
+
+  it.live("reports a sub-agent whose turn ends in the same breath as its parent's", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const changes = provider.subagentChanges ?? Stream.die("subagentChanges is missing")
+        const finished = yield* changes.pipe(
+          Stream.filter(({ subagent }) => subagent.status !== "running"),
+          Stream.runHead,
+          Effect.forkChild,
+        )
+        setControl({ subagent: true, subagentEndsWithTurn: true })
+        const turn = yield* startTurn("subagent-thread")
+        yield* finishesSoon(turn.fiber)
 
         expect(yield* Fiber.join(finished)).toMatchObject(
           Option.some({
