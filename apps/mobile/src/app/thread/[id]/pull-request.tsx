@@ -7,7 +7,7 @@ import type {
   PullRequestLink,
   PullRequestStatus,
 } from "@shared/domain.ts"
-import { codeHostOfUrl, pullRequestNumberLabel, pullRequestNumberLabelOfUrl } from "@shared/codeHost.ts"
+import { codeHostName, codeHostOfUrl, pullRequestNumberLabel, pullRequestNumberLabelOfUrl } from "@shared/codeHost.ts"
 import { linearReviewUrl } from "@shared/github.ts"
 import { providerInfo } from "@shared/providers.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "@shared/pullRequestPrompts.ts"
@@ -41,6 +41,8 @@ const tabs = [
 
 type WebLink = { readonly href: string; readonly label: string }
 
+const hostNameOf = (url: string) => codeHostName(codeHostOfUrl(url))
+
 function useWebLink(threadId: string, url: string): WebLink {
   const linearReview = useThreads((state) => {
     const projectId = state.byId[threadId]?.projectId
@@ -48,7 +50,7 @@ function useWebLink(threadId: string, url: string): WebLink {
   })
   return linearReview
     ? { href: linearReviewUrl(url), label: copy("mobile_pr_open_linear_review") }
-    : { href: url, label: copy("mobile_pr_open_github") }
+    : { href: url, label: copy("mobile_pr_open_on_host", { host: hostNameOf(url) }) }
 }
 
 const reloadWithCode = async (reload: () => Promise<unknown>, url: string, withCode: boolean) => {
@@ -380,7 +382,7 @@ function Checks({ detail }: { detail: PullRequestDetail }) {
       {expanded && (
         <FadeIn style={styles.runs}>
           {runs.map((run, index) => (
-            <CheckRow key={`${index}:${run.name}`} run={run} />
+            <CheckRow key={`${index}:${run.name}`} run={run} host={hostNameOf(detail.url)} />
           ))}
         </FadeIn>
       )}
@@ -390,7 +392,7 @@ function Checks({ detail }: { detail: PullRequestDetail }) {
 
 const runLabel = (status: CheckRunStatus) => copy(`mobile_pr_check_${status}`)
 
-function CheckRow({ run }: { run: CheckRun }) {
+function CheckRow({ run, host }: { run: CheckRun; host: string }) {
   const theme = useTheme()
   const glyphs: Record<Exclude<CheckRunStatus, "pending">, { name: IconName; color: string }> = {
     passing: { name: "CheckCircleFill", color: theme.textMuted },
@@ -425,7 +427,7 @@ function CheckRow({ run }: { run: CheckRun }) {
     <PressableScale
       accessibilityRole="link"
       accessibilityLabel={label}
-      accessibilityHint={copy("mobile_pr_check_open")}
+      accessibilityHint={copy("mobile_pr_check_open", { host })}
       onPress={() => openWebUrl(url)}
       style={styles.run}
     >
@@ -441,7 +443,7 @@ function MergeState({ detail }: { detail: PullRequestDetail }) {
       <StatusRow
         icon={<Icon name="RiGitPrDraftLine" size={18} color={theme.textMuted} />}
         title={copy("mobile_pr_state_draft")}
-        detail={copy("mobile_pr_merge_blocked_draft")}
+        detail={copy("mobile_pr_merge_blocked_draft", { host: hostNameOf(detail.url) })}
       />
     )
   }
@@ -563,7 +565,7 @@ function ActionBar({
     if (detail === null) return
     confirm(
       copy("mobile_pr_merge_title", { method: mergeLabel(picked), number: numberLabelOf(detail) }),
-      copy("mobile_pr_merge_body", { head: detail.headRef, base: detail.baseRef }),
+      copy("mobile_pr_merge_body", { head: detail.headRef, base: detail.baseRef, host: hostNameOf(detail.url) }),
       mergeLabel(picked),
       false,
       () => void run(() => call("github.merge", { url: detail.url, method: picked })),
@@ -632,7 +634,7 @@ function CloseButton({ detail, onChanged }: { detail: PullRequestDetail; onChang
   const close = () =>
     confirm(
       copy("mobile_pr_close_title", { number: numberLabelOf(detail) }),
-      copy("mobile_pr_close_body"),
+      copy("mobile_pr_close_body", { host: hostNameOf(detail.url) }),
       copy("mobile_pr_close_confirm"),
       true,
       () => void run(() => call("github.close", { url: detail.url })),

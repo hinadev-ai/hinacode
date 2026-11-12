@@ -1,5 +1,5 @@
 import { useAtomMount, useAtomValue } from "@effect/atom-react"
-import { codeHostOfUrl, pullRequestNumberLabel } from "@shared/codeHost.ts"
+import { codeHostName, codeHostOfUrl, pullRequestNumberLabel } from "@shared/codeHost.ts"
 import type { PullRequest, PullRequestLink, Thread } from "@shared/domain.ts"
 import { Effect } from "effect"
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity"
@@ -198,7 +198,7 @@ function PullRequestCard({
             </Text>
             {failed !== null && (
               <Text numberOfLines={1} style={[styles.note, { color: theme.textMuted }]}>
-                {copy("mobile_pr_lookup_failed")}
+                {copy("mobile_pr_lookup_failed", { host: codeHostName(host) })}
               </Text>
             )}
           </View>

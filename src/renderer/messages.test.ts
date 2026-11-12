@@ -14,6 +14,14 @@ test.each(Locale.literals)("messages/%s.json leaves the # or ! before a number t
   expect(Object.keys(messages).filter((key) => JSON.stringify(messages[key]).includes("#{"))).toEqual([])
 })
 
+test.each(Locale.literals)("messages/%s.json leaves the phone app's code host name to {host}", (locale) => {
+  const messages = catalog(locale)
+  const namingHost = Object.keys(messages).filter(
+    (key) => key.startsWith("mobile_pr_") && /GitHub|GitLab/.test(JSON.stringify(messages[key])),
+  )
+  expect(namingHost).toEqual(["mobile_pr_code_too_large"])
+})
+
 describe.each(Locale.literals.filter((locale) => locale !== "en"))("messages/%s.json", (locale) => {
   const messages = catalog(locale)
 
