@@ -43,11 +43,19 @@ export async function loadAnswers(serverId: string): Promise<RememberedAnswers |
 }
 
 const answerWrites = new Map<string, Promise<void>>()
+const unwrittenAnswers = new Map<string, RememberedAnswers>()
 
 // FIXME: expo-file-system rejects one of two writes that both find no file, so writes queue per server.
 export function saveAnswers(serverId: string, answers: RememberedAnswers) {
+  const queued = unwrittenAnswers.has(serverId)
+  unwrittenAnswers.set(serverId, answers)
+  if (queued) return answerWrites.get(serverId)!
   const write = (answerWrites.get(serverId) ?? Promise.resolve())
-    .then(() => answersFile(serverId).write(JSON.stringify(answers)))
+    .then(() => {
+      const newest = unwrittenAnswers.get(serverId)
+      unwrittenAnswers.delete(serverId)
+      answersFile(serverId).write(JSON.stringify(newest))
+    })
     .catch(() => {})
   answerWrites.set(serverId, write)
   return write
