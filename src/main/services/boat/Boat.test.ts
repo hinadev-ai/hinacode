@@ -26,12 +26,14 @@ interface FakeBoat {
   readonly createBodies: Array<Record<string, unknown>>
   readonly createIdempotencyKeys: Array<string | undefined>
   readonly commands: Array<string>
+  readonly requests: Array<string>
   readonly files: Map<string, Buffer>
   readonly deletedConfirmHeaders: Array<string | undefined>
   readonly stopped: Array<string>
   readonly resumed: Array<Record<string, unknown>>
   readonly desktopCalls: () => number
   readonly dropSignedFetches: (count: number) => void
+  readonly failFileReads: (count: number) => void
   readonly seedSandbox: (id: string, state: string) => void
   readonly close: () => Promise<void>
 }
@@ -76,12 +78,14 @@ const startFakeBoat = (): Promise<FakeBoat> =>
     const createBodies: Array<Record<string, unknown>> = []
     const createIdempotencyKeys: Array<string | undefined> = []
     const commands: Array<string> = []
+    const requests: Array<string> = []
     const deletedConfirmHeaders: Array<string | undefined> = []
     const stopped: Array<string> = []
     const resumed: Array<Record<string, unknown>> = []
     const sockets = new Set<Socket>()
     let desktopCallCount = 0
     let signedDrops = 0
+    let failedFileReads = 0
     let createdCount = 0
     let origin = ""
 
@@ -95,8 +99,10 @@ const startFakeBoat = (): Promise<FakeBoat> =>
       if (command.includes("bash -lc ") && command.includes(".hinacode-")) {
         const outMatch = /'(\/tmp\/\.hinacode-[^']+\.out)'/.exec(command)
         const errMatch = /'(\/tmp\/\.hinacode-[^']+\.err)'/.exec(command)
-        if (outMatch?.[1]) files.set(outMatch[1], BINARY_STDOUT)
-        if (errMatch?.[1]) files.set(errMatch[1], Buffer.from("warn\n"))
+        const quiet = command.includes("quiet")
+        if (outMatch?.[1]) files.set(outMatch[1], quiet ? Buffer.alloc(0) : BINARY_STDOUT)
+        if (errMatch?.[1])
+          files.set(errMatch[1], quiet || command.includes("stdout-only") ? Buffer.alloc(0) : Buffer.from("warn\n"))
         const exitCode = command.includes("exit 3") ? 3 : 0
         return sendJson(response, 200, { success: exitCode === 0, exitCode, timedOut: false, stdout: "", stderr: "" })
       }
@@ -140,6 +146,9 @@ const startFakeBoat = (): Promise<FakeBoat> =>
       const requestUrl = new URL(request.url ?? "/", "http://fake")
       const pathname = requestUrl.pathname
       const body = await readRequestBody(request)
+      requests.push(
+        `${request.method} ${pathname.startsWith("/signed/") ? "/signed" : pathname.replace(/^\/api\/v1/, "").replace(/^\/sandboxes\/[^/?]+/, "/sandboxes/{id}")}`,
+      )
 
       if (pathname.startsWith("/signed/")) {
         if (signedDrops > 0) {
@@ -267,6 +276,10 @@ const startFakeBoat = (): Promise<FakeBoat> =>
       if (suffix === "/commands" && request.method === "POST") return handleCommand(sandboxId, jsonBody, response)
 
       if (suffix === "/files" && request.method === "GET") {
+        if (failedFileReads > 0) {
+          failedFileReads -= 1
+          return sendJson(response, 503, errorEnvelope(503, "unavailable", "try later", "req-file-503"))
+        }
         const guestPath = requestUrl.searchParams.get("path") ?? ""
         const bytes = files.get(guestPath)
         if (bytes === undefined)
@@ -348,6 +361,7 @@ const startFakeBoat = (): Promise<FakeBoat> =>
         createBodies,
         createIdempotencyKeys,
         commands,
+        requests,
         files,
         deletedConfirmHeaders,
         stopped,
@@ -355,6 +369,9 @@ const startFakeBoat = (): Promise<FakeBoat> =>
         desktopCalls: () => desktopCallCount,
         dropSignedFetches: (count) => {
           signedDrops = count
+        },
+        failFileReads: (count) => {
+          failedFileReads = count
         },
         seedSandbox: (id, state) => void sandboxes.set(id, { id, name: "seeded", state, getCount: 99 }),
         close: () =>
@@ -502,6 +519,22 @@ describe("boatClient", () => {
       expect(Buffer.from(bytes)).toEqual(big)
     })
   }, 60000)
+
+  it("exec and getFiles remove their guest temp files when a read fails", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-1", "ready")
+      const client = makeClient(fake)
+      const tempFiles = () => [...fake.files.keys()].filter((path) => path.startsWith("/tmp/.hinacode-"))
+      fake.failFileReads(1)
+      expect((await runFlip(client.exec("sb-1", { script: "cat /tmp/pic.png", timeoutSeconds: 30 })))._tag).toBe(
+        "BoatError",
+      )
+      expect(tempFiles()).toEqual([])
+      fake.failFileReads(1)
+      expect((await runFlip(client.getFiles("sb-1", "/home/user/out")))._tag).toBe("BoatError")
+      expect(tempFiles()).toEqual([])
+    })
+  })
 
   it("detached exec returns pid and log", async () => {
     await withFake(async (fake) => {
