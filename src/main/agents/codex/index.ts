@@ -164,7 +164,9 @@ const copySession = (threadId: string, from: AccountHome | null, to: AccountHome
 const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
 
 // FIXME: Codex has no notification for background terminals
-const TERMINAL_POLL_INTERVAL = Duration.seconds(2)
+export const TerminalPollInterval = Context.Reference<Duration.Input>("hinacode/CodexTerminalPollInterval", {
+  defaultValue: () => Duration.seconds(2),
+})
 
 type Terminals = {
   readonly client: CodexClient
@@ -178,6 +180,7 @@ const sameTasks = (a: ReadonlyArray<BackgroundTask>, b: ReadonlyArray<Background
 
 const make = Effect.gen(function* () {
   const providerScope = yield* Effect.scope
+  const terminalPollInterval = yield* TerminalPollInterval
   const clientLock = yield* Semaphore.make(1)
   const clients = new Map<string, { readonly client: CodexClient; readonly scope: Scope.Closeable }>()
 
@@ -302,7 +305,7 @@ const make = Effect.gen(function* () {
       terminalsByThread.set(threadId, terminals)
       terminals.poll = yield* Effect.gen(function* () {
         while (true) {
-          yield* Effect.sleep(TERMINAL_POLL_INTERVAL)
+          yield* Effect.sleep(terminalPollInterval)
           const tasks = yield* refreshTerminals(threadId, terminals)
           if (tasks.length === 0 && !runs.has(threadId)) return
         }
