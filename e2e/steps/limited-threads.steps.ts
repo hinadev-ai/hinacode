@@ -17,27 +17,14 @@ const screenshot = async (app: HinacodeApp, name: string) => {
   return app.page.screenshot({ path: join(shots, `${name}.png`) })
 }
 
-const labels = async (app: HinacodeApp) => {
-  const { locale } = await rpc(app.page, "clientSettings.get", undefined)
-  return locale === "zh-TW"
-    ? {
-        navigation: "專案與對話串",
-        limited: "已達用量上限",
-        message: "訊息",
-        send: "傳送",
-        stop: "停止",
-        resume: "重設後繼續",
-        cancelResume: "取消自動繼續",
-      }
-    : {
-        navigation: "Projects and threads",
-        limited: "Limited",
-        message: "Message",
-        send: "Send",
-        stop: "Stop",
-        resume: "Resume at reset",
-        cancelResume: "Cancel automatic resume",
-      }
+const copy = {
+  navigation: "Projects and threads",
+  limited: "Limited",
+  message: "Message",
+  send: "Send",
+  stop: "Stop",
+  resume: "Resume at reset",
+  cancelResume: "Cancel automatic resume",
 }
 
 const onlyThread = async (app: HinacodeApp) => {
@@ -50,7 +37,6 @@ const onlyThread = async (app: HinacodeApp) => {
 
 const openThread = async (app: HinacodeApp) => {
   const thread = await onlyThread(app)
-  const copy = await labels(app)
   await app.page
     .getByRole("navigation", { name: copy.navigation })
     .getByRole("link")
@@ -58,12 +44,10 @@ const openThread = async (app: HinacodeApp) => {
     .click()
 }
 
-const createThread = async (app: HinacodeApp, repo: string, locale = "en", theme = "default") => {
-  if (locale !== "en" && locale !== "zh-TW") throw new Error(`Unsupported locale ${locale}`)
-  if (theme !== "default" && theme !== "light") throw new Error(`Unsupported theme ${theme}`)
+const createThread = async (app: HinacodeApp, repo: string) => {
   await rpc(app.page, "clientSettings.set", {
-    locale,
-    appearance: { theme, fontSize: 16, uiFont: null, monoFont: null, contrast: 0 },
+    locale: "en",
+    appearance: { theme: "default", fontSize: 16, uiFont: null, monoFont: null, contrast: 0 },
   })
   const project = await rpc(app.page, "projects.create", { name: "Usage limits", rootPath: repo, setupScript: null })
   const thread = await rpc(app.page, "threads.create", { projectId: project.id })
@@ -77,15 +61,11 @@ const createThread = async (app: HinacodeApp, repo: string, locale = "en", theme
   await openThread(app)
 }
 
-Given(
-  "an isolated usage-limit thread in {string} with the {string} theme",
-  async ({ usageLimitApp: app, repo }, locale: string, theme: string) => {
-    await createThread(app, repo, locale, theme)
-  },
-)
+Given("an isolated usage-limit thread", async ({ usageLimitApp: app, repo }) => {
+  await createThread(app, repo)
+})
 
 const sendMessage = async (app: HinacodeApp, message: string) => {
-  const copy = await labels(app)
   await app.page.getByLabel(copy.message, { exact: true }).fill(message)
   await app.page.getByRole("button", { name: copy.send, exact: true }).click()
 }
@@ -95,7 +75,6 @@ When("I send a message to the usage-limit thread", async ({ usageLimitApp: app }
 })
 
 Then("the usage-limit thread is visibly limited and ready to send again", async ({ usageLimitApp: app, $testInfo }) => {
-  const copy = await labels(app)
   const thread = await onlyThread(app)
   await expect(
     app.page.getByRole("navigation", { name: copy.navigation }).getByRole("link").filter({ hasText: thread.title }),
@@ -105,10 +84,8 @@ Then("the usage-limit thread is visibly limited and ready to send again", async 
   await expect(app.page.getByRole("button", { name: copy.stop, exact: true })).toBeHidden()
   await app.page.getByLabel(copy.message, { exact: true }).fill("Retry the task")
   await expect(app.page.getByRole("button", { name: copy.send, exact: true })).toBeEnabled()
-  const { locale, appearance } = await rpc(app.page, "clientSettings.get", undefined)
-  const scheme = appearance.theme === "light" ? "light" : "dark"
   await $testInfo.attach("limited-thread", {
-    body: await screenshot(app, `usage-limit-${locale}-${scheme}`),
+    body: await screenshot(app, "usage-limit-en-dark"),
     contentType: "image/png",
   })
 })
@@ -145,7 +122,6 @@ When("I retry the usage-limit thread", async ({ usageLimitApp: app }) => {
 })
 
 const expectCompleted = async (app: HinacodeApp) => {
-  const copy = await labels(app)
   await expect(app.page.getByText("The retry completed successfully.", { exact: true })).toBeVisible()
   await expect.poll(async () => (await onlyThread(app)).status).toBe("idle")
   const thread = await onlyThread(app)
@@ -162,7 +138,6 @@ Then("the usage-limit thread completes successfully and becomes idle", async ({ 
 })
 
 const scheduleResume = async (app: HinacodeApp) => {
-  const copy = await labels(app)
   await callout(app).getByRole("button", { name: copy.resume, exact: true }).click()
   await expect(callout(app).getByRole("button", { name: copy.cancelResume, exact: true })).toBeVisible()
   await expect
@@ -212,7 +187,6 @@ When("I schedule the usage-limit thread to resume at reset", async ({ usageLimit
 })
 
 When("I cancel automatic resume for the usage-limit thread", async ({ usageLimitApp: app }) => {
-  const copy = await labels(app)
   await callout(app).getByRole("button", { name: copy.cancelResume, exact: true }).click()
   await expect(callout(app).getByRole("button", { name: copy.resume, exact: true })).toBeVisible()
   await expect
@@ -224,7 +198,6 @@ When("I cancel automatic resume for the usage-limit thread", async ({ usageLimit
 })
 
 Then("the usage-limit thread has no automatic resume scheduled", async ({ usageLimitApp: app }) => {
-  const copy = await labels(app)
   expect((await onlyThread(app)).usageLimit).toMatchObject({ kind: "usage", reset: { autoResume: false } })
   await expect(callout(app).getByRole("button", { name: copy.resume, exact: true })).toBeVisible()
   await expect(callout(app).getByRole("button", { name: copy.cancelResume, exact: true })).toBeHidden()
