@@ -603,13 +603,14 @@ export type ArchiveSettings = typeof ArchiveSettings.Type
 
 export const VmProvider = Schema.Literals(["sbx", "boat"])
 export type VmProvider = typeof VmProvider.Type
+export const vmProviderBeforeTheChoice: VmProvider = "sbx"
 
 export const BoatVmSize = Schema.Literals(["small", "default", "large", "xlarge"])
 export type BoatVmSize = typeof BoatVmSize.Type
 
 export const ExperimentalSettings = Schema.Struct({
   tinyVm: Schema.Boolean,
-  tinyVmProvider: VmProvider.pipe(Schema.withDecodingDefaultKey(Effect.succeed("sbx" as const))),
+  tinyVmProvider: VmProvider.pipe(Schema.withDecodingDefaultKey(Effect.succeed(vmProviderBeforeTheChoice))),
   tinyVmBoatSize: BoatVmSize.pipe(Schema.withDecodingDefaultKey(Effect.succeed("default" as const))),
   tinyVmTemplate: Schema.String,
   tinyVmProfile: Schema.Boolean,

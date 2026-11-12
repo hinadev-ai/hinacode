@@ -521,7 +521,7 @@ export const toPullRequest = (json: typeof PullRequestJson.Type): PullRequest =>
   }
 }
 
-const CHECK_RUN_ORDER: Record<CheckRunStatus, number> = { failing: 0, pending: 1, passing: 2, skipped: 3 }
+export const CHECK_RUN_ORDER: Record<CheckRunStatus, number> = { failing: 0, pending: 1, passing: 2, skipped: 3 }
 
 const toCheckRun = (entry: RollupEntry): CheckRun => {
   const { name, workflowName } = entry
