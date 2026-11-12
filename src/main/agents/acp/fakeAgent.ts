@@ -207,6 +207,14 @@ const prompt = async (message: Message) => {
     send({ method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk" } } })
   }
   if (text === "malformed") return send({ id: message.id, result: { stopReason: 42 } })
+  if (text === "tmp") {
+    const { TMPDIR, TMP, TEMP } = process.env
+    update(sessionId, {
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: `${TMPDIR} ${TMP} ${TEMP}` },
+    })
+    return send({ id: message.id, result: { stopReason: "end_turn" } })
+  }
   if (text === "ask" || text === "ask to run") {
     let cancelled = false
     cancels.set(sessionId, () => void (cancelled = true))

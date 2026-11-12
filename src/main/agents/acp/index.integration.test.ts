@@ -541,6 +541,16 @@ describe("makeAcpProvider", () => {
       ])
     }).pipe(Effect.scoped),
   )
+
+  it.live("runs the turn's agent with the thread's tmp folder as its temp directory", () =>
+    Effect.gen(function* () {
+      const { provider: make } = setup()
+      const provider = yield* make
+      const threadTmp = mkdtempSync(join(tmpdir(), "hc-thread-"))
+      const events = yield* runToEnd(provider, input({ prompt: "tmp", tmpDirectory: threadTmp }))
+      expect(events).toContainEqual({ type: "text_delta", text: `${threadTmp} ${threadTmp} ${threadTmp}` })
+    }).pipe(Effect.scoped),
+  )
 })
 
 describe("an ACP agent that fails", () => {
