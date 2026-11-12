@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { serverProof } from "@shared/proof.ts"
 import { RELAY_DELAY_MS } from "@shared/remote.ts"
+import type { RememberedAnswers } from "./connection"
 import type { StoredServer } from "./stored-target"
 
 class FakeSocket {
@@ -255,6 +256,47 @@ describe("call", () => {
       ["a", [thread("t-web", "web")]],
       ["b", []],
     ])
+  })
+
+  it("saves only the lists a relaunch reads back, so a search query never rewrites them", async () => {
+    const saves: [string, RememberedAnswers][] = []
+    const stop = onRemembered((serverId, answers) => saves.push([serverId, JSON.parse(JSON.stringify(answers))]))
+    const launchLists = { "projects.list": [], "worktrees.list": [], "threads.list": [thread("t-web", "web")] }
+    for (const [method, result] of Object.entries(launchLists)) {
+      const listing = call(method as keyof typeof launchLists, undefined)
+      socketOf(1001).answer(method, result)
+      socketOf(1002).answer(method, [])
+      await listing
+    }
+    const pullRequests = call("pullRequests.all", undefined)
+    socketOf(1001).answer("pullRequests.all", [])
+    socketOf(1002).answer("pullRequests.all", [])
+    await pullRequests
+    const savedAtLaunch = saves.length
+
+    for (const query of ["he", "hel", "hello"]) {
+      const searching = call("search.threads", { query, limit: 30 })
+      socketOf(1001).answer("search.threads", [])
+      socketOf(1002).answer("search.threads", [])
+      await searching
+    }
+    stop()
+
+    expect(saves.length).toBe(savedAtLaunch)
+    const [, lastSaved] = saves.findLast(([serverId]) => serverId === "a")!
+    expect(new Set(Object.keys(lastSaved))).toEqual(
+      new Set(["projects.list", "threads.list", "worktrees.list", "pullRequests.all"]),
+    )
+
+    setServers([])
+    setServers([server("a", 1001)])
+    restoreAnswers("a", lastSaved)
+    expect((await call("threads.list", undefined)).map((entry) => entry.id)).toEqual(["t-web"])
+
+    socketOf(1001).ready({ id: "env-a", name: "studio" })
+    const offline = call("threads.list", undefined)
+    socketOf(1001).fail("threads.list", { tag: "SqlError", message: "locked" })
+    expect((await offline).map((entry) => entry.id)).toEqual(["t-web"])
   })
 
   it("reads an artifact on the thread's server before any server has claimed it", async () => {
