@@ -1,10 +1,11 @@
 import type { LinearIssue, PullRequest, PullRequestLink, Thread } from "@shared/domain.ts"
 import { parseGitHubRepository } from "@shared/github.ts"
-import { pullRequestNumber, type Remote } from "@/stores/pull-requests"
+import { pullRequestNumberLabelOfUrl } from "@shared/codeHost.ts"
+import type { Remote } from "@/stores/pull-requests"
 
 export function pullRequestReference(url: string) {
   const repository = parseGitHubRepository(url)
-  const number = `#${pullRequestNumber(url) ?? "?"}`
+  const number = pullRequestNumberLabelOfUrl(url)
   return repository === null ? number : `${repository.owner}/${repository.name} ${number}`
 }
 

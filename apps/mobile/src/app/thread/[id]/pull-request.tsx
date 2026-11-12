@@ -7,6 +7,7 @@ import type {
   PullRequestLink,
   PullRequestStatus,
 } from "@shared/domain.ts"
+import { pullRequestNumberLabelOfUrl } from "@shared/codeHost.ts"
 import { linearReviewUrl } from "@shared/github.ts"
 import { providerInfo } from "@shared/providers.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "@shared/pullRequestPrompts.ts"
@@ -28,7 +29,7 @@ import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { openWebUrl } from "@/lib/open-url"
 import { reviewLabel, reviewTone, statusGlyph, statusLabel } from "@/lib/pull-request-labels"
-import { filesKey, loadDetailAtom, pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
+import { filesKey, loadDetailAtom, usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
 type Tab = "info" | "code"
@@ -81,11 +82,11 @@ export default function PullRequestScreen() {
     await reloadWithCode(reload, url, tab === "code").finally(() => setRefreshing(false))
   }
 
-  const number = remote?.status === "ready" ? String(remote.value.number) : pullRequestNumber(url)
+  const numberLabel = pullRequestNumberLabelOfUrl(url)
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <Stack.Screen options={{ title: number === null ? "" : `#${number}` }} />
+      <Stack.Screen options={{ title: numberLabel }} />
       <ScrollView
         contentContainerStyle={[styles.page, { paddingBottom: 16 + barHeight }]}
         scrollIndicatorInsets={{ bottom: barHeight }}

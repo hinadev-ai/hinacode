@@ -69,7 +69,10 @@ it("lists each issue once, work in progress first, then by priority with no prio
 it("names a pull request by its repository and number, before GitHub answers", () => {
   expect(pullRequestReference(pr(7))).toBe("acme/app #7")
   expect(pullRequestReference("https://example.com/pull/9")).toBe("#9")
-  expect(pullRequestReference("https://example.com/")).toBe("#?")
+})
+
+it("numbers a GitLab merge request !N", () => {
+  expect(pullRequestReference("https://gitlab.com/acme/app/-/merge_requests/5")).toBe("!5")
 })
 
 it("keeps a pull request GitHub could not resolve out of Open, unless a watch snapshot knows its state", () => {
