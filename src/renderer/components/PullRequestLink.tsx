@@ -18,6 +18,7 @@ import {
 } from "./ThreadPullRequests.tsx"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx"
 import { WithLinkIcon } from "./LinkIcon.tsx"
+import { LineCounts } from "./LineCounts.tsx"
 import { Skeleton } from "./ui/skeleton.tsx"
 
 export function PullRequestLink({
@@ -111,11 +112,8 @@ function PullRequestDetails({ pullRequest }: { pullRequest: PullRequest }) {
       <p className="truncate text-muted-foreground">
         {author} · <span className="font-mono">{`${headRefName} → ${baseRefName}`}</span>
       </p>
-      <p className="font-mono">
-        <span aria-hidden>
-          <span className="text-vcs-added">+{additions}</span> <span className="text-destructive">−{deletions}</span>
-        </span>
-        <span className="sr-only">{m.pr_card_size({ additions, deletions })}</span>
+      <p>
+        <LineCounts added={additions} removed={deletions} />
       </p>
     </>
   )
