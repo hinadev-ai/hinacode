@@ -6,6 +6,7 @@ import { type HinacodeBridge, RpcMethods } from "../../shared/contract.ts"
 import { defaultClientSettings, type Thread } from "../../shared/domain.ts"
 import "../index.css"
 import { useDrafts } from "../stores/drafts.ts"
+import { useMessages } from "../stores/messages.ts"
 import { useUi } from "../stores/ui.ts"
 import { Composer } from "./Composer.tsx"
 
@@ -17,7 +18,7 @@ const bridge: HinacodeBridge = {
     calls.push({ method, payload })
     if (method === "clientSettings.get")
       return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
-    if (method === "commands.list" && (payload as { threadId: string }).threadId === "folder-missing")
+    if (method === "commands.list" && (payload as { threadId: string }).threadId.startsWith("folder-missing"))
       return {
         error: {
           tag: "FolderMissingError",
@@ -113,4 +114,25 @@ test("a missing folder shows one Folder missing link to Details instead of its p
 
   await notice.click()
   expect(useUi.getState().sidePanelViews[thread.id]).toBe("details")
+})
+
+test("a new thread whose project folder is missing still says why commands did not load", async () => {
+  const thread = { ...threadWith("folder-missing-draft", "idle"), worktreeId: null }
+  useMessages.setState({
+    byThread: { [thread.id]: { status: "ready", messages: [], approvals: [], questions: [], secretRequests: [] } },
+  })
+  await render(<Composer thread={thread} />)
+
+  await expect
+    .element(page.getByText("Could not load commands and skills: The folder was moved or deleted."))
+    .toBeVisible()
+  await expect.element(page.getByText(missingFolder, { exact: false })).not.toBeInTheDocument()
+})
+
+test("Folder missing in a side chat opens Details for the thread it belongs to", async () => {
+  const thread = { ...threadWith("folder-missing-side", "idle"), sideOf: "main-thread" }
+  await render(<Composer thread={thread} />)
+
+  await page.getByRole("button", { name: "Folder missing", exact: true }).click()
+  expect(useUi.getState().sidePanelViews["main-thread"]).toBe("details")
 })
