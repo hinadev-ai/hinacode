@@ -17,8 +17,12 @@ const crash = (code) => {
   process.stderr.write("thread 'main' panicked at codex-rs/app-server/src/lib.rs: boom\n")
   process.exit(code)
 }
-const completeTurn = (threadId, turnId, status) =>
-  send({ method: "turn/completed", params: { threadId, turn: { id: turnId, status, error: null } } })
+const turnCompleted = (threadId, turnId, status) => ({
+  method: "turn/completed",
+  params: { threadId, turn: { id: turnId, status, error: null } },
+})
+const completeTurn = (threadId, turnId, status) => send(turnCompleted(threadId, turnId, status))
+const sendInOneWrite = (messages) => process.stdout.write(messages.map((message) => `${JSON.stringify(message)}\n`).join(""))
 
 const sandboxPolicy = (mode) =>
   mode === "danger-full-access"
@@ -64,14 +68,16 @@ const spawnSubagent = (threadId, turnId) => {
   childItem("item/completed", { item: { ...command, status: "completed", aggregatedOutput: null, exitCode: 0 } })
 }
 
-const finishSubagent = () => {
+const subagentFinished = () => {
   const child = "codex-child-thread"
   const message = { type: "agentMessage", id: "child-reply", text: "218 lines" }
-  send({ method: "item/completed", params: { threadId: child, turnId: "child-turn", item: message } })
-  completeTurn(child, "child-turn", "completed")
+  return [
+    { method: "item/completed", params: { threadId: child, turnId: "child-turn", item: message } },
+    turnCompleted(child, "child-turn", "completed"),
+  ]
 }
 
-let subagentFinished = false
+let subagentFinishSent = false
 const held = []
 const terminals = new Map()
 const loadedSandboxes = new Map()
@@ -228,6 +234,10 @@ const reply = ({ id, method, params }) => {
         terminals.set(params.threadId, [{ itemId: item.id, processId: item.processId, command: item.command }])
         send({ method: "item/started", params: { threadId: params.threadId, turnId, item } })
       }
+      if (control().subagentEndsWithTurn) {
+        subagentFinishSent = true
+        return sendInOneWrite([turnCompleted(params.threadId, turnId, "completed"), ...subagentFinished()])
+      }
       if (!control().holdTurn) {
         for (const tokenUsage of turnTokenUsage) {
           send({ method: "thread/tokenUsage/updated", params: { threadId: params.threadId, turnId, tokenUsage } })
@@ -296,8 +306,8 @@ watch(process.env.FAKE_CODEX_CONTROL, () => {
     activeRequest = null
   }
   if (held.length > 0 && control().release) held.splice(0).forEach(reply)
-  if (control().finishSubagent && !subagentFinished) {
-    subagentFinished = true
-    finishSubagent()
+  if (control().finishSubagent && !subagentFinishSent) {
+    subagentFinishSent = true
+    subagentFinished().forEach(send)
   }
 })
