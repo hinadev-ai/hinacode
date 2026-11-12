@@ -2103,3 +2103,53 @@ it("clears the stored session when Stop is followed by a lost session", async ()
     { claude: fakeClaudeCli },
   )
 }, 30_000)
+
+it("steers a Claude turn that has not opened yet into that turn", async () => {
+  const home = fakeClaudeHome()
+  await withPreparingThread(
+    async ({ runner, threads, accounts, thread, release, storedMessages }) => {
+      release()
+      const account = await Effect.runPromise(
+        accounts.create({ provider: "claude", name: "Fake", configDir: home.dir, binary: home.binary }),
+      )
+      await Effect.runPromise(threads.update({ id: thread.id, accountId: account.id }))
+      const prompts = () =>
+        readFileSync(join(home.dir, "received.jsonl"), "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map(
+            (line) =>
+              JSON.parse(line) as { type: string; message?: { content: unknown }; request?: { subtype: string } },
+          )
+      const promptTexts = () =>
+        prompts().flatMap((line) => (line.type === "user" ? [JSON.stringify(line.message?.content)] : []))
+
+      await Effect.runPromise(runner.send(thread.id, "hello", []))
+      await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"), {
+        timeout: 15_000,
+      })
+      writeFileSync(join(home.dir, "control.json"), JSON.stringify({ holdSetModel: true }))
+      await Effect.runPromise(threads.update({ id: thread.id, model: "switched-model" }))
+
+      await Effect.runPromise(runner.send(thread.id, "first", []))
+      await vi.waitFor(() => expect(prompts().some((line) => line.request?.subtype === "set_model")).toBe(true), {
+        timeout: 15_000,
+      })
+      expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running")
+      const steered = Effect.runPromise(runner.steer(thread.id, "steered", []))
+      writeFileSync(join(home.dir, "release-set-model"), "")
+      await steered
+
+      await vi.waitFor(() => expect(promptTexts().filter((text) => /first|steered/.test(text))).toHaveLength(2), {
+        timeout: 15_000,
+      })
+      expect(promptTexts().at(-2)).toContain("first")
+      expect(promptTexts().at(-1)).toContain("steered")
+      const users = (await storedMessages(thread.id)).filter((message) => message.role === "user")
+      expect(
+        users.map((message) => JSON.stringify(message.parts)).filter((parts) => parts.includes("steered")),
+      ).toHaveLength(1)
+    },
+    { claude: fakeClaudeCli },
+  )
+}, 30_000)
