@@ -208,7 +208,7 @@ jobs:
         working-directory: apps/mobile
 
   e2e-linux:
-    name: e2e (linux ${{ matrix.shard }}/6)
+    name: e2e (linux ${{ matrix.part }})
     needs: changes
     if: needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
@@ -216,7 +216,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        part: [1/6, 2/6, 3/6, 4/6, 5/6, 6/6, desktop]
     steps:
       # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
       - name: Start installing xvfb, openbox, ripgrep
@@ -242,13 +242,16 @@ jobs:
       - run: pnpm exec bddgen -c e2e/playwright.config.ts
       - name: Wait for apt
         run: until [ -s "$RUNNER_TEMP/apt.exit" ]; do sleep 1; done; cat "$RUNNER_TEMP/apt.log"; exit "$(cat "$RUNNER_TEMP/apt.exit")"
-      # A shard runs every test of the projects its tests depend on, so desktop runs as its own pass instead.
-      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --workers 4 --shard ${{ matrix.shard }}/6'
-      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project desktop --no-deps --shard ${{ matrix.shard }}/6'
+      # The desktop scenarios need the display to themselves, so they run in their own job on one worker.
+      - env:
+          PART: ${{ matrix.part }}
+        run: |
+          if [ "$PART" = desktop ]; then args="--project desktop --no-deps"; else args="--project parallel --workers 4 --shard $PART"; fi
+          xvfb-run -a sh -c "openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts $args"
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-report-linux-${{ matrix.shard }}
+          name: e2e-report-linux-${{ strategy.job-index }}
           path: |
             e2e/playwright-report
             e2e/test-results
