@@ -35,6 +35,12 @@ describe("xdotoolScript", () => {
     )
   })
 
+  it("presses the keys sbx accepts, such as enter, esc and lowercase names, by keysym", () => {
+    expect(xdotoolScript([{ type: "key", keys: "enter esc ctrl+L page_down" }])).toBe(
+      ["0xff0d", "0xff1b", "0xffe3+0x6c", "0xff56"].map((chord) => `xdotool key --clearmodifiers ${chord}`).join("\n"),
+    )
+  })
+
   it("refuses points outside the boat screen and unknown modifiers", () => {
     expect(() => xdotoolScript([{ type: "move", x: BOAT_SCREEN.width, y: 0 }])).toThrow(
       `x must be between 0 and ${BOAT_SCREEN.width - 1}`,
