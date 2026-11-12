@@ -34,6 +34,7 @@ const BOAT_READY_STATES: ReadonlyArray<string> = ["ready", "idle", "running"]
 export const isBoatReady = (state: string) => BOAT_READY_STATES.includes(state)
 
 const REQUEST_TIMEOUT_SECONDS = 15
+const CLEANUP_TIMEOUT_SECONDS = 5
 const FILES_TIMEOUT_SECONDS = 300
 const WAIT_READY_POLL_SECONDS = 2
 const WAIT_READY_MAX_ATTEMPTS = 120
@@ -474,9 +475,10 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
   const cleanupGuestFiles = (id: string, paths: ReadonlyArray<string>) =>
     paths.length === 0
       ? Effect.void
-      : rawCommand(id, `rm -f ${paths.map(shellQuote).join(" ")}`, REQUEST_TIMEOUT_SECONDS).pipe(
-          Effect.catch(() => Effect.succeed({ stdout: "", stderr: "", exitCode: 0, timedOut: false, success: true })),
+      : rawCommand(id, `rm -f ${paths.map(shellQuote).join(" ")}`, CLEANUP_TIMEOUT_SECONDS).pipe(
           Effect.asVoid,
+          Effect.timeoutOrElse({ duration: `${CLEANUP_TIMEOUT_SECONDS} seconds`, orElse: () => Effect.void }),
+          Effect.ignore,
         )
 
   const createSandbox = (options: {
