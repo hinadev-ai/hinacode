@@ -21,7 +21,7 @@ const statusLabel = {
 
 const noLinks: ReadonlyArray<never> = []
 
-export function ComposerStatusLine({ thread }: { thread: Thread }) {
+export function ComposerStatusLine({ thread, folderMissing = false }: { thread: Thread; folderMissing?: boolean }) {
   const environment = useThreadEnvironment(thread.id)
   const clouds = useClouds()
   const worktree = useActiveWorktree(thread)
@@ -44,6 +44,15 @@ export function ComposerStatusLine({ thread }: { thread: Thread }) {
             <BranchIcon aria-hidden className="size-3 shrink-0" />
             <span className="truncate font-mono">{branch}</span>
           </span>
+        )}
+        {folderMissing && (
+          <button
+            type="button"
+            onClick={() => useUi.getState().showView(thread.id, "details", { focus: true })}
+            className="shrink-0 rounded-sm text-attention underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {m.worktree_status_missing()}
+          </button>
         )}
         {urls.length === 1 ? (
           <PullRequestSummary threadId={thread.id} url={urls[0]!} pullRequest={pullRequests[0]} />

@@ -490,6 +490,7 @@
   "error_terminal": "ターミナルの実行に失敗しました：{detail}",
   "error_thread_busy": "このスレッドは実行中または承認待ちです。アーカイブする前に処理を停止してください。",
   "error_fs_access": "フォルダへのアクセスに失敗しました。移動または削除された可能性があります。",
+  "error_folder_missing": "フォルダが移動または削除されました。",
   "error_details": "詳細",
   "error_unexpected": "予期しないエラーが発生しました：{detail}",
   "panel_pr_badge": "PR: {state}",

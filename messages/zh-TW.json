@@ -490,6 +490,7 @@
   "error_terminal": "終端機無法執行：{detail}",
   "error_thread_busy": "這個對話串仍在執行或等待核准，請先停止再歸檔。",
   "error_fs_access": "無法讀取這個資料夾，它可能已被移動或刪除。",
+  "error_folder_missing": "資料夾已被移動或刪除。",
   "error_details": "詳細資訊",
   "error_unexpected": "發生非預期的錯誤：{detail}",
   "panel_pr_badge": "PR {state}",
