@@ -146,7 +146,7 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - name: Start installing ripgrep for the search tests
-        run: (sudo apt-get update && sudo apt-get install --yes ripgrep; echo $? > "$RUNNER_TEMP/apt.exit") > "$RUNNER_TEMP/apt.log" 2>&1 &
+        run: (status=0; sudo apt-get update && sudo apt-get install --yes ripgrep || status=$?; echo $status > "$RUNNER_TEMP/apt.exit") > "$RUNNER_TEMP/apt.log" 2>&1 &
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
@@ -220,7 +220,7 @@ jobs:
     steps:
       # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
       - name: Start installing xvfb, openbox, ripgrep
-        run: (sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep; echo $? > "$RUNNER_TEMP/apt.exit") > "$RUNNER_TEMP/apt.log" 2>&1 &
+        run: (status=0; sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep || status=$?; echo $status > "$RUNNER_TEMP/apt.exit") > "$RUNNER_TEMP/apt.log" 2>&1 &
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
