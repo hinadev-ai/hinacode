@@ -261,6 +261,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const tab = tabs.find((candidate) => candidate.value === tabValue) ?? tabs[0]!
   const models = usePickerModels(environment, tab.provider, tab.provider === thread.provider ? thread.model : null)
   const ownModels = usePickerModels(environment, thread.provider, null)
+  const showsHints = tabs.some((candidate) => candidate.hint !== undefined)
   const [listRows, setListRows] = useState(0)
   if (open && models.length > listRows) setListRows(models.length)
   const set = (patch: Omit<RpcRequest<"threads.update">, "id">) => void update({ ...patch, id: thread.id }, onError)
@@ -475,7 +476,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
               <Kbd>L</Kbd>
             </KbdGroup>
           </div>
-          {tab.hint && <p className="px-1 text-xs text-muted-foreground tabular-nums">{tab.hint}</p>}
+          {showsHints && <p className="min-h-4 px-1 text-xs text-muted-foreground tabular-nums">{tab.hint}</p>}
         </Tabs>
         <Combobox.Root
           inline
@@ -504,26 +505,30 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
             onKeyDown={onKeyDown}
             render={<Input className="shrink-0" />}
           />
-          <Combobox.List
-            aria-label={m.thread_model_picker()}
+          <div
             style={{ "--rows": listRows } as CSSProperties}
-            className="flex min-h-0 basis-[calc(var(--rows)*2.125rem)] scroll-fade-y scroll-py-1 flex-col gap-0.5 overflow-y-auto"
+            className="grid min-h-0 basis-[calc(var(--rows)*2.125rem)] grid-rows-1"
           >
-            {(model: ModelInfo) => (
-              <Combobox.Item
-                key={model.id}
-                value={model}
-                aria-disabled={picking}
-                className="group flex h-8 shrink-0 cursor-default items-center gap-2 rounded-md px-2 text-sm outline-none select-none aria-disabled:opacity-50 aria-selected:font-medium data-highlighted:bg-accent data-disabled:opacity-50"
-              >
-                <span className="min-w-0 flex-1 truncate">{model.label}</span>
-                <CheckIcon aria-hidden className="invisible size-4 shrink-0 group-aria-selected:visible" />
-              </Combobox.Item>
-            )}
-          </Combobox.List>
-          <Combobox.Empty className="px-2 py-1.5 text-sm text-muted-foreground empty:hidden">
-            {models.length > 0 && m.thread_model_no_match()}
-          </Combobox.Empty>
+            <Combobox.List
+              aria-label={m.thread_model_picker()}
+              className="col-start-1 row-start-1 flex min-h-0 scroll-fade-y scroll-py-1 flex-col gap-0.5 overflow-y-auto"
+            >
+              {(model: ModelInfo) => (
+                <Combobox.Item
+                  key={model.id}
+                  value={model}
+                  aria-disabled={picking}
+                  className="group flex h-8 shrink-0 cursor-default items-center gap-2 rounded-md px-2 text-sm outline-none select-none aria-disabled:opacity-50 aria-selected:font-medium data-highlighted:bg-accent data-disabled:opacity-50"
+                >
+                  <span className="min-w-0 flex-1 truncate">{model.label}</span>
+                  <CheckIcon aria-hidden className="invisible size-4 shrink-0 group-aria-selected:visible" />
+                </Combobox.Item>
+              )}
+            </Combobox.List>
+            <Combobox.Empty className="col-start-1 row-start-1 self-start px-2 py-1.5 text-sm text-muted-foreground empty:hidden">
+              {models.length > 0 && m.thread_model_no_match()}
+            </Combobox.Empty>
+          </div>
         </Combobox.Root>
         <div className="flex shrink-0 flex-col gap-3 border-t border-border px-1 pt-3">
           {current !== undefined && current.efforts.length > 0 && (
