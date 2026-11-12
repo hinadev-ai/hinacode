@@ -5,7 +5,7 @@ import pluginReact from "@vitejs/plugin-react"
 import type { Plugin, TransformResult } from "vite"
 
 const root = import.meta.dirname
-const cacheDir = resolve(root, "node_modules/.cache/react-compiler")
+const cacheRoot = resolve(root, "node_modules/.cache/react-compiler")
 const versionOf = (name: string) =>
   (JSON.parse(readFileSync(resolve(root, "node_modules", name, "package.json"), "utf8")) as { version: string }).version
 
@@ -30,10 +30,12 @@ const cachedBabel = (plugin: Plugin): Plugin => {
   const transform = plugin.transform as { filter: unknown; handler: Handler }
   const used = new Set<string>()
   let building = false
+  let cacheDir = cacheRoot
   return {
     ...plugin,
     configResolved(config) {
       building = config.command === "build"
+      cacheDir = join(cacheRoot, relative(root, config.root) || "root")
       return (plugin.configResolved as ((this: unknown, c: typeof config) => void) | undefined)?.call(this, config)
     },
     transform: {
@@ -44,6 +46,7 @@ const cachedBabel = (plugin: Plugin): Plugin => {
           .update(toolchain)
           .update(relative(root, id))
           .update(extra?.ssr ? "ssr" : "client")
+          .update(process.env["NODE_ENV"] ?? "")
           .update(code)
           .digest("hex")
         const file = join(cacheDir, `${key}.json`)
@@ -59,7 +62,7 @@ const cachedBabel = (plugin: Plugin): Plugin => {
     } as Plugin["transform"],
     buildEnd() {
       if (!building || used.size === 0) return
-      for (const name of readdirSync(cacheDir)) if (!used.has(name)) rmSync(join(cacheDir, name))
+      for (const name of readdirSync(cacheDir)) if (!used.has(name)) rmSync(join(cacheDir, name), { force: true })
     },
   }
 }
