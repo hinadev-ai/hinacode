@@ -48,7 +48,7 @@ export function ComposerStatusLine({ thread, folderMissing = false }: { thread: 
         {folderMissing && (
           <button
             type="button"
-            onClick={() => useUi.getState().showView(thread.id, "details", { focus: true })}
+            onClick={() => useUi.getState().showView(thread.sideOf ?? thread.id, "details", { focus: true })}
             className="shrink-0 rounded-sm text-attention underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
           >
             {m.worktree_status_missing()}
