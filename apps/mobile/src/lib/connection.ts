@@ -82,6 +82,9 @@ const owners = makeOwners()
 export type RememberedAnswers = Readonly<Partial<Record<RpcMethod, { readonly payload: string; readonly result: unknown }>>>
 
 const remembered = new Map<string, RememberedAnswers>()
+const listsShownAtLaunch: readonly RpcMethod[] = ["projects.list", "threads.list", "worktrees.list", "pullRequests.all"]
+const savedAtLaunch = (answers: RememberedAnswers): RememberedAnswers =>
+  Object.fromEntries(listsShownAtLaunch.flatMap((method) => (answers[method] ? [[method, answers[method]]] : [])))
 const rememberListeners = new Set<(serverId: string, answers: RememberedAnswers) => void>()
 const listeners = new Set<(event: PushEvent) => void>()
 
@@ -292,7 +295,8 @@ async function gather(method: RpcMethod, payload: unknown): Promise<RpcEnvelope<
       if (envelope === undefined || !Array.isArray(envelope.result)) return fallback
       const answers = { ...remembered.get(server.id), [method]: { payload: key, result: envelope.result } }
       remembered.set(server.id, answers)
-      for (const listener of rememberListeners) listener(server.id, answers)
+      if (listsShownAtLaunch.includes(method))
+        for (const listener of rememberListeners) listener(server.id, savedAtLaunch(answers))
       return { result: envelope.result }
     }),
   )
