@@ -1,3 +1,4 @@
+import { codeHostName, codeHostOfUrl } from "@shared/codeHost.ts"
 import type { LinearIssue } from "@shared/domain.ts"
 import { router, useFocusEffect } from "expo-router"
 import { useState } from "react"
@@ -222,7 +223,7 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
         )}
         {row.error !== null && (
           <Text numberOfLines={1} style={[styles.metaText, { color: theme.textMuted }]}>
-            {copy("mobile_pr_lookup_failed")}
+            {copy("mobile_pr_lookup_failed", { host: codeHostName(codeHostOfUrl(row.url)) })}
           </Text>
         )}
       </View>
