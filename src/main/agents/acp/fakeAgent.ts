@@ -296,7 +296,6 @@ const handle = (message: Message) => {
       return send({ id: message.id, result: { configOptions: configFor(sessionId) } })
     }
     case "session/set_model":
-    case "session/close":
       return send({ id: message.id, result: {} })
     case "session/prompt":
       return void prompt(message)
