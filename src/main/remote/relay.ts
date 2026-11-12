@@ -37,18 +37,31 @@ const FIRST_RETRY_MS = 1000
 const LAST_RETRY_MS = 60_000
 const HEALTHY_MS = 60_000
 const PUBLISH_EVERY = Duration.minutes(10)
+const READY_EVERY = Duration.seconds(30)
+const READY_TIMEOUT = Duration.seconds(5)
+const NOT_READY_BEFORE_RESTART = 6
 
-const CLOUDFLARED_ARGS = ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:0", "run"]
+const NO_EDGE = "cloudflared has no connection to Cloudflare."
+const RESTARTED = "cloudflared had no connection to Cloudflare for 3 minutes, so it was restarted."
+
+const CLOUDFLARED_ARGS = ["tunnel", "--no-autoupdate", "--protocol", "http2", "--metrics", "127.0.0.1:0", "run"]
 
 export const relayOrigin = ({ bindHost, port }: Pick<SettingsValue["remote"], "bindHost" | "port">) => {
   const host = bindHost === PRIVATE_NETWORKS ? LOOPBACK : bindHost
   return `http://${host.includes(":") ? `[${host}]` : host}:${port}`
 }
 
-type CloudflaredLine = { readonly type: "connected" } | { readonly type: "error"; readonly message: string }
+type CloudflaredLine =
+  | { readonly type: "connected" }
+  | { readonly type: "metrics"; readonly address: string }
+  | { readonly type: "error"; readonly message: string }
+
+const METRICS_LINE = /Starting metrics server on (\S+)\/metrics/
 
 const parseCloudflaredLine = (line: string): CloudflaredLine | null => {
   if (line.includes("Registered tunnel connection")) return { type: "connected" }
+  const address = METRICS_LINE.exec(line)?.[1]
+  if (address !== undefined) return { type: "metrics", address }
   const at = line.indexOf(" ERR ")
   return at === -1 ? null : { type: "error", message: line.slice(at + 5).trim() }
 }
@@ -101,6 +114,7 @@ type ChildEvent =
   | { readonly type: "line"; readonly line: string }
   | { readonly type: "failed"; readonly error: NodeJS.ErrnoException }
   | { readonly type: "closed"; readonly code: number | null; readonly signal: NodeJS.Signals | null }
+  | { readonly type: "ready"; readonly ready: boolean }
 
 type Outcome = { readonly type: "missing" } | { readonly type: "exited"; readonly error: string; readonly upMs: number }
 
@@ -185,6 +199,21 @@ const make = ({
 
     const republish = Effect.asVoid(FiberHandle.run(publisher, publishPairing))
 
+    const watchReady = (address: string, events: Queue.Queue<ChildEvent>) =>
+      Effect.gen(function* () {
+        const url = new URL(`http://${address}/ready`)
+        for (;;) {
+          yield* Effect.sleep(READY_EVERY)
+          const response = yield* Effect.tryPromise((signal) => fetch(url, { signal })).pipe(
+            Effect.timeout(READY_TIMEOUT),
+            Effect.option,
+          )
+          if (Option.isNone(response)) continue
+          const code = response.value.status
+          if (code === 200 || code === 503) yield* Queue.offer(events, { type: "ready", ready: code === 200 })
+        }
+      })
+
     const runOnce = (binary: string, hostname: string, token: string) =>
       Effect.gen(function* () {
         const events = yield* Queue.unbounded<ChildEvent>()
@@ -204,7 +233,9 @@ const make = ({
           (child) => Effect.sync(() => child.kill("SIGTERM")),
         )
         const startedAt = yield* Clock.currentTimeMillis
+        const upMs = Effect.map(Clock.currentTimeMillis, (now) => now - startedAt)
         let lastError: string | null = null
+        let notReady = 0
         for (;;) {
           const event = yield* Queue.take(events)
           if (event.type === "failed") {
@@ -212,12 +243,24 @@ const make = ({
             return { type: "exited", error: `Cannot start cloudflared: ${event.error.message}`, upMs: 0 } as Outcome
           }
           if (event.type === "closed") {
-            const upMs = (yield* Clock.currentTimeMillis) - startedAt
             const exit = event.code === null ? `stopped by ${event.signal}` : `exited with code ${event.code}`
-            return { type: "exited", error: lastError ?? `cloudflared ${exit}`, upMs } as Outcome
+            return { type: "exited", error: lastError ?? `cloudflared ${exit}`, upMs: yield* upMs } as Outcome
+          }
+          if (event.type === "ready") {
+            notReady = event.ready ? 0 : notReady + 1
+            if (notReady >= NOT_READY_BEFORE_RESTART) {
+              return { type: "exited", error: lastError ?? RESTARTED, upMs: yield* upMs } as Outcome
+            }
+            yield* publish(
+              event.ready
+                ? { state: "connected", hostname }
+                : { state: "connecting", hostname, error: lastError ?? NO_EDGE },
+            )
+            continue
           }
           const parsed = parseCloudflaredLine(event.line)
           if (parsed?.type === "connected") yield* publish({ state: "connected", hostname })
+          if (parsed?.type === "metrics") yield* Effect.forkScoped(watchReady(parsed.address, events))
           if (parsed?.type === "error") lastError = parsed.message
         }
       }).pipe(Effect.scoped)
