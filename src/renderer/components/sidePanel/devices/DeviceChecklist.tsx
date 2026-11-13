@@ -16,6 +16,7 @@ interface RequirementCopy {
   readonly purpose: () => string
   readonly instruction?: () => string
   readonly command?: string
+  readonly installLabel?: () => string
 }
 
 const requirementCopy: Record<Requirement, RequirementCopy> = {
@@ -34,7 +35,7 @@ const requirementCopy: Record<Requirement, RequirementCopy> = {
     instruction: m.devices_check_android_sdk_fix,
   },
   androidImage: { name: m.devices_check_android_image, purpose: m.devices_check_android_image_for },
-  avd: { name: m.devices_check_avd, purpose: m.devices_check_avd_for },
+  avd: { name: m.devices_check_avd, purpose: m.devices_check_avd_for, installLabel: m.devices_check_create },
   audioCapture: {
     name: m.devices_check_audio_capture,
     purpose: m.devices_check_audio_capture_for,
@@ -73,6 +74,20 @@ export function DeviceChecklist({ checks, platform, rechecking, onSetup, onReche
   )
 }
 
+type Tone = "ready" | "missing" | "optional"
+
+const tones: Record<
+  Tone,
+  { readonly Icon: typeof CheckIcon; readonly className: string; readonly label: () => string }
+> = {
+  ready: { Icon: CheckIcon, className: "text-success", label: m.devices_check_ready },
+  missing: { Icon: WarningIcon, className: "text-destructive", label: m.devices_check_missing },
+  optional: { Icon: CircleIcon, className: "text-muted-foreground", label: m.devices_check_not_installed },
+}
+
+const toneOf = (check: DeviceCheck): Tone =>
+  check.state === "ready" ? "ready" : check.needed === "recommended" ? "optional" : "missing"
+
 interface CheckRowProps {
   readonly check: DeviceCheck
   readonly rechecking: boolean
@@ -83,64 +98,54 @@ interface CheckRowProps {
 function CheckRow({ check, rechecking, onSetup, onRecheck }: CheckRowProps) {
   const { pending, error, run } = useVmAction()
   const copy = requirementCopy[check.requirement]
+  const tone = tones[toneOf(check)]
   const ready = check.state === "ready"
-  const required = check.needed !== "recommended"
-  const manual = !ready && check.fix === "manual"
   return (
     <li className="flex items-start gap-2 px-3 py-1.5">
-      {ready ? (
-        <CheckIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-success" />
-      ) : required ? (
-        <WarningIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
-      ) : (
-        <CircleIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-      )}
+      <tone.Icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", tone.className)} />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex min-w-0 items-baseline gap-2">
           <span className="truncate text-sm">{copy.name()}</span>
-          <span
-            className={cn(
-              "shrink-0 text-xs",
-              ready ? "text-success" : required ? "text-destructive" : "text-muted-foreground",
-            )}
-          >
-            {ready ? m.devices_check_ready() : required ? m.devices_check_missing() : m.devices_check_not_installed()}
-          </span>
+          <span className={cn("shrink-0 text-xs", tone.className)}>{tone.label()}</span>
         </div>
         <p className="text-xs text-pretty text-muted-foreground">{copy.purpose()}</p>
-        {manual && copy.instruction && <p className="text-xs text-pretty">{copy.instruction()}</p>}
-        {manual && copy.command && (
-          <div className="flex min-w-0 items-center gap-1 text-xs">
-            <code className="min-w-0 truncate font-mono">{copy.command}</code>
-            <CopyButton value={copy.command} label={m.devices_check_copy()} />
-          </div>
-        )}
+        {!ready && check.fix === "manual" && <ManualFix copy={copy} />}
         {error && (
           <p role="alert" className="font-mono text-xs wrap-break-word text-destructive">
             {error}
           </p>
         )}
       </div>
-      {!ready &&
-        (check.fix === "install" ? (
-          <Button
-            variant="outline"
-            size="xs"
-            disabled={pending}
-            aria-label={check.requirement === "avd" ? undefined : m.devices_check_install_label({ name: copy.name() })}
-            action={() => run(onSetup)}
-          >
-            {pending
-              ? m.devices_check_installing()
-              : check.requirement === "avd"
-                ? m.devices_check_create()
-                : m.devices_check_install()}
-          </Button>
-        ) : (
-          <Button variant="outline" size="xs" disabled={rechecking} action={onRecheck}>
-            {m.devices_check_again()}
-          </Button>
-        ))}
+      {!ready && check.fix === "install" && (
+        <Button
+          variant="outline"
+          size="xs"
+          disabled={pending}
+          aria-label={copy.installLabel ? undefined : m.devices_check_install_label({ name: copy.name() })}
+          action={() => run(onSetup)}
+        >
+          {pending ? m.devices_check_installing() : (copy.installLabel ?? m.devices_check_install)()}
+        </Button>
+      )}
+      {!ready && check.fix === "manual" && (
+        <Button variant="outline" size="xs" disabled={rechecking} action={onRecheck}>
+          {m.devices_check_again()}
+        </Button>
+      )}
     </li>
+  )
+}
+
+function ManualFix({ copy }: { copy: RequirementCopy }) {
+  return (
+    <>
+      {copy.instruction && <p className="text-xs text-pretty">{copy.instruction()}</p>}
+      {copy.command && (
+        <div className="flex min-w-0 items-center gap-1 text-xs">
+          <code className="min-w-0 truncate font-mono">{copy.command}</code>
+          <CopyButton value={copy.command} label={m.devices_check_copy()} />
+        </div>
+      )}
+    </>
   )
 }

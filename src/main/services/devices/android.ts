@@ -45,7 +45,7 @@ const compareApiLevels = (a: string, b: string) => {
   return 0
 }
 
-const subdirectories = (path: string) => readdir(path).catch((): ReadonlyArray<string> => [])
+const entriesOf = (path: string) => readdir(path).catch((): ReadonlyArray<string> => [])
 
 const javaEnv = async (): Promise<NodeJS.ProcessEnv> => {
   if (process.env["JAVA_HOME"]) return process.env
@@ -243,6 +243,9 @@ const runningEmulator = async (id: DeviceId) => {
   if (!emulator) throw new DeviceError("This emulator is not running.")
   return emulator
 }
+
+const avdNames = async () =>
+  (await entriesOf(avdHome())).filter((file) => file.endsWith(".ini") && AVD_NAME.test(file.slice(0, -4)))
 
 const refuseCreate = () => Promise.reject(new DeviceError(CREATE_UNSUPPORTED))
 
@@ -638,20 +641,17 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
   const installedImages = async () => {
     const root = join(sdk, "system-images")
     const images: Array<{ readonly key: string; readonly apiLevel: string; readonly abi: string }> = []
-    for (const platform of await subdirectories(root)) {
+    for (const platform of await entriesOf(root)) {
       const apiLevel = apiLevelOf(platform)
       if (apiLevel === null) continue
-      for (const tag of await subdirectories(join(root, platform))) {
-        for (const abi of await subdirectories(join(root, platform, tag))) {
+      for (const tag of await entriesOf(join(root, platform))) {
+        for (const abi of await entriesOf(join(root, platform, tag))) {
           images.push({ key: `system-images;${platform};${tag};${abi}`, apiLevel, abi })
         }
       }
     }
     return images.toSorted((a, b) => compareApiLevels(b.apiLevel, a.apiLevel))
   }
-
-  const avdNames = async () =>
-    (await subdirectories(avdHome())).filter((file) => file.endsWith(".ini") && AVD_NAME.test(file.slice(0, -4)))
 
   const checks: DevicePlatformDriver["checks"] = async () => {
     const [sdkReady, images, avds] = await Promise.all([support(), installedImages(), avdNames()])
@@ -673,14 +673,13 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
   }
 
   const installNewestImage = async () => {
-    const sdkmanager = await cmdlineTool("sdkmanager")
-    const env = await javaEnv()
+    const [sdkmanager, env] = await Promise.all([cmdlineTool("sdkmanager"), javaEnv()])
     const listing = await runSetup(sdkmanager, ["--list"], { env })
     const pattern = new RegExp(`^\\s*(system-images;android-(\\d+(?:\\.\\d+)?);google_apis;${hostAbi()})\\s*\\|`, "gm")
     const available = [...listing.matchAll(pattern)]
       .map((match) => ({ key: match[1]!, apiLevel: match[2]! }))
       .toSorted((a, b) => compareApiLevels(b.apiLevel, a.apiLevel))
-    const platforms = (await subdirectories(join(sdk, "platforms"))).flatMap((each) => apiLevelOf(each) ?? [])
+    const platforms = (await entriesOf(join(sdk, "platforms"))).flatMap((each) => apiLevelOf(each) ?? [])
     const newestPlatform = platforms.toSorted((a, b) => compareApiLevels(b, a))[0]
     const image =
       available.find((each) => newestPlatform !== undefined && compareApiLevels(each.apiLevel, newestPlatform) === 0) ??
@@ -690,12 +689,11 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
   }
 
   const createAvd = async () => {
-    const avdmanager = await cmdlineTool("avdmanager")
-    const images = await installedImages()
+    const [avdmanager, images, env] = await Promise.all([cmdlineTool("avdmanager"), installedImages(), javaEnv()])
     const image = images.find((each) => each.abi === hostAbi()) ?? images[0]
     if (!image) throw new DeviceError("Install an Android system image first.")
     await runSetup(avdmanager, ["create", "avd", "-n", HINACODE_AVD_NAME, "-k", image.key, "-d", HINACODE_AVD_DEVICE], {
-      env: await javaEnv(),
+      env,
       input: "no\n",
     })
   }
@@ -712,7 +710,7 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
   }
 
   const packageOf = async (apk: string) => {
-    const versions = (await subdirectories(join(sdk, "build-tools"))).filter((each) => /^\d+(\.\d+)*$/.test(each))
+    const versions = (await entriesOf(join(sdk, "build-tools"))).filter((each) => /^\d+(\.\d+)*$/.test(each))
     const newest = versions.toSorted((a, b) => compareApiLevels(b, a))[0]
     if (newest === undefined) return null
     const name = await run(join(sdk, "build-tools", newest, "aapt2"), ["dump", "packagename", apk]).catch(() => "")
