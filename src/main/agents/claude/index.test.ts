@@ -7,6 +7,7 @@ import { vi } from "vitest"
 import { Effect, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
+import { signedOut, signedOutMessage } from "./fixtures/transcript.ts"
 import { usageLimitResult } from "./fixtures/usageLimit.ts"
 import type { GatewayModel, GatewayTarget } from "../magpie/gateway.ts"
 import { MagpieProvider } from "../magpie/index.ts"
@@ -475,6 +476,38 @@ describe("Claude idle sessions", () => {
         expect(latestCli().close).not.toHaveBeenCalled()
 
         latestCli().push({ ...succeeded, user_message_uuids: [steer] })
+        yield* Fiber.join(turn.fiber)
+        expect(turn.events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
+  it.effect("refuses a steer until its turn opens, then queues it after the turn's prompt", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        yield* runTurn()
+        const switching = Promise.withResolvers<void>()
+        sdk.setModel = () => switching.promise
+        sdk.respond = () => undefined
+        let opened = false
+        const turn = yield* startTurn(
+          turnInput({ model: "claude-opus-5-5", onOpen: Effect.sync(() => void (opened = true)) }),
+        )
+        yield* until(() => latestCli().setModel.mock.calls.length === 1)
+
+        expect(yield* provider.steer!("thread-1", "Too early", [], "now")).toBe(false)
+        expect(opened).toBe(false)
+
+        switching.resolve()
+        yield* until(() => opened)
+        expect(yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")).toBe(true)
+        yield* until(() => latestCli().prompts.length === 3)
+        const [prompt, steer] = latestCli().prompts.slice(1)
+        expect(JSON.stringify(prompt?.message.content)).toContain("Hello")
+        expect(JSON.stringify(steer?.message.content)).toContain("Use pnpm instead")
+
+        latestCli().push({ ...succeeded, user_message_uuids: [prompt!.uuid!, steer!.uuid!] })
         yield* Fiber.join(turn.fiber)
         expect(turn.events.at(-1)?.type).toBe("turn_completed")
       }),
@@ -1058,6 +1091,29 @@ describe("Claude background tasks", () => {
     ),
   )
 
+  it.effect("keeps the CLI and its scheduled wakeup when only the instructions changed", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.respond = (cli) =>
+          cli.push(
+            init("session-1"),
+            ...scheduleWakeup(
+              { delaySeconds: 2400, reason: "Fallback heartbeat", prompt: "Poll" },
+              { scheduledFor: 2_400_000 },
+            ),
+            succeeded,
+          )
+        yield* runTurn()
+
+        sdk.respond = completeWith(succeeded)
+        const events = yield* runTurn(turnInput({ instructions: "Work in hinacode on fix/restart" }))
+        expect(events.map((event) => event.type)).not.toContain("turn_failed")
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().close).not.toHaveBeenCalled()
+      }),
+    ),
+  )
+
   it.effect("closes an idle CLI 60 seconds after a wakeup that never fires", () =>
     lifecycle(
       Effect.gen(function* () {
@@ -1266,6 +1322,22 @@ describe("Claude background sub-agents", () => {
   )
 })
 
+describe("Claude commands", () => {
+  it.effect("lists commands again after a failed probe", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.supportedCommands = () => Promise.reject(new Error("spawn claude ENOENT"))
+        yield* provider.listCommands({ threadId: "thread-1", cwd: "/repo", home: null }).pipe(Effect.flip)
+
+        sdk.supportedCommands = () => Promise.resolve([{ name: "review", description: "", argumentHint: "" }])
+        const listed = yield* provider.listCommands({ threadId: "thread-1", cwd: "/repo", home: null })
+        expect(listed.map((command) => command.name)).toEqual(["review"])
+      }),
+    ),
+  )
+})
+
 describe("Claude models", () => {
   it.effect("asks the CLI again after a failed listing, so a fresh install shows its models", () =>
     lifecycle(
@@ -1323,6 +1395,29 @@ describe("magpie", () => {
         expect(yield* provider.account(null)).toStrictEqual({ type: "signedOut" })
       }),
     ),
+  )
+
+  it.effect("leaves Claude's login command out of a signed-out turn on a Claude model", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        const signedOutMessages = signedOut().flatMap((step) => (step.type === "sdk" ? [step.message] : []))
+        sdk.respond = (cli) => cli.push(init("session-1"), ...signedOutMessages)
+        const provider = yield* MagpieProvider
+        const events = yield* provider.runTurn(turnInput({ model: "claude-opus-5-5" })).pipe(Stream.runCollect)
+        expect([...events].at(-1)).toStrictEqual({ type: "turn_failed", message: signedOutMessage, signedOut: true })
+      }),
+    ),
+  )
+
+  it.effect("names magpie in the errors its harness raises", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        sdk.supportedCommands = () => Promise.reject(new Error("spawn claude ENOENT"))
+        const provider = yield* MagpieProvider
+        const error = yield* provider.listCommands({ threadId: "thread-1", cwd: "/repo", home: null }).pipe(Effect.flip)
+        expect(error.provider).toBe("magpie")
+      }),
+    ).pipe(Effect.ensuring(Effect.sync(() => (sdk.supportedCommands = () => Promise.resolve([]))))),
   )
 
   it.effect("starts Claude Code with the gateway in its flag settings, over the user's settings.json", () =>

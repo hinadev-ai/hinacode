@@ -10,6 +10,7 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { toast } from "sonner"
 import {
+  type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
   startTransition,
@@ -260,6 +261,9 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const tab = tabs.find((candidate) => candidate.value === tabValue) ?? tabs[0]!
   const models = usePickerModels(environment, tab.provider, tab.provider === thread.provider ? thread.model : null)
   const ownModels = usePickerModels(environment, thread.provider, null)
+  const showsHints = tabs.some((candidate) => candidate.hint !== undefined)
+  const [listRows, setListRows] = useState(0)
+  if (open && models.length > listRows) setListRows(models.length)
   const set = (patch: Omit<RpcRequest<"threads.update">, "id">) => void update({ ...patch, id: thread.id }, onError)
   const registry = use(RegistryContext)
   const tabProviders = [...new Set(tabs.map((candidate) => candidate.provider))]
@@ -273,6 +277,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     setFocus(picker)
     setTabValue(threadTab)
     setQuery("")
+    setListRows(0)
     setOpen(true)
   }
 
@@ -427,7 +432,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
         align="start"
         sideOffset={6}
         collisionAvoidance={{ side: "none", fallbackAxisSide: "none" }}
-        className="h-[min(520px,var(--available-height))] w-90 max-w-[calc(100vw-1rem)] gap-3 p-2"
+        className="max-h-[min(520px,var(--available-height))] w-90 max-w-[calc(100vw-1rem)] gap-3 p-2"
         initialFocus={() =>
           (focus === "effort"
             ? popupRef.current?.querySelector<HTMLElement>("[data-slot=slider-thumb] input")
@@ -471,7 +476,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
               <Kbd>L</Kbd>
             </KbdGroup>
           </div>
-          {tab.hint && <p className="px-1 text-xs text-muted-foreground tabular-nums">{tab.hint}</p>}
+          {showsHints && <p className="min-h-4 px-1 text-xs text-muted-foreground tabular-nums">{tab.hint}</p>}
         </Tabs>
         <Combobox.Root
           inline
@@ -500,25 +505,30 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
             onKeyDown={onKeyDown}
             render={<Input className="shrink-0" />}
           />
-          <Combobox.List
-            aria-label={m.thread_model_picker()}
-            className="flex min-h-0 flex-1 scroll-fade-y scroll-py-1 flex-col gap-0.5 overflow-y-auto"
+          <div
+            style={{ "--rows": listRows } as CSSProperties}
+            className="grid min-h-0 basis-[calc(var(--rows)*2.125rem)] grid-rows-1"
           >
-            {(model: ModelInfo) => (
-              <Combobox.Item
-                key={model.id}
-                value={model}
-                aria-disabled={picking}
-                className="group flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none select-none aria-disabled:opacity-50 aria-selected:font-medium data-highlighted:bg-accent data-disabled:opacity-50"
-              >
-                <span className="min-w-0 flex-1 truncate">{model.label}</span>
-                <CheckIcon aria-hidden className="invisible size-4 shrink-0 group-aria-selected:visible" />
-              </Combobox.Item>
-            )}
-          </Combobox.List>
-          <Combobox.Empty className="px-2 py-1.5 text-sm text-muted-foreground empty:hidden">
-            {models.length > 0 && m.thread_model_no_match()}
-          </Combobox.Empty>
+            <Combobox.List
+              aria-label={m.thread_model_picker()}
+              className="col-start-1 row-start-1 flex min-h-0 scroll-fade-y scroll-py-1 scrollbar-gutter-stable flex-col gap-0.5 overflow-y-auto"
+            >
+              {(model: ModelInfo) => (
+                <Combobox.Item
+                  key={model.id}
+                  value={model}
+                  aria-disabled={picking}
+                  className="group flex h-8 shrink-0 cursor-default items-center gap-2 rounded-md px-2 text-sm outline-none select-none aria-disabled:opacity-50 aria-selected:font-medium data-highlighted:bg-accent data-disabled:opacity-50"
+                >
+                  <span className="min-w-0 flex-1 truncate">{model.label}</span>
+                  <CheckIcon aria-hidden className="invisible size-4 shrink-0 group-aria-selected:visible" />
+                </Combobox.Item>
+              )}
+            </Combobox.List>
+            <Combobox.Empty className="col-start-1 row-start-1 self-start px-2 py-1.5 text-sm text-muted-foreground empty:hidden">
+              {models.length > 0 && m.thread_model_no_match()}
+            </Combobox.Empty>
+          </div>
         </Combobox.Root>
         <div className="flex shrink-0 flex-col gap-3 border-t border-border px-1 pt-3">
           {current !== undefined && current.efforts.length > 0 && (
@@ -786,7 +796,7 @@ function RefInput({
       />
       <Autocomplete.Portal>
         <Autocomplete.Positioner side="top" align="start" sideOffset={6} collisionPadding={8} className="isolate z-50">
-          <Autocomplete.Popup className="max-h-[min(20rem,var(--available-height))] w-96 max-w-(--available-width) origin-(--transform-origin) overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-out data-ending-style:scale-97 data-ending-style:opacity-0 data-ending-style:duration-100 data-starting-style:scale-97 data-starting-style:opacity-0 motion-reduce:transition-none">
+          <Autocomplete.Popup className="max-h-[min(20rem,var(--available-height))] w-96 max-w-(--available-width) origin-(--transform-origin) scrollbar-gutter-stable overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-out data-ending-style:scale-97 data-ending-style:opacity-0 data-ending-style:duration-100 data-starting-style:scale-97 data-starting-style:opacity-0 motion-reduce:transition-none">
             <Autocomplete.List className="scroll-py-1">
               {(group: (typeof groups)[number]) => (
                 <Autocomplete.Group key={group.label} items={group.items} className="not-last:mb-1">

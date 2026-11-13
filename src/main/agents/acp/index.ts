@@ -17,7 +17,7 @@ import { providerInfo } from "../../../shared/providers.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
 import { attachmentContext } from "../elementContext.ts"
-import { AgentError, type AgentProvider } from "../provider.ts"
+import { AgentError, type AgentProvider, interruptedTurn, tmpEnv } from "../provider.ts"
 import { autoAllows, mergePermissionTool, optionFor, permissionOutcome, toApprovalRequest } from "./approvals.ts"
 import { type AcpClient, type AcpFailure, type Incoming, makeAcpClient, type RequestId } from "./client.ts"
 import { AGENT_DEFAULT_EFFORT, effortLevels, effortSelector, modelSelector, toModelInfos } from "./models.ts"
@@ -48,8 +48,6 @@ const CLIENT_VERSION = "0.1.0"
 const INITIALIZE_TIMEOUT = Duration.seconds(30)
 const INTERRUPT_GRACE = Duration.seconds(5)
 const COMMANDS_WAIT = Duration.seconds(5)
-
-const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
 
 interface PendingPermission {
   readonly approvalId: string | null
@@ -186,22 +184,24 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       }
     }
 
-    const startAgent = Effect.gen(function* () {
-      const binaryPath = config.binary ?? (yield* installedBinary(config.id, providerInfo[config.id].binary))
-      const client = yield* makeAcpClient({ binaryPath, args: config.args, env: { ...process.env, ...config.env } })
-      const initialized = yield* call(
-        client,
-        "initialize",
-        {
-          protocolVersion: PROTOCOL_VERSION,
-          clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-          clientInfo: { name: "hinacode", title: "HinaCode", version: CLIENT_VERSION },
-        },
-        InitializeResponse,
-        INITIALIZE_TIMEOUT,
-      )
-      return { client, capabilities: initialized.agentCapabilities ?? {} }
-    })
+    const startAgent = (tmpDirectory: string | null) =>
+      Effect.gen(function* () {
+        const binaryPath = config.binary ?? (yield* installedBinary(config.id, providerInfo[config.id].binary))
+        const env = { ...process.env, ...config.env, ...tmpEnv(tmpDirectory) }
+        const client = yield* makeAcpClient({ binaryPath, args: config.args, env })
+        const initialized = yield* call(
+          client,
+          "initialize",
+          {
+            protocolVersion: PROTOCOL_VERSION,
+            clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+            clientInfo: { name: "hinacode", title: "HinaCode", version: CLIENT_VERSION },
+          },
+          InitializeResponse,
+          INITIALIZE_TIMEOUT,
+        )
+        return { client, capabilities: initialized.agentCapabilities ?? {} }
+      })
 
     const openSession = (client: AcpClient, input: RunTurnInput) => {
       const { resumeSessionId: sessionId, cwd } = input
@@ -329,7 +329,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
         const context = mapper.context()
         switch (stopReason) {
           case "cancelled":
-            return yield* emit(interruptedEvent)
+            return yield* emit(interruptedTurn)
           case "refusal":
             return yield* emit({ type: "turn_failed", message: `${name} refused to continue this turn` })
           case "max_tokens":
@@ -371,7 +371,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
           )
           if (stopped) {
             for (const event of run.mapper?.closeOpenTools("Interrupted") ?? []) yield* emit(event)
-            yield* emit(interruptedEvent)
+            yield* emit(interruptedTurn)
           }
           yield* Queue.end(out)
         }),
@@ -382,7 +382,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
         Effect.gen(function* () {
           if (input.home !== null) return yield* agentError(`${name} runs on its CLI login only`)
           accessModes.set(input.threadId, input.accessMode)
-          const { client, capabilities } = yield* startAgent
+          const { client, capabilities } = yield* startAgent(input.tmpDirectory)
           yield* Effect.acquireRelease(
             Effect.sync(() => registerAgentPid(input.threadId, client.pid)),
             (unregister) => Effect.sync(unregister),
@@ -434,7 +434,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       )
 
     const probeModels = Effect.gen(function* () {
-      const { client } = yield* startAgent
+      const { client } = yield* startAgent(null)
       const probe = yield* call(client, "session/new", { cwd: homedir(), mcpServers: [] }, NewSessionResponse)
       const selector = modelSelector(probe)
       const efforts = new Map<string, ReadonlyArray<string>>()
@@ -467,7 +467,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
 
     const probeCommands = (cwd: string) =>
       Effect.gen(function* () {
-        const { client } = yield* startAgent
+        const { client } = yield* startAgent(null)
         const announced = yield* Deferred.make<ReadonlyArray<AgentCommand>>()
         yield* client.subscribe((message) => {
           const update = commandsOf(message)
@@ -479,7 +479,10 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
         )
       }).pipe(Effect.scoped)
 
-    const probedCommands = yield* Cache.make({ lookup: probeCommands, capacity: 32, timeToLive: Duration.minutes(1) })
+    const probedCommands = yield* Cache.makeWith(probeCommands, {
+      capacity: 32,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.minutes(1) : Duration.zero),
+    })
 
     const listCommands = ({ threadId, cwd }: { readonly threadId: string; readonly cwd: string }) =>
       Effect.suspend(() => {

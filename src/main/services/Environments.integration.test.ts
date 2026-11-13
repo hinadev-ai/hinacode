@@ -40,7 +40,8 @@ import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { registerIpc } from "../ipc.ts"
-import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
+import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED } from "../../shared/transport.ts"
+import { RemoteAccess } from "../remote/access.ts"
 import { unusedLoopbackPort } from "../remote/testing.ts"
 import { makeTestAppLayer } from "../testing.ts"
 import { Artifacts } from "./Artifacts.ts"
@@ -97,7 +98,7 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   usage: () => Effect.succeed(null),
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.empty,
-  steer: () => Effect.void,
+  steer: () => Effect.succeed(true),
   interrupt: () => Effect.void,
   respondApproval: () => Effect.succeed(false),
   respondQuestion: () => Effect.void,

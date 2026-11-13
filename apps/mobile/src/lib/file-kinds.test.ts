@@ -20,10 +20,11 @@ describe("extension", () => {
 })
 
 describe("fileKind", () => {
-  it("tells images, SVG and Markdown from text", () => {
+  it("tells images, SVG, video and Markdown from text", () => {
     expect(fileKind("a/b.jpeg")).toBe("image")
     expect(fileKind("icon.AVIF")).toBe("image")
     expect(fileKind("logo.svg")).toBe("svg")
+    expect(fileKind("demo.MOV")).toBe("video")
     expect(fileKind("docs/README.md")).toBe("markdown")
     expect(fileKind("page.mdx")).toBe("markdown")
     expect(fileKind("src/index.ts")).toBe("text")
@@ -36,6 +37,7 @@ describe("entryIcon", () => {
     expect(entryIcon("src", "dir")).toBe("Folder")
     expect(entryIcon("src/index.tsx", "file")).toBe("FileCode")
     expect(entryIcon("logo.svg", "file")).toBe("Image")
+    expect(entryIcon("clip.mp4", "file")).toBe("FileVideo")
     expect(entryIcon("README.md", "symlink")).toBe("Markdown")
     expect(entryIcon("notes.txt", "file")).toBe("FileText")
     expect(entryIcon("LICENSE", "file")).toBe("FileText")

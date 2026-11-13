@@ -1,6 +1,6 @@
 # Image editor for attachments
 
-Status: Building
+Status: Shipped
 Date: 2026-11-11
 
 ## Problem
@@ -64,7 +64,7 @@ The source loads through `attachments.read` with the thread's environment, so th
 
 - `src/renderer/lib/imageEdit/`: the log, geometry and hit testing, `drawDocument`, export. Pure, with unit tests.
 - `src/renderer/components/imageEditor/`: the dialog, canvas gestures and toolbar.
-- `src/renderer/stores/imageEdits.ts`: logs for reopening, and the open request other entry points use.
+- `src/renderer/stores/imageEditor.ts`: logs for reopening, and the open request other entry points use.
 
 ## Later slices
 

@@ -21,7 +21,9 @@ import { useTheme } from "../lib/appearance.ts"
 import { chipRefs, type GraphEdge, type GraphRow, laneCount, layoutGraph } from "../lib/gitGraph.ts"
 import { commitDiffAtom, commitKey, currentBranchAtom, gitLogAtom, gitLogLimitAtom, projectsAtom } from "../lib/rpc.ts"
 import { GIT_GRAPH_SPLIT_BOUNDS } from "../lib/panelSize.ts"
+import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { useClientSettings } from "../lib/settings.ts"
+import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useUi } from "../stores/ui.ts"
@@ -196,7 +198,7 @@ function GraphWithDiff({ root, branch, commits, onEndReached }: GraphWithDiffPro
           recycleItems
           onEndReached={onEndReached}
           onEndReachedThreshold={2}
-          className="min-h-0 flex-1"
+          className="min-h-0 flex-1 scrollbar-gutter-stable"
         />
       </div>
       {showDiff ? (
@@ -226,6 +228,7 @@ interface CommitRowProps {
 
 function CommitRow({ id, row, incoming, graph, branch, selected, onSelect }: CommitRowProps) {
   const { commit } = row
+  const now = useNow()
   return (
     <div
       id={id}
@@ -253,7 +256,7 @@ function CommitRow({ id, row, incoming, graph, branch, selected, onSelect }: Com
         title={new Date(commit.authoredAt).toLocaleString(getLocale())}
         className="shrink-0 text-muted-foreground tabular-nums"
       >
-        {relativeTime(commit.authoredAt)}
+        {formatRelativeTime(commit.authoredAt, now, getLocale())}
       </time>
     </div>
   )
@@ -322,24 +325,6 @@ function RefChips({ refs, branch }: { refs: ReadonlyArray<string>; branch: strin
       )}
     </span>
   )
-}
-
-const RELATIVE_UNITS: ReadonlyArray<[Intl.RelativeTimeFormatUnit, number]> = [
-  ["year", 365 * 24 * 3600],
-  ["month", 30 * 24 * 3600],
-  ["week", 7 * 24 * 3600],
-  ["day", 24 * 3600],
-  ["hour", 3600],
-  ["minute", 60],
-]
-
-const relativeTime = (iso: string) => {
-  const seconds = (new Date(iso).getTime() - Date.now()) / 1000
-  const format = new Intl.RelativeTimeFormat(getLocale(), { numeric: "auto", style: "narrow" })
-  for (const [unit, size] of RELATIVE_UNITS) {
-    if (Math.abs(seconds) >= size) return format.format(Math.round(seconds / size), unit)
-  }
-  return format.format(0, "minute")
 }
 
 const { min: MIN_SPLIT, max: MAX_SPLIT } = GIT_GRAPH_SPLIT_BOUNDS

@@ -1,12 +1,13 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import type { ReactNode } from "react"
-import { RiGithubFill } from "react-icons/ri"
-import type { PullRequest } from "../../shared/domain.ts"
+import type { IconType } from "react-icons"
+import { RiCheckboxCircleLine, RiGithubFill, RiProhibitedLine, RiRecordCircleLine } from "react-icons/ri"
+import type { Issue, IssueStatus, PullRequest } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
-import type { PullRequestRef } from "../lib/pullRequestRefs.ts"
+import { issueUrl, type PullRequestRef } from "../lib/pullRequestRefs.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
-import { type EnvironmentId, pullRequestStatusAtom } from "../lib/rpc.ts"
+import { type EnvironmentId, issueAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import {
@@ -18,15 +19,18 @@ import {
 } from "./ThreadPullRequests.tsx"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx"
 import { WithLinkIcon } from "./LinkIcon.tsx"
+import { LineCounts } from "./LineCounts.tsx"
 import { Skeleton } from "./ui/skeleton.tsx"
 
 export function PullRequestLink({
   href,
   pullRequest,
+  issue = false,
   children,
 }: {
   href: string
   pullRequest: PullRequestRef
+  issue?: boolean
   children: ReactNode
 }) {
   const environment = useOpenThreadEnvironment()
@@ -42,22 +46,24 @@ export function PullRequestLink({
         <WithLinkIcon icon={<RiGithubFill className="block size-full" />}>{children}</WithLinkIcon>
       </HoverCardTrigger>
       <HoverCardContent align="start" className="w-80">
-        <PullRequestCard pullRequest={pullRequest} href={href} environment={environment} />
+        <PullRequestCard pullRequest={pullRequest} href={href} environment={environment} issue={issue} />
       </HoverCardContent>
     </HoverCard>
   )
 }
 
 export function PullRequestCard({
-  pullRequest: { owner, name, number },
+  pullRequest,
   href,
   environment,
+  issue = false,
 }: {
   pullRequest: PullRequestRef
   href: string
   environment: EnvironmentId
+  issue?: boolean
 }) {
-  const status = useAtomValue(pullRequestStatusAtom(environment, `https://github.com/${owner}/${name}/pull/${number}`))
+  const { owner, name, number } = pullRequest
   return (
     <div className="flex flex-col gap-1.5 text-xs">
       <p className="text-muted-foreground">
@@ -71,21 +77,63 @@ export function PullRequestCard({
           #{number}
         </a>
       </p>
-      {AsyncResult.builder(status)
-        .onSuccess((details) => <PullRequestDetails pullRequest={details} />)
-        .onError((error) => (
-          <p className="text-muted-foreground" title={errorMessage(error)}>
-            {m.pr_card_failed()}
-          </p>
-        ))
-        .orElse(() => (
-          <output aria-label={m.pr_card_loading()} className="flex animate-reveal flex-col gap-1.5">
-            <Skeleton className="h-4 w-4/5" />
-            <Skeleton className="h-3 w-1/2" />
-            <Skeleton className="h-3 w-2/3" />
-          </output>
-        ))}
+      {issue ? (
+        <IssuePreview reference={pullRequest} environment={environment} />
+      ) : (
+        <PullRequestPreview reference={pullRequest} environment={environment} />
+      )}
     </div>
+  )
+}
+
+function PullRequestPreview({ reference, environment }: { reference: PullRequestRef; environment: EnvironmentId }) {
+  const { owner, name, number } = reference
+  const status = useAtomValue(pullRequestStatusAtom(environment, `https://github.com/${owner}/${name}/pull/${number}`))
+  return AsyncResult.builder(status)
+    .onSuccess((details) => <PullRequestDetails pullRequest={details} />)
+    .onError(() => <IssuePreview reference={reference} environment={environment} />)
+    .orElse(() => <CardSkeleton />)
+}
+
+function IssuePreview({ reference, environment }: { reference: PullRequestRef; environment: EnvironmentId }) {
+  const status = useAtomValue(issueAtom(environment, issueUrl(reference)))
+  return AsyncResult.builder(status)
+    .onSuccess((issue) => <IssueDetails issue={issue} />)
+    .onError((error) => (
+      <p className="text-muted-foreground" title={errorMessage(error)}>
+        {m.pr_card_failed()}
+      </p>
+    ))
+    .orElse(() => <CardSkeleton />)
+}
+
+function CardSkeleton() {
+  return (
+    <output aria-label={m.pr_card_loading()} className="flex animate-reveal flex-col gap-1.5">
+      <Skeleton className="h-4 w-4/5" />
+      <Skeleton className="h-3 w-1/2" />
+      <Skeleton className="h-3 w-2/3" />
+    </output>
+  )
+}
+
+const issueIndicator = {
+  open: { Icon: RiRecordCircleLine, className: "text-pr-open", label: m.pr_state_open },
+  completed: { Icon: RiCheckboxCircleLine, className: "text-pr-merged", label: m.pr_state_closed },
+  notPlanned: { Icon: RiProhibitedLine, className: "text-muted-foreground", label: m.issue_state_not_planned },
+} satisfies Record<IssueStatus, { Icon: IconType; className: string; label: () => string }>
+
+function IssueDetails({ issue: { title, status, author } }: { issue: Issue }) {
+  const { Icon, className, label } = issueIndicator[status]
+  return (
+    <>
+      <p className="line-clamp-2 text-sm font-medium">{title}</p>
+      <span className={cn("flex items-center gap-1", className)}>
+        <Icon aria-hidden className="size-3.5 shrink-0" />
+        {label()}
+      </span>
+      <p className="truncate text-muted-foreground">{author}</p>
+    </>
   )
 }
 
@@ -111,11 +159,8 @@ function PullRequestDetails({ pullRequest }: { pullRequest: PullRequest }) {
       <p className="truncate text-muted-foreground">
         {author} · <span className="font-mono">{`${headRefName} → ${baseRefName}`}</span>
       </p>
-      <p className="font-mono">
-        <span aria-hidden>
-          <span className="text-vcs-added">+{additions}</span> <span className="text-destructive">−{deletions}</span>
-        </span>
-        <span className="sr-only">{m.pr_card_size({ additions, deletions })}</span>
+      <p>
+        <LineCounts added={additions} removed={deletions} />
       </p>
     </>
   )

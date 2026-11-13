@@ -226,11 +226,11 @@ function ReviewWorkspace({
         <p className="px-1 text-xs text-muted-foreground tabular-nums">
           {m.pr_files_viewed({ viewed: viewedCount, total: files.length })}
         </p>
-        <nav className="-mx-1 min-h-0 flex-1 overflow-auto">
+        <nav className="-mx-1 min-h-0 flex-1 scrollbar-gutter-stable overflow-auto">
           <FileTreeFolderView folder={fileTree(shown)} viewed={viewed} onReveal={reveal} depth={0} />
         </nav>
       </aside>
-      <div className="min-h-0 overflow-auto p-4">
+      <div className="min-h-0 scrollbar-gutter-stable overflow-auto p-4">
         {shown.length === 0 ? (
           <p className="text-sm text-muted-foreground">{m.pr_files_none_match()}</p>
         ) : (

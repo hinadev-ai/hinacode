@@ -1,5 +1,6 @@
 minimumReleaseAgeExclude:
   - effect@4.0.3
+  - expo-video@58.0.14
 allowBuilds:
   react-native-enriched-markdown: true
   unrs-resolver: false

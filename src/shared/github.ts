@@ -34,16 +34,20 @@ export function parseGitHubRepository(input: string): GitHubRepository | null {
   return null
 }
 
-export const parseGitHubPullRequestUrl = (raw: string): string | undefined => {
+const parseGitHubNumberedUrl = (raw: string, kind: "pull" | "issues"): string | undefined => {
   if (!URL.canParse(raw)) return undefined
   const url = new URL(raw)
   if (url.protocol !== "https:" || (url.hostname !== "github.com" && url.hostname !== "www.github.com"))
     return undefined
-  const match = /^\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)(?:\/.*)?$/.exec(url.pathname)
-  if (!match) return undefined
-  const [, owner, repo, number] = match
-  return `https://github.com/${owner}/${repo}/pull/${number}`
+  const match = /^\/([\w.-]+)\/([\w.-]+)\/(pull|issues)\/(\d+)(?:\/.*)?$/.exec(url.pathname)
+  if (!match || match[3] !== kind) return undefined
+  const [, owner, repo, , number] = match
+  return `https://github.com/${owner}/${repo}/${kind}/${number}`
 }
+
+export const parseGitHubPullRequestUrl = (raw: string) => parseGitHubNumberedUrl(raw, "pull")
+
+export const parseGitHubIssueUrl = (raw: string) => parseGitHubNumberedUrl(raw, "issues")
 
 export function parsePullRequestSelector(input: string): string | undefined {
   const text = input.trim()

@@ -27,7 +27,7 @@ import { call, request } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { basename, dirname, entryIcon } from "@/lib/file-kinds"
-import { confirmDestructive } from "@/lib/confirm"
+import { confirmAction } from "@/lib/confirm"
 import { type FilePatch, filePatches } from "@/lib/file-patches"
 import { lineSnippet, matchPaths, type PathMatch, splitPath } from "@/lib/path-match"
 import { asLoaded, failureOf, familyOf, beforeFirstHandshake, rpcFamily } from "@/lib/remote"
@@ -349,11 +349,12 @@ function UndoTurn({
         busy={undoing}
         disabled={disabled}
         onPress={() =>
-          confirmDestructive(
+          confirmAction(
             copy("mobile_files_undo_turn_title"),
             copy("mobile_files_undo_turn_body", { count: String(count) }),
             copy("mobile_files_undo_turn"),
             () => void undo(),
+            { destructive: true },
           )
         }
         style={styles.undoButton}

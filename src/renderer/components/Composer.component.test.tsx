@@ -3,18 +3,28 @@ import { expect, test } from "vitest"
 import { page } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import { type HinacodeBridge, RpcMethods } from "../../shared/contract.ts"
-import { defaultClientSettings, type Thread } from "../../shared/domain.ts"
+import { defaultClientSettings, type Message, type Thread } from "../../shared/domain.ts"
 import "../index.css"
 import { useDrafts } from "../stores/drafts.ts"
+import { useMessages } from "../stores/messages.ts"
+import { useUi } from "../stores/ui.ts"
 import { Composer } from "./Composer.tsx"
 
 const calls: Array<{ method: string; payload: unknown }> = []
+const missingFolder = "/tmp/repo/.hinacode-worktrees/repo/kk-fix-login-form-b21a5dbc"
 
 const bridge: HinacodeBridge = {
   rpc: async (method, payload) => {
     calls.push({ method, payload })
     if (method === "clientSettings.get")
       return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
+    if (method === "commands.list" && (payload as { threadId: string }).threadId.startsWith("folder-missing"))
+      return {
+        error: {
+          tag: "FolderMissingError",
+          message: `The folder ${missingFolder} is missing. It was moved or deleted.`,
+        },
+      }
     if (method === "attachments.stage")
       return {
         result: { id: "a-1", name: "notes.txt", path: "/tmp/notes.txt", mime: "text/plain", kind: "file", bytes: 1 },
@@ -92,4 +102,58 @@ test("accepts files dropped on the toolbar, not only on the text line", async ()
     threadId: thread.id,
     source: { name: "notes.txt" },
   })
+})
+
+test("a missing folder shows one Folder missing link to Details instead of its path", async () => {
+  const thread = threadWith("folder-missing", "idle")
+  await render(<Composer thread={thread} />)
+
+  const notice = page.getByRole("button", { name: "Folder missing", exact: true })
+  await expect.element(notice).toBeVisible()
+  await expect.element(page.getByText(missingFolder, { exact: false })).not.toBeInTheDocument()
+
+  await notice.click()
+  expect(useUi.getState().sidePanelViews[thread.id]).toBe("details")
+})
+
+test("a new thread whose project folder is missing still says why commands did not load", async () => {
+  const thread = { ...threadWith("folder-missing-draft", "idle"), worktreeId: null }
+  useMessages.setState({
+    byThread: { [thread.id]: { status: "ready", messages: [], approvals: [], questions: [], secretRequests: [] } },
+  })
+  await render(<Composer thread={thread} />)
+
+  await expect
+    .element(page.getByText("Could not load commands and skills: The folder was moved or deleted."))
+    .toBeVisible()
+  await expect.element(page.getByText(missingFolder, { exact: false })).not.toBeInTheDocument()
+})
+
+test("Folder missing in a side chat opens Details for the thread it belongs to", async () => {
+  const thread = { ...threadWith("folder-missing-side", "idle"), sideOf: "main-thread" }
+  await render(<Composer thread={thread} />)
+
+  await page.getByRole("button", { name: "Folder missing", exact: true }).click()
+  expect(useUi.getState().sidePanelViews["main-thread"]).toBe("details")
+})
+
+test("a started thread on the project root keeps the commands line, since Details has no missing hint for it", async () => {
+  const thread = { ...threadWith("folder-missing-root", "idle"), worktreeId: null }
+  useMessages.setState({
+    byThread: {
+      [thread.id]: {
+        status: "ready",
+        messages: [{ role: "user", parts: [] } as unknown as Message],
+        approvals: [],
+        questions: [],
+        secretRequests: [],
+      },
+    },
+  })
+  await render(<Composer thread={thread} />)
+
+  await expect
+    .element(page.getByText("Could not load commands and skills: The folder was moved or deleted."))
+    .toBeVisible()
+  await expect.element(page.getByRole("button", { name: "Folder missing", exact: true })).not.toBeInTheDocument()
 })

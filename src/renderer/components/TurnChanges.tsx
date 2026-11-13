@@ -11,6 +11,7 @@ import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { FileDiffIcon, UndoIcon } from "@hinacode/icons"
 import { Button } from "./ui/button.tsx"
+import { LineCounts } from "./LineCounts.tsx"
 
 export function TurnChanges({ threadId, messageId }: { threadId: string; messageId: string }) {
   const atom = turnChangesAtom(turnChangesKey(threadId, messageId))
@@ -49,9 +50,8 @@ export function TurnChanges({ threadId, messageId }: { threadId: string; message
       </span>
       <div className="flex min-w-0 flex-1 flex-col">
         <h3 className="truncate text-sm font-medium">{summarize(changes)}</h3>
-        <p className="text-xs tabular-nums">
-          {added > 0 && <span className="text-vcs-added">+{added}</span>}{" "}
-          {removed > 0 && <span className="text-destructive">-{removed}</span>}
+        <p className="text-xs">
+          <LineCounts added={added} removed={removed} />
         </p>
       </div>
       <Button variant="ghost" size="sm" disabled={busy} action={undo}>

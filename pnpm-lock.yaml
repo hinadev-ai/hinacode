@@ -219,9 +219,6 @@ importers:
       '@excalidraw/excalidraw':
         specifier: 0.18.1
         version: 0.18.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@fontsource-variable/noto-sans-sc':
-        specifier: ^5.3.1
-        version: 5.3.1
       '@grpc/grpc-js':
         specifier: ^1.14.6
         version: 1.14.6
@@ -231,9 +228,6 @@ importers:
       '@hinacode/artifacts':
         specifier: workspace:*
         version: link:packages/artifacts
-      '@joplin/turndown-plugin-gfm':
-        specifier: 1.0.68
-        version: 1.0.68
       '@linear/sdk':
         specifier: 97.1.0
         version: 97.1.0(graphql@17.0.2)
@@ -261,15 +255,6 @@ importers:
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
-      rehype-raw:
-        specifier: 7.0.0
-        version: 7.0.0
-      rehype-sanitize:
-        specifier: 6.0.0
-        version: 6.0.0
-      turndown:
-        specifier: 7.2.5
-        version: 7.2.5
       undici:
         specifier: 7.30.0
         version: 7.30.0
@@ -328,6 +313,9 @@ importers:
       '@fontsource-variable/noto-sans-jp':
         specifier: ^5.3.0
         version: 5.3.0
+      '@fontsource-variable/noto-sans-sc':
+        specifier: ^5.3.1
+        version: 5.3.1
       '@fontsource-variable/noto-sans-tc':
         specifier: ^5.3.0
         version: 5.3.0
@@ -340,6 +328,9 @@ importers:
       '@inlang/paraglide-js':
         specifier: 2.27.0
         version: 2.27.0(typescript@6.0.3)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1))
+      '@joplin/turndown-plugin-gfm':
+        specifier: 1.0.68
+        version: 1.0.68
       '@legendapp/list':
         specifier: 3.6.0
         version: 3.6.0(patch_hash=54cd636ccdb5344ce53277d46d6d4ef5208bb92fade738b0054adac5fd358018)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -520,6 +511,12 @@ importers:
       react-markdown:
         specifier: 10.1.0
         version: 10.1.0(@types/react@19.3.0)(react@19.3.0)(supports-color@7.2.0)
+      rehype-raw:
+        specifier: 7.0.0
+        version: 7.0.0
+      rehype-sanitize:
+        specifier: 6.0.0
+        version: 6.0.0
       remark-gfm:
         specifier: 4.0.1
         version: 4.0.1(supports-color@7.2.0)
@@ -541,6 +538,9 @@ importers:
       tsrs:
         specifier: 0.18.0-ts7.1.0-dev.20260929
         version: 0.18.0-ts7.1.0-dev.20260929
+      turndown:
+        specifier: 7.2.5
+        version: 7.2.5
       typescript:
         specifier: 6.0.3
         version: 6.0.3

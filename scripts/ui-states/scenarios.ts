@@ -267,6 +267,15 @@ const vmScenarios: ReadonlyArray<Scenario> = [
     setup: showVm,
   },
   {
+    name: "vm-running-sbx-user",
+    experimental: { tinyVmProvider: "sbx" },
+    overrides: {
+      "vm.get": { result: { ...runningVm.userWaiting, provider: "sbx" } },
+      "vm.screen.open": "pending",
+    },
+    setup: showVm,
+  },
+  {
     name: "vm-failed",
     overrides: {
       "vm.get": {

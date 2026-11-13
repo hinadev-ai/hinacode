@@ -34,6 +34,7 @@ import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
 import { installedBinary } from "../binary.ts"
 import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
+import { instructionsUpdate } from "../instructions.ts"
 import {
   AgentError,
   type AgentProvider,
@@ -41,6 +42,7 @@ import {
   LISTED_SESSIONS,
   MCP_TOOL_TIMEOUT_SECONDS,
   type SessionHistory,
+  interruptedTurn,
   type SubagentChange,
   tmpEnv,
 } from "../provider.ts"
@@ -92,6 +94,7 @@ import type {
   ThreadBackgroundTerminalsTerminateParams,
   TurnSteerParams,
   ThreadCompactStartParams,
+  ThreadInjectItemsParams,
   UserInput,
 } from "./protocol.ts"
 
@@ -161,8 +164,6 @@ const copySession = (threadId: string, from: AccountHome | null, to: AccountHome
     ),
   )
 
-const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
-
 // FIXME: Codex has no notification for background terminals
 export const TerminalPollInterval = Context.Reference<Duration.Input>("hinacode/CodexTerminalPollInterval", {
   defaultValue: () => Duration.seconds(2),
@@ -220,7 +221,7 @@ const make = Effect.gen(function* () {
   const subagentClients = new Map<string, CodexClient>()
   const threadsInTurn = new Set<string>()
   const subagentChanges = yield* Queue.unbounded<SubagentChange>()
-  const loadedCompactLimits = new Map<string, number | null>()
+  const loadedThreads = new Map<string, { readonly autoCompactTokens: number | null; readonly instructions: string }>()
   const loadedSessions = new Map<string, { readonly client: CodexClient; readonly codexThreadId: string }>()
   const terminalsByThread = new Map<string, Terminals>()
   const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
@@ -350,7 +351,7 @@ const make = Effect.gen(function* () {
       const loaded = loadedSessions.get(threadId)
       if (loaded === undefined) return Effect.void
       loadedSessions.delete(threadId)
-      loadedCompactLimits.delete(loaded.codexThreadId)
+      loadedThreads.delete(loaded.codexThreadId)
       return loaded.client.request("thread/unsubscribe", { threadId: loaded.codexThreadId }).pipe(Effect.ignore)
     })
 
@@ -552,8 +553,9 @@ const make = Effect.gen(function* () {
             developerInstructions: input.instructions,
           } satisfies ThreadStartParams
           const resumed = input.resumeSessionId
-          const loadedLimit = resumed === null ? undefined : loadedCompactLimits.get(resumed)
-          if (resumed !== null && loadedLimit !== undefined && loadedLimit !== input.autoCompactTokens) {
+          const loaded = resumed === null ? undefined : loadedThreads.get(resumed)
+          const reloads = loaded !== undefined && loaded.autoCompactTokens !== input.autoCompactTokens
+          if (resumed !== null && reloads) {
             // FIXME: Codex ignores thread/resume config for a thread it has loaded
             yield* client.request("thread/unsubscribe", { threadId: resumed })
           }
@@ -572,7 +574,19 @@ const make = Effect.gen(function* () {
                     lastTurnId: input.forkAt,
                     excludeTurns: true,
                   } satisfies ThreadForkParams)
-          loadedCompactLimits.set(thread.id, input.autoCompactTokens)
+          const update =
+            loaded === undefined || reloads || thread.id !== resumed
+              ? null
+              : instructionsUpdate(loaded.instructions, input.instructions)
+          if (update !== null) {
+            yield* client
+              .request("thread/inject_items", {
+                threadId: thread.id,
+                items: [{ type: "message", role: "developer", content: [{ type: "input_text", text: update }] }],
+              } satisfies ThreadInjectItemsParams)
+              .pipe(Effect.ignore)
+          }
+          loadedThreads.set(thread.id, { autoCompactTokens: input.autoCompactTokens, instructions: input.instructions })
           loadedSessions.set(input.threadId, { client, codexThreadId: thread.id })
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 
@@ -608,6 +622,7 @@ const make = Effect.gen(function* () {
           )
           const turn = yield* Fiber.join(run.turnStart)
           run.turn = turn
+          yield* input.onOpen ?? Effect.void
 
           const commandOutput = new Map<string, string>()
           const startedTools = new Set<string>()
@@ -969,7 +984,7 @@ const make = Effect.gen(function* () {
               Effect.forkIn(providerScope),
             )
           }
-          yield* emit(interruptedEvent)
+          yield* emit(interruptedTurn)
         }
         yield* Queue.end(out)
       }),
@@ -997,7 +1012,8 @@ const make = Effect.gen(function* () {
       const run = runs.get(threadId)
       const active = run?.turn
       const client = run?.client
-      if (!active || !client?.isAlive()) {
+      if (!active) return false
+      if (!client?.isAlive()) {
         return yield* new AgentError({ provider: "codex", message: "No turn is running on this thread" })
       }
       const params: TurnSteerParams = {
@@ -1006,6 +1022,7 @@ const make = Effect.gen(function* () {
         expectedTurnId: active.turnId,
       }
       yield* client.request("turn/steer", params)
+      return true
     })
 
   const respondApproval = (requestId: string, decision: ApprovalDecision) =>

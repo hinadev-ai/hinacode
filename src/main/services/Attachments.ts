@@ -40,7 +40,7 @@ const safeName = (name: string) =>
     .replace(/[^\w.-]+/g, "_")
     .slice(-100) || "file"
 
-export const extensionOf = (mime: string) =>
+export const extensionForMime = (mime: string) =>
   Object.entries(MIME_BY_EXTENSION).find(([, known]) => known === mime)?.[0] ?? ""
 
 const mimeOf = (name: string) => MIME_BY_EXTENSION[extname(name).toLowerCase()] ?? "application/octet-stream"

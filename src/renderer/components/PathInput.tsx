@@ -95,7 +95,7 @@ export function PathInput({ id, value, onChange, environment, placeholder, requi
       />
       <Autocomplete.Portal>
         <Autocomplete.Positioner align="start" sideOffset={4} collisionPadding={8} className="isolate z-50">
-          <Autocomplete.Popup className="max-h-[min(20rem,var(--available-height))] w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-out data-ending-style:scale-97 data-ending-style:opacity-0 data-ending-style:duration-100 data-starting-style:scale-97 data-starting-style:opacity-0 motion-reduce:transition-none">
+          <Autocomplete.Popup className="max-h-[min(20rem,var(--available-height))] w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) scrollbar-gutter-stable overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-out data-ending-style:scale-97 data-ending-style:opacity-0 data-ending-style:duration-100 data-starting-style:scale-97 data-starting-style:opacity-0 motion-reduce:transition-none">
             <Autocomplete.List aria-label={m.path_input_suggestions()} className="scroll-py-1">
               {(suggestion: DirectorySuggestion) => <SuggestionItem key={suggestion.path} suggestion={suggestion} />}
             </Autocomplete.List>

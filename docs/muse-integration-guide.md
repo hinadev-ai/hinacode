@@ -72,7 +72,9 @@ sequenceDiagram
 | `userInput/request`                          | `question_requested`; `userInput/settled` gives `question_resolved`          |
 | `turn/completed` `completed`                 | `turn_completed` with the turn's usage and the latest `session/contextUsage` |
 | `turn/completed` `cancelled`                 | `turn_failed` "Turn interrupted"                                             |
-| `turn/completed` `failed` with `error.quota` | `turn_limited`; other failures give `turn_failed`                            |
+| `turn/completed` `failed` past a usage limit | `turn_limited`; other failures give `turn_failed`                            |
+
+A failed turn is past a usage limit when it carries `error.quota`. It is also past one when Muse retried a model call after an HTTP 429 (`turn/modelRetryScheduled`), because Muse gives up on a 429 without a reset time and reports no quota.
 
 hinacode renames Muse's tools to the names the transcript has icons for. `bash` becomes `Bash`, `read_file` becomes `Read`, `write_file` becomes `Write`, `edit_file` becomes `Edit`, `search` becomes `Grep`, and `web_fetch` and `web_search` become `WebFetch` and `WebSearch`. `bash` reports a JSON receipt whose `output` field is what the command printed.
 
@@ -119,7 +121,7 @@ MSP has no event for a change in a session's task set, so `backgroundTasks.ts` f
 
 - Muse 1.4.12 backgrounds a `bash` call that outlives its `yield_time_ms` (10 s by default) and marks it only with `backgroundStatus.state: "backgrounded"`, which the SDK does not type. `task/list` leaves such a call out, and `task/stop` refuses it with `invalid_target`; only `task/stopAll` reaches it. A call sent there with `task/background` has `background: true`, is listed, and `task/stop` works. hinacode tries `task/stop` and falls back to `task/stopAll` when the task is the session's only one.
 - The transcript closes a backgrounded call's row as "Running in the background" instead of failing it at the turn's end.
-- When a background shell finishes, Muse starts a turn on its own to hand the result to the model. hinacode does not show that turn yet.
+- When a background shell finishes, Muse starts a turn on its own to hand the result to the model. The provider turns a `turn/started` that no turn of the thread is following into a wake (`wake` in `index.ts`). The runner adopts it as a reply with no user message before it.
 
 ## Usage and plan limits
 

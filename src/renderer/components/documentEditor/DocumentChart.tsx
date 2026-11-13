@@ -114,7 +114,7 @@ function ChartData({ chart }: { chart: Chart }) {
       data-node-control
       className="transition-opacity duration-150 ease-out starting:opacity-0"
     >
-      <div className="max-h-64 overflow-auto">
+      <div className="max-h-64 scrollbar-gutter-stable overflow-auto">
         <table className="w-full text-xs tabular-nums">
           <thead className="sticky top-0 bg-muted text-muted-foreground">
             <tr>

@@ -31,7 +31,8 @@ import {
 } from "../../shared/owners.ts"
 import type { Entity } from "../../shared/routes.ts"
 import { type DialTarget, unreachableMessage } from "../environments/unreachable.ts"
-import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
+import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, OFFLINE_LIMIT_MS } from "../../shared/transport.ts"
+import { RemoteAccess } from "../remote/access.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events, WindowPush } from "./Events.ts"
 import { Secrets } from "./Secrets.ts"
@@ -79,7 +80,6 @@ const GATHER_TIMEOUT = "3 seconds"
 const READY_TIMEOUT_MS = 10_000
 const PING_INTERVAL = "10 seconds"
 const SILENCE_LIMIT_MS = 25_000
-const OFFLINE_LIMIT_MS = 60_000
 const STABLE_MS = 60_000
 const PREFER_EARLIER_HOST_MS = 1_000
 

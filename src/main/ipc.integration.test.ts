@@ -37,6 +37,7 @@ import { Events } from "./services/Events.ts"
 import * as Messages from "./services/Messages.ts"
 import { privateAddresses } from "./network.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED } from "../shared/transport.ts"
 import { MAX_CALL_KEYS } from "./remote/session.ts"
 import { unusedLoopbackPort } from "./remote/testing.ts"
 import * as PullRequests from "./services/PullRequests.ts"
@@ -296,7 +297,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
       )
     }),
   ...(id === "claude" ? { wakes: Stream.fromQueue(claudeWakes) } : {}),
-  steer: () => Effect.void,
+  steer: () => Effect.succeed(true),
   interrupt: (threadId) => Effect.sync(() => void interruptedThreads.push(threadId)),
   stopSubagent: (threadId, subagentId) => Effect.sync(() => void stoppedSubagents.push({ threadId, subagentId })),
   respondApproval: (requestId, decision, note) =>
@@ -1166,7 +1167,7 @@ const removalHeldOnItsFirstCopy = async () => {
   return { chosen, held, waiting, removal, resume: () => pause.resume.resolve() }
 }
 
-const cachedLogin = (label: string) => existsSync(join(dir, "cache", `${label}.json`))
+const cachedLogin = (accountId: string) => existsSync(join(dir, "cache", `${accountId}.json`))
 
 const history = () => join(dir, "history")
 const inHistory = (...args: Array<string>) =>
@@ -1839,18 +1840,16 @@ describe("agent accounts over rpc", () => {
     await acceptedOnceSettled(() => invoke("accounts.delete", { id: chosen.id }))
   })
 
-  test("drops an account's cached sign-in when it is renamed or removed", async () => {
+  test("keeps an account's cached sign-in through a rename and drops it on removal", async () => {
     const account = result(await invoke("accounts.create", newAccount("codex", "Billing")))
     result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
-    expect(cachedLogin("billing_codex")).toBe(true)
+    expect(cachedLogin(account.id)).toBe(true)
 
     result(await invoke("accounts.rename", { id: account.id, name: "Invoices" }))
-    expect(cachedLogin("billing_codex")).toBe(false)
-    result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
-    expect(cachedLogin("invoices_codex")).toBe(true)
+    expect(cachedLogin(account.id)).toBe(true)
 
     result(await invoke("accounts.delete", { id: account.id }))
-    expect(cachedLogin("invoices_codex")).toBe(false)
+    expect(cachedLogin(account.id)).toBe(false)
   })
 })
 
@@ -1924,7 +1923,7 @@ describe("remote mode", () => {
 
     const wrong = phone(port)
     await wrong.send({ type: "auth", token: "not-the-token" })
-    expect((await wrong.closed()).code).toBe(RemoteAccess.CLOSE_UNAUTHORIZED)
+    expect((await wrong.closed()).code).toBe(CLOSE_UNAUTHORIZED)
   })
 
   test("the first frame is a challenge, and a proof of the token gets a ready that proves it back", async () => {
@@ -1951,7 +1950,7 @@ describe("remote mode", () => {
     const challenge = await forged.challenge()
     const nonce = newNonce()
     await forged.send({ type: "auth", nonce, proof: clientProof("not-the-token", challenge.nonce, nonce) })
-    expect((await forged.closed()).code).toBe(RemoteAccess.CLOSE_UNAUTHORIZED)
+    expect((await forged.closed()).code).toBe(CLOSE_UNAUTHORIZED)
   })
 
   test("a client that predates the challenge still connects with the token, and its ready proves nothing", async () => {
@@ -1969,7 +1968,7 @@ describe("remote mode", () => {
     await proved.send({ type: "auth", nonce, proof: clientProof(token, challenge.nonce, nonce) })
     await proved.ready()
     result(await invoke("remote.rotateToken", undefined))
-    expect((await proved.closed()).code).toBe(RemoteAccess.CLOSE_TOKEN_ROTATED)
+    expect((await proved.closed()).code).toBe(CLOSE_TOKEN_ROTATED)
   })
 
   test("a paired phone calls rpc, receives pushes and is refused desktop-only methods", async () => {
@@ -2270,11 +2269,11 @@ describe("remote mode", () => {
 
     const after = result(await invoke("remote.rotateToken", undefined))
     expect(after.token).not.toBe(before.token)
-    expect((await paired.closed()).code).toBe(RemoteAccess.CLOSE_TOKEN_ROTATED)
+    expect((await paired.closed()).code).toBe(CLOSE_TOKEN_ROTATED)
 
     const stale = phone(port)
     await stale.send({ type: "auth", token: before.token })
-    expect((await stale.closed()).code).toBe(RemoteAccess.CLOSE_UNAUTHORIZED)
+    expect((await stale.closed()).code).toBe(CLOSE_UNAUTHORIZED)
   })
 
   test("turning remote off closes a socket that has not authenticated yet", async () => {

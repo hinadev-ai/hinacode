@@ -13,6 +13,7 @@ import { useExplorer } from "../stores/explorer.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ErrorNotice } from "./ErrorNotice.tsx"
 import { FileDiffRow, fileStatusMark } from "./FilePatch.tsx"
+import { LineCounts } from "./LineCounts.tsx"
 import { useUi } from "../stores/ui.ts"
 import { Button } from "./ui/button.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
@@ -129,12 +130,7 @@ function ChangedFiles({ thread, scope }: { thread: Thread; scope: ChangesScope }
   return (
     <>
       <p className="text-xs text-muted-foreground">
-        {m.diff_summary({ count: result.files.length })}{" "}
-        <span className="font-mono tabular-nums" aria-label={m.diff_line_counts({ added, removed })}>
-          <span aria-hidden>
-            +{added} −{removed}
-          </span>
-        </span>
+        {m.diff_summary({ count: result.files.length })} <LineCounts added={added} removed={removed} />
       </p>
       <ul className="flex flex-col gap-0.5">
         {result.files.map((file) => (

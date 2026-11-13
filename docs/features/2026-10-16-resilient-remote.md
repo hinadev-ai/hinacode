@@ -1,6 +1,6 @@
 # Resilient remote control
 
-Status: Building
+Status: Shipped
 Date: 2026-10-16
 
 ## Problem

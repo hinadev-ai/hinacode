@@ -68,6 +68,7 @@ import { McpCredentials } from "../mcp/credentials.ts"
 import {
   AgentError,
   type AgentProvider,
+  interruptedTurn,
   type SessionInput,
   type SteerPriority,
   type SubagentChange,
@@ -92,7 +93,7 @@ import { Git, type CommandError } from "./Git.ts"
 import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
 import { Messages, type ToolCallRef } from "./Messages.ts"
 import { PullRequests } from "./PullRequests.ts"
-import { Attachments, extensionOf } from "./Attachments.ts"
+import { Attachments, extensionForMime } from "./Attachments.ts"
 import { Scratch } from "./Scratch.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
@@ -340,7 +341,7 @@ const savedImage = (threadId: string, attachments: typeof Attachments.Service, r
   const mimeType = source["mimeType"] ?? source["media_type"]
   const data = source["data"]
   if (typeof mimeType !== "string" || typeof data !== "string") return Effect.succeed({ type: "image", mimeType })
-  const name = `image${extensionOf(mimeType)}`
+  const name = `image${extensionForMime(mimeType)}`
   return attachments.stage(threadId, { dataUrl: `data:${mimeType};base64,${data}`, name }).pipe(
     Effect.map((attachment) => ({ type: "image", mimeType, attachment })),
     Effect.orElseSucceed(() => ({ type: "image", mimeType })),
@@ -749,7 +750,7 @@ const make = Effect.gen(function* () {
       }
     }).pipe(Effect.catch((error) => Effect.logWarning("held message did not steer", error)))
 
-    const steer = (
+    const steerOrHold = (
       text: string,
       attachments: ReadonlyArray<Attachment>,
       when: Effect.Effect<boolean, PersistenceError>,
@@ -759,13 +760,49 @@ const make = Effect.gen(function* () {
         if (finishing) return "finished" as const
         if (provider.steer === undefined || !(yield* when)) return false
         if (!waitsOnUser(thread.id)) {
-          yield* steerTurn(text, attachments, "now", messageId)
-          return true
+          return (yield* steerTurn(text, attachments, "now", messageId)) ? true : ("refused" as const)
         }
         const { queue } = yield* threads.get(thread.id)
         yield* updateThread({ id: thread.id, queue: [...queue, { id: messageId, text, attachments, steer: true }] })
         return true
       }).pipe(exclusive(thread.id))
+
+    const steer = (
+      text: string,
+      attachments: ReadonlyArray<Attachment>,
+      when: Effect.Effect<boolean, PersistenceError>,
+      messageId: string,
+    ): Effect.Effect<boolean | "finished", SendError> =>
+      Effect.gen(function* () {
+        let refused = false
+        while (true) {
+          const openedBefore = Deferred.isDoneUnsafe(opened)
+          const steered = yield* steerOrHold(text, attachments, when, messageId)
+          if (steered === true || steered === false || (steered === "finished" && !refused)) return steered
+          refused = true
+          yield* steered === "refused" && !openedBefore
+            ? Effect.raceFirst(Deferred.await(opened), Deferred.await(ended))
+            : Deferred.await(ended)
+          if (Deferred.isDoneUnsafe(ended)) return yield* afterRefusedTurn(text, attachments, when, messageId)
+        }
+      })
+
+    const afterRefusedTurn = (
+      text: string,
+      attachments: ReadonlyArray<Attachment>,
+      when: Effect.Effect<boolean, PersistenceError>,
+      messageId: string,
+    ) =>
+      Effect.suspend((): Effect.Effect<boolean | "finished", PersistenceError | NotFoundError> =>
+        completed && !Deferred.isDoneUnsafe(stop)
+          ? Effect.succeed("finished" as const)
+          : Effect.gen(function* () {
+              if (!(yield* when)) return false
+              const { queue } = yield* threads.get(thread.id)
+              yield* updateThread({ id: thread.id, queue: [...queue, { id: messageId, text, attachments }] })
+              return true
+            }).pipe(exclusive(thread.id)),
+      )
 
     const steerTurn = (
       text: string,
@@ -775,9 +812,15 @@ const make = Effect.gen(function* () {
       alsoOnRecord: Effect.Effect<void, PersistenceError | NotFoundError> = Effect.void,
     ) =>
       Effect.gen(function* () {
-        if (provider.steer === undefined) return
+        if (provider.steer === undefined) return false
         yield* deltas.flush
-        yield* provider.steer(thread.id, expandDocumentCommand(expandArtifactSkill(text)), attachments, priority)
+        const accepted = yield* provider.steer(
+          thread.id,
+          expandDocumentCommand(expandArtifactSkill(text)),
+          attachments,
+          priority,
+        )
+        if (!accepted) return false
         const now = yield* nowIso
         yield* inTransaction(
           insertMessage(userMessage(thread.id, text, attachments, now, messageId)).pipe(Effect.andThen(alsoOnRecord)),
@@ -791,10 +834,13 @@ const make = Effect.gen(function* () {
         const next = openAssistantMessage(thread.id, now)
         yield* insertMessage(next)
         turnMessages = [...turnMessages, next]
+        return true
       })
 
     let next: QueuedMessage | undefined
     let finishing = false
+    const opened = Deferred.makeUnsafe<void>()
+    const ended = Deferred.makeUnsafe<void>()
     const withdraw = (event: AgentEvent) => publishTranscript({ type: "thread.event", threadId: thread.id, event })
     const finish = Effect.gen(function* () {
       finishing = true
@@ -834,6 +880,7 @@ const make = Effect.gen(function* () {
         Effect.sync(() => {
           if (next === undefined) busyThreads.delete(thread.id)
           activeTurns.delete(thread.id)
+          Deferred.doneUnsafe(ended, Effect.void)
         }),
       ),
       exclusive(thread.id),
@@ -861,9 +908,9 @@ const make = Effect.gen(function* () {
           Effect.gen(function* () {
             const input = yield* sessionInput(thread, provider, cwd, home, environment)
             if (yield* Deferred.isDone(stop)) {
-              return Stream.succeed<AgentEvent>({ type: "turn_failed", message: "Turn interrupted" })
+              return Stream.succeed(interruptedTurn)
             }
-            return provider.runTurn({ ...input, prompt, attachments })
+            return provider.runTurn({ ...input, prompt, attachments, onOpen: Deferred.succeed(opened, undefined) })
           }),
         ),
       )

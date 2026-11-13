@@ -196,13 +196,14 @@ export function FileDiffRow<A>({
             className={cn("flex-1 transition-colors", muted && "text-muted-foreground")}
           />
           {badge}
-          <span className="shrink-0 font-mono tabular-nums" aria-label={m.diff_line_counts({ added, removed })}>
+          <span className="shrink-0 font-mono tabular-nums">
             <span aria-hidden className={added === 0 ? "text-muted-foreground" : "text-vcs-added"}>
               +{added}
             </span>{" "}
             <span aria-hidden className={removed === 0 ? "text-muted-foreground" : "text-destructive"}>
               −{removed}
             </span>
+            <span className="sr-only select-none">{m.diff_line_counts({ added, removed })}</span>
           </span>
         </button>
         {actions}

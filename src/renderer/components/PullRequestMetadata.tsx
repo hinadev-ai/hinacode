@@ -196,7 +196,7 @@ function MetadataPicker({ url, title, values, candidates, renderOption, onChange
         <>
           <Combobox.List
             aria-label={title}
-            className="flex max-h-64 scroll-fade-y scroll-py-1 flex-col gap-0.5 overflow-y-auto overscroll-contain"
+            className="flex max-h-64 scroll-fade-y scroll-py-1 scrollbar-gutter-stable flex-col gap-0.5 overflow-y-auto overscroll-contain"
           >
             {(value: string) => (
               <Combobox.Item

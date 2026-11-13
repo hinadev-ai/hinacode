@@ -66,7 +66,45 @@ function mapProseLines(
 
 const labelBareFence = (line: string) => (BARE_FENCE.test(line) ? `${line.trimEnd()}text` : line)
 
-export function rewriteMarkdownExtras(markdown: string) {
+const INDENTED_FENCE = /^ +(`{3,}|~{3,})/m
+const OPENING_FENCE = /^( *)(`{3,}|~{3,})/
+const CLOSING_FENCE = /^ *(`{3,}|~{3,})[ \t]*$/
+const LIST_ITEM = /^ *(?:[-*+]|\d{1,9}[.)])(?: |$)/
+
+function stripIndent(line: string, indent: number) {
+  let start = 0
+  while (start < indent && line[start] === " ") start++
+  return line.slice(start)
+}
+
+function liftFencesOutOfLists(markdown: string) {
+  if (!INDENTED_FENCE.test(markdown)) return markdown
+  let inList = false
+  let fence: { marker: string; indent: number } | null = null
+  const lines: string[] = []
+  for (const line of markdown.split("\n")) {
+    if (fence !== null) {
+      const closing = CLOSING_FENCE.exec(line)?.[1]
+      lines.push(stripIndent(line, fence.indent))
+      if (closing !== undefined && closing[0] === fence.marker[0] && closing.length >= fence.marker.length) fence = null
+      continue
+    }
+    const opening = OPENING_FENCE.exec(line)
+    if (opening !== null && (inList || opening[1].length <= 3)) {
+      const indent = inList ? opening[1].length : 0
+      fence = { marker: opening[2], indent }
+      lines.push(line.slice(indent))
+      continue
+    }
+    if (LIST_ITEM.test(line)) inList = true
+    else if (/^\S/.test(line)) inList = false
+    lines.push(line)
+  }
+  return lines.join("\n")
+}
+
+export function rewriteMarkdownExtras(text: string) {
+  const markdown = liftFencesOutOfLists(text)
   const hasBareUrls = /https?:\/\//i.test(markdown)
   const labelsFences = BARE_FENCE.test(markdown)
   const rewritten =

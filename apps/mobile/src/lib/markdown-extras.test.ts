@@ -96,3 +96,45 @@ it("labels a fence with no language text, and leaves closing fences and fences i
     ["```text", "plain", "```", "", "````md", "```", "inside", "```", "````", "", "~~~text", "tilde", "~~~"].join("\n"),
   )
 })
+
+it("lifts a fenced code block out of a list item so it gets the scrolling code view", () => {
+  const markdown = [
+    "- The repro failed on main:",
+    "  ```",
+    "  ❯ src/renderer/stores/",
+    "    39|   expect(state).toEqual([])",
+    "  ```",
+    "  With the fix:",
+    "  ```ts",
+    "  Tests  2 passed (2)",
+    "  ```",
+    "- Next point.",
+    "    1. Nested:",
+    "       ~~~~sh",
+    "       pnpm test",
+    "       ~~~~",
+  ].join("\n")
+  expect(rewriteMarkdownExtras(markdown)).toBe(
+    [
+      "- The repro failed on main:",
+      "```text",
+      "❯ src/renderer/stores/",
+      "  39|   expect(state).toEqual([])",
+      "```",
+      "  With the fix:",
+      "```ts",
+      "Tests  2 passed (2)",
+      "```",
+      "- Next point.",
+      "    1. Nested:",
+      "~~~~sh",
+      "pnpm test",
+      "~~~~",
+    ].join("\n"),
+  )
+})
+
+it("leaves indented fences outside a list and inside another code block as written", () => {
+  const markdown = ["    ```", "    indented code", "", "````md", "- item", "  ```", "  code", "  ```", "````"].join("\n")
+  expect(rewriteMarkdownExtras(markdown)).toBe(markdown)
+})

@@ -1,14 +1,16 @@
-export type FileKind = "image" | "svg" | "markdown" | "text"
+export type FileKind = "image" | "svg" | "video" | "markdown" | "text"
 
 export type FileIcon =
   | "Folder"
   | "FileCode"
   | "Image"
+  | "FileVideo"
   | "Markdown"
   | "FileText"
   | "File"
 
 const images = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"])
+const videos = new Set(["mp4", "m4v", "mov", "webm"])
 const markdown = new Set(["md", "mdx", "markdown"])
 const code = new Set(
   (
@@ -34,6 +36,7 @@ export function fileKind(path: string): FileKind {
   const ext = extension(path)
   if (images.has(ext)) return "image"
   if (ext === "svg") return "svg"
+  if (videos.has(ext)) return "video"
   if (markdown.has(ext)) return "markdown"
   return "text"
 }
@@ -42,6 +45,7 @@ export function entryIcon(path: string, kind: "file" | "dir" | "symlink"): FileI
   if (kind === "dir") return "Folder"
   const ext = extension(path)
   if (images.has(ext) || ext === "svg") return "Image"
+  if (videos.has(ext)) return "FileVideo"
   if (markdown.has(ext)) return "Markdown"
   if (code.has(ext)) return "FileCode"
   if (text.has(ext) || textNames.has(basename(path).toLowerCase())) return "FileText"

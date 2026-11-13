@@ -254,7 +254,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
         {src === null ? (
           <BrowserStart threadId={threadId} onOpen={open} />
         ) : (
-          <div className={cn("absolute inset-0 flex", device && "overflow-auto bg-muted p-3")}>
+          <div className={cn("absolute inset-0 flex", device && "scrollbar-gutter-both overflow-auto bg-muted p-3")}>
             <webview
               ref={attachView}
               {...ALLOW_POPUPS}

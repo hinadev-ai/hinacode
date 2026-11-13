@@ -1,6 +1,6 @@
 # Native document editor on the phone
 
-Status: Draft
+Status: Shipped
 Date: 2026-11-10
 
 ## Problem
@@ -22,7 +22,7 @@ Tiptap has no native runtime, and a WebView editor costs 0.9 to 9 s before it is
 
 ### One model, the desktop's own
 
-The phone runs the desktop's model. `prosemirror-model`, `-transform`, `-state`, `-history`, `-commands`, `-schema-list` and `-tables` run on Hermes without a DOM, and so do `@tiptap/core`'s `getSchema` and `@tiptap/markdown`'s `MarkdownManager`. Only `prosemirror-view` needs a DOM, and the phone never creates one. The probe in `.context/probe/hermes-probe.ts` ran on the release Hermes VM (`hermes-ios-260318099.0.4`, macOS framework, Mac CPU).
+The phone runs the desktop's model. `prosemirror-model`, `-transform`, `-state`, `-history`, `-commands`, `-schema-list` and `-tables` run on Hermes without a DOM, and so do `@tiptap/core`'s `getSchema` and `@tiptap/markdown`'s `MarkdownManager`. Only `prosemirror-view` needs a DOM, and the phone never creates one. A throwaway probe ran on the release Hermes VM (`hermes-ios-260318099.0.4`, macOS framework, Mac CPU).
 
 | Measurement on Hermes                           | 2 KB    | 30 KB       | 300 KB         |
 | ----------------------------------------------- | ------- | ----------- | -------------- |
@@ -35,7 +35,7 @@ The phone runs the desktop's model. `prosemirror-model`, `-transform`, `-state`,
 
 `undo`, `redo`, `splitListItem` and `addRowAfter` ran and gave valid documents. So the phone shares the schema, the commands and the Markdown serializer with the desktop, and behavior cannot drift between two implementations. The hand written Markdown parser from the first plan is not needed and will not be built. `prosemirror-kotlin` and a hand written native model stay unbuilt unless the typing prototype (below) shows the JS model is too slow.
 
-The schema moves to shared code. `src/shared/documentSchema.ts` holds the extension list both apps use: StarterKit with the same options, the callout and the callout-aware blockquote, the code block, task list and item, tables and image, each with its Markdown parse and render rules and without node views. The desktop adds its node views with `.extend({ addNodeView })`. Nothing else in the tree is new: the render tree, the edit model and the saved file all come from one ProseMirror `Node`.
+The schema moves to shared code. `src/shared/document/schema.ts` holds the extension list both apps use: StarterKit with the same options, the callout and the callout-aware blockquote, the code block, task list and item, tables and image, each with its Markdown parse and render rules and without node views. The desktop adds its node views with `.extend({ addNodeView })`. Nothing else in the tree is new: the render tree, the edit model and the saved file all come from one ProseMirror `Node`.
 
 ProseMirror already holds every rule the editor needs: flat positions in UTF-16 units, merged text runs with no empty text, mark ranks and `excludes`, content expressions checked by `check()`, `storedMarks`, text, node and all selections, and steps that map and invert. The phone does not re-implement any of them.
 
@@ -145,7 +145,7 @@ How the native view does it, the same on iOS and Android:
 - When `editable` is true, a tap on a text block (paragraph, heading, code, a table cell, or a chart or diagram, which edits as its source) makes that block the focused one, and only it holds an editable text view. The view reports `select { anchor, head }` as `{ block, cell, offset }` points in UTF-16 offsets into the block's text. A hard break is `\n` and an inline image is one `\uFFFC`, the same one-unit size they have in the model, so offsets map to positions by addition.
 - Every change to the focused text, whatever caused it, is reported as one `edit { eventCount, block, cell, from, to, text }`, computed by diffing the text before and after. The view raises its event count first. It reports during a composition too, so the model always holds what is on screen.
 - A patch that replaces the focused block is held while a composition is active and applied when it ends. Otherwise it is applied only when its `eventCount` is at least the view's own. If its text equals what the view shows, the view keeps its text, caret and composition and only restyles and takes the new id.
-- Enter (Shift-Enter for a hard break), Backspace or Delete with an empty selection at the block's start or end, and Tab from a hardware keyboard are sent as `key { eventCount, key, shift }` and never change the text view. A patch that follows carries `selection`, and the view moves focus and caret there.
+- Enter (Shift-Enter for a hard break), Backspace or Delete with an empty selection at the block's start or end, and Tab from a hardware keyboard are sent as `key { eventCount, key, shift }` and never change the text view. A patch that follows carries `selection`, and the view moves focus and caret there. On Android the next block's editor takes focus in the same main-thread message that rebinds the rows, and takes the caret only after that. RecyclerView can recycle the focused editor into the new row, and if the window has no focused view when the input method checks, the keyboard closes and reopens. The input method checks on a queued message after focus changes, and at once when an editor's selection changes.
 - The text view's own undo stays off. Undo and redo are toolbar actions on the model, so they undo the same steps the desktop would.
 - A task checkbox tap sends `taskToggle`. The selection menu adds the items in `formatActions` and sends `format { action }`.
 

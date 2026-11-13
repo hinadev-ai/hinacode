@@ -6,7 +6,7 @@
 
 **同時執行多個代理，隨時知道誰需要你。**
 
-一個令人愉悅的工作站，讓你平行執行 Claude Code、Codex、Muse Code 和 opencode，每個代理都在自己的工作樹中，狀態一目瞭然。
+一個令人愉悅的工作站，讓你平行執行 Claude Code、Codex、Muse Code、opencode 和 magpie，每個代理都在自己的工作樹中，狀態一目瞭然。
 
 [![CI](https://github.com/hinadev-ai/hinacode/actions/workflows/ci.yml/badge.svg)](https://github.com/hinadev-ai/hinacode/actions/workflows/ci.yml)
 [![Build](https://github.com/hinadev-ai/hinacode/actions/workflows/build.yml/badge.svg)](https://github.com/hinadev-ai/hinacode/actions/workflows/build.yml)
@@ -22,8 +22,6 @@
 
 </div>
 
-<!-- 替換為產品截圖或簡短的示範 GIF -->
-<!-- <p align="center"><img src="assets/screenshot.png" alt="HinaCode" width="90%" /></p> -->
 <p align="center">
   <img src="site/public/og.png" alt="HinaCode: run coding agents in parallel" width="90%" />
 </p>
@@ -40,7 +38,7 @@
 HinaCode **是一個令人愉悅的程式碼代理工作站**。它負責每個代理周邊的工作：在哪裡執行、何時需要你、改動了什麼、如何交付，讓你能平行執行代理並始終保持掌控。
 
 - **免費且開源**，採用 MIT 授權條款。不額外加價，也不經手轉送。
-- **使用你已經付費的代理。** HinaCode 執行你已登入的 `claude`、`codex`、`muse` 和 `opencode` CLI。用量計入對應的訂閱方案或 API 金鑰，和在終端機裡使用時完全一樣。
+- **使用你已經付費的代理。** HinaCode 執行你已登入的 `claude`、`codex`、`muse` 和 `opencode` CLI，magpie 對話串則透過你的 magpie 閘道執行 `claude`。用量計入對應的訂閱方案、API 金鑰或閘道，和在終端機裡使用時完全一樣。
 - **預設本機執行。** 你的程式碼只會發往這些 CLI 本來就會傳送的地方。HinaCode 把資料儲存在你機器上的單一 SQLite 檔案中。
 - **每天用 HinaCode 打造 HinaCode。** 如果工作流程讓人難受，我們最先感受到。
 
@@ -49,7 +47,7 @@ HinaCode **是一個令人愉悅的程式碼代理工作站**。它負責每個�
 ## 功能
 
 - **每個對話串一個工作樹。** 從 `main`、任意分支或開啟中的合併請求建立分支。你的設定腳本會在代理啟動前執行。
-- **四個代理，一個側邊欄。** 為每個對話串選擇 Claude Code、Codex、Muse Code 或 opencode，也能在中途切換。
+- **五個代理，一個側邊欄。** 為每個對話串選擇 Claude Code、Codex、Muse Code、opencode 或 magpie，也能在中途切換。
 - **收件匣。** 所有進行中的對話串集中在一份清單裡，需要核准的事項和問題都會被標記。
 - **行內核准與提問。** 允許、附上說明後拒絕，或直接回答，不必離開對話串。
 - **引導或排入佇列。** 在回合中途改變代理的方向，或把下一個任務排在後面。
@@ -74,6 +72,7 @@ HinaCode **是一個令人愉悅的程式碼代理工作站**。它負責每個�
 | [Codex](https://openai.com/codex/)                    | `codex`    | `codex`（依登入流程操作）  | App-server protocol         |
 | Muse Code                                             | `muse`     | `muse login`               | MSP                         |
 | [opencode](https://opencode.ai)                       | `opencode` | `opencode auth login`      | Agent Client Protocol (ACP) |
+| [magpie](https://usemagpie.ai)                        | `claude`   | 執行 magpie                | 透過閘道的 Agent SDK        |
 
 新增一個後端只需在 `src/main/agents/` 中實作一個 `AgentProvider`，並在 runner 中註冊。參閱[代理供應商指南](docs/agent-providers.md)。
 
@@ -122,7 +121,7 @@ npx hinacode serve
 ### 前置要求
 
 - **Node** 24.22.1 或更高版本（在 Node 26 上需 26.12.1 或更高版本）以及 **pnpm**
-- 你想執行的代理 CLI（`claude`、`codex`、`muse` 和/或 `opencode`），已登入並在你的 `PATH` 中
+- 你想執行的代理 CLI（`claude`、`codex`、`muse` 和/或 `opencode`），已登入並在你的 `PATH` 中。magpie 對話串需要 `claude` 和執行中的 magpie 閘道。
 - **ripgrep**（`rg`）在你的 `PATH` 中，用於全域檔案搜尋及其整合測試
 - Chrome 或 Chromium，僅用於遠端瀏覽器標籤頁及其整合測試（`pnpm exec playwright install --with-deps chromium`）
 
@@ -167,7 +166,7 @@ HINACODE_USER_DATA=/tmp/hinacode-test pnpm exec electron out/main/index.js
 | `pnpm test`             | 兩個 Vitest 專案。                                                                                                                                 |
 | `pnpm test:e2e`         | Playwright 透過 `e2e/features` 中的 Gherkin 場景驅動建置好的 Electron 應用程式。需要顯示環境：`DISPLAY` 或 `Xvfb :99`，或在 `xvfb-run -a` 下執行。 |
 
-Effect 程式碼使用 `@effect/vitest` 測試：`it.effect` 在測試時鐘下執行，`it.live` 使用真實時鐘，`layer(...)` 在同一個區塊內共享已建置的 layer。每個 e2e worker 都會在臨時 `HINACODE_USER_DATA` 上啟動自己的 HinaCode，透過 `window.hinacode.rpc` 或直接寫入 SQLite 來準備前置條件，並透過 UI 驅動待測行為。
+Effect 程式碼使用 `@effect/vitest` 測試：`it.effect` 在測試時鐘下執行，`it.live` 使用真實時鐘，`layer(...)` 在同一個區塊內共享已建置的 layer。每個 e2e worker 都會在臨時 `HINACODE_USER_DATA` 上啟動自己的 HinaCode，透過 `window.hinacode.rpc` 或直接寫入 SQLite 來準備前置條件，並透過 UI 驅動待測行為。它也會設定 `HINACODE_SKIP_AGENT_UPDATES=1`，讓應用程式不向 npm 查詢代理 CLI 的新版本。
 
 遠端瀏覽器標籤頁及其整合測試需要主機上安裝 Chrome 或 Chromium。若要安裝 Playwright 的 Chromium 及其 Linux 相依套件，請執行 `pnpm exec playwright install --with-deps chromium`。從 npm 安裝的雲端版本可以使用 `npx playwright install --with-deps chromium`。當瀏覽器位於其他位置時，請設定 `HINACODE_BROWSER_EXECUTABLE_PATH`。瀏覽器會在對話串所在的機器上執行，因此它的 `localhost` 會連到該機器上的服務。
 
@@ -223,7 +222,7 @@ HinaCode 是一個 Electron 應用程式。主行程執行代理，React 渲染�
 不收費。所有功能都免費，程式碼以 MIT 授權條款開源。
 
 **它能執行哪些代理？**
-Claude Code、Codex、Muse Code 和 opencode。安裝你想使用的每個 CLI 並登入。
+Claude Code、Codex、Muse Code、opencode 和 magpie。安裝你想使用的每個 CLI 並登入。magpie 透過它的閘道執行 Claude Code。
 
 **我的程式碼會離開我的機器嗎？**
 只會發往這些代理 CLI 本來就會傳送的地方。HinaCode 在本機執行，資料儲存在你機器上的 SQLite 檔案中。

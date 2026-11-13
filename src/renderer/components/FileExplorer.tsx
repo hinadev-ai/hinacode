@@ -495,7 +495,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
                 extraData={[tree, drag]}
                 estimatedItemSize={ROW_HEIGHT}
                 getFixedItemSize={() => ROW_HEIGHT}
-                className="min-h-0 flex-1"
+                className="min-h-0 flex-1 scrollbar-gutter-stable"
               />
             </ContextMenuTrigger>
             {selectedEntry && (

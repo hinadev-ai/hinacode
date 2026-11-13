@@ -1,6 +1,6 @@
 # Sign in by redirecting back to the app
 
-Status: Building
+Status: Shipped
 Date: 2026-11-06
 
 ## Problem

@@ -7,13 +7,13 @@ import type {
   PullRequestLink,
   PullRequestStatus,
 } from "@shared/domain.ts"
-import { pullRequestNumberLabelOfUrl } from "@shared/codeHost.ts"
+import { codeHostName, codeHostOfUrl, pullRequestNumberLabel, pullRequestNumberLabelOfUrl } from "@shared/codeHost.ts"
 import { linearReviewUrl } from "@shared/github.ts"
 import { providerInfo } from "@shared/providers.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "@shared/pullRequestPrompts.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { type ReactNode, useState } from "react"
-import { Alert, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
@@ -25,8 +25,10 @@ import { Button, IconButton, Notice, Pill, Toggle, UnderlineTabs } from "@/compo
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call } from "@/lib/connection"
+import { confirmAction } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
+import { mergeChoice } from "@/lib/merge-methods"
 import { openWebUrl } from "@/lib/open-url"
 import { reviewLabel, reviewTone, statusGlyph, statusLabel } from "@/lib/pull-request-labels"
 import { filesKey, loadDetailAtom, usePullRequests } from "@/stores/pull-requests"
@@ -41,6 +43,8 @@ const tabs = [
 
 type WebLink = { readonly href: string; readonly label: string }
 
+const hostNameOf = (url: string) => codeHostName(codeHostOfUrl(url))
+
 function useWebLink(threadId: string, url: string): WebLink {
   const linearReview = useThreads((state) => {
     const projectId = state.byId[threadId]?.projectId
@@ -48,7 +52,7 @@ function useWebLink(threadId: string, url: string): WebLink {
   })
   return linearReview
     ? { href: linearReviewUrl(url), label: copy("mobile_pr_open_linear_review") }
-    : { href: url, label: copy("mobile_pr_open_github") }
+    : { href: url, label: copy("mobile_pr_open_on_host", { host: hostNameOf(url) }) }
 }
 
 const reloadWithCode = async (reload: () => Promise<unknown>, url: string, withCode: boolean) => {
@@ -163,7 +167,7 @@ function PullRequestView({
       <View style={styles.header}>
         <View style={styles.headline}>
           <StatePill status={detail.status} />
-          <Text style={[styles.number, { color: theme.textMuted }]}>#{detail.number}</Text>
+          <Text style={[styles.number, { color: theme.textMuted }]}>{numberLabelOf(detail)}</Text>
           <LineCounts added={detail.additions} removed={detail.deletions} />
           {isOpen(detail) && detail.review !== null && (
             <Pill label={reviewLabel(detail.review)} tone={reviewTone[detail.review]} />
@@ -380,7 +384,7 @@ function Checks({ detail }: { detail: PullRequestDetail }) {
       {expanded && (
         <FadeIn style={styles.runs}>
           {runs.map((run, index) => (
-            <CheckRow key={`${index}:${run.name}`} run={run} />
+            <CheckRow key={`${index}:${run.name}`} run={run} host={hostNameOf(detail.url)} />
           ))}
         </FadeIn>
       )}
@@ -390,7 +394,7 @@ function Checks({ detail }: { detail: PullRequestDetail }) {
 
 const runLabel = (status: CheckRunStatus) => copy(`mobile_pr_check_${status}`)
 
-function CheckRow({ run }: { run: CheckRun }) {
+function CheckRow({ run, host }: { run: CheckRun; host: string }) {
   const theme = useTheme()
   const glyphs: Record<Exclude<CheckRunStatus, "pending">, { name: IconName; color: string }> = {
     passing: { name: "CheckCircleFill", color: theme.textMuted },
@@ -425,7 +429,7 @@ function CheckRow({ run }: { run: CheckRun }) {
     <PressableScale
       accessibilityRole="link"
       accessibilityLabel={label}
-      accessibilityHint={copy("mobile_pr_check_open")}
+      accessibilityHint={copy("mobile_pr_check_open", { host })}
       onPress={() => openWebUrl(url)}
       style={styles.run}
     >
@@ -441,7 +445,7 @@ function MergeState({ detail }: { detail: PullRequestDetail }) {
       <StatusRow
         icon={<Icon name="RiGitPrDraftLine" size={18} color={theme.textMuted} />}
         title={copy("mobile_pr_state_draft")}
-        detail={copy("mobile_pr_merge_blocked_draft")}
+        detail={copy("mobile_pr_merge_blocked_draft", { host: hostNameOf(detail.url) })}
       />
     )
   }
@@ -508,20 +512,10 @@ function WatchRow({
   )
 }
 
-// FIXME: Alert.alert has no buttons on react-native-web.
-function confirm(title: string, message: string, action: string, destructive: boolean, onConfirm: () => void) {
-  if (Platform.OS === "web") {
-    if (window.confirm(`${title}\n\n${message}`)) onConfirm()
-    return
-  }
-  Alert.alert(title, message, [
-    { text: copy("mobile_pr_cancel"), style: "cancel" },
-    { text: action, style: destructive ? "destructive" : "default", onPress: onConfirm },
-  ])
-}
+const numberLabelOf = (pullRequest: PullRequestDetail) =>
+  pullRequestNumberLabel(codeHostOfUrl(pullRequest.url), pullRequest.number)
 
 const mergeLabel = (method: MergeMethod) => copy(`mobile_pr_merge_${method === "merge" ? "commit" : method}`)
-const mergeMethods: readonly MergeMethod[] = ["squash", "merge", "rebase"]
 
 function useGitHubAction(url: string, onChanged: () => Promise<void>) {
   const [busy, setBusy] = useState(false)
@@ -552,18 +546,19 @@ function ActionBar({
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   const [picking, setPicking] = useState(false)
-  const [method, setMethod] = useState<MergeMethod>("squash")
+  const [chosenMethod, setMethod] = useState<MergeMethod>("squash")
+  const { methods, method } = mergeChoice(detail?.url ?? "", chosenMethod)
   const { busy, error, run } = useGitHubAction(detail?.url ?? "", onChanged)
   const canMerge = detail !== null && detail.status === "open" && detail.mergeable !== "conflicting"
 
   const merge = (picked: MergeMethod) => {
     if (detail === null) return
-    confirm(
-      copy("mobile_pr_merge_title", { method: mergeLabel(picked), number: String(detail.number) }),
-      copy("mobile_pr_merge_body", { head: detail.headRef, base: detail.baseRef }),
+    confirmAction(
+      copy("mobile_pr_merge_title", { method: mergeLabel(picked), number: numberLabelOf(detail) }),
+      copy("mobile_pr_merge_body", { head: detail.headRef, base: detail.baseRef, host: hostNameOf(detail.url) }),
       mergeLabel(picked),
-      false,
       () => void run(() => call("github.merge", { url: detail.url, method: picked })),
+      { destructive: false },
     )
   }
 
@@ -608,7 +603,7 @@ function ActionBar({
       <Sheet title={copy("mobile_pr_merge_method")} open={picking} onClose={() => setPicking(false)} fit>
         <View accessibilityRole="radiogroup" accessibilityLabel={copy("mobile_pr_merge_method")}>
           <GroupedCard inset={16}>
-            {mergeMethods.map((option) => (
+            {methods.map((option) => (
               <OptionRow
                 key={option}
                 label={mergeLabel(option)}
@@ -627,12 +622,12 @@ function ActionBar({
 function CloseButton({ detail, onChanged }: { detail: PullRequestDetail; onChanged: () => Promise<void> }) {
   const { busy, error, run } = useGitHubAction(detail.url, onChanged)
   const close = () =>
-    confirm(
-      copy("mobile_pr_close_title", { number: String(detail.number) }),
-      copy("mobile_pr_close_body"),
+    confirmAction(
+      copy("mobile_pr_close_title", { number: numberLabelOf(detail) }),
+      copy("mobile_pr_close_body", { host: hostNameOf(detail.url) }),
       copy("mobile_pr_close_confirm"),
-      true,
       () => void run(() => call("github.close", { url: detail.url })),
+      { destructive: true },
     )
   return (
     <View style={styles.section}>

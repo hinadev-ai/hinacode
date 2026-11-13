@@ -1,6 +1,6 @@
 # Artifact feedback: comments and whiteboards
 
-Status: Building
+Status: Shipped
 Date: 2026-11-08
 
 ## Problem

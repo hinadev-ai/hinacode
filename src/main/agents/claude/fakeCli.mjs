@@ -217,6 +217,14 @@ const prompt = (text) => {
 const answer = (request_id, response = {}) =>
   send({ type: "control_response", response: { subtype: "success", request_id, response } })
 
+const answerOnceReleased = (request_id, release) => {
+  const poll = setInterval(() => {
+    if (!existsSync(join(home, release))) return
+    clearInterval(poll)
+    answer(request_id)
+  }, 20)
+}
+
 createInterface({ input: process.stdin }).on("line", (line) => {
   appendFileSync(join(home, "received.jsonl"), `${line}\n`)
   const message = JSON.parse(line)
@@ -229,6 +237,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       interrupted = null
       return
     }
+    if (message.request.subtype === "set_model" && control().holdSetModel)
+      return answerOnceReleased(message.request_id, "release-set-model")
     answer(message.request_id)
     if (message.request.subtype === "set_permission_mode") initAfterModeSwitch?.()
     initAfterModeSwitch = null

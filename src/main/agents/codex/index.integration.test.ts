@@ -12,10 +12,10 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { beforeEach, describe, expect, it } from "@effect/vitest"
-import { Effect, Fiber, Option, PubSub, Queue, Stream } from "effect"
+import { Deferred, Effect, Fiber, Option, PubSub, Queue, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AccountHome, AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
-import { AGENT_INSTRUCTIONS } from "../instructions.ts"
+import { AGENT_INSTRUCTIONS, instructionsUpdate } from "../instructions.ts"
 import type { BackgroundTasksChange } from "../provider.ts"
 import { CodexProvider, TerminalPollInterval } from "./index.ts"
 import fruitShop from "./fixtures/fruit-shop-thread.json" with { type: "json" }
@@ -122,6 +122,8 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
   instructions: AGENT_INSTRUCTIONS,
 })
+
+const environment = (branch: string) => `<environment>\n  git branch: \`${branch}\`\n</environment>`
 
 const startTurn = (threadId: string, home: AccountHome | null = null) =>
   Effect.gen(function* () {
@@ -265,6 +267,40 @@ describe("Codex auto-compact", () => {
           "thread/unsubscribe",
           "thread/resume",
         ])
+      }),
+    ),
+  )
+
+  it.live("tells a loaded thread about changed instructions with a developer message", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        const turn = (instructions: string) =>
+          provider
+            .runTurn({ ...input("instructions-change"), resumeSessionId: "codex-thread", instructions })
+            .pipe(Stream.runDrain)
+        yield* turn(environment("main"))
+        yield* turn(environment("main"))
+        expect(countOf("thread/inject_items")).toBe(0)
+
+        yield* turn(environment("fix/restart"))
+        yield* turn(environment("fix/restart"))
+        expect(sent("thread/inject_items").map((message) => message.params)).toStrictEqual([
+          {
+            threadId: "codex-thread",
+            items: [
+              {
+                type: "message",
+                role: "developer",
+                content: [
+                  { type: "input_text", text: instructionsUpdate(environment("main"), environment("fix/restart")) },
+                ],
+              },
+            ],
+          },
+        ])
+        expect(countOf("thread/unsubscribe")).toBe(0)
       }),
     ),
   )
@@ -443,6 +479,35 @@ describe("Codex Stop during startup", () => {
         const error = yield* finishesSoon(fiber).pipe(Effect.flip)
         expect(error.message).toMatch(/initialize.*did not respond/)
         expect(events.length).toBe(0)
+      }),
+    ),
+  )
+})
+
+describe("Codex steer while the turn starts", () => {
+  it.live("declines a steer until turn/start answers, then opens the turn and takes the next one", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const opened = yield* Deferred.make<void>()
+        setControl({ stall: ["turn/start"], holdTurn: true })
+        const fiber = yield* provider
+          .runTurn({ ...input("thread-a"), onOpen: Deferred.succeed(opened, undefined) })
+          .pipe(Stream.runDrain, Effect.forkChild)
+        yield* waitFor(() => countOf("turn/start") === 1)
+
+        expect(yield* provider.steer!("thread-a", "too early", [], "now")).toBe(false)
+        expect(yield* Deferred.isDone(opened)).toBe(false)
+
+        setControl({ stall: ["turn/start"], holdTurn: true, release: true })
+        yield* Deferred.await(opened)
+        expect(yield* provider.steer!("thread-a", "in time", [], "now")).toBe(true)
+        expect(sent("turn/steer").map((message) => message.params?.input)).toStrictEqual([
+          [{ type: "text", text: "in time", text_elements: [] }],
+        ])
+
+        yield* provider.interrupt("thread-a")
+        yield* Fiber.join(fiber)
       }),
     ),
   )

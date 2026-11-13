@@ -286,7 +286,6 @@ const handlers: Handlers = {
   "worktrees.remove": ({ id, deleteBranch }) => Worktrees.use((worktrees) => worktrees.remove(id, deleteBranch)),
   "worktrees.checkouts": () => Worktrees.use((worktrees) => worktrees.checkouts),
   "worktrees.checkoutState": ({ id }) => Worktrees.use((worktrees) => worktrees.checkoutState(id)),
-  "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.stopSetup": ({ id }) => Worktrees.use((worktrees) => worktrees.stopSetup(id)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
@@ -398,10 +397,7 @@ const handlers: Handlers = {
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),
-  "accounts.rename": ({ id, name }) =>
-    AgentAccounts.use((accounts) => accounts.rename(id, name)).pipe(
-      Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
-    ),
+  "accounts.rename": ({ id, name }) => AgentAccounts.use((accounts) => accounts.rename(id, name)),
   "accounts.delete": ({ id }) =>
     AgentRunner.use((runner) => runner.removeAccount(id)).pipe(
       Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
@@ -490,6 +486,7 @@ const handlers: Handlers = {
     PullRequests.use((pullRequests) => pullRequests.unwatch(threadId, url)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => SourceControl.use((sourceControl) => sourceControl.pullRequest(url)),
+  "github.issue": ({ url }) => GitHub.use((github) => github.issue(url)),
   "github.pullRequestDetail": ({ url, fresh }) =>
     SourceControl.use((sourceControl) => sourceControl.pullRequestDetail(url, { fresh })).pipe(
       Effect.tap(startGuideForHead),

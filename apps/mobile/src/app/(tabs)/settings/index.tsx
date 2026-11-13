@@ -27,7 +27,7 @@ import { serverName } from "@/hooks/use-server"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { HIT, mono, type Palette, ProviderColors, radius } from "@/constants/theme"
 import { call, type ConnectionStatus, reconnectNow, type RpcError, type Server, useConnection } from "@/lib/connection"
-import { confirmDestructive } from "@/lib/confirm"
+import { confirmAction } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import {
@@ -580,11 +580,12 @@ function ServerSheet({ server, onClose }: { server: Server; onClose: () => void 
 }
 
 const confirmForget = (name: string, forget: () => void) =>
-  confirmDestructive(
+  confirmAction(
     copy("mobile_settings_server_forget_title", { server: name }),
     copy("mobile_settings_server_forget_message"),
     copy("mobile_settings_server_forget"),
     forget,
+    { destructive: true },
   )
 
 const styles = StyleSheet.create({

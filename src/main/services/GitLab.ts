@@ -22,7 +22,7 @@ import {
 import { findBinary } from "../agents/binary.ts"
 import { Events } from "./Events.ts"
 import { CommandError, COMMAND_NOT_FOUND_EXIT_CODE, LONG_TIMEOUT, makeExec, type RunOptions } from "./Git.ts"
-import { parseApiResponse, PullRequestUrlInvalidError } from "./GitHub.ts"
+import { CHECK_RUN_ORDER, parseApiResponse, PullRequestUrlInvalidError } from "./GitHub.ts"
 
 export class GitLabCliMissingError extends Schema.TaggedError<GitLabCliMissingError>()("GitLabCliMissingError", {}) {
   override get message(): string {
@@ -224,8 +224,6 @@ const jobStatus = ({ status, allow_failure }: JobsJson[number]): CheckRunStatus 
   if (status === "failed" && allow_failure) return "skipped"
   return pipelineChecks(status) ?? "skipped"
 }
-
-const CHECK_RUN_ORDER: Record<CheckRunStatus, number> = { failing: 0, pending: 1, passing: 2, skipped: 3 }
 
 export const toCheckRuns = (jobs: JobsJson): ReadonlyArray<CheckRun> =>
   jobs

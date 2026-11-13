@@ -1,6 +1,6 @@
 # Switch a thread's account
 
-Status: Building
+Status: Shipped
 Date: 2026-10-19
 
 ## Problem

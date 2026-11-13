@@ -82,7 +82,8 @@
         }
       ],
       "expo-localization",
-      "./plugins/compact-tab-bar.js"
+      "./plugins/compact-tab-bar.js",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,
