@@ -138,7 +138,6 @@ interface Session extends MapState, ApprovalSession {
   readonly threadId: string
   readonly cwd: string
   readonly home: AccountHome | null
-  readonly instructions: string
   readonly prompts: Queue.Queue<SDKUserMessage>
   readonly abort: AbortController
   readonly stderr: StderrTail
@@ -203,7 +202,6 @@ const awaitsAnswer = (session: Session) => [...session.turnPrompts].some((uuid) 
 interface SessionContext {
   readonly cwd: string
   readonly home: AccountHome | null
-  readonly instructions: string
 }
 
 interface Resumable extends SessionContext {
@@ -260,8 +258,7 @@ const commandsKey = (cwd: string, home: AccountHome | null) => JSON.stringify({ 
 
 const sameHome = (a: AccountHome | null, b: AccountHome | null) => a?.dir === b?.dir && a?.binary === b?.binary
 
-const sameContext = (a: SessionContext, b: SessionContext) =>
-  a.cwd === b.cwd && sameHome(a.home, b.home) && a.instructions === b.instructions
+const sameContext = (a: SessionContext, b: SessionContext) => a.cwd === b.cwd && sameHome(a.home, b.home)
 
 const homeEnv = (home: AccountHome | null): NodeJS.ProcessEnv =>
   home === null ? { ...process.env } : { ...process.env, CLAUDE_CONFIG_DIR: home.dir }
@@ -650,7 +647,6 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         resumable.set(session.threadId, {
           cwd: session.cwd,
           home: session.home,
-          instructions: session.instructions,
           sessionId: message.session_id,
           sessionGrants: session.sessionGrants,
           attachmentPaths: session.attachmentPaths,
@@ -781,7 +777,6 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           provider: id,
           cwd: input.cwd,
           home: input.home,
-          instructions: input.instructions,
           model: input.model,
           effort: input.effort,
           fastMode: input.fastMode,
