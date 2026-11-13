@@ -87,8 +87,9 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
   }, [activeId])
 
   const hide = () => {
-    void terminals().toggle(threadId)
+    const hidden = terminals().toggle(threadId)
     useUi.getState().requestComposerFocus()
+    return hidden
   }
 
   return (
@@ -133,13 +134,7 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
             <PlusIcon aria-hidden />
           </Button>
           <div className="flex-1" />
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={m.terminal_hide()}
-            title={m.terminal_hide()}
-            onClick={hide}
-          >
+          <Button variant="ghost" size="icon-xs" aria-label={m.terminal_hide()} title={m.terminal_hide()} action={hide}>
             <ChevronDownIcon aria-hidden />
           </Button>
         </div>

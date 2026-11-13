@@ -18,6 +18,10 @@ ruleTester.run("no-async-on-click", noAsyncOnClick, {
     component("", `<Menu.ContextMenuItem onClick={async () => archive()} />`),
     component("", `<button onKeyDown={() => void archive()} onSubmit={async () => {}} />`),
     component("const archive = () => {}", `<button onClick={archive} />`),
+    component("const hide = () => { setOpen(false) }", `<button onClick={hide} />`),
+    component("", `<button onClick={props.hide} />`),
+    `export function Panel({ onHide }) { void prefetch(); return <button onClick={onHide} /> }`,
+    `export function Panel(onHide) { void prefetch(); return <button onClick={onHide} /> }`,
     component("const archive = () => {}", `<button onClick={() => archive()} />`),
     component("", `<button onClick={() => { if (ready) void archive() }} />`),
   ],
@@ -30,5 +34,11 @@ ruleTester.run("no-async-on-click", noAsyncOnClick, {
     { code: component("async function archive() {}", `<button onClick={archive} />`), errors: 1 },
     { code: component("const archive = async function () {}", `<button onClick={() => archive(id)} />`), errors: 1 },
     { code: component("async function archive() {}", `<button onClick={() => { archive() }} />`), errors: 1 },
+    { code: component("const hide = () => { void toggle() }", `<button onClick={hide} />`), errors: 1 },
+    { code: component("function hide() { setOpen(false); void toggle() }", `<button onClick={hide} />`), errors: 1 },
+    {
+      code: component("async function archive() {}\nconst hide = () => { archive() }", `<button onClick={hide} />`),
+      errors: 1,
+    },
   ],
 })

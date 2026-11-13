@@ -13,24 +13,25 @@ export const noAsyncOnClick = defineRule({
     },
   },
   create(context) {
-    const isAsyncLocal = (identifier: ESTree.Node): boolean => {
-      if (identifier.type !== "Identifier") return false
+    const localFunction = (identifier: ESTree.Node): Handler | undefined => {
+      if (identifier.type !== "Identifier") return undefined
       const variable = resolve(context.sourceCode.getScope(identifier), identifier.name)
-      return (
-        variable?.defs.some(({ node }) => {
-          if (node.type === "FunctionDeclaration") return node.async
-          return node.type === "VariableDeclarator" && !!node.init && isFunction(node.init) && node.init.async
-        }) ?? false
-      )
+      for (const { type, node } of variable?.defs ?? []) {
+        if (type === "Parameter") continue
+        if (node.type === "FunctionDeclaration") return node
+        if (node.type === "VariableDeclarator" && node.init && isFunction(node.init)) return node.init
+      }
+      return undefined
     }
 
     const callsAsyncLocal = (expression: ESTree.Node) =>
-      expression.type === "CallExpression" && isAsyncLocal(expression.callee)
+      expression.type === "CallExpression" && !!localFunction(expression.callee)?.async
 
     const startsAsyncWork = (handler: ESTree.Node): boolean => {
-      if (!isFunction(handler)) return isAsyncLocal(handler)
-      if (handler.async) return true
-      return statementsOf(handler).some(
+      const handlerFunction = isFunction(handler) ? handler : localFunction(handler)
+      if (!handlerFunction) return false
+      if (handlerFunction.async) return true
+      return statementsOf(handlerFunction).some(
         (expression) =>
           (expression.type === "UnaryExpression" && expression.operator === "void") || callsAsyncLocal(expression),
       )
