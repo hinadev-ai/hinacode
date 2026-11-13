@@ -16,7 +16,8 @@ export const noAsyncOnClick = defineRule({
     const localFunction = (identifier: ESTree.Node): Handler | undefined => {
       if (identifier.type !== "Identifier") return undefined
       const variable = resolve(context.sourceCode.getScope(identifier), identifier.name)
-      for (const { node } of variable?.defs ?? []) {
+      for (const { type, node } of variable?.defs ?? []) {
+        if (type === "Parameter") continue
         if (node.type === "FunctionDeclaration") return node
         if (node.type === "VariableDeclarator" && node.init && isFunction(node.init)) return node.init
       }
