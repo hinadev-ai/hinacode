@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it } from "@effect/vitest"
 import { Effect, Fiber, Option, PubSub, Queue, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AccountHome, AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
-import { AGENT_INSTRUCTIONS } from "../instructions.ts"
+import { AGENT_INSTRUCTIONS, instructionsUpdate } from "../instructions.ts"
 import type { BackgroundTasksChange } from "../provider.ts"
 import { CodexProvider } from "./index.ts"
 import fruitShop from "./fixtures/fruit-shop-thread.json" with { type: "json" }
@@ -122,6 +122,8 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
   instructions: AGENT_INSTRUCTIONS,
 })
+
+const environment = (branch: string) => `<environment>\n  git branch: \`${branch}\`\n</environment>`
 
 const startTurn = (threadId: string, home: AccountHome | null = null) =>
   Effect.gen(function* () {
@@ -262,6 +264,40 @@ describe("Codex auto-compact", () => {
           "thread/unsubscribe",
           "thread/resume",
         ])
+      }),
+    ),
+  )
+
+  it.live("tells a loaded thread about changed instructions with a developer message", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        const turn = (instructions: string) =>
+          provider
+            .runTurn({ ...input("instructions-change"), resumeSessionId: "codex-thread", instructions })
+            .pipe(Stream.runDrain)
+        yield* turn(environment("main"))
+        yield* turn(environment("main"))
+        expect(countOf("thread/inject_items")).toBe(0)
+
+        yield* turn(environment("fix/restart"))
+        yield* turn(environment("fix/restart"))
+        expect(sent("thread/inject_items").map((message) => message.params)).toStrictEqual([
+          {
+            threadId: "codex-thread",
+            items: [
+              {
+                type: "message",
+                role: "developer",
+                content: [
+                  { type: "input_text", text: instructionsUpdate(environment("main"), environment("fix/restart")) },
+                ],
+              },
+            ],
+          },
+        ])
+        expect(countOf("thread/unsubscribe")).toBe(0)
       }),
     ),
   )
