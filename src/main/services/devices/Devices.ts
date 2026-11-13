@@ -146,6 +146,7 @@ const make = (options: DevicesOptions) =>
       )
     const deleteRow = (threadId: string, deviceId: DeviceId) =>
       run(sql`DELETE FROM thread_device WHERE thread_id = ${threadId} AND device_id = ${deviceId}`)
+    const reactivateGuest = (threadId: string) => run(sql`DELETE FROM released_guest WHERE thread_id = ${threadId}`)
     const ownedRows = () =>
       run(sql<{ threadId: string; deviceId: string }>`SELECT thread_id, device_id FROM thread_device WHERE owned = 1`)
 
@@ -647,7 +648,10 @@ const make = (options: DevicesOptions) =>
     })
     const releaseArchived = sql<{ threadId: string }>`
       SELECT DISTINCT thread_device.thread_id FROM thread_device LEFT JOIN thread ON thread.id = thread_device.thread_id
-      WHERE (thread.id IS NULL AND thread_device.guest = 0) OR thread.status = 'archived'
+      WHERE thread.status = 'archived' OR (
+        thread.id IS NULL
+        AND (thread_device.guest = 0 OR thread_device.thread_id IN (SELECT thread_id FROM released_guest))
+      )
     `.pipe(
       Effect.flatMap((rows) => Effect.forEach(rows, (row) => releaseThread(row.threadId), { discard: true })),
       Effect.catchCause((cause) => Effect.logWarning("device cleanup failed", cause)),
@@ -676,6 +680,7 @@ const make = (options: DevicesOptions) =>
       attach: (threadId, deviceId) =>
         attempt(async () => {
           if (deleting.has(deviceId)) throw new DevicesError({ message: "This device is being deleted." })
+          await reactivateGuest(threadId)
           attaching.set(deviceId, (attaching.get(deviceId) ?? 0) + 1)
           try {
             const existing = current(threadId, deviceId)
@@ -698,6 +703,7 @@ const make = (options: DevicesOptions) =>
       create: (threadId, model) =>
         attempt(async () => {
           if (current(threadId, NEW)?.phase === "failed") removeState(threadId, NEW)
+          await reactivateGuest(threadId)
           return createFor(threadId, model ?? null)
         }),
       detach: (threadId, deviceId) => attempt(() => detachNow(threadId, deviceId)),
@@ -765,7 +771,11 @@ const make = (options: DevicesOptions) =>
           await driverOf(state.device.id).launch(state.device.id, app)
           return "done"
         }),
-      release: releaseThread,
+      release: (threadId) =>
+        sql`INSERT INTO released_guest (thread_id) VALUES (${threadId}) ON CONFLICT DO NOTHING`.pipe(
+          Effect.catchCause((cause) => Effect.logWarning("could not record a released guest thread", cause)),
+          Effect.andThen(releaseThread(threadId)),
+        ),
     })
   })
 

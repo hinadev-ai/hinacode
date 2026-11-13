@@ -1,4 +1,5 @@
 import { Effect, Layer, Schema, Stream } from "effect"
+import { SqlClient } from "effect/sql"
 import { type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../../shared/contract.ts"
 import { Environments } from "../Environments.ts"
 import { PushBroadcast, releasedThreadOf } from "../Events.ts"
@@ -7,6 +8,8 @@ import { Devices, DevicesError } from "./Devices.ts"
 
 type DeviceMethod = Extract<RpcMethod, `device.${string}` | "devices.list">
 
+const withDevice = (device: string | undefined) => (device === undefined ? {} : { device })
+
 export const devicesHubLayer = Layer.effect(
   Devices,
   Effect.gen(function* () {
@@ -14,6 +17,7 @@ export const devicesHubLayer = Layer.effect(
     const environments = yield* Environments
     const settings = yield* Settings
     const broadcast = yield* PushBroadcast
+    const sql = yield* SqlClient.SqlClient
     const scope = yield* Effect.scope
     const runFork = Effect.runForkWith(yield* Effect.context<never>())
 
@@ -60,22 +64,47 @@ export const devicesHubLayer = Layer.effect(
         return yield* new DevicesError({ message: envelope.error.message })
       })
 
+    const livesHere = (threadId: string) =>
+      sql`SELECT 1 FROM thread WHERE id = ${threadId}`.pipe(
+        Effect.map((rows) => rows.length > 0),
+        Effect.orElseSucceed(() => false),
+      )
+
     const route = <M extends DeviceMethod, E>(
       method: M,
-      payload: RpcRequest<M>,
+      payload: RpcRequest<M> & { readonly threadId: string },
       locally: Effect.Effect<RpcResponse<M>, E>,
-    ) => Effect.suspend(() => (hub === null ? locally : forward(hub, method, payload, locally)))
+    ) =>
+      Effect.suspend(() => {
+        const target = hub
+        if (target === null) return locally
+        return Effect.flatMap(livesHere(payload.threadId), (here) =>
+          here ? forward(target, method, payload, locally) : locally,
+        )
+      })
 
-    const withDevice = (device: string | undefined) => (device === undefined ? {} : { device })
+    const releaseEverywhere = (threadId: string) =>
+      environments.list.pipe(
+        Effect.flatMap(({ clouds }) =>
+          Effect.forEach(
+            clouds.filter((cloud) => cloud.status === "connected"),
+            (cloud) =>
+              environments.forward(cloud.id, { method: "device.release", payload: { threadId } }).pipe(
+                Effect.tap((envelope) =>
+                  "error" in envelope
+                    ? Effect.logWarning("could not release a thread's devices on a hub", envelope.error.message)
+                    : Effect.void,
+                ),
+              ),
+            { concurrency: "unbounded", discard: true },
+          ),
+        ),
+        Effect.catchCause((cause) => Effect.logWarning("could not release a thread's devices on a hub", cause)),
+      )
 
     yield* broadcast.subscribe((event) => {
       const threadId = releasedThreadOf(event)
-      if (threadId === undefined || hub === null) return
-      runFork(
-        forward(hub, "device.release", { threadId }, Effect.void).pipe(
-          Effect.catchCause((cause) => Effect.logWarning("could not release a thread's devices on the hub", cause)),
-        ),
-      )
+      if (threadId !== undefined) runFork(releaseEverywhere(threadId))
     })
 
     return Devices.of({

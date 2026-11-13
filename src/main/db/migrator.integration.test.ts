@@ -59,6 +59,7 @@ describe("runMigrations", () => {
       yield* sql`ALTER TABLE thread ADD COLUMN user_skills INTEGER NOT NULL DEFAULT 1 CHECK (user_skills IN (0, 1))`
       yield* sql`DROP TABLE app_connection`
       yield* sql`ALTER TABLE thread_device DROP COLUMN guest`
+      yield* sql`DROP TABLE released_guest`
       yield* restoreAutomationTables
       yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id >= 43`
 
