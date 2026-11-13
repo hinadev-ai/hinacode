@@ -194,7 +194,40 @@ describe("device hub", () => {
     expect(laptopSent).toEqual([])
   })
 
-  test("releases the guest thread's devices on the hub when the thread is archived here", async () => {
+  test("answers a guest's calls on the hub even when the hub's own Device hub is the laptop", async () => {
+    const port = await unusedLoopbackPort()
+    await laptop.runPromise(
+      Settings.use((settings) => settings.set({ remote: { enabled: true, bindHost: "127.0.0.1", port } })),
+    )
+    await vi.waitFor(
+      async () =>
+        expect((await laptop.runPromise(RemoteAccess.use((remote) => remote.status))).listening).toBe(true),
+      { timeout: 10_000 },
+    )
+    const pairing = await laptop.runPromise(RemoteAccess.use((remote) => remote.pairing))
+    const back = await hub.runPromise(
+      Environments.use((environments) =>
+        environments.add({
+          name: "Laptop",
+          pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port: pairing.port, token: pairing.token, relay: null }),
+        }),
+      ),
+    )
+    await vi.waitFor(
+      async () => {
+        const { clouds } = await hub.runPromise(Environments.use((environments) => environments.list))
+        expect(clouds.find((cloud) => cloud.id === back.id)?.status).toBe("connected")
+      },
+      { timeout: 10_000 },
+    )
+    await setDevices(hub, back.id)
+
+    expect(await listed()).toEqual([HUB_PIXEL])
+  })
+
+  test("releases the guest thread's devices on the hub when the thread is archived after switching back", async () => {
+    await setDevices(laptop, null)
+    expect(await hubRows()).toEqual([{ deviceId: HUB_PIXEL, guest: 1 }])
     const archived = await laptop.runPromise(dispatch({ method: "threads.archive", payload: { threadId } }, null))
     expect("result" in archived).toBe(true)
     await vi.waitFor(async () => expect(await hubRows()).toEqual([]), { timeout: 5_000 })

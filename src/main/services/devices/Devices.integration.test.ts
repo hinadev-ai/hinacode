@@ -30,6 +30,8 @@ let failingRemovals = 0
 let removalsOfMissing = 0
 let removalGate: Promise<void> | undefined
 let removalStarted = false
+let createGate: Promise<void> | undefined
+let createStarted = false
 const launched: Array<DeviceId> = []
 const published: Array<PushEvent> = []
 const sent: Array<{ readonly deviceId: DeviceId; readonly command: DeviceCommand }> = []
@@ -62,6 +64,8 @@ const ios: DevicePlatformDriver = {
   list: () => Promise.resolve([...devices.values()]),
   boot: () => Promise.resolve(),
   create: async (name, _model, _onStep, onCreated) => {
+    createStarted = true
+    await createGate
     devices.set(CREATED_DEVICE, { ...devices.get(USERS_DEVICE)!, id: CREATED_DEVICE, name })
     await onCreated(CREATED_DEVICE)
     return CREATED_DEVICE
@@ -403,7 +407,7 @@ describe("Devices", () => {
     )
 
     it.effect(
-      "keeps a guest thread's simulator until the guest releases it, while archived threads still release",
+      "keeps a guest thread's simulator until the guest releases it, sweeps a create that raced the release, and keeps what it creates later",
       () =>
         Effect.gen(function* () {
           const service = yield* Devices
@@ -424,6 +428,28 @@ describe("Devices", () => {
           yield* service.release(guest)
           expect(removed).toEqual([CREATED_DEVICE])
           expect(yield* rowsOf(guest)).toEqual([])
+
+          removed.length = 0
+          const gate = Promise.withResolvers<void>()
+          createGate = gate.promise
+          createStarted = false
+          const racing = yield* Effect.forkChild(service.create(guest))
+          yield* eventually(() => createStarted)
+          yield* service.release(guest)
+          createGate = undefined
+          gate.resolve()
+          yield* Fiber.await(racing)
+          yield* TestClock.adjust("6 seconds")
+          for (let turn = 0; turn < 1000 && (yield* rowsOf(guest)).length > 0; turn++) yield* Effect.yieldNow
+          expect(yield* rowsOf(guest)).toEqual([])
+          expect(removed).toEqual([CREATED_DEVICE])
+
+          removed.length = 0
+          expect((yield* service.create(guest)).phase).toBe("ready")
+          yield* TestClock.adjust("6 seconds")
+          for (let turn = 0; turn < 100; turn++) yield* Effect.yieldNow
+          expect(yield* rowsOf(guest)).toEqual([{ guest: 1 }])
+          expect(removed).toEqual([])
         }),
     )
   })
