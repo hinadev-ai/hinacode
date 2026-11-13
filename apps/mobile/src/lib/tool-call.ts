@@ -11,6 +11,7 @@ const ownTools = [
   "search_threads",
   "read_thread",
   "send_to_thread",
+  "wait_for_thread",
   "stop_thread",
   "list_terminals",
   "read_terminal",

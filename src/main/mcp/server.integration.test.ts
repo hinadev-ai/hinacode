@@ -54,6 +54,7 @@ import { Threads, layer as threadsLayer } from "../services/Threads.ts"
 import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
 import { layer as serverLayer } from "./server.ts"
+import { readWhenIdle } from "./tools/threadViews.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
 import * as Scratch from "../services/Scratch.ts"
 import * as Search from "../services/Search.ts"
@@ -929,6 +930,8 @@ const childOf = (callerId: string, title: string) =>
     return (yield* threads.create({ projectId: caller.projectId, title, provider: "claude", model: "m" })).id
   })
 
+const assistantReply = (rendered: string) => rendered.split("## assistant").slice(1).at(-1) ?? ""
+
 const callFrom = (threadId: string, name: string, args: Record<string, unknown> = {}) =>
   Effect.gen(function* () {
     const mcp = yield* McpCredentials
@@ -1060,6 +1063,106 @@ layer(testLayer)("thread controls", (it) => {
           Effect.orDie,
         ),
       )
+    }),
+  )
+
+  it.effect("wait_for_thread returns a thread's reply when its turn ends", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const created = yield* callFrom(a, "create_thread", { title: "Worker", prompt: "Reply Shipped. after 2 minutes" })
+      const child = createdThreadId(created.text)!
+      const waited = yield* settled(yield* Effect.forkChild(callFrom(a, "wait_for_thread", { threadId: child })))
+      expect(waited.isError).toBe(false)
+      expect(waited.text).not.toContain("Still running.")
+      expect(waited.text).toContain("status: idle")
+      expect(assistantReply(waited.text)).toContain("Shipped.")
+      expect((yield* callFrom(a, "read_thread", { threadId: child })).text).toBe(waited.text)
+    }),
+  )
+
+  it.effect("wait_for_thread says a turn is still running after four minutes", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const created = yield* callFrom(a, "create_thread", { title: "Slow", prompt: "Reply Late. after 6 minutes" })
+      const child = createdThreadId(created.text)!
+      const early = yield* settled(yield* Effect.forkChild(callFrom(a, "wait_for_thread", { threadId: child })))
+      expect(early.text.startsWith("Still running.\n\n<metadata>")).toBe(true)
+      expect(early.text).toContain("status: running")
+      const late = yield* settled(yield* Effect.forkChild(callFrom(a, "wait_for_thread", { threadId: child })))
+      expect(late.text).not.toContain("Still running.")
+      expect(assistantReply(late.text)).toContain("Late.")
+    }),
+  )
+
+  it.effect("a wait holds while a queued message hands the thread from one turn to the next", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const child = yield* childOf(a, "Handing over")
+      expect((yield* threads.get(child)).status).toBe("idle")
+      let polls = 0
+      let busy = true
+      const wait = yield* Effect.forkChild(
+        readWhenIdle({
+          runner: {
+            isBusy: () =>
+              Effect.sync(() => {
+                polls += 1
+                return busy
+              }),
+          },
+          threads,
+          threadId: child,
+          limit: "4 minutes",
+          read: Effect.succeed("read"),
+        }),
+      )
+      yield* advanceUntil(
+        "1 second",
+        Effect.sync(() => Option.liftPredicate(polls, (count) => count >= 3)),
+      )
+      busy = false
+      yield* advanceUntil(
+        "1 second",
+        Effect.sync(() => Option.fromNullishOr(wait.pollUnsafe())),
+      )
+      expect(yield* Fiber.join(wait)).toBe("read")
+    }),
+  )
+
+  it.effect("wait_for_thread returns when the thread waits on the user", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const child = yield* childOf(a, "Asking child")
+      yield* runner.send(child, "Begin", [])
+      const asking = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(child), "request_secret", { name: "wait.token", description: "A token" }),
+      )
+      yield* pendingSecretRequest(child)
+      const waited = yield* settled(yield* Effect.forkChild(callFrom(a, "wait_for_thread", { threadId: child })))
+      expect(waited.text).not.toContain("Still running.")
+      expect(waited.text).toContain("status: awaiting_approval")
+      expect(waited.text).toContain("Waiting on the user for:\n- secret: wait.token")
+      yield* runner.interrupt(child)
+      yield* Fiber.join(asking)
+    }),
+  )
+
+  it.effect("wait_for_thread refuses the caller itself and a thread that is gone", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      expect(yield* callFrom(a, "wait_for_thread", { threadId: a })).toStrictEqual({
+        text: "That is this thread. Its turn ends when you stop.",
+        isError: true,
+        images: [],
+      })
+      expect(yield* callFrom(a, "wait_for_thread", { threadId: "thread-gone" })).toStrictEqual({
+        text: "Thread thread-gone no longer exists.",
+        isError: true,
+        images: [],
+      })
     }),
   )
 
