@@ -216,9 +216,6 @@ importers:
       '@effect/sql-sqlite-node':
         specifier: 4.0.3
         version: 4.0.3(effect@4.0.3)
-      '@excalidraw/excalidraw':
-        specifier: 0.18.1
-        version: 0.18.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@grpc/grpc-js':
         specifier: ^1.14.6
         version: 1.14.6
@@ -252,9 +249,6 @@ importers:
       playwright-core:
         specifier: 1.64.0
         version: 1.64.0
-      qrcode:
-        specifier: ^1.5.4
-        version: 1.5.4
       undici:
         specifier: 7.30.0
         version: 7.30.0
@@ -301,6 +295,9 @@ importers:
       '@effect/vitest':
         specifier: 4.0.3
         version: 4.0.3(effect@4.0.3)(vitest@5.0.3)
+      '@excalidraw/excalidraw':
+        specifier: 0.18.1
+        version: 0.18.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@fontsource-variable/dm-sans':
         specifier: ^5.3.0
         version: 5.3.0
@@ -499,6 +496,9 @@ importers:
       playwright-bdd:
         specifier: 9.2.1
         version: 9.2.1(@playwright/test@1.64.0)
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       react:
         specifier: 19.3.0
         version: 19.3.0
