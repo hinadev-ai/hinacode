@@ -51,6 +51,7 @@ import { PullRequestGuides } from "./services/PullRequestGuides.ts"
 import { PullRequests } from "./services/PullRequests.ts"
 import { RelayAccount } from "./services/RelayAccount.ts"
 import { Search } from "./services/Search.ts"
+import { Usage } from "./services/Usage.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
 import { Settle } from "./services/Settle.ts"
@@ -84,6 +85,7 @@ export type AppServices =
   | PullRequests
   | PullRequestGuides
   | Search
+  | Usage
   | Secrets
   | Ports
   | Terminals
@@ -406,6 +408,7 @@ const handlers: Handlers = {
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
   "search.threads": ({ query, limit }) => Search.use((search) => search.threads(query, limit)),
   "search.files": ({ threadId, query, limit }) => Search.use((search) => search.files(threadId, query, limit)),
+  "usage.rows": ({ since }) => Usage.use((usage) => usage.rows(since)),
   "fs.list": ({ root, path }) => Files.use((files) => files.list(root, path)),
   "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
   "fs.preview": ({ root, path }) => Files.use((files) => files.preview(root, path)),

@@ -51,6 +51,7 @@ import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
 import * as RelayAccount from "./services/RelayAccount.ts"
 import * as Scratch from "./services/Scratch.ts"
 import * as Search from "./services/Search.ts"
+import * as Usage from "./services/Usage.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
 import * as SystemResources from "./services/SystemResources.ts"
@@ -176,6 +177,7 @@ export const makeAppLayer = ({
     Artifacts.layer(join(userData, "artifacts")),
     artifactInspector,
     Search.layer,
+    Usage.layer,
     Files.layer,
   )
   const naming = providers.simulated
