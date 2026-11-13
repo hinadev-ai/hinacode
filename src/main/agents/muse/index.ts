@@ -29,6 +29,7 @@ import type {
 import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { installedBinary } from "../binary.ts"
+import { instructionsUpdate } from "../instructions.ts"
 import { attachmentContext } from "../elementContext.ts"
 import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
 import { AgentError, type AgentProvider, type BackgroundTasksChange, interruptedTurn, type Wake } from "../provider.ts"
@@ -91,6 +92,7 @@ interface LoadedSession {
   cwd: string
   usedTokens: number | null
   compacting: boolean
+  readInstructions: string | null
 }
 
 interface HostEntry {
@@ -457,6 +459,7 @@ const make = Effect.gen(function* () {
               cwd,
               usedTokens: null,
               compacting: false,
+              readInstructions: null,
             })
             return known
           }
@@ -470,6 +473,7 @@ const make = Effect.gen(function* () {
           cwd,
           usedTokens: null,
           compacting: false,
+          readInstructions: null,
         })
         probeSessions.set(cwd, session.sessionId)
         return session.sessionId
@@ -517,6 +521,7 @@ const make = Effect.gen(function* () {
           cwd: input.cwd,
           usedTokens: null,
           compacting: false,
+          readInstructions: null,
         })
         threadSessions.set(input.threadId, session.sessionId)
         return session.sessionId
@@ -537,6 +542,7 @@ const make = Effect.gen(function* () {
           // FIXME: an `excludeItems` resume carries no context usage
           usedTokens: input.autoCompactTokens === null ? null : yield* latestUsedTokens(host, sessionId),
           compacting: false,
+          readInstructions: null,
         }
         sessions.set(sessionId, loaded)
       }
@@ -995,7 +1001,9 @@ const make = Effect.gen(function* () {
         if (compacting) return yield* emit({ type: "turn_completed" })
 
         // FIXME: MSP has no developer instructions
-        const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, input.instructions)
+        const seen = loaded?.readInstructions ?? null
+        const instructions = seen === null ? input.instructions : instructionsUpdate(seen, input.instructions)
+        const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, instructions)
         run.turnStart = yield* host
           .command<TurnStartResult>("turn/start", {
             sessionId,
@@ -1009,6 +1017,8 @@ const make = Effect.gen(function* () {
             Effect.forkIn(providerScope),
           )
         run.turnId = yield* Fiber.join(run.turnStart)
+        if (loaded !== undefined && !prompt.some((part) => part.type === "skill"))
+          loaded.readInstructions = input.instructions
         wakeTurns.delete(sessionId)
 
         while (!(yield* Queue.take(inbox).pipe(Effect.flatMap(handle)))) {}
