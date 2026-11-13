@@ -216,9 +216,6 @@ importers:
       '@effect/sql-sqlite-node':
         specifier: 4.0.3
         version: 4.0.3(effect@4.0.3)
-      '@excalidraw/excalidraw':
-        specifier: 0.18.1
-        version: 0.18.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@grpc/grpc-js':
         specifier: ^1.14.6
         version: 1.14.6
@@ -301,6 +298,9 @@ importers:
       '@effect/vitest':
         specifier: 4.0.3
         version: 4.0.3(effect@4.0.3)(vitest@5.0.3)
+      '@excalidraw/excalidraw':
+        specifier: 0.18.1
+        version: 0.18.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@fontsource-variable/dm-sans':
         specifier: ^5.3.0
         version: 5.3.0
