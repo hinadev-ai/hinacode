@@ -191,7 +191,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
 
   const retry = () => {
     useUi.getState().requestComposerFocus()
-    void load(thread.id)
+    return load(thread.id)
   }
 
   if (history === undefined || history.status === "loading") {
@@ -203,7 +203,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
         <p className="text-center text-sm wrap-break-word text-destructive">
           {m.thread_load_failed({ message: history.message })}
         </p>
-        <Button variant="outline" size="sm" onClick={retry}>
+        <Button variant="outline" size="sm" action={retry}>
           {m.common_retry()}
         </Button>
       </div>
