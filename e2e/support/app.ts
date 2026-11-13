@@ -109,7 +109,7 @@ const launch = async (
     await waitForRenderer(page)
     return { app, page, ...startup }
   } catch (error) {
-    await app.close()
+    await app.close().catch(() => undefined)
     throw error
   }
 }
