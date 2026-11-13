@@ -9,12 +9,16 @@ import { Effect, Layer } from "effect"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import {
+  agentPidsBySession,
+  agentPidsOf,
   belongsToWorkspace,
   listeningSockets,
   parseNetstat,
   parseSs,
   Ports,
   layer as portsLayer,
+  registerAgentPid,
+  registerTerminalPid,
   socketsFingerprint,
 } from "./Ports.ts"
 
@@ -253,5 +257,26 @@ describe("belongsToWorkspace", () => {
     const agentOnly = belongsToWorkspace({ workspacePath: null, agentPids: new Set([AGENT]), selfPid: SELF })
     expect(agentOnly(proc(22, "/tmp", [21, AGENT, SELF]))).toBe(true)
     expect(agentOnly(proc(30, "/ws/app", []))).toBe(false)
+  })
+})
+
+describe("agent pid registry", () => {
+  it("lists live agent processes by session and leaves terminal shells out", () => {
+    const unregister = [
+      registerAgentPid("registry-thread", () => 101),
+      registerAgentPid("registry-thread:agent:a", () => 102),
+      registerAgentPid("registry-thread:agent:a", () => undefined),
+      registerAgentPid("registry-exited", () => undefined),
+      registerTerminalPid("registry-thread", () => 103),
+    ]
+
+    expect([...agentPidsOf("registry-thread")]).toStrictEqual([101])
+    expect([...agentPidsBySession()].filter(([sessionId]) => sessionId.startsWith("registry-"))).toStrictEqual([
+      ["registry-thread", new Set([101])],
+      ["registry-thread:agent:a", new Set([102])],
+    ])
+
+    unregister.forEach((release) => release())
+    expect([...agentPidsBySession().keys()].filter((sessionId) => sessionId.startsWith("registry-"))).toStrictEqual([])
   })
 })

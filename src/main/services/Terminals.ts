@@ -6,7 +6,7 @@ import type { PushEvent } from "../../shared/contract.ts"
 import type { TerminalAttachment, TerminalSession } from "../../shared/domain.ts"
 import { type FolderMissingError, NotFoundError, type PersistenceError } from "./errors.ts"
 import { Events } from "./Events.ts"
-import { registerAgentPid } from "./Ports.ts"
+import { registerTerminalPid } from "./Ports.ts"
 import { makeShellIntegration } from "./shellIntegration.ts"
 import { ShellMarks } from "./shellMarks.ts"
 import { TerminalScrollback } from "./terminalScrollback.ts"
@@ -155,7 +155,7 @@ const make = Effect.gen(function* () {
           lastExitCode: null,
         },
         pty: proc,
-        unregisterPid: registerAgentPid(threadId, () => proc.pid),
+        unregisterPid: registerTerminalPid(threadId, () => proc.pid),
         scrollback: new TerminalScrollback(SCROLLBACK_BYTES),
         marks: new ShellMarks(cwd),
         pending: [],
