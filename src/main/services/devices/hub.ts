@@ -89,13 +89,15 @@ export const devicesHubLayer = Layer.effect(
           Effect.forEach(
             clouds.filter((cloud) => cloud.status === "connected"),
             (cloud) =>
-              environments.forward(cloud.id, { method: "device.release", payload: { threadId } }).pipe(
-                Effect.tap((envelope) =>
-                  "error" in envelope
-                    ? Effect.logWarning("could not release a thread's devices on a hub", envelope.error.message)
-                    : Effect.void,
+              environments
+                .forward(cloud.id, { method: "device.release", payload: { threadId } })
+                .pipe(
+                  Effect.tap((envelope) =>
+                    "error" in envelope
+                      ? Effect.logWarning("could not release a thread's devices on a hub", envelope.error.message)
+                      : Effect.void,
+                  ),
                 ),
-              ),
             { concurrency: "unbounded", discard: true },
           ),
         ),

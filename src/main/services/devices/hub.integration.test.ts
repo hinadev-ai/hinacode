@@ -200,8 +200,7 @@ describe("device hub", () => {
       Settings.use((settings) => settings.set({ remote: { enabled: true, bindHost: "127.0.0.1", port } })),
     )
     await vi.waitFor(
-      async () =>
-        expect((await laptop.runPromise(RemoteAccess.use((remote) => remote.status))).listening).toBe(true),
+      async () => expect((await laptop.runPromise(RemoteAccess.use((remote) => remote.status))).listening).toBe(true),
       { timeout: 10_000 },
     )
     const pairing = await laptop.runPromise(RemoteAccess.use((remote) => remote.pairing))
