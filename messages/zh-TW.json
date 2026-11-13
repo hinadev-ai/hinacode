@@ -2225,7 +2225,7 @@
   "devices_simslim_copy": "複製安裝指令",
   "devices_ios": "iOS",
   "devices_android": "Android",
-  "devices_ios_not_mac": "iOS 模擬器需要安裝了 Xcode 的 Mac。此執行緒所在的機器不是 Mac。",
+  "devices_ios_not_mac": "iOS 模擬器需要安裝了 Xcode 的 Mac。請到「設定 > 實驗性功能」選一台 Mac 當裝置中樞。",
   "devices_missing_xcode": "安裝 Xcode 才能執行 iOS 模擬器。",
   "devices_missing_android_sdk": "安裝 Android SDK 或設定 ANDROID_HOME，才能執行模擬器。",
   "devices_ios_empty": "找不到模擬器。",

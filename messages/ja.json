@@ -2207,7 +2207,7 @@
   "devices_simslim_copy": "インストールコマンドをコピー",
   "devices_ios": "iOS",
   "devices_android": "Android",
-  "devices_ios_not_mac": "iOS シミュレータには Xcode をインストールした Mac が必要です。このスレッドのマシンは Mac ではありません。",
+  "devices_ios_not_mac": "iOS シミュレータには Xcode をインストールした Mac が必要です。「設定 > 試験的な機能」で Mac をデバイスハブに選んでください。",
   "devices_missing_xcode": "iOS シミュレータを動かすには Xcode をインストールしてください。",
   "devices_missing_android_sdk": "エミュレータを動かすには Android SDK をインストールするか、ANDROID_HOME を設定してください。",
   "devices_ios_empty": "シミュレータが見つかりません。",

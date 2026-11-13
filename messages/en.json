@@ -2261,7 +2261,7 @@
   "devices_simslim_copy": "Copy install command",
   "devices_ios": "iOS",
   "devices_android": "Android",
-  "devices_ios_not_mac": "iOS simulators need a Mac with Xcode. This thread's machine is not a Mac.",
+  "devices_ios_not_mac": "iOS simulators need a Mac with Xcode. Pick a Mac as the device hub in Settings > Experimental.",
   "devices_missing_xcode": "Install Xcode to run iOS simulators.",
   "devices_missing_android_sdk": "Install the Android SDK, or set ANDROID_HOME, to run emulators.",
   "devices_ios_empty": "No simulators found.",
