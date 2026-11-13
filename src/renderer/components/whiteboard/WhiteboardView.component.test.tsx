@@ -246,10 +246,13 @@ test("an edit made after reopening the board saves once the closing save lands",
   const reopened = await openBoard()
   await selectAll()
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
-  await userEvent.keyboard("{ArrowRight}")
-  await expect.element(page.getByText("Saving…")).toBeInTheDocument()
-  await vi.runOnlyPendingTimersAsync()
-  vi.useRealTimers()
+  try {
+    await userEvent.keyboard("{ArrowRight}")
+    await expect.element(page.getByText("Saving…")).toBeInTheDocument()
+    await vi.runOnlyPendingTimersAsync()
+  } finally {
+    vi.useRealTimers()
+  }
   release()
 
   await expect.poll(() => saves.length, { timeout: 3000 }).toBe(2)
