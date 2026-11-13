@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -110,6 +111,11 @@ const testLayer = devicesLayer({
 
 const archive = (threadId: string) =>
   SqlClient.SqlClient.use((sql) => sql`UPDATE thread SET status = 'archived' WHERE id = ${threadId}`)
+
+const rowsOf = (threadId: string) =>
+  SqlClient.SqlClient.use(
+    (sql) => sql<{ guest: number }>`SELECT guest FROM thread_device WHERE thread_id = ${threadId}`,
+  )
 
 const eventually = (check: () => boolean) =>
   Effect.gen(function* () {
@@ -394,6 +400,31 @@ describe("Devices", () => {
         yield* eventually(() => removed.length > 0)
         expect(removed).toEqual([CREATED_DEVICE])
       }),
+    )
+
+    it.effect(
+      "keeps a guest thread's simulator until the guest releases it, while archived threads still release",
+      () =>
+        Effect.gen(function* () {
+          const service = yield* Devices
+          const guest = randomUUID()
+          const archived = yield* seedThread({ rootPath: "/tmp/kk-devices-beside-guest" })
+          expect((yield* service.create(guest)).phase).toBe("ready")
+          yield* service.attach(archived.threadId, SECOND_DEVICE)
+          removed.length = 0
+
+          yield* archive(archived.threadId)
+          yield* TestClock.adjust("6 seconds")
+          for (let turn = 0; turn < 1000 && (yield* rowsOf(archived.threadId)).length > 0; turn++)
+            yield* Effect.yieldNow
+          expect(yield* rowsOf(archived.threadId)).toEqual([])
+          expect(yield* rowsOf(guest)).toEqual([{ guest: 1 }])
+          expect(removed).toEqual([])
+
+          yield* service.release(guest)
+          expect(removed).toEqual([CREATED_DEVICE])
+          expect(yield* rowsOf(guest)).toEqual([])
+        }),
     )
   })
 })

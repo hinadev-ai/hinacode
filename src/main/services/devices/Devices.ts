@@ -77,6 +77,7 @@ export class Devices extends Context.Service<
       device: string | undefined,
       app: string,
     ) => Effect.Effect<AgentInput, DevicesError>
+    readonly release: (threadId: string) => Effect.Effect<void>
   }
 >()("hinacode/Devices") {}
 
@@ -151,7 +152,8 @@ const make = (options: DevicesOptions) =>
       (await readRows(threadId)).find((row) => row.deviceId === deviceId) ?? null
     const writeRow = (threadId: string, row: Row) =>
       run(
-        sql`INSERT INTO thread_device (thread_id, device_id, owned) VALUES (${threadId}, ${row.deviceId}, ${row.owned ? 1 : 0})
+        sql`INSERT INTO thread_device (thread_id, device_id, owned, guest)
+            VALUES (${threadId}, ${row.deviceId}, ${row.owned ? 1 : 0}, NOT EXISTS (SELECT 1 FROM thread WHERE id = ${threadId}))
             ON CONFLICT (thread_id, device_id) DO NOTHING`,
       )
     const deleteRow = (threadId: string, deviceId: DeviceId) =>
@@ -657,7 +659,7 @@ const make = (options: DevicesOptions) =>
     })
     const releaseArchived = sql<{ threadId: string }>`
       SELECT DISTINCT thread_device.thread_id FROM thread_device LEFT JOIN thread ON thread.id = thread_device.thread_id
-      WHERE thread.id IS NULL OR thread.status = 'archived'
+      WHERE (thread.id IS NULL AND thread_device.guest = 0) OR thread.status = 'archived'
     `.pipe(
       Effect.flatMap((rows) => Effect.forEach(rows, (row) => releaseThread(row.threadId), { discard: true })),
       Effect.catchCause((cause) => Effect.logWarning("device cleanup failed", cause)),
@@ -775,6 +777,7 @@ const make = (options: DevicesOptions) =>
           await driverOf(state.device.id).launch(state.device.id, app)
           return "done"
         }),
+      release: releaseThread,
     })
   })
 
