@@ -3,9 +3,15 @@ import { useParams } from "@tanstack/react-router"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { createContext, type ReactNode, useContext } from "react"
-import { parsePullRequestUrl, pullRequestLabel } from "../lib/pullRequestRefs.ts"
+import {
+  issueUrl,
+  parseIssueUrl,
+  parsePullRequestUrl,
+  type PullRequestRef,
+  pullRequestLabel,
+} from "../lib/pullRequestRefs.ts"
 import { useOpenThreadEnvironment, usePullRequestHref } from "../lib/environments.ts"
-import { faviconAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
+import { faviconAtom, issueAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { WithLinkIcon } from "./LinkIcon.tsx"
 import { PullRequestLink } from "./PullRequestLink.tsx"
@@ -43,10 +49,12 @@ export function WebLink({ href, children }: { href: string; children: ReactNode 
   const { threadId } = useParams({ strict: false })
   const pullRequestHref = usePullRequestHref(threadId, href)
   const pullRequest = parsePullRequestUrl(href)
-  if (pullRequest) {
+  const issue = pullRequest ? null : parseIssueUrl(href)
+  const reference = pullRequest ?? issue
+  if (reference) {
     return (
-      <PullRequestLink href={pullRequestHref} pullRequest={pullRequest}>
-        {children === href ? pullRequestLabel(pullRequest, repository) : children}
+      <PullRequestLink href={pullRequestHref} pullRequest={reference} issue={issue !== null}>
+        {children === href ? pullRequestLabel(reference, repository) : children}
       </PullRequestLink>
     )
   }
@@ -58,8 +66,18 @@ export function WebLink({ href, children }: { href: string; children: ReactNode 
   )
 }
 
+const isMissing = (lookup: AsyncResult.AsyncResult<unknown, unknown>) =>
+  AsyncResult.isFailure(lookup) && Option.isNone(AsyncResult.value(lookup))
+
 export function PullRequestReference({ href, children }: { href: string; children: ReactNode }) {
   const status = useAtomValue(pullRequestStatusAtom(useOpenThreadEnvironment(), href))
-  const missing = AsyncResult.isFailure(status) && Option.isNone(AsyncResult.value(status))
-  return missing ? children : <WebLink href={href}>{children}</WebLink>
+  const reference = parsePullRequestUrl(href)
+  if (!isMissing(status)) return <WebLink href={href}>{children}</WebLink>
+  return reference ? <IssueReference reference={reference}>{children}</IssueReference> : children
+}
+
+function IssueReference({ reference, children }: { reference: PullRequestRef; children: ReactNode }) {
+  const href = issueUrl(reference)
+  const status = useAtomValue(issueAtom(useOpenThreadEnvironment(), href))
+  return isMissing(status) ? children : <WebLink href={href}>{children}</WebLink>
 }

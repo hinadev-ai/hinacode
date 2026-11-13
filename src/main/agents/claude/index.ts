@@ -967,6 +967,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         yield* Effect.addFinalizer(() => abandon(session, turn))
         for (const attachment of input.attachments) session.attachmentPaths.add(attachment.path)
         yield* Queue.offer(session.prompts, message)
+        yield* input.onOpen ?? Effect.void
       })
 
     const runTurn = (input: RunTurnInput) =>
@@ -984,13 +985,12 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
       Effect.gen(function* () {
         const message = yield* userMessage(id, text, attachments, priority)
         const session = sessions.get(threadId)
-        if (session?.turn == null) {
-          return yield* new AgentError({ provider: id, message: "No turn is running on this thread" })
-        }
+        if (session?.turn == null) return false
         session.turnPrompts.add(message.uuid)
         session.unanswered.add(message.uuid)
         for (const attachment of attachments) session.attachmentPaths.add(attachment.path)
         yield* Queue.offer(session.prompts, message)
+        return true
       })
 
     const transcriptUsage = perHome(makeTranscriptUsage)

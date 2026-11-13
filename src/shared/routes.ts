@@ -120,6 +120,7 @@ export const routes: Record<RpcMethod, Route> = {
   "secrets.clear": named,
   "github.auth": named,
   "github.pullRequest": named,
+  "github.issue": named,
   "github.pullRequestDetail": named,
   "github.pullRequestFiles": named,
   "pullRequestGuides.get": named,

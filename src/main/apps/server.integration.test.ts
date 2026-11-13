@@ -79,7 +79,7 @@ const replyingProvider = (id: AgentProvider["id"]): AgentProvider => ({
       { type: "text_delta", text: `Done: ${input.prompt}` },
       { type: "turn_completed" },
     ]),
-  steer: () => Effect.void,
+  steer: () => Effect.succeed(true),
   interrupt: () => Effect.void,
   respondApproval: () => Effect.succeed(false),
   respondQuestion: () => Effect.void,

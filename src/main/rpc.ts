@@ -487,6 +487,7 @@ const handlers: Handlers = {
     PullRequests.use((pullRequests) => pullRequests.unwatch(threadId, url)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => SourceControl.use((sourceControl) => sourceControl.pullRequest(url)),
+  "github.issue": ({ url }) => GitHub.use((github) => github.issue(url)),
   "github.pullRequestDetail": ({ url, fresh }) =>
     SourceControl.use((sourceControl) => sourceControl.pullRequestDetail(url, { fresh })).pipe(
       Effect.tap(startGuideForHead),

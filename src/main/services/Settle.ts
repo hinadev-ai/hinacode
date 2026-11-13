@@ -113,10 +113,12 @@ const make = Effect.gen(function* () {
       if (!allFinished || (yield* hasListeningPort(threadId))) return
       const ownMergedSince = (workStartedAt: string | null) =>
         found.some((pullRequest) => isOwn(pullRequest) && mergedSince(pullRequest, workStartedAt))
-      const settled = yield* threads.settleMerged(
-        threadId,
-        (latest, workStartedAt) => canAutoSettle(latest) && ownMergedSince(workStartedAt),
-      )
+      const isStillDone = (latest: Thread, workStartedAt: string | null) =>
+        Effect.gen(function* () {
+          if (latest.updatedAt !== thread.updatedAt || !canAutoSettle(latest)) return false
+          return ownMergedSince(workStartedAt) && !(yield* hasAgentWork(threadId))
+        })
+      const settled = yield* threads.settleMerged(threadId, isStillDone)
       if (Option.isNone(settled)) return
       yield* events.publish({ type: "thread.updated", thread: settled.value })
       yield* runner.release(threadId, terminals.closeThread(threadId))

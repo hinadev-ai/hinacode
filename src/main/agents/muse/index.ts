@@ -1010,6 +1010,7 @@ const make = Effect.gen(function* () {
           )
         run.turnId = yield* Fiber.join(run.turnStart)
         wakeTurns.delete(sessionId)
+        yield* input.onOpen ?? Effect.void
 
         while (!(yield* Queue.take(inbox).pipe(Effect.flatMap(handle)))) {}
       }),
@@ -1042,13 +1043,15 @@ const make = Effect.gen(function* () {
   const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
     Effect.gen(function* () {
       const run = runs.get(threadId)
-      const { entry, sessionId, turnId } = run ?? {}
-      if (!entry?.host.isAlive() || !sessionId || !turnId) return yield* museError("No turn is running on this thread")
+      if (run === undefined || run.turnId === undefined || run.ended) return false
+      const { entry, sessionId, turnId } = run
+      if (!entry?.host.isAlive() || !sessionId) return yield* museError("No turn is running on this thread")
       // FIXME: Muse 1.4.7 rejects skill parts on turn/steer
       const input = yield* userInput(text, attachments)
       yield* entry.host
         .command("turn/steer", { sessionId, expectedTurnId: turnId, input })
         .pipe(Effect.mapError(toAgentError))
+      return true
     })
 
   const setAccessMode = (threadId: string, accessMode: AccessMode) =>

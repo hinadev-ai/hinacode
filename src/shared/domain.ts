@@ -192,6 +192,18 @@ export const PullRequest = Schema.Struct({
 })
 export type PullRequest = typeof PullRequest.Type
 
+export const IssueStatus = Schema.Literals(["open", "completed", "notPlanned"])
+export type IssueStatus = typeof IssueStatus.Type
+
+export const Issue = Schema.Struct({
+  url: Schema.String,
+  number: Schema.Number,
+  title: Schema.String,
+  status: IssueStatus,
+  author: Schema.String,
+})
+export type Issue = typeof Issue.Type
+
 export const CheckRunStatus = Schema.Literals(["passing", "failing", "pending", "skipped"])
 export type CheckRunStatus = typeof CheckRunStatus.Type
 
