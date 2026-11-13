@@ -145,7 +145,7 @@ export const makeAppLayer = ({
   artifactInspector = ArtifactInspector.unavailable,
 }: AppOptions) => {
   const providers = agentProviders(process.env)
-  const settings = Settings.layer(userData)
+  const settings = Settings.layer(userData, Settings.defaultsFor(process.env))
   const binaries = Layer.effect(
     AgentBinaries,
     Effect.gen(function* () {

@@ -60,6 +60,15 @@ The desktop owns the lifecycle, because it holds the boat key and sees every mac
 
 On either end signal, `BoatMachines` asks the machine for `threads.list` and stops the sandbox when every thread is a draft, archived or settled. It decodes only `status` and `settledAt`, because the cloud may run an older release whose threads do not match this desktop's schema. On `offlineMutation` it resumes the sandbox and calls `Environments.reconnect`. The environment maps to its sandbox by the boat subdomain in the hosted hostname, and only sandboxes labelled `hinacode=thread` stop or wake on their own. A machine added in Settings is left alone.
 
+### Tiny VM on a boat machine
+
+A boat sandbox already has a desktop, so Tiny VM on a boat machine is that sandbox, viewed through boat's desktop stream like a VNC session. `Boat` reads `BOAT_ID` from the environment as `hostSandbox`. When it is set:
+
+- Settings default `experimental.tinyVm` to on with the `boat` provider (`Settings.defaultsFor`). A setting the user saved still wins.
+- Without a key in `BOAT_API_KEY` or the secret store, the API key comes from the boat CLI's own login in `~/.config/ascii/boat/config.json`. `ASCII_TOKEN` is not accepted by the public API.
+- `vm.start` on any thread answers the host sandbox without creating one or installing packages (xdotool and ImageMagick ship in boat's image). Every thread on the machine shares the one desktop.
+- `vm.stop` and the thread's end detach the VM and leave the sandbox running, because the sandbox is the machine the threads run on.
+
 ### Developing against a boat machine
 
 `HINACODE_BOAT_PACKAGE=/path/to/hinacode-x.y.z.tgz` (made with `pnpm build:server`, `node scripts/stage-server-package.ts <dir>` and `npm pack`) makes connect upload that tarball and install it instead of `latest`, with `HINACODE_SERVE_AUTO_UPDATE=0` in the unit so the cloud keeps it.
@@ -79,4 +88,5 @@ On either end signal, `BoatMachines` asks the machine for `threads.list` and sto
 - `Boat.test.ts`: the new endpoints against the fake boat server.
 - `BoatMachines.test.ts`: options and connect against the fake boat server: a new sandbox with the form's options, a stopped one resumed with its auto-stop kept, the pairing URL built from the hosted hostname, and the script's error output when HinaCode does not start. For thread machines: the label and the forwarded clone, a project without a repository refused, a stop only once every thread is settled (from a push and from a settle answer), a Settings machine never stopped, and a queued mutation resuming the sandbox.
 - `Environments.integration.test.ts`: a `ready` without a relay keeps the relay it came through, and the hooks hear pushes, answers and mutations made while offline, but not reads.
-- By hand on 2026-11-07 against the live API with `small` sandboxes: create, install, `hinacode pair`, and a WebSocket through the hosted URL answering `ready` and `projects.list`. Then through the desktop form with `verify-hinacode`: connecting an existing sandbox, creating a new one, and reconnecting both after an app restart. The daemon's environment carried `CLAUDE_CODE_OAUTH_TOKEN` and `claude auth status` reported signed in. A thread machine for a clone of `octocat/Hello-World`: the draft moved with its text, the turn ran on the sandbox, settling stopped it, and a follow-up resumed it and was answered, with both turns in the transcript.
+- By hand on 2026-11-07 against the live API with `small` sandboxes: create, install, `hinacode pair`, and a WebSocket through the hosted URL answering `ready` and `projects.list`. Then through the desktop form with `verify-hinacode`: connecting an existing sandbox, creating a new one, and reconnecting both after an app restart. The daemon's environment carried `CLAUDE_CODE_OAUTH_TOKEN` and `claude auth status` reported signed in. A thread machine for a clone of `octocat/Hello-World`: the draft moved with its text, the turn ran on the sandbox, settling stopped it, and a follow-up resumed it and was answered, with both turns in the transcript. On a machine running this branch's package, `vm.start` answered the machine's own sandbox id in 0.3 s, `vm.desktop.url` and a screenshot worked, and after `vm.stop` the sandbox was still ready and connected.
+- `TinyVm.boat.integration.test.ts`: with `BOAT_ID` set, every thread's VM is that sandbox, nothing is created or installed, and stopping the VM stops no sandbox.

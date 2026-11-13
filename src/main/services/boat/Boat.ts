@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { Context, Effect, Layer, Option, Redacted, Schema } from "effect"
 import { Secrets } from "../Secrets.ts"
 import { BoatVmSize } from "../../../shared/domain.ts"
@@ -783,6 +785,7 @@ export class Boat extends Context.Service<
   Boat,
   {
     readonly client: Effect.Effect<BoatClient, BoatNotConfiguredError | BoatError>
+    readonly hostSandbox: string | undefined
   }
 >()("hinacode/Boat") {}
 
@@ -790,18 +793,18 @@ const make = (env: Readonly<Record<string, string | undefined>>) =>
   Effect.gen(function* () {
     const secrets = yield* Secrets
 
+    const hostSandbox = env["BOAT_ID"] || undefined
+    const hostKey = Effect.sync(() => (hostSandbox === undefined ? undefined : sandboxCliToken(env["HOME"])))
+
     const resolveApiKey: Effect.Effect<string, BoatNotConfiguredError | BoatError> = (() => {
       const fromEnv = env["BOAT_API_KEY"]
       if (fromEnv !== undefined && fromEnv.length > 0) return Effect.succeed(fromEnv)
       return secrets.get(BOAT_API_KEY_SECRET).pipe(
         Effect.mapError((error) => new BoatError({ message: error.message })),
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.fail(new BoatNotConfiguredError()),
-            onSome: (value: string) =>
-              value.length > 0 ? Effect.succeed(value) : Effect.fail(new BoatNotConfiguredError()),
-          }),
+        Effect.flatMap((stored) =>
+          Option.isSome(stored) && stored.value.length > 0 ? Effect.succeed(stored.value) : hostKey,
         ),
+        Effect.flatMap((key) => (key === undefined ? Effect.fail(new BoatNotConfiguredError()) : Effect.succeed(key))),
       )
     })()
 
@@ -810,7 +813,20 @@ const make = (env: Readonly<Record<string, string | undefined>>) =>
 
     const client = Effect.map(resolveApiKey, (apiKey) => boatClient({ baseUrl, apiKey: Redacted.make(apiKey) }))
 
-    return Boat.of({ client })
+    return Boat.of({ client, hostSandbox })
   })
+
+const SandboxCliConfig = Schema.fromJsonString(Schema.Struct({ token: Schema.String }))
+
+const sandboxCliToken = (home: string | undefined) => {
+  if (home === undefined) return undefined
+  try {
+    const raw = readFileSync(join(home, ".config", "ascii", "boat", "config.json"), "utf8")
+    const token = Option.getOrUndefined(Schema.decodeUnknownOption(SandboxCliConfig)(raw))?.token
+    return token === undefined || token.length === 0 ? undefined : token
+  } catch {
+    return undefined
+  }
+}
 
 export const layer = (env: Readonly<Record<string, string | undefined>>) => Layer.effect(Boat, make(env))
