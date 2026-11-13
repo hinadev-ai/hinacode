@@ -43,7 +43,7 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   usage: () => Effect.succeed(null),
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.empty,
-  steer: () => Effect.void,
+  steer: () => Effect.succeed(true),
   interrupt: () => Effect.void,
   respondApproval: () => Effect.succeed(false),
   respondQuestion: () => Effect.void,

@@ -65,6 +65,7 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
         yield* Deferred.await(hold.release)
       }
       inputs.push({ threadId, text })
+      return true
     }),
   interrupt: () => Effect.void,
   respondApproval: () => Effect.succeed(false),
