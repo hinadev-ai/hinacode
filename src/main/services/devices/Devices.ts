@@ -3,6 +3,8 @@ import { SqlClient } from "effect/sql"
 import type { RpcRequest } from "../../../shared/contract.ts"
 import {
   type AgentAction,
+  type AgentOutcome,
+  type AgentSteps,
   devicePlatformOf,
   type Device,
   type DeviceCommand,
@@ -12,8 +14,10 @@ import {
   type DeviceHost,
   type DeviceId,
   type DevicePlatform,
+  type DeviceScreenshot,
   type PickedDeviceElement,
   type PrepareStep,
+  type ReadyThreadDevice,
   shownScreen,
   type SimulatorModelId,
   threadDeviceId,
@@ -24,29 +28,19 @@ import { Events } from "../Events.ts"
 import { Settings } from "../Settings.ts"
 import type { DeviceLink, DevicePlatformDriver, Frame } from "./platform.ts"
 
-class DevicesError extends Schema.TaggedError<DevicesError>()("DevicesError", { message: Schema.String }) {}
-
-type AgentInput = "done" | "handedBack"
-
-export type ReadyDevice = Extract<ThreadDevice, { phase: "ready" }>
-
-export interface AgentSteps {
-  readonly steps: ReadonlyArray<ReadonlyArray<DeviceCommand>>
-  readonly gapMs?: number
-  readonly release?: ReadonlyArray<DeviceCommand>
-}
+export class DevicesError extends Schema.TaggedError<DevicesError>()("DevicesError", { message: Schema.String }) {}
 
 export class Devices extends Context.Service<
   Devices,
   {
     readonly enabled: () => boolean
-    readonly list: () => Effect.Effect<DeviceHost, DevicesError>
+    readonly list: (input: RpcRequest<"devices.list">) => Effect.Effect<DeviceHost, DevicesError>
     readonly get: (threadId: string) => Effect.Effect<ThreadDevices, DevicesError>
     readonly attach: (threadId: string, deviceId: DeviceId) => Effect.Effect<ThreadDevice, DevicesError>
     readonly create: (threadId: string, model?: SimulatorModelId) => Effect.Effect<ThreadDevice, DevicesError>
     readonly detach: (threadId: string, deviceId: DeviceId | null) => Effect.Effect<void, DevicesError>
     readonly delete: (threadId: string, deviceId: DeviceId) => Effect.Effect<void, DevicesError>
-    readonly shutdown: (deviceId: DeviceId) => Effect.Effect<void, DevicesError>
+    readonly shutdown: (threadId: string, deviceId: DeviceId) => Effect.Effect<void, DevicesError>
     readonly frame: (input: RpcRequest<"device.frame">) => Effect.Effect<{ frame: DeviceFrame | null }, DevicesError>
     readonly command: (input: RpcRequest<"device.command">) => Effect.Effect<void, DevicesError>
     readonly control: (
@@ -60,14 +54,8 @@ export class Devices extends Context.Service<
       device: string | undefined,
       action: AgentAction,
       input: AgentSteps,
-    ) => Effect.Effect<AgentInput, DevicesError>
-    readonly screenshot: (
-      threadId: string,
-      device: string | undefined,
-    ) => Effect.Effect<
-      { readonly frame: DeviceFrame; readonly state: ReadyDevice; readonly screen: ReturnType<typeof shownScreen> },
-      DevicesError
-    >
+    ) => Effect.Effect<AgentOutcome, DevicesError>
+    readonly screenshot: (threadId: string, device: string | undefined) => Effect.Effect<DeviceScreenshot, DevicesError>
     readonly describe: (
       threadId: string,
       device: string | undefined,
@@ -76,7 +64,7 @@ export class Devices extends Context.Service<
       threadId: string,
       device: string | undefined,
       app: string,
-    ) => Effect.Effect<AgentInput, DevicesError>
+    ) => Effect.Effect<AgentOutcome, DevicesError>
     readonly release: (threadId: string) => Effect.Effect<void>
   }
 >()("hinacode/Devices") {}
@@ -108,7 +96,7 @@ const NEW = "new"
 type Slot = DeviceId | typeof NEW
 const slotOf = (entry: ThreadDevice): Slot => threadDeviceId(entry) ?? NEW
 const keyOf = (threadId: string, slot: Slot) => `${threadId}\n${slot}`
-const describeDevice = (state: ReadyDevice) => `${state.device.name} (${state.device.id})`
+const describeDevice = (state: ReadyThreadDevice) => `${state.device.name} (${state.device.id})`
 const FRAME_WAIT_MS = 1000
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 const failure = (cause: unknown) =>
@@ -393,7 +381,7 @@ const make = (options: DevicesOptions) =>
       return listOf(threadId)
     }
 
-    const settle = async (threadId: string, state: ThreadDevice): Promise<ReadyDevice> => {
+    const settle = async (threadId: string, state: ThreadDevice): Promise<ReadyThreadDevice> => {
       const settled =
         state.phase === "preparing" ? await (preparing.get(keyOf(threadId, slotOf(state))) ?? state) : state
       if (settled.phase === "failed") throw new DevicesError({ message: settled.message })
@@ -597,7 +585,7 @@ const make = (options: DevicesOptions) =>
       commands: ReadonlyArray<DeviceCommand>,
       first: boolean,
     ) =>
-      attempt(async (signal): Promise<AgentInput> => {
+      attempt(async (signal): Promise<AgentOutcome> => {
         const { state, live } = await chosen(threadId, device)
         if (state.control === "user") {
           await waitForHandBack(threadId, state.device.id, action, signal)
@@ -734,7 +722,7 @@ const make = (options: DevicesOptions) =>
             deleting.delete(deviceId)
           }
         }),
-      shutdown: (deviceId) =>
+      shutdown: (_threadId, deviceId) =>
         attempt(async () => {
           if (deleting.has(deviceId)) throw new DevicesError({ message: "This device is being deleted." })
           const live = links.get(deviceId)
@@ -766,7 +754,7 @@ const make = (options: DevicesOptions) =>
           return driverOf(state.device.id).describe(state.device.id)
         }),
       launch: (threadId, device, app) =>
-        attempt(async (signal): Promise<AgentInput> => {
+        attempt(async (signal): Promise<AgentOutcome> => {
           const { state } = await chosen(threadId, device)
           const action: AgentAction = { kind: "launch", app }
           if (state.control === "user") {

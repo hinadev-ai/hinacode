@@ -92,6 +92,15 @@ export const AgentAction = Schema.Union([
 ])
 export type AgentAction = typeof AgentAction.Type
 
+export const ReadyThreadDevice = Schema.Struct({
+  phase: Schema.Literal("ready"),
+  device: Device,
+  screen: DeviceScreen,
+  control: DeviceControl,
+  agentWaiting: Schema.NullOr(AgentAction),
+})
+export type ReadyThreadDevice = typeof ReadyThreadDevice.Type
+
 export const ThreadDevice = Schema.Union([
   Schema.Struct({
     phase: Schema.Literal("preparing"),
@@ -100,13 +109,7 @@ export const ThreadDevice = Schema.Union([
     owned: Schema.Boolean,
     step: PrepareStep,
   }),
-  Schema.Struct({
-    phase: Schema.Literal("ready"),
-    device: Device,
-    screen: DeviceScreen,
-    control: DeviceControl,
-    agentWaiting: Schema.NullOr(AgentAction),
-  }),
+  ReadyThreadDevice,
   Schema.Struct({
     phase: Schema.Literal("failed"),
     deviceId: Schema.NullOr(DeviceId),
@@ -150,6 +153,20 @@ export const DeviceCommand = Schema.Union([
 ])
 export type DeviceCommand = typeof DeviceCommand.Type
 
+const DeviceCommands = Schema.Array(DeviceCommand).check(Schema.isMaxLength(128))
+
+export const AgentSteps = Schema.Struct({
+  steps: Schema.Array(DeviceCommands).check(Schema.isMaxLength(128)),
+  gapMs: Schema.optionalKey(Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 10000 }))),
+  release: Schema.optionalKey(DeviceCommands),
+})
+export type AgentSteps = typeof AgentSteps.Type
+
+export const AgentOutcome = Schema.Literals(["done", "handedBack"])
+export type AgentOutcome = typeof AgentOutcome.Type
+
+export const DeviceTarget = Schema.String.check(Schema.isMaxLength(200))
+
 const MAX_FRAME_LENGTH = 4 * 1024 * 1024
 
 export const DeviceFrame = Schema.Struct({
@@ -173,6 +190,13 @@ export const shownScreen = (
   const wide = frame.orientation === "landscape"
   return wide === width > height ? { width, height } : { width: height, height: width }
 }
+
+export const DeviceScreenshot = Schema.Struct({
+  frame: DeviceFrame,
+  state: ReadyThreadDevice,
+  screen: Schema.Struct({ width: Schema.Number, height: Schema.Number }),
+})
+export type DeviceScreenshot = typeof DeviceScreenshot.Type
 
 export const DeviceElement = Schema.Struct({
   role: Schema.String.check(Schema.isMaxLength(100)),
