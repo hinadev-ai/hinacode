@@ -14,6 +14,7 @@ import type { Thread } from "../../shared/domain.ts"
 import { PULL_REQUEST_REFRESH } from "../../shared/github.ts"
 import { msUntilNextReset } from "../../shared/planLimits.ts"
 import { pullRequestAttention } from "../../shared/threadStatus.ts"
+import { periodStart, type UsagePeriod } from "../../shared/usage.ts"
 import { m } from "../paraglide/messages.js"
 
 export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
@@ -212,6 +213,10 @@ export const removeRelayMachineAtom = Atom.fn((id: string) =>
 
 export const modelsAtom = familyOf((environment: EnvironmentId, provider: ProviderId) =>
   Atom.make(call("models.list", { provider }, { environment })).pipe(Atom.keepAlive),
+)
+
+export const usageRowsAtom = familyOf((environment: EnvironmentId, period: UsagePeriod) =>
+  Atom.make(Effect.suspend(() => call("usage.rows", { since: periodStart(period, Date.now()) }, { environment }))),
 )
 
 export const binariesAtom = familyOf((environment: EnvironmentId) =>
