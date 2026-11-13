@@ -44,16 +44,15 @@ export function Spinner({ size = 16, color }: { size?: number; color: string }) 
   const reduced = useReducedMotion()
   return (
     <Animated.View
-      style={
-        reduced
-          ? undefined
-          : {
-              animationName: spin,
-              animationDuration: 600,
-              animationIterationCount: "infinite",
-              animationTimingFunction: "linear",
-            }
-      }
+      style={[
+        { width: size, height: size },
+        !reduced && {
+          animationName: spin,
+          animationDuration: 600,
+          animationIterationCount: "infinite",
+          animationTimingFunction: "linear",
+        },
+      ]}
     >
       <Icon name="Spinner" size={size} color={color} />
     </Animated.View>
