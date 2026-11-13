@@ -72,6 +72,10 @@ export type TurnStartResponse = { turn: Turn }
 export type TurnInterruptParams = { threadId: string; turnId: string }
 export type TurnSteerParams = { threadId: string; input: Array<UserInput>; expectedTurnId: string }
 export type ThreadCompactStartParams = { threadId: string }
+export type ThreadInjectItemsParams = {
+  threadId: string
+  items: Array<{ type: "message"; role: "developer"; content: Array<{ type: "input_text"; text: string }> }>
+}
 
 export type ModelListParams = { cursor?: string | null; limit?: number | null; includeHidden?: boolean | null }
 export type Model = {
