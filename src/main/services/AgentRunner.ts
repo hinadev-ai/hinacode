@@ -774,12 +774,35 @@ const make = Effect.gen(function* () {
       messageId: string,
     ): Effect.Effect<boolean | "finished", SendError> =>
       Effect.gen(function* () {
-        const openedBefore = Deferred.isDoneUnsafe(opened)
-        const steered = yield* steerOrHold(text, attachments, when, messageId)
-        if (steered !== "refused") return steered
-        yield* openedBefore ? Deferred.await(ended) : Effect.raceFirst(Deferred.await(opened), Deferred.await(ended))
-        return yield* steer(text, attachments, when, messageId)
+        let refused = false
+        while (true) {
+          const openedBefore = Deferred.isDoneUnsafe(opened)
+          const steered = yield* steerOrHold(text, attachments, when, messageId)
+          if (steered === true || steered === false || (steered === "finished" && !refused)) return steered
+          refused = true
+          yield* steered === "refused" && !openedBefore
+            ? Effect.raceFirst(Deferred.await(opened), Deferred.await(ended))
+            : Deferred.await(ended)
+          if (Deferred.isDoneUnsafe(ended)) return yield* afterRefusedTurn(text, attachments, when, messageId)
+        }
       })
+
+    const afterRefusedTurn = (
+      text: string,
+      attachments: ReadonlyArray<Attachment>,
+      when: Effect.Effect<boolean, PersistenceError>,
+      messageId: string,
+    ) =>
+      Effect.suspend((): Effect.Effect<boolean | "finished", PersistenceError | NotFoundError> =>
+        completed && !Deferred.isDoneUnsafe(stop)
+          ? Effect.succeed("finished" as const)
+          : Effect.gen(function* () {
+              if (!(yield* when)) return false
+              const { queue } = yield* threads.get(thread.id)
+              yield* updateThread({ id: thread.id, queue: [...queue, { id: messageId, text, attachments }] })
+              return true
+            }).pipe(exclusive(thread.id)),
+      )
 
     const steerTurn = (
       text: string,
