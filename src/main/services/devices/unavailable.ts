@@ -1,5 +1,5 @@
 import type { PlatformSupport } from "../../../shared/device.ts"
-import { devicesLayer } from "./Devices.ts"
+import { type DevicesOptions, devicesLayer } from "./Devices.ts"
 import { DeviceError, type DevicePlatformDriver } from "./platform.ts"
 
 export const unavailableDriver = (support: PlatformSupport): DevicePlatformDriver => {
@@ -18,10 +18,12 @@ export const unavailableDriver = (support: PlatformSupport): DevicePlatformDrive
   }
 }
 
-export const unavailableDevicesLayer = devicesLayer({
+export const unavailableDevices: DevicesOptions = {
   drivers: {
     ios: unavailableDriver({ kind: "missing", tool: "xcode" }),
     android: unavailableDriver({ kind: "missing", tool: "androidSdk" }),
   },
   simslimAvailable: () => Promise.resolve(false),
-})
+}
+
+export const unavailableDevicesLayer = devicesLayer(unavailableDevices)

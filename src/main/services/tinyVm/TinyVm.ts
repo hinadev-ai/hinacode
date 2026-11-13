@@ -15,7 +15,7 @@ import {
   type VmProvider,
 } from "../../../shared/domain.ts"
 import { Boat, type BoatClient, BoatError, BoatSnapshotExpiredError, isBoatReady } from "../boat/Boat.ts"
-import { Events, PushBroadcast } from "../Events.ts"
+import { Events, PushBroadcast, releasedThreadOf } from "../Events.ts"
 import { Settings } from "../Settings.ts"
 import { encodeAction, handshake, type VmAction, VmInputError, writeSteps } from "./rfb.ts"
 import {
@@ -164,12 +164,6 @@ interface Screen {
 }
 
 const toVmError = (error: { readonly message: string }) => new VmError({ message: error.message })
-
-const releasedThreadOf = (event: typeof PushEvent.Encoded) => {
-  if (event.type === "thread.removed") return event.id
-  if (event.type === "thread.updated" && event.thread.status === "archived") return event.thread.id
-  return undefined
-}
 
 const endGracefully = (socket: Socket) =>
   Effect.callback<void>((resume) => {

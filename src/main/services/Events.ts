@@ -22,6 +22,12 @@ export class WindowPush extends Context.Service<
 
 const encodePushEvent = Schema.encodeSync(PushEvent)
 
+export const releasedThreadOf = (event: typeof PushEvent.Encoded) => {
+  if (event.type === "thread.removed") return event.id
+  if (event.type === "thread.updated" && event.thread.status === "archived") return event.thread.id
+  return undefined
+}
+
 const subscribeTo =
   (sinks: Set<Sink>): Broadcast["subscribe"] =>
   (sink) =>

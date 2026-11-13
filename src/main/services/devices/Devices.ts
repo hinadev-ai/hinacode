@@ -69,7 +69,7 @@ export class Devices extends Context.Service<
   }
 >()("hinacode/Devices") {}
 
-interface DevicesOptions {
+export interface DevicesOptions {
   readonly drivers: Record<DevicePlatform, DevicePlatformDriver>
   readonly simslimAvailable: () => Promise<boolean>
   readonly leaseMs?: number
