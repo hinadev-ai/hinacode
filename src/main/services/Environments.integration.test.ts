@@ -475,6 +475,7 @@ interface ScriptedOptions {
   readonly answeredUpgrades?: number
   readonly refuse?: boolean
   readonly noChallenge?: boolean
+  readonly silentRelay?: boolean
 }
 
 const SCRIPTED_TOKEN = "token"
@@ -524,7 +525,9 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
         auths.push(frame.proof === clientProof(SCRIPTED_TOKEN, challenge, frame.nonce) ? SCRIPTED_TOKEN : "wrong proof")
       if (options.refuse || auths.at(-1) === "wrong proof") return socket.close(CLOSE_UNAUTHORIZED)
       current = socket
-      const relay = options.relay ?? (options.tls === undefined ? undefined : `127.0.0.1:${port}`)
+      const relay = options.silentRelay
+        ? undefined
+        : (options.relay ?? (options.tls === undefined ? undefined : `127.0.0.1:${port}`))
       const proof =
         "nonce" in frame
           ? serverProof(forgeProof ? "not-the-token" : SCRIPTED_TOKEN, frame.nonce, challenge)
@@ -968,6 +971,51 @@ describe("desktop environments over a flaky link", () => {
       await remove("hung-direct")
       relay.stop()
       hung.stop()
+    }
+  })
+
+  test("a ready that names no relay keeps the relay it arrived through", async () => {
+    const relay = await scriptedCloud("quiet-relay", { tls, silentRelay: true })
+    await pairThenLoseDirect("quiet-relay", relay.relay)
+    try {
+      await connectedTimes("quiet-relay", 2)
+      expect(relay.auths).toStrictEqual(["token"])
+      expect(await listed("quiet-relay")).toMatchObject({ relay: relay.relay })
+    } finally {
+      await remove("quiet-relay")
+      relay.stop()
+    }
+  })
+
+  test("hooks hear a cloud's pushes, and mutations made while it is offline", async () => {
+    const pushed: Array<string> = []
+    const answered: Array<string> = []
+    const offline: Array<string> = []
+    await clocked.runPromise(
+      Environments.use((environments) =>
+        environments.hook({
+          pushed: (id, event) => Effect.sync(() => void pushed.push(`${id} ${event.type}`)),
+          answered: (id, method) => Effect.sync(() => void answered.push(`${id} ${method}`)),
+          offlineMutation: (id) => Effect.sync(() => void offline.push(id)),
+        }),
+      ),
+    )
+    const scripted = await pair("hooked")
+    try {
+      scripted.send({ type: "event", event: { type: "thread.removed", id: "t1" } })
+      await vi.waitFor(() => expect(pushed).toStrictEqual(["hooked thread.removed"]))
+      const settle = forward("hooked", { method: "threads.settle", payload: { threadId: "t1" } })
+      await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
+      scripted.send({ type: "result", id: scripted.calls[0]!.id, envelope: { result: { id: "t1" } } })
+      await settle
+      expect(answered).toStrictEqual(["hooked threads.settle"])
+      scripted.stop()
+      await pushedEventually(statusOf("hooked", "offline"))
+      void forward("hooked", { method: "settings.get", payload: undefined })
+      void forward("hooked", { method: "threads.update", payload: { id: "t1", title: "later" } })
+      await vi.waitFor(() => expect(offline).toStrictEqual(["hooked"]))
+    } finally {
+      await remove("hooked")
     }
   })
 

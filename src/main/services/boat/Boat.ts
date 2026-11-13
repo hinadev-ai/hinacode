@@ -28,6 +28,22 @@ interface BoatSandbox {
   readonly name: string
   readonly state: string
   readonly labels: Readonly<Record<string, string>>
+  readonly type: string
+  readonly subdomain: string
+}
+
+export interface BoatCreateOptions {
+  readonly type: string
+  readonly env?: Readonly<Record<string, string>>
+  readonly name?: string
+  readonly labels?: Readonly<Record<string, string>>
+  readonly ttlSeconds?: number | null
+  readonly environment?: string
+  readonly from?: string
+  readonly noEnv?: boolean
+  readonly snapshots?: boolean
+  readonly monitoring?: boolean
+  readonly setupScript?: string
 }
 
 const BOAT_READY_STATES: ReadonlyArray<string> = ["ready", "idle", "running"]
@@ -52,6 +68,16 @@ const SandboxObject = Schema.Struct({
   state: Schema.optional(Schema.String),
   status: Schema.optional(Schema.String),
   labels: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, Schema.String))),
+  type: Schema.optional(Schema.NullOr(Schema.String)),
+  subdomain: Schema.optional(Schema.NullOr(Schema.String)),
+})
+
+const EnvironmentsResponse = Schema.Struct({
+  environments: Schema.Array(Schema.Struct({ name: Schema.String, isDefault: Schema.optional(Schema.Boolean) })),
+})
+
+const SavedSnapshotsResponse = Schema.Struct({
+  snapshots: Schema.Array(Schema.Struct({ name: Schema.String, status: Schema.String })),
 })
 
 const CreateResponse = Schema.Struct({ sandbox: Schema.Struct({ id: Schema.String }) })
@@ -114,6 +140,8 @@ const DesktopResponse = Schema.Struct({
   provisioning: Schema.optional(Schema.Boolean),
   message: Schema.optional(Schema.String),
 })
+
+const HostResponse = Schema.Struct({ url: Schema.String })
 
 const LimitsResponse = Schema.Struct({
   canStart: Schema.Boolean,
@@ -193,6 +221,8 @@ const toBoatSandbox = (value: typeof SandboxObject.Type): BoatSandbox => ({
   name: value.name ?? "",
   state: value.state ?? value.status ?? "",
   labels: value.labels ?? {},
+  type: value.type ?? "",
+  subdomain: value.subdomain ?? "",
 })
 
 const clampTimeout = (seconds: number) => Math.min(600, Math.max(1, Math.round(seconds)))
@@ -481,20 +511,15 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
           Effect.ignore,
         )
 
-  const createSandbox = (options: {
-    readonly type: string
-    readonly env?: Readonly<Record<string, string>>
-    readonly name?: string
-    readonly labels?: Readonly<Record<string, string>>
-  }) => {
-    const type = Schema.is(BoatVmSize)(options.type) ? options.type : "default"
+  const createSandbox = ({ type, env, labels, ttlSeconds, ...rest }: BoatCreateOptions) => {
+    const size = Schema.is(BoatVmSize)(type) ? type : "default"
     return jsonRequest(CreateResponse, "POST /sandboxes", "POST", "/sandboxes", {
       body: {
-        type,
-        ttlSeconds: DEFAULT_TTL_SECONDS,
-        env: options.env ?? {},
-        labels: { hinacode: "1", ...options.labels },
-        ...(options.name !== undefined ? { name: options.name } : {}),
+        ...rest,
+        type: size,
+        ttlSeconds: ttlSeconds === undefined ? DEFAULT_TTL_SECONDS : ttlSeconds,
+        env: env ?? {},
+        labels: { hinacode: "1", ...labels },
       },
       headers: { "Idempotency-Key": randomUUID() },
     }).pipe(
@@ -527,11 +552,12 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
       within(REQUEST_TIMEOUT_SECONDS),
     )
 
-  const resume = (id: string) =>
-    request("POST", sandboxPath(id, "/resume"), {
-      sandboxId: id,
-      body: { ttlSeconds: DEFAULT_TTL_SECONDS },
-    }).pipe(Effect.asVoid, within(REQUEST_TIMEOUT_SECONDS), Effect.andThen(waitReady(id)))
+  const resume = (id: string, body: { readonly ttlSeconds?: number } = { ttlSeconds: DEFAULT_TTL_SECONDS }) =>
+    request("POST", sandboxPath(id, "/resume"), { sandboxId: id, body }).pipe(
+      Effect.asVoid,
+      within(REQUEST_TIMEOUT_SECONDS),
+      Effect.andThen(waitReady(id)),
+    )
 
   const execDetached = (id: string, execInput: ExecInput) =>
     jsonRequest(CommandStartedResponse, "POST /sandboxes/{id}/commands", "POST", sandboxPath(id, "/commands"), {
@@ -659,6 +685,19 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
     return attempt(DESKTOP_MAX_ATTEMPTS)
   }
 
+  const hostPort = (
+    id: string,
+    port: number,
+    options: { readonly public?: boolean; readonly localhost?: boolean } = {},
+  ) =>
+    jsonRequest(HostResponse, "POST /sandboxes/{id}/host", "POST", sandboxPath(id, "/host"), {
+      sandboxId: id,
+      body: { port, ...options },
+    }).pipe(
+      within(REQUEST_TIMEOUT_SECONDS),
+      Effect.map(({ url }) => url),
+    )
+
   const limits = () =>
     jsonRequest(LimitsResponse, "GET /limits", "GET", "/limits").pipe(
       within(REQUEST_TIMEOUT_SECONDS),
@@ -666,6 +705,18 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
         canStart: response.canStart,
         maxSandboxes: response.currentLimits?.activeSandboxes ?? 0,
       })),
+    )
+
+  const environments = () =>
+    jsonRequest(EnvironmentsResponse, "GET /environments", "GET", "/environments").pipe(
+      within(REQUEST_TIMEOUT_SECONDS),
+      Effect.map((response) => response.environments),
+    )
+
+  const savedSnapshots = () =>
+    jsonRequest(SavedSnapshotsResponse, "GET /saved-snapshots", "GET", "/saved-snapshots").pipe(
+      within(REQUEST_TIMEOUT_SECONDS),
+      Effect.map((response) => response.snapshots),
     )
 
   const listAll = () =>
@@ -716,7 +767,11 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
     resume,
     desktopUrl,
     listAll,
+    writeFileBytes,
+    hostPort,
     limits,
+    environments,
+    savedSnapshots,
     getSandbox,
     waitReady,
   }

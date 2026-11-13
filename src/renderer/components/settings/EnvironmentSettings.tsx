@@ -15,6 +15,7 @@ import {
 import type { Environment, RelayAccountStatus } from "../../../shared/domain.ts"
 import type { RelayHost } from "../../../shared/relayMachines.ts"
 import { errorMessage, toastError } from "../../lib/errorMessage.ts"
+import { BoatMachineForm } from "./BoatMachineForm.tsx"
 import { RelaySignOutDialog } from "./RelaySignOutDialog.tsx"
 import { type Cloud, cloudAddress, incompatibleText, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
@@ -75,6 +76,7 @@ export function EnvironmentSettings() {
         </ul>
       )}
       {!inBrowser() && <AddEnvironmentForm />}
+      {!inBrowser() && <BoatMachineForm />}
     </SettingsSection>
   )
 }

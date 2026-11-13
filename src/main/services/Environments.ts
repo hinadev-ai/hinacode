@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import { Clock, Context, Deferred, Effect, Fiber, FiberMap, Layer, Option, Schedule, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { type RawData, WebSocket } from "ws"
-import { methodKind, type RpcEnvelope, type RpcMethod } from "../../shared/contract.ts"
+import { methodKind, type PushEvent, type RpcEnvelope, type RpcMethod } from "../../shared/contract.ts"
 import { Environment, type EnvironmentStatus, type Environments as EnvironmentList } from "../../shared/domain.ts"
 import { clientProof, newNonce, serverProof } from "../../shared/proof.ts"
 import {
@@ -40,7 +40,7 @@ import { Secrets } from "./Secrets.ts"
 export class InvalidPairingUrl extends Schema.TaggedError<InvalidPairingUrl>()("InvalidPairingUrl", {
   message: Schema.String,
 }) {}
-class EnvironmentUnreachable extends Schema.TaggedError<EnvironmentUnreachable>()("EnvironmentUnreachable", {
+export class EnvironmentUnreachable extends Schema.TaggedError<EnvironmentUnreachable>()("EnvironmentUnreachable", {
   message: Schema.String,
 }) {}
 export class EnvironmentUnauthorized extends Schema.TaggedError<EnvironmentUnauthorized>()("EnvironmentUnauthorized", {
@@ -50,6 +50,12 @@ export class EnvironmentUnauthorized extends Schema.TaggedError<EnvironmentUnaut
 export interface ForwardedCall {
   readonly method: RpcMethod
   readonly payload: unknown
+}
+
+export interface CloudHooks {
+  readonly pushed: (environmentId: string, event: PushEvent) => Effect.Effect<void>
+  readonly answered: (environmentId: string, method: RpcMethod) => Effect.Effect<void>
+  readonly offlineMutation: (environmentId: string) => Effect.Effect<void>
 }
 
 export class Environments extends Context.Service<
@@ -71,6 +77,7 @@ export class Environments extends Context.Service<
     readonly gather: (call: ForwardedCall) => Effect.Effect<ReadonlyArray<unknown>>
     readonly owner: (entity: Entity, id: string) => string | undefined
     readonly answerAsks: (answer: (call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>>) => Effect.Effect<void>
+    readonly hook: (hooks: CloudHooks) => Effect.Effect<void>
   }
 >()("hinacode/Environments") {}
 
@@ -382,6 +389,7 @@ const make = Effect.gen(function* () {
   const clouds = new Map<string, Cloud>()
   let nextCallId = 1
   let answer: (call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>> = () => Effect.succeed(notAnswering)
+  let hooks: CloudHooks = { pushed: () => Effect.void, answered: () => Effect.void, offlineMutation: () => Effect.void }
   const now = () => clock.currentTimeMillisUnsafe()
   const nowIso = () => new Date(now()).toISOString()
 
@@ -468,7 +476,7 @@ const make = Effect.gen(function* () {
     )
   }
 
-  const session = (cloud: Cloud, token: string, url: string, plainToken: boolean) =>
+  const session = (cloud: Cloud, token: string, url: string, plainToken: boolean, viaRelay: boolean) =>
     Effect.gen(function* () {
       const { id, name } = cloud.environment
       const closed = yield* Deferred.make<number>()
@@ -491,7 +499,7 @@ const make = Effect.gen(function* () {
                 }
                 connectedAt = now()
                 cloud.protocol = null
-                learnRelay(cloud, frame.relay ?? null)
+                learnRelay(cloud, frame.relay ?? (viaRelay ? cloud.environment.relay : null))
                 const live: Live = { socket, dedupesCalls: frame.features?.includes("call-keys") ?? false }
                 cloud.live = live
                 if (frame.features?.includes("asks")) sendFrame(socket, { type: "hub" })
@@ -513,6 +521,7 @@ const make = Effect.gen(function* () {
               }
               case "event":
                 learnFromPush(owners, id, frame.event)
+                runFork(hooks.pushed(id, frame.event))
                 return runFork(windows.send(stampPush(frame.event, id)))
               case "pong":
                 return
@@ -590,7 +599,7 @@ const make = Effect.gen(function* () {
         } else {
           const direct = plan.filter((planned) => planned.route === "direct")
           const hasRelay = plan.some((planned) => planned.route === "relay")
-          const opened = session(cloud, token, won.url, won.route === "relay" || !hasRelay)
+          const opened = session(cloud, token, won.url, won.route === "relay" || !hasRelay, won.route === "relay")
           const end =
             won.route === "relay" && round === "both" && direct.length > 0
               ? yield* Effect.raceFirst(opened, directAnswers(direct).pipe(Effect.as(null)))
@@ -814,8 +823,11 @@ const make = Effect.gen(function* () {
           timer: null,
         }
         cloud.outbox.set(call.id, call)
-        if (cloud.live === null) startOfflineTimer(cloud, call)
-        else send(cloud.live, call)
+        if (cloud.live !== null) send(cloud.live, call)
+        else {
+          startOfflineTimer(cloud, call)
+          if (call.key !== undefined) runFork(hooks.offlineMutation(environmentId))
+        }
         return Effect.sync(() => {
           pauseOfflineTimer(call)
           cloud.outbox.delete(call.id)
@@ -823,6 +835,7 @@ const make = Effect.gen(function* () {
       }).pipe(
         Effect.map((envelope) => {
           if ("error" in envelope) return envelope
+          runFork(hooks.answered(environmentId, method))
           learnFromAnswer(owners, environmentId, method, payload, envelope.result)
           const result = nameMachines(
             method,
@@ -870,6 +883,10 @@ const make = Effect.gen(function* () {
     answerAsks: (answerWith) =>
       Effect.sync(() => {
         answer = answerWith
+      }),
+    hook: (next) =>
+      Effect.sync(() => {
+        hooks = next
       }),
   })
 })
