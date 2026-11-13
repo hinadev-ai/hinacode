@@ -20,6 +20,8 @@ ruleTester.run("no-async-on-click", noAsyncOnClick, {
     component("const archive = () => {}", `<button onClick={archive} />`),
     component("const hide = () => { setOpen(false) }", `<button onClick={hide} />`),
     component("", `<button onClick={props.hide} />`),
+    `export function Panel({ onHide }) { void prefetch(); return <button onClick={onHide} /> }`,
+    `export function Panel(onHide) { void prefetch(); return <button onClick={onHide} /> }`,
     component("const archive = () => {}", `<button onClick={() => archive()} />`),
     component("", `<button onClick={() => { if (ready) void archive() }} />`),
   ],
