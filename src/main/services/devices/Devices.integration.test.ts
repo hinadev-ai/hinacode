@@ -165,6 +165,26 @@ describe("Devices", () => {
       }),
     )
 
+    it.effect("keeps the simulator another machine's thread created through the sweep", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const remoteThreadId = "7d0c4f7e-1d3b-4a51-9a39-3c3d2f6c9e10"
+        removed.length = 0
+        const created = yield* service.create(remoteThreadId, undefined, { id: "laptop-id", name: "laptop" })
+        expect(created.phase).toBe("ready")
+
+        yield* TestClock.adjust("6 seconds")
+        yield* TestClock.adjust("6 seconds")
+        expect(removed).toEqual([])
+        expect((yield* service.get(remoteThreadId)).map((entry) => entry.phase)).toEqual(["ready"])
+        const rows = yield* SqlClient.SqlClient.use(
+          (sql) => sql`SELECT client_name FROM thread_device WHERE thread_id = ${remoteThreadId}`,
+        )
+        expect(rows).toEqual([{ clientName: "laptop" }])
+        yield* service.detach(remoteThreadId, CREATED_DEVICE)
+      }),
+    )
+
     it.effect("forgets an archived thread's simulator that someone already deleted", () =>
       Effect.gen(function* () {
         const service = yield* Devices

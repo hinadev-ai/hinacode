@@ -3,6 +3,7 @@ import { SqlClient } from "effect/sql"
 import type { RpcRequest } from "../../../shared/contract.ts"
 import {
   type AgentAction,
+  type DeviceClient,
   devicePlatformOf,
   type Device,
   type DeviceCommand,
@@ -42,8 +43,16 @@ export class Devices extends Context.Service<
     readonly enabled: () => boolean
     readonly list: () => Effect.Effect<DeviceHost, DevicesError>
     readonly get: (threadId: string) => Effect.Effect<ThreadDevices, DevicesError>
-    readonly attach: (threadId: string, deviceId: DeviceId) => Effect.Effect<ThreadDevice, DevicesError>
-    readonly create: (threadId: string, model?: SimulatorModelId) => Effect.Effect<ThreadDevice, DevicesError>
+    readonly attach: (
+      threadId: string,
+      deviceId: DeviceId,
+      client?: DeviceClient,
+    ) => Effect.Effect<ThreadDevice, DevicesError>
+    readonly create: (
+      threadId: string,
+      model?: SimulatorModelId,
+      client?: DeviceClient,
+    ) => Effect.Effect<ThreadDevice, DevicesError>
     readonly detach: (threadId: string, deviceId: DeviceId | null) => Effect.Effect<void, DevicesError>
     readonly delete: (threadId: string, deviceId: DeviceId) => Effect.Effect<void, DevicesError>
     readonly shutdown: (deviceId: DeviceId) => Effect.Effect<void, DevicesError>
@@ -149,9 +158,10 @@ const make = (options: DevicesOptions) =>
       )
     const readRow = async (threadId: string, deviceId: DeviceId) =>
       (await readRows(threadId)).find((row) => row.deviceId === deviceId) ?? null
-    const writeRow = (threadId: string, row: Row) =>
+    const writeRow = (threadId: string, row: Row, client: DeviceClient | null) =>
       run(
-        sql`INSERT INTO thread_device (thread_id, device_id, owned) VALUES (${threadId}, ${row.deviceId}, ${row.owned ? 1 : 0})
+        sql`INSERT INTO thread_device (thread_id, device_id, owned, client_id, client_name, claimed_at)
+            VALUES (${threadId}, ${row.deviceId}, ${row.owned ? 1 : 0}, ${client?.id ?? null}, ${client?.name ?? null}, ${client ? Date.now() : null})
             ON CONFLICT (thread_id, device_id) DO NOTHING`,
       )
     const deleteRow = (threadId: string, deviceId: DeviceId) =>
@@ -360,7 +370,7 @@ const make = (options: DevicesOptions) =>
       return name
     }
 
-    const createFor = async (threadId: string, model: SimulatorModelId | null = null) => {
+    const createFor = async (threadId: string, model: SimulatorModelId | null, client: DeviceClient | null) => {
       const running = preparing.get(keyOf(threadId, NEW))
       if (running) return running
       const name = await nameFor(threadId)
@@ -370,7 +380,7 @@ const make = (options: DevicesOptions) =>
         try {
           return await options.drivers.ios.create(name, model, onStep, async (deviceId) => {
             created = deviceId
-            await writeRow(threadId, { deviceId, owned: true })
+            await writeRow(threadId, { deviceId, owned: true }, client)
           })
         } catch (cause) {
           if (created !== null) await detachNow(threadId, created).catch(() => undefined)
@@ -412,7 +422,7 @@ const make = (options: DevicesOptions) =>
         if (device !== undefined) {
           throw new DevicesError({ message: "No device is attached to this thread. Leave out `device` to create one." })
         }
-        const created = await settle(threadId, await createFor(threadId))
+        const created = await settle(threadId, await createFor(threadId, null, null))
         return { state: created, live: connect(created.device.id) }
       }
       const wanted = device?.trim().toLowerCase()
@@ -657,7 +667,7 @@ const make = (options: DevicesOptions) =>
     })
     const releaseArchived = sql<{ threadId: string }>`
       SELECT DISTINCT thread_device.thread_id FROM thread_device LEFT JOIN thread ON thread.id = thread_device.thread_id
-      WHERE thread.id IS NULL OR thread.status = 'archived'
+      WHERE thread_device.client_id IS NULL AND (thread.id IS NULL OR thread.status = 'archived')
     `.pipe(
       Effect.flatMap((rows) => Effect.forEach(rows, (row) => releaseThread(row.threadId), { discard: true })),
       Effect.catchCause((cause) => Effect.logWarning("device cleanup failed", cause)),
@@ -683,7 +693,7 @@ const make = (options: DevicesOptions) =>
       enabled: () => enabled,
       list,
       get: (threadId) => attempt(() => restore(threadId)),
-      attach: (threadId, deviceId) =>
+      attach: (threadId, deviceId, client) =>
         attempt(async () => {
           if (deleting.has(deviceId)) throw new DevicesError({ message: "This device is being deleted." })
           attaching.set(deviceId, (attaching.get(deviceId) ?? 0) + 1)
@@ -697,7 +707,7 @@ const make = (options: DevicesOptions) =>
                   "Another thread created this simulator, and archiving that thread deletes it. Create one here.",
               })
             }
-            await writeRow(threadId, { deviceId, owned: false })
+            await writeRow(threadId, { deviceId, owned: false }, client ?? null)
             return await attachExisting(threadId, deviceId)
           } finally {
             const count = (attaching.get(deviceId) ?? 1) - 1
@@ -705,10 +715,10 @@ const make = (options: DevicesOptions) =>
             else attaching.set(deviceId, count)
           }
         }),
-      create: (threadId, model) =>
+      create: (threadId, model, client) =>
         attempt(async () => {
           if (current(threadId, NEW)?.phase === "failed") removeState(threadId, NEW)
-          return createFor(threadId, model ?? null)
+          return createFor(threadId, model ?? null, client ?? null)
         }),
       detach: (threadId, deviceId) => attempt(() => detachNow(threadId, deviceId)),
       delete: (threadId, deviceId) =>

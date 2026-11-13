@@ -520,8 +520,9 @@ const handlers: Handlers = {
 
   "devices.list": () => Devices.use((devices) => devices.list()),
   "device.get": ({ threadId }) => Devices.use((devices) => devices.get(threadId)),
-  "device.attach": ({ threadId, deviceId }) => Devices.use((devices) => devices.attach(threadId, deviceId)),
-  "device.create": ({ threadId, model }) => Devices.use((devices) => devices.create(threadId, model)),
+  "device.attach": ({ threadId, deviceId, client }) =>
+    Devices.use((devices) => devices.attach(threadId, deviceId, client)),
+  "device.create": ({ threadId, model, client }) => Devices.use((devices) => devices.create(threadId, model, client)),
   "device.detach": ({ threadId, deviceId }) => Devices.use((devices) => devices.detach(threadId, deviceId)),
   "device.delete": ({ threadId, deviceId }) => Devices.use((devices) => devices.delete(threadId, deviceId)),
   "device.shutdown": ({ deviceId }) => Devices.use((devices) => devices.shutdown(deviceId)),

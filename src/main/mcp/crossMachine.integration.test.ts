@@ -5,8 +5,10 @@ import { join } from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { Effect, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { SqlClient } from "effect/sql"
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest"
 import { unlistedModel } from "../../shared/agent.ts"
+import type { ExperimentalSettings } from "../../shared/domain.ts"
 import { RPC_CHANNEL } from "../../shared/channels.ts"
 import {
   PushEvent,
@@ -248,6 +250,43 @@ afterAll(async () => {
   await desktop.dispose()
   await cloud.dispose()
   rmSync(dir, { recursive: true, force: true })
+})
+
+const setExperimental = (runtime: Runtime, patch: Partial<ExperimentalSettings>) =>
+  runtime.runPromise(
+    Settings.use((settings) =>
+      Effect.flatMap(settings.get, ({ experimental }) => settings.set({ experimental: { ...experimental, ...patch } })),
+    ),
+  )
+
+const heldDevices = (runtime: Runtime, threadId: string) =>
+  runtime.runPromise(
+    SqlClient.SqlClient.use(
+      (sql) =>
+        sql`SELECT device_id, client_id, client_name FROM thread_device WHERE thread_id = ${threadId} ORDER BY rowid`,
+    ),
+  )
+
+describe("devices on another machine", () => {
+  test("a desktop thread attaches devices on the machine chosen to run them, held in the desktop's name", async () => {
+    await setExperimental(cloud, { devices: true })
+    await setExperimental(desktop, { devices: true, devicesOn: cloudId })
+    await vi.waitFor(async () => {
+      await invoke("device.attach", { threadId: desktopThread, deviceId: "android:Hub_Pixel" })
+      expect(await heldDevices(cloud, desktopThread)).toEqual([
+        { deviceId: "android:Hub_Pixel", clientId: desktopMachine.id, clientName: desktopMachine.name },
+      ])
+    })
+    expect(await heldDevices(desktop, desktopThread)).toEqual([])
+
+    await setExperimental(desktop, { devicesOn: null })
+    await vi.waitFor(async () => {
+      await invoke("device.attach", { threadId: desktopThread, deviceId: "android:Local_Pixel" })
+      expect(await heldDevices(desktop, desktopThread)).toEqual([
+        { deviceId: "android:Local_Pixel", clientId: null, clientName: null },
+      ])
+    })
+  })
 })
 
 describe("thread tools across machines", () => {

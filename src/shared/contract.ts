@@ -117,6 +117,7 @@ import { RelayHost } from "./relayMachines.ts"
 import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 import {
   AgentAction,
+  DeviceClient,
   DeviceCommand,
   SimulatorModelId,
   DeviceControl,
@@ -161,9 +162,16 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 export const RpcMethods = {
   "devices.list": rpc(Schema.Struct({ threadId: Schema.String }), DeviceHost),
   "device.get": rpc(Schema.Struct({ threadId: Schema.String }), ThreadDevices),
-  "device.attach": rpc(Schema.Struct({ threadId: Schema.String, deviceId: DeviceId }), ThreadDevice),
+  "device.attach": rpc(
+    Schema.Struct({ threadId: Schema.String, deviceId: DeviceId, client: Schema.optionalKey(DeviceClient) }),
+    ThreadDevice,
+  ),
   "device.create": rpc(
-    Schema.Struct({ threadId: Schema.String, model: Schema.optional(SimulatorModelId) }),
+    Schema.Struct({
+      threadId: Schema.String,
+      model: Schema.optional(SimulatorModelId),
+      client: Schema.optionalKey(DeviceClient),
+    }),
     ThreadDevice,
   ),
   "device.detach": rpc(Schema.Struct({ threadId: Schema.String, deviceId: Schema.NullOr(DeviceId) }), Schema.Void),

@@ -1,5 +1,11 @@
 import { Schema } from "effect"
 
+export const DeviceClient = Schema.Struct({
+  id: Schema.String.check(Schema.isMaxLength(200)),
+  name: Schema.String.check(Schema.isMaxLength(200)),
+})
+export type DeviceClient = typeof DeviceClient.Type
+
 export const DevicePlatform = Schema.Literals(["ios", "android"])
 export type DevicePlatform = typeof DevicePlatform.Type
 
