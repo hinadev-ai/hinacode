@@ -289,6 +289,51 @@ describe("devices on another machine", () => {
   })
 })
 
+describe("devices held on another machine", () => {
+  test("the hub learns the thread's title, and releases its devices once the thread is archived", async () => {
+    await setExperimental(cloud, { devices: true })
+    await setExperimental(desktop, { devices: true, devicesOn: cloudId })
+    const thread = result(await invoke("threads.create", { projectId: desktopProject })).id
+    await invoke("threads.update", { id: thread, title: "Fix login screen" })
+    await vi.waitFor(async () => {
+      await invoke("device.attach", { threadId: thread, deviceId: "android:Hub_Tablet" })
+      expect(await heldDevices(cloud, thread)).toHaveLength(1)
+    })
+    await vi.waitFor(
+      async () =>
+        expect(
+          await cloud.runPromise(
+            SqlClient.SqlClient.use((sql) => sql`SELECT thread_title FROM thread_device WHERE thread_id = ${thread}`),
+          ),
+        ).toEqual([{ threadTitle: "Fix login screen" }]),
+      { timeout: 12_000 },
+    )
+
+    result(await invoke("threads.archive", { threadId: thread }))
+    await vi.waitFor(async () => expect(await heldDevices(cloud, thread)).toEqual([]), { timeout: 12_000 })
+  }, 30_000)
+
+  test("an agent hears at once that the machine chosen to run devices is gone", async () => {
+    await setExperimental(desktop, { devices: true, devicesOn: "a-machine-that-was-removed" })
+    expect(await callAs(desktop, desktopThread, "device_screenshot")).toStrictEqual({
+      isError: true,
+      text: "The machine chosen to run devices is no longer paired. Pick another in Settings > Experimental > Run devices on.",
+    })
+    await setExperimental(desktop, { devicesOn: null })
+  })
+
+  test("switching back to this machine releases what the desktop held on the hub", async () => {
+    await setExperimental(desktop, { devices: true, devicesOn: cloudId })
+    await vi.waitFor(async () => {
+      await invoke("device.attach", { threadId: desktopThread, deviceId: "android:Hub_Phone" })
+      expect((await heldDevices(cloud, desktopThread)).map((row) => row.deviceId)).toContain("android:Hub_Phone")
+    })
+
+    await setExperimental(desktop, { devicesOn: null })
+    await vi.waitFor(async () => expect(await heldDevices(cloud, desktopThread)).toEqual([]), { timeout: 12_000 })
+  }, 30_000)
+})
+
 describe("thread tools across machines", () => {
   test("a desktop thread reads a cloud thread of the same repository", async () => {
     const read = await callAs(desktop, desktopThread, "read_thread", { threadId: cloudThread })

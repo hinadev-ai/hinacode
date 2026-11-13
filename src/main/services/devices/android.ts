@@ -25,7 +25,37 @@ import {
   type RunningEmulator,
   type SkinRotation,
 } from "./androidParsers.ts"
-import { DeviceError, type DeviceLink, type DevicePlatformDriver } from "./platform.ts"
+import { DeviceError, type DeviceLink, type DevicePlatformDriver, lastLines } from "./platform.ts"
+import { cannotSetUp, check, runSetup } from "./setup.ts"
+
+const HINACODE_AVD_DEVICE = "pixel_8"
+const HINACODE_AVD_NAME = "Hinacode_Pixel_8"
+
+const hostAbi = () => (process.arch === "arm64" ? "arm64-v8a" : "x86_64")
+
+const apiLevelOf = (platform: string) => /^android-(\d+(?:\.\d+)?)$/.exec(platform)?.[1] ?? null
+
+const compareApiLevels = (a: string, b: string) => {
+  const left = a.split(".").map(Number)
+  const right = b.split(".").map(Number)
+  for (let index = 0; index < Math.max(left.length, right.length); index++) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0)
+    if (difference !== 0) return difference
+  }
+  return 0
+}
+
+const subdirectories = (path: string) => readdir(path).catch((): ReadonlyArray<string> => [])
+
+const javaEnv = async (): Promise<NodeJS.ProcessEnv> => {
+  if (process.env["JAVA_HOME"]) return process.env
+  const bundled = [
+    "/Applications/Android Studio.app/Contents/jbr/Contents/Home",
+    join(homedir(), "android-studio", "jbr"),
+  ]
+  for (const home of bundled) if (await exists(join(home, "bin", "java"))) return { ...process.env, JAVA_HOME: home }
+  return process.env
+}
 
 interface ImageFormat {
   readonly format: "PNG"
@@ -63,6 +93,17 @@ interface EmulatorController extends grpc.Client {
   readonly getPhysicalModel: Unary<{ target: "ROTATION" }, { value: { data: ReadonlyArray<number> } | null }>
   readonly setPhysicalModel: Unary<{ target: "ROTATION"; value: { data: ReadonlyArray<number> } }, object>
   readonly setClipboard: Unary<{ text: string }, object>
+  readonly streamAudio: (request: AudioFormat, metadata: grpc.Metadata) => grpc.ClientReadableStream<AudioPacket>
+}
+
+interface AudioFormat {
+  readonly samplingRate: number
+  readonly channels: "Stereo"
+  readonly format: "AUD_FMT_S16"
+}
+
+interface AudioPacket {
+  readonly audio: Buffer
 }
 
 type EmulatorControllerClass = new (
@@ -78,6 +119,9 @@ const FIRST_GRPC_PORT = 8600
 const STOP_TIMEOUT_MS = 15_000
 const CALL_TIMEOUT_MS = 10_000
 const NO_GRPC = "This emulator was started without its gRPC endpoint. Close it and attach it again from HinaCode."
+const AUDIO_RATE = 48_000
+const AUDIO_CHANNELS = 2
+const NO_AUDIO = "This emulator was started without sound. Shut it down and boot it again from HinaCode."
 
 const execFileAsync = promisify(execFile)
 const run = async (file: string, args: ReadonlyArray<string>, timeout = 30_000) =>
@@ -264,7 +308,8 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
         "-avd",
         name,
         "-no-window",
-        "-no-audio",
+        "-audio",
+        "none",
         "-no-boot-anim",
         "-grpc",
         String(grpcPort),
@@ -299,6 +344,7 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
         return {
           id: `android:${name}`,
           platform: "android",
+          holders: [],
           name: config.get("avd.ini.displayname") || name.replaceAll("_", " "),
           osVersion: androidVersionOf(config.get("image.sysdir.1")),
           state: booted ? "booted" : emulator ? "booting" : "shutdown",
@@ -589,6 +635,129 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     await rm(join(avdHome(), `${name}.ini`), { force: true })
   }
 
+  const installedImages = async () => {
+    const root = join(sdk, "system-images")
+    const images: Array<{ readonly key: string; readonly apiLevel: string; readonly abi: string }> = []
+    for (const platform of await subdirectories(root)) {
+      const apiLevel = apiLevelOf(platform)
+      if (apiLevel === null) continue
+      for (const tag of await subdirectories(join(root, platform))) {
+        for (const abi of await subdirectories(join(root, platform, tag))) {
+          images.push({ key: `system-images;${platform};${tag};${abi}`, apiLevel, abi })
+        }
+      }
+    }
+    return images.toSorted((a, b) => compareApiLevels(b.apiLevel, a.apiLevel))
+  }
+
+  const avdNames = async () =>
+    (await subdirectories(avdHome())).filter((file) => file.endsWith(".ini") && AVD_NAME.test(file.slice(0, -4)))
+
+  const checks: DevicePlatformDriver["checks"] = async () => {
+    const [sdkReady, images, avds] = await Promise.all([support(), installedImages(), avdNames()])
+    return [
+      check("androidSdk", "android", "manual", sdkReady.kind === "ready"),
+      check("androidImage", "android", "install", images.length > 0),
+      check("avd", "android", "install", avds.length > 0),
+    ]
+  }
+
+  const cmdlineTool = async (name: "sdkmanager" | "avdmanager") => {
+    const path = join(sdk, "cmdline-tools", "latest", "bin", name)
+    if (!(await exists(path))) {
+      throw new DeviceError(
+        `${name} is missing. Install the Android SDK Command-line Tools from Android Studio's SDK Manager on this machine.`,
+      )
+    }
+    return path
+  }
+
+  const installNewestImage = async () => {
+    const sdkmanager = await cmdlineTool("sdkmanager")
+    const env = await javaEnv()
+    const listing = await runSetup(sdkmanager, ["--list"], { env })
+    const pattern = new RegExp(`^\\s*(system-images;android-(\\d+(?:\\.\\d+)?);google_apis;${hostAbi()})\\s*\\|`, "gm")
+    const available = [...listing.matchAll(pattern)]
+      .map((match) => ({ key: match[1]!, apiLevel: match[2]! }))
+      .toSorted((a, b) => compareApiLevels(b.apiLevel, a.apiLevel))
+    const platforms = (await subdirectories(join(sdk, "platforms"))).flatMap((each) => apiLevelOf(each) ?? [])
+    const newestPlatform = platforms.toSorted((a, b) => compareApiLevels(b, a))[0]
+    const image =
+      available.find((each) => newestPlatform !== undefined && compareApiLevels(each.apiLevel, newestPlatform) === 0) ??
+      available[0]
+    if (!image) throw new DeviceError("sdkmanager lists no Google APIs system image for this machine.")
+    await runSetup(sdkmanager, ["--install", image.key], { env, input: "y\n".repeat(20) })
+  }
+
+  const createAvd = async () => {
+    const avdmanager = await cmdlineTool("avdmanager")
+    const images = await installedImages()
+    const image = images.find((each) => each.abi === hostAbi()) ?? images[0]
+    if (!image) throw new DeviceError("Install an Android system image first.")
+    await runSetup(avdmanager, ["create", "avd", "-n", HINACODE_AVD_NAME, "-k", image.key, "-d", HINACODE_AVD_DEVICE], {
+      env: await javaEnv(),
+      input: "no\n",
+    })
+  }
+
+  const setup: DevicePlatformDriver["setup"] = (requirement) => {
+    switch (requirement) {
+      case "androidImage":
+        return installNewestImage()
+      case "avd":
+        return createAvd()
+      default:
+        return cannotSetUp(requirement)
+    }
+  }
+
+  const packageOf = async (apk: string) => {
+    const versions = (await subdirectories(join(sdk, "build-tools"))).filter((each) => /^\d+(\.\d+)*$/.test(each))
+    const newest = versions.toSorted((a, b) => compareApiLevels(b, a))[0]
+    if (newest === undefined) return null
+    const name = await run(join(sdk, "build-tools", newest, "aapt2"), ["dump", "packagename", apk]).catch(() => "")
+    return PACKAGE_NAME.test(name.trim()) ? name.trim() : null
+  }
+
+  const install: DevicePlatformDriver["install"] = async (id, path) => {
+    const emulator = await runningEmulator(id)
+    await adb(emulator, ["install", "-r", path], 300_000)
+    return packageOf(path)
+  }
+
+  const logs: DevicePlatformDriver["logs"] = async (id, app, sinceSeconds) => {
+    const emulator = await runningEmulator(id)
+    const since = ["-t", `${Math.floor(Date.now() / 1000) - sinceSeconds}.000`]
+    if (app === null) return lastLines(await adb(emulator, ["logcat", "-d", ...since]))
+    if (!PACKAGE_NAME.test(app)) throw new DeviceError(`"${app}" is not an Android package name.`)
+    const pid = (await shell(emulator, "pidof", app).catch(() => "")).trim().split(/\s+/)[0]
+    if (!pid) throw new DeviceError(`${app} is not running. Launch it with device_launch, or leave out app.`)
+    return lastLines(await adb(emulator, ["logcat", "-d", ...since, `--pid=${pid}`]))
+  }
+
+  const audio: DevicePlatformDriver["audio"] = async (id, onPcm) => {
+    const emulator = await runningEmulator(id)
+    const command = await run("ps", ["-o", "command=", "-p", String(emulator.pid)]).catch(() => "")
+    if (/\s-no-?audio(\s|$)/.test(command)) throw new DeviceError(NO_AUDIO)
+    const { client, metadata } = await openController(emulator)
+    const stream = client.streamAudio({ samplingRate: AUDIO_RATE, channels: "Stereo", format: "AUD_FMT_S16" }, metadata)
+    stream.on("data", (packet: AudioPacket) => onPcm(packet.audio))
+    const ended = new Promise<string>((resolve) => {
+      stream.on("error", (error: grpc.ServiceError) => resolve(error.details || "The emulator's sound stopped."))
+      stream.on("end", () => resolve("The emulator's sound stopped."))
+    })
+    void ended.then(() => client.close())
+    return {
+      rate: AUDIO_RATE,
+      channels: AUDIO_CHANNELS,
+      ended,
+      close: async () => {
+        stream.cancel()
+        await ended
+      },
+    }
+  }
+
   return {
     support,
     list,
@@ -600,5 +769,10 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     connect,
     describe,
     launch,
+    checks,
+    setup,
+    install,
+    logs,
+    audio,
   }
 }

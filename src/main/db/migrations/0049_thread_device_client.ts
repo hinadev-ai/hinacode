@@ -6,4 +6,5 @@ export default Effect.gen(function* () {
   yield* sql`ALTER TABLE thread_device ADD COLUMN client_id TEXT`
   yield* sql`ALTER TABLE thread_device ADD COLUMN client_name TEXT`
   yield* sql`ALTER TABLE thread_device ADD COLUMN claimed_at INTEGER`
+  yield* sql`ALTER TABLE thread_device ADD COLUMN thread_title TEXT`
 })

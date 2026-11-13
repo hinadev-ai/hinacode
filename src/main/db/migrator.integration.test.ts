@@ -58,7 +58,7 @@ describe("runMigrations", () => {
       const sql = yield* SqlClient.SqlClient
       yield* sql`ALTER TABLE thread ADD COLUMN user_skills INTEGER NOT NULL DEFAULT 1 CHECK (user_skills IN (0, 1))`
       yield* sql`DROP TABLE app_connection`
-      for (const column of ["client_id", "client_name", "claimed_at"])
+      for (const column of ["client_id", "client_name", "claimed_at", "thread_title"])
         yield* sql.unsafe(`ALTER TABLE thread_device DROP COLUMN ${column}`)
       yield* restoreAutomationTables
       yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id >= 43`

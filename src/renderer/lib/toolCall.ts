@@ -64,6 +64,8 @@ const ownToolLabels = new Map<string, () => string>([
   ["device_launch", m.tool_own_device_launch],
   ["device_open_url", m.tool_own_device_open_url],
   ["device_describe_ui", m.tool_own_device_describe_ui],
+  ["device_install", m.tool_own_device_install],
+  ["device_logs", m.tool_own_device_logs],
 ])
 
 const OWN_SUMMARY_KEYS = ["title", "url", "query"]

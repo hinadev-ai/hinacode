@@ -1,11 +1,10 @@
 import { Effect, Layer, Option, Schema } from "effect"
 import { type RpcMethod, RpcMethods } from "../../shared/contract.ts"
-import { type Route, routes } from "../../shared/routes.ts"
-import { RemoteAccess } from "../remote/access.ts"
+import { routes } from "../../shared/routes.ts"
 import { type AppServices, type DesktopCalls, dispatch, type HandlerError, RpcCall } from "../rpc.ts"
 import { inlineSource } from "../services/Attachments.ts"
 import { Environments } from "../services/Environments.ts"
-import { Settings } from "../services/Settings.ts"
+import { deviceHub, forwardToHub } from "../services/devices/hub.ts"
 
 const WindowCall = Schema.Struct({ ...RpcCall.fields, environment: Schema.optional(Schema.String) })
 const decodeWindowCall = Schema.decodeUnknownOption(WindowCall)
@@ -26,23 +25,6 @@ const inlineLocalAttachment = (method: RpcMethod, payload: unknown): Effect.Effe
         ),
       )
 
-const deviceHub = (where: Route): Effect.Effect<string | undefined, never, Settings> =>
-  where.to === "owner" && where.orElse === "deviceHub"
-    ? Settings.use((settings) => settings.get).pipe(
-        Effect.map((value) => value.experimental.devicesOn ?? undefined),
-        Effect.orElseSucceed(() => undefined),
-      )
-    : Effect.undefined
-
-const CLAIMS_A_DEVICE: ReadonlySet<RpcMethod> = new Set(["device.attach", "device.create"])
-
-const asHubClient = (method: RpcMethod, payload: unknown): Effect.Effect<unknown, never, RemoteAccess> =>
-  CLAIMS_A_DEVICE.has(method) && typeof payload === "object" && payload !== null
-    ? RemoteAccess.use(({ identity }) =>
-        Effect.succeed({ ...payload, client: { id: identity.id, name: identity.name } }),
-      )
-    : Effect.succeed(payload)
-
 export const route = (raw: unknown, desktop: DesktopCalls | null) =>
   Effect.gen(function* () {
     const decoded = Option.getOrUndefined(decodeWindowCall(raw))
@@ -52,11 +34,10 @@ export const route = (raw: unknown, desktop: DesktopCalls | null) =>
     const where = routes[method]
     const owned = where.to === "owner" ? payloadId(payload, where.key) : undefined
     const owner = where.to === "owner" && owned !== undefined ? environments.owner(where.entity, owned) : undefined
-    const hub = owner === undefined ? yield* deviceHub(where) : undefined
+    const hub =
+      owner === undefined && where.to === "owner" && where.orElse === "deviceHub" ? yield* deviceHub : undefined
     if (hub !== undefined) {
-      return yield* asHubClient(method, payload).pipe(
-        Effect.flatMap((forwarded) => environments.forward(hub, { method, payload: forwarded })),
-      )
+      return yield* forwardToHub(hub, method, payload)
     }
     const target = where.to === "named" ? environment : owner
     if (target !== undefined) {

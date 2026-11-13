@@ -37,6 +37,7 @@ import * as AgentAccounts from "../services/AgentAccounts.ts"
 import { AgentRunner, layer as runnerLayer } from "../services/AgentRunner.ts"
 import { ThreadNaming } from "../services/ThreadNaming.ts"
 import { Events, PushBroadcast } from "../services/Events.ts"
+import { Environments } from "../services/Environments.ts"
 import * as Git from "../services/Git.ts"
 import * as GitHub from "../services/GitHub.ts"
 import * as Messages from "../services/Messages.ts"
@@ -183,6 +184,7 @@ const stubs = Layer.mergeAll(
   Layer.succeed(MagpieProvider, fakeProvider("magpie")),
   Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
   Layer.succeed(PushBroadcast, { subscribe: () => Effect.void }),
+  Layer.mock(Environments, { list: Effect.succeed({ clouds: [] }), owner: () => undefined }),
   Layer.succeed(
     Peers,
     Peers.of({

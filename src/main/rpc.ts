@@ -519,6 +519,7 @@ const handlers: Handlers = {
   "terminal.attach": ({ id, since }) => Terminals.use((terminals) => terminals.attach(id, since)),
 
   "devices.list": () => Devices.use((devices) => devices.list()),
+  "devices.checks": () => Devices.use((devices) => devices.checks()),
   "device.get": ({ threadId }) => Devices.use((devices) => devices.get(threadId)),
   "device.attach": ({ threadId, deviceId, client }) =>
     Devices.use((devices) => devices.attach(threadId, deviceId, client)),
@@ -531,6 +532,28 @@ const handlers: Handlers = {
   "device.control": ({ threadId, deviceId, control }) =>
     Devices.use((devices) => devices.control(threadId, deviceId, control)),
   "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
+  "devices.claim": (input) => Devices.use((devices) => devices.claim(input)),
+  "devices.release": ({ clientId }) => Devices.use((devices) => devices.release(clientId)),
+  "devices.setup": ({ requirement }) => Devices.use((devices) => devices.setup(requirement)),
+  "device.act": ({ threadId, device, action, input, client }) =>
+    Devices.use((devices) => devices.act(threadId, device, action, input, client)),
+  "device.look": ({ threadId, device, client }) =>
+    Devices.use((devices) =>
+      Effect.map(devices.screenshot(threadId, device, client), ({ frame, state, screen }) => ({
+        frame,
+        device: state.device,
+        screen,
+      })),
+    ),
+  "device.describe": ({ threadId, device, client }) =>
+    Devices.use((devices) => devices.describe(threadId, device, client)),
+  "device.launch": ({ threadId, device, app, client }) =>
+    Devices.use((devices) => devices.launch(threadId, device, app, client)),
+  "device.logs": (input) => Devices.use((devices) => devices.logs(input)),
+  "device.install.begin": (input) => Devices.use((devices) => devices.uploadBegin(input)),
+  "device.install.chunk": (input) => Devices.use((devices) => devices.uploadChunk(input)),
+  "device.install.end": (input) => Devices.use((devices) => devices.uploadEnd(input)),
+  "device.audio": (input) => Devices.use((devices) => devices.audio(input)),
   "device.screenshot.save": ({ threadId, dataUrl, name }) =>
     Attachments.use((attachments) => attachments.stage(threadId, { dataUrl, name })),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),

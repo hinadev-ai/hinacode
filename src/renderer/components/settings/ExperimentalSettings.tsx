@@ -10,7 +10,7 @@ import type {
 } from "../../../shared/domain.ts"
 import { formatEnvLines, parseEnvLines } from "../../lib/envLines.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { updateSettingsAtom, vmHostAtom } from "../../lib/rpc.ts"
+import { deviceChecksAtom, type EnvironmentId, updateSettingsAtom, vmHostAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { useClouds, useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
@@ -19,6 +19,7 @@ import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from ".
 import { Switch } from "../ui/switch.tsx"
 import { Textarea } from "../ui/textarea.tsx"
 import { VmTemplateSelect } from "../sidePanel/TinyVmView.tsx"
+import { readinessSummary } from "../sidePanel/devices/deviceHub.ts"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { SecretField } from "./IntegrationSettings.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
@@ -192,18 +193,31 @@ function DevicesOnField({ value, onChange }: { value: string | null; onChange: (
         onValueChange={(next) => typeof next === "string" && onChange(next === THIS_MACHINE ? null : next)}
       >
         <SelectTrigger id="settings-experimental-devices-on">
-          <SelectValue />
+          <SelectValue>{(selected: string) => items.find((item) => item.value === selected)?.label}</SelectValue>
         </SelectTrigger>
-        <SelectContent>
-          {items.map((item) => (
-            <SelectItem key={item.value} value={item.value}>
-              {item.label}
+        <SelectContent alignItemWithTrigger={false} align="end" className="w-auto min-w-(--anchor-width)">
+          <SelectItem value={THIS_MACHINE}>
+            <MachineReadiness name={m.environment_this_machine()} environment={null} />
+          </SelectItem>
+          {clouds.map((cloud) => (
+            <SelectItem key={cloud.id} value={cloud.id}>
+              {cloud.status === "connected" ? (
+                <MachineReadiness name={cloud.name} environment={cloud.id} />
+              ) : (
+                m.settings_devices_on_option({ name: cloud.name, summary: m.devices_summary_offline() })
+              )}
             </SelectItem>
           ))}
+          {missing && <SelectItem value={value}>{m.settings_devices_on_missing({ id: value })}</SelectItem>}
         </SelectContent>
       </Select>
     </Field>
   )
+}
+
+function MachineReadiness({ name, environment }: { name: string; environment: EnvironmentId }) {
+  const checks = AsyncResult.getOrElse(useAtomValue(deviceChecksAtom(environment)), () => null)
+  return checks === null ? name : m.settings_devices_on_option({ name, summary: readinessSummary(checks) })
 }
 
 function BoatKeyField() {

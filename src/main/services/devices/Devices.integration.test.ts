@@ -1,4 +1,7 @@
-import { mkdtempSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, layer } from "@effect/vitest"
@@ -23,6 +26,8 @@ const RACE_DEVICE: DeviceId = "ios:55555555-5555-5555-5555-555555555555"
 const REMEMBERED_DEVICE: DeviceId = "ios:66666666-6666-6666-6666-666666666666"
 const LANDSCAPE_DEVICE: DeviceId = "ios:77777777-7777-7777-7777-777777777777"
 const CREATED_DEVICE: DeviceId = "ios:22222222-2222-2222-2222-222222222222"
+const OTHER_CLIENTS_DEVICE: DeviceId = "ios:88888888-8888-8888-8888-888888888888"
+let nextCreated = CREATED_DEVICE
 
 const removed: Array<DeviceId> = []
 let failingRemovals = 0
@@ -30,6 +35,7 @@ let removalsOfMissing = 0
 let removalGate: Promise<void> | undefined
 let removalStarted = false
 const launched: Array<DeviceId> = []
+const installed: Array<{ readonly id: DeviceId; readonly path: string; readonly plist: string }> = []
 const published: Array<PushEvent> = []
 const sent: Array<{ readonly deviceId: DeviceId; readonly command: DeviceCommand }> = []
 const devices = new Map<DeviceId, Device>([
@@ -38,6 +44,7 @@ const devices = new Map<DeviceId, Device>([
     {
       id: USERS_DEVICE,
       platform: "ios",
+      holders: [],
       name: "Someone's iPhone",
       osVersion: "iOS 27.0",
       state: "booted",
@@ -53,6 +60,13 @@ devices.set(SPARE_DEVICE, { ...devices.get(USERS_DEVICE)!, id: SPARE_DEVICE, nam
 
 devices.set(LANDSCAPE_DEVICE, { ...devices.get(USERS_DEVICE)!, id: LANDSCAPE_DEVICE, name: "Sideways iPhone" })
 devices.set(RACE_DEVICE, { ...devices.get(USERS_DEVICE)!, id: RACE_DEVICE, name: "Race fixture" })
+const SOUND_DEVICE: DeviceId = "ios:99999999-9999-9999-9999-999999999999"
+devices.set(SOUND_DEVICE, { ...devices.get(USERS_DEVICE)!, id: SOUND_DEVICE, name: "Loud iPhone" })
+
+const sound = { play: (_pcm: Buffer) => {}, producers: 0, closed: 0 }
+const SECOND_OF_PCM = 48_000 * 2 * 2
+const heard = (chunks: ReadonlyArray<{ readonly data: string }>) =>
+  chunks.map((chunk) => Buffer.from(chunk.data, "base64").toString())
 
 const RIGHT_EDGE = { x: 1.5, y: 0.25, width: 0.5, height: 0.5 }
 
@@ -61,9 +75,11 @@ const ios: DevicePlatformDriver = {
   list: () => Promise.resolve([...devices.values()]),
   boot: () => Promise.resolve(),
   create: async (name, _model, _onStep, onCreated) => {
-    devices.set(CREATED_DEVICE, { ...devices.get(USERS_DEVICE)!, id: CREATED_DEVICE, name })
-    await onCreated(CREATED_DEVICE)
-    return CREATED_DEVICE
+    const id = nextCreated
+    nextCreated = CREATED_DEVICE
+    devices.set(id, { ...devices.get(USERS_DEVICE)!, id, name })
+    await onCreated(id)
+    return id
   },
   remove: async (id) => {
     removalStarted = true
@@ -81,8 +97,22 @@ const ios: DevicePlatformDriver = {
     return Promise.resolve()
   },
   launch: (id) => Promise.resolve(void launched.push(id)),
+  install: async (id, path) => {
+    installed.push({ id, path, plist: await readFile(join(path, "Info.plist"), "utf8") })
+    return "com.example.demo"
+  },
   describe: () =>
     Promise.resolve([{ role: "button", label: "Right edge", identifier: "", value: "", frame: RIGHT_EDGE }]),
+  audio: (_id, onPcm) => {
+    sound.play = onPcm
+    sound.producers += 1
+    return Promise.resolve({
+      rate: 48_000,
+      channels: 2,
+      ended: new Promise<string>(() => {}),
+      close: () => Promise.resolve(void (sound.closed += 1)),
+    })
+  },
   connect: (id, onFrame) => {
     onFrame(
       id === LANDSCAPE_DEVICE
@@ -100,7 +130,7 @@ const ios: DevicePlatformDriver = {
 
 const testLayer = devicesLayer({
   drivers: { ios, android: unavailableDriver({ kind: "missing", tool: "androidSdk" }) },
-  simslimAvailable: () => Promise.resolve(true),
+  uploadsDir: join(mkdtempSync(join(tmpdir(), "kk-devices-uploads-")), "uploads"),
 }).pipe(
   Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-devices-settings-")))),
   Layer.provide(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void published.push(event)) })),
@@ -182,6 +212,37 @@ describe("Devices", () => {
         )
         expect(rows).toEqual([{ clientName: "laptop" }])
         yield* service.detach(remoteThreadId, CREATED_DEVICE)
+      }),
+    )
+
+    it.effect("releases one client's devices, deleting only the simulators its threads created", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const laptop = { id: "laptop-id", name: "laptop" }
+        const desktop = { id: "desktop-id", name: "desktop" }
+        const laptopCreating = "0b0c4f7e-1d3b-4a51-9a39-3c3d2f6c9e11"
+        const laptopAttaching = "0b0c4f7e-1d3b-4a51-9a39-3c3d2f6c9e12"
+        const desktopCreating = "0b0c4f7e-1d3b-4a51-9a39-3c3d2f6c9e13"
+        removed.length = 0
+        expect((yield* service.create(laptopCreating, undefined, laptop)).phase).toBe("ready")
+        expect((yield* service.attach(laptopAttaching, USERS_DEVICE, laptop)).phase).toBe("ready")
+        nextCreated = OTHER_CLIENTS_DEVICE
+        expect((yield* service.create(desktopCreating, undefined, desktop)).phase).toBe("ready")
+
+        const holders = (yield* service.list()).devices.find((device) => device.id === OTHER_CLIENTS_DEVICE)?.holders
+        expect(holders?.map(({ client, clientId, threadId }) => ({ client, clientId, threadId }))).toEqual([
+          { client: "desktop", clientId: desktop.id, threadId: desktopCreating },
+        ])
+
+        yield* service.release(laptop.id)
+        expect(removed).toEqual([CREATED_DEVICE])
+        expect(devices.has(USERS_DEVICE)).toBe(true)
+        const rows = yield* SqlClient.SqlClient.use(
+          (sql) => sql`SELECT thread_id, device_id FROM thread_device WHERE client_id IS NOT NULL`,
+        )
+        expect(rows).toEqual([{ threadId: desktopCreating, deviceId: OTHER_CLIENTS_DEVICE }])
+        yield* service.release(desktop.id)
+        expect(removed).toEqual([CREATED_DEVICE, OTHER_CLIENTS_DEVICE])
       }),
     )
 
@@ -390,6 +451,41 @@ describe("Devices", () => {
       }),
     )
 
+    it.effect("streams sound in order, skips a late listener to the newest, and stops once nobody listens", () =>
+      Effect.gen(function* () {
+        const settings = yield* Settings
+        yield* settings.set({ experimental: { ...(yield* settings.get).experimental, devices: true } })
+        const service = yield* Devices
+        while (!service.enabled()) yield* Effect.yieldNow
+        const { threadId } = yield* seedThread({ rootPath: "/tmp/kk-devices-sound" })
+        yield* service.attach(threadId, SOUND_DEVICE)
+        const listen = (after: number) => service.audio({ threadId, deviceId: SOUND_DEVICE, after })
+
+        const silence = yield* listen(-1)
+        expect(silence).toEqual({ rate: 48_000, channels: 2, chunks: [] })
+        expect(sound.producers).toBe(1)
+
+        for (const note of ["do", "re", "mi"]) sound.play(Buffer.from(note))
+        const song = yield* listen(0)
+        expect(heard(song.chunks)).toEqual(["do", "re", "mi"])
+        const sequences = song.chunks.map((chunk) => chunk.sequence)
+        expect(sequences).toEqual(sequences.toSorted((a, b) => a - b))
+        const caughtUp = sequences.at(-1)!
+
+        for (const fill of ["x", "y", "z"]) sound.play(Buffer.alloc(SECOND_OF_PCM, fill))
+        const late = yield* listen(caughtUp)
+        expect(late.chunks.map((chunk) => Buffer.from(chunk.data, "base64")[0])).toEqual(["z".charCodeAt(0)])
+        expect(late.chunks[0]!.sequence).toBe(caughtUp + 3)
+        expect(sound.producers).toBe(1)
+
+        yield* TestClock.adjust("6 seconds")
+        expect(sound.closed).toBe(0)
+        yield* TestClock.adjust("6 seconds")
+        yield* eventually(() => sound.closed === 1)
+        expect(sound.closed).toBe(1)
+      }),
+    )
+
     it.effect("leaves an archived thread's simulator alone while devices are off", () =>
       Effect.gen(function* () {
         const settings = yield* Settings
@@ -415,5 +511,57 @@ describe("Devices", () => {
         expect(removed).toEqual([CREATED_DEVICE])
       }),
     )
+
+    it.effect("installs an uploaded .app only when its chunks arrive in order and its hash matches", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const { threadId } = yield* seedThread({ rootPath: "/tmp/kk-devices-upload" })
+        yield* service.attach(threadId, SECOND_DEVICE)
+        const archive = demoAppArchive()
+        const sha256 = createHash("sha256").update(archive).digest("hex")
+        const half = Math.ceil(archive.length / 2)
+        const chunks = [archive.subarray(0, half), archive.subarray(half)].map((part) => part.toString("base64"))
+        const upload = Effect.gen(function* () {
+          const { uploadId } = yield* service.uploadBegin({ threadId, kind: "app", bytes: archive.length })
+          for (const [index, data] of chunks.entries()) yield* service.uploadChunk({ threadId, uploadId, index, data })
+          return uploadId
+        })
+        installed.length = 0
+
+        const tampered = yield* upload
+        const wrongHash = yield* Effect.flip(
+          service.uploadEnd({ threadId, uploadId: tampered, sha256: "0".repeat(64) }),
+        )
+        expect(wrongHash.message).toContain("SHA-256")
+
+        const skipping = yield* service.uploadBegin({ threadId, kind: "app", bytes: archive.length })
+        const outOfOrder = yield* Effect.flip(
+          service.uploadChunk({ threadId, uploadId: skipping.uploadId, index: 1, data: chunks[1]! }),
+        )
+        expect(outOfOrder.message).toContain("Expected chunk 0")
+        expect(installed).toEqual([])
+
+        const uploadId = yield* upload
+        expect(yield* service.uploadEnd({ threadId, uploadId, sha256 })).toEqual({
+          device: "Someone's iPad",
+          app: "com.example.demo",
+        })
+        expect(installed).toEqual([
+          { id: SECOND_DEVICE, path: expect.stringMatching(/\/Demo\.app$/), plist: "<plist/>" },
+        ])
+        expect(existsSync(installed[0]!.path)).toBe(false)
+        yield* service.detach(threadId, SECOND_DEVICE)
+      }),
+    )
   })
 })
+
+const demoAppArchive = () => {
+  const dir = mkdtempSync(join(tmpdir(), "kk-devices-demo-app-"))
+  mkdirSync(join(dir, "Demo.app"))
+  writeFileSync(join(dir, "Demo.app", "Info.plist"), "<plist/>")
+  execFileSync("tar", ["-cf", join(dir, "Demo.tar"), "-C", dir, "Demo.app"], {
+    env: { ...process.env, COPYFILE_DISABLE: "1" },
+  })
+  return readFileSync(join(dir, "Demo.tar"))
+}
