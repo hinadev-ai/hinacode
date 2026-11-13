@@ -68,7 +68,7 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   steer: (threadId, text) => {
     if (text.includes(STALLS_STEER)) return Deferred.succeed(stalledSteer, undefined).pipe(Effect.andThen(Effect.never))
     if (text.includes(REFUSES_STEER)) return Effect.fail(new AgentError({ provider: id, message: "steer refused" }))
-    return receive(threadId, text)
+    return receive(threadId, text).pipe(Effect.as(true))
   },
   interrupt: () => Effect.void,
   respondApproval: () => Effect.succeed(false),

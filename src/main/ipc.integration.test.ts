@@ -297,7 +297,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
       )
     }),
   ...(id === "claude" ? { wakes: Stream.fromQueue(claudeWakes) } : {}),
-  steer: () => Effect.void,
+  steer: () => Effect.succeed(true),
   interrupt: (threadId) => Effect.sync(() => void interruptedThreads.push(threadId)),
   stopSubagent: (threadId, subagentId) => Effect.sync(() => void stoppedSubagents.push({ threadId, subagentId })),
   respondApproval: (requestId, decision, note) =>

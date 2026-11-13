@@ -482,6 +482,38 @@ describe("Claude idle sessions", () => {
     ),
   )
 
+  it.effect("refuses a steer until its turn opens, then queues it after the turn's prompt", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        yield* runTurn()
+        const switching = Promise.withResolvers<void>()
+        sdk.setModel = () => switching.promise
+        sdk.respond = () => undefined
+        let opened = false
+        const turn = yield* startTurn(
+          turnInput({ model: "claude-opus-5-5", onOpen: Effect.sync(() => void (opened = true)) }),
+        )
+        yield* until(() => latestCli().setModel.mock.calls.length === 1)
+
+        expect(yield* provider.steer!("thread-1", "Too early", [], "now")).toBe(false)
+        expect(opened).toBe(false)
+
+        switching.resolve()
+        yield* until(() => opened)
+        expect(yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")).toBe(true)
+        yield* until(() => latestCli().prompts.length === 3)
+        const [prompt, steer] = latestCli().prompts.slice(1)
+        expect(JSON.stringify(prompt?.message.content)).toContain("Hello")
+        expect(JSON.stringify(steer?.message.content)).toContain("Use pnpm instead")
+
+        latestCli().push({ ...succeeded, user_message_uuids: [prompt!.uuid!, steer!.uuid!] })
+        yield* Fiber.join(turn.fiber)
+        expect(turn.events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
   it.effect("lets a steer wait for the running tool call instead of aborting it", () =>
     lifecycle(
       Effect.gen(function* () {

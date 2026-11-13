@@ -156,7 +156,7 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
           return Stream.fromEffect(Deferred.await(done)).pipe(Stream.as({ type: "turn_completed" } as AgentEvent))
         }),
       ),
-    steer: () => Effect.void,
+    steer: () => Effect.succeed(true),
     interrupt: (threadId) => {
       const done = turns.get(threadId)
       return done ? Effect.asVoid(Deferred.succeed(done, undefined)) : Effect.void

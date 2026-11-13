@@ -604,6 +604,7 @@ const make = Effect.gen(function* () {
           )
           const turn = yield* Fiber.join(run.turnStart)
           run.turn = turn
+          yield* input.onOpen ?? Effect.void
 
           const commandOutput = new Map<string, string>()
           const startedTools = new Set<string>()
@@ -993,7 +994,8 @@ const make = Effect.gen(function* () {
       const run = runs.get(threadId)
       const active = run?.turn
       const client = run?.client
-      if (!active || !client?.isAlive()) {
+      if (!active) return false
+      if (!client?.isAlive()) {
         return yield* new AgentError({ provider: "codex", message: "No turn is running on this thread" })
       }
       const params: TurnSteerParams = {
@@ -1002,6 +1004,7 @@ const make = Effect.gen(function* () {
         expectedTurnId: active.turnId,
       }
       yield* client.request("turn/steer", params)
+      return true
     })
 
   const respondApproval = (requestId: string, decision: ApprovalDecision) =>
