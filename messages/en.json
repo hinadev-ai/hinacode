@@ -2780,5 +2780,11 @@
   "site_artifacts_whiteboard_body": "The agent sketches the design. Draw on it, select a part and press Ask.",
   "site_artifacts_whiteboard_alt": "A whiteboard of the relay that an agent drew",
   "site_remote_lede": "Agents run where the code lives. You drive them from the desktop, a browser or your phone.",
+  "mobile_artifact_loading": "Loading the artifact",
+  "mobile_artifact_removed": "This artifact was deleted.",
+  "mobile_artifact_crashed": "This page keeps crashing the viewer.",
+  "mobile_whiteboard_empty": "This whiteboard is empty",
+  "mobile_artifacts_new_document": "New document",
+  "mobile_artifacts_create_failed": "Could not create the document: {message}",
   "site_remote_shot_alt": "A thread running on a Mac mini, waiting for approval in the desktop app"
 }

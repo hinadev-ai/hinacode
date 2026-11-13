@@ -2762,5 +2762,11 @@
   "site_artifacts_whiteboard_body": "智能体画出设计。你在上面画、选中一块，再点「提问」。",
   "site_artifacts_whiteboard_alt": "智能体画的 relay 架构白板",
   "site_remote_lede": "智能体在代码所在的机器上运行，你从桌面、浏览器或手机操控。",
+  "mobile_artifact_loading": "正在加载成品",
+  "mobile_artifact_removed": "这个成品已删除。",
+  "mobile_artifact_crashed": "这个页面反复让查看器崩溃。",
+  "mobile_whiteboard_empty": "这个白板是空的",
+  "mobile_artifacts_new_document": "新建文档",
+  "mobile_artifacts_create_failed": "无法创建文档：{message}",
   "site_remote_shot_alt": "在 Mac mini 上运行、正在等待批准的对话"
 }
