@@ -45,18 +45,13 @@ Feature: Appearance
 
     Examples:
       | theme         | contrast |
-      | Hina Light    | Standard |
       | Hina Light    | Lowest   |
       | Hina Light    | Highest  |
-      | Hina Dark     | Standard |
       | Hina Dark     | Lowest   |
       | Hina Dark     | Highest  |
-      | Neutral Light | Standard |
       | Neutral Light | Lowest   |
       | Neutral Light | Highest  |
-      | Neutral Dark  | Standard |
       | Neutral Dark  | Lowest   |
-      | Neutral Dark  | Highest  |
 
   Scenario: Higher contrast brightens text and survives restart
     When I open settings

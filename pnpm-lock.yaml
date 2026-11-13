@@ -198,7 +198,7 @@ overrides:
   '@anthropic-ai/claude-agent-sdk>@anthropic-ai/claude-agent-sdk-win32-x64': '-'
 
 patchedDependencies:
-  '@legendapp/list@3.6.0': 426c3a855cb95755b0022f1ffde624d54843b0bfbfe324ef820e6a2343137d28
+  '@legendapp/list@3.6.0': 54cd636ccdb5344ce53277d46d6d4ef5208bb92fade738b0054adac5fd358018
   '@tiptap/core@3.32.2': e695bb961460b8c5ad4a38461eb3e1a9104fb2b7e2baf37c47190df0ace411e3
   '@tiptap/extension-table@3.32.2': d310a1d5429d15e6dfe5bc6023d0d54b59304dcb915740521c3c431b85ce812a
   marked@17.0.6: 8fa7a5164c14aa4f41e7bd8971ede0c0faf2a3a2dcf8e75245566970f4fe3802
@@ -333,7 +333,7 @@ importers:
         version: 1.0.68
       '@legendapp/list':
         specifier: 3.6.0
-        version: 3.6.0(patch_hash=426c3a855cb95755b0022f1ffde624d54843b0bfbfe324ef820e6a2343137d28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 3.6.0(patch_hash=54cd636ccdb5344ce53277d46d6d4ef5208bb92fade738b0054adac5fd358018)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@novnc/novnc':
         specifier: 1.7.0
         version: 1.7.0
@@ -10306,7 +10306,7 @@ snapshots:
 
   '@js-sdsl/ordered-map@4.4.2': {}
 
-  '@legendapp/list@3.6.0(patch_hash=426c3a855cb95755b0022f1ffde624d54843b0bfbfe324ef820e6a2343137d28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@legendapp/list@3.6.0(patch_hash=54cd636ccdb5344ce53277d46d6d4ef5208bb92fade738b0054adac5fd358018)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       react: 19.3.0
       use-sync-external-store: 1.7.0(react@19.3.0)
