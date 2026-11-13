@@ -69,6 +69,8 @@ interface Probe {
   readonly setSettings: (patch: Partial<SettingsValue>) => Promise<void>
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision; readonly note?: string }>
   readonly steers: Array<{ readonly text: string; readonly priority: SteerPriority }>
+  readonly refusals: Array<string>
+  readonly failStart: () => void
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
   readonly stops: Array<string>
   readonly setBackgroundTasks: (tasks: ReadonlyArray<BackgroundTask>) => void
@@ -160,6 +162,9 @@ const withPreparingThread = async (
   const modelLists: Probe["modelLists"] = []
   const decisions: Probe["decisions"] = []
   const steers: Probe["steers"] = []
+  const refusals: Probe["refusals"] = []
+  const opening = new Set<string>()
+  const startFailures = Effect.runSync(Queue.unbounded<void>())
   const resolutions = Effect.runSync(Queue.unbounded<AgentEvent>())
   const interruptions = Effect.runSync(Queue.unbounded<AgentEvent>())
   const limits = Effect.runSync(Queue.unbounded<AgentEvent>())
@@ -242,6 +247,18 @@ const withPreparingThread = async (
           Stream.takeUntil(({ type }) => type === "turn_failed"),
         )
         if (input.prompt === "waits for Stop") return untilStopped
+        if (input.prompt === "holds its start" || input.prompt === "holds its start, then fails") {
+          opening.add(input.threadId)
+          const failsStart = Stream.fromQueue(startFailures).pipe(
+            Stream.take(1),
+            Stream.flatMap(() =>
+              Stream.fail(new AgentError({ provider: id, message: "Claude Code is not signed in" })),
+            ),
+          )
+          return (input.prompt === "holds its start" ? untilStopped : failsStart).pipe(
+            Stream.ensuring(Effect.sync(() => opening.delete(input.threadId))),
+          )
+        }
         if (input.prompt === "spawns a sub-agent, then waits for Stop") {
           return Stream.concat(Stream.make(nativeSubagent("running")), untilStopped)
         }
@@ -345,8 +362,12 @@ const withPreparingThread = async (
         ? Effect.fail(new AgentError({ provider: id, message: "The session did not leave" }))
         : Effect.sync(() => calls.push({ provider: id, call: "closeSession" })),
     ...(id !== "opencode" && {
-      steer: (_threadId: string, text: string, _attachments: unknown, priority: SteerPriority) =>
+      steer: (threadId: string, text: string, _attachments: unknown, priority: SteerPriority) =>
         Effect.sync(() => {
+          if (opening.has(threadId)) {
+            refusals.push(text)
+            return false
+          }
           steers.push({ text, priority })
           return true
         }),
@@ -530,6 +551,8 @@ const withPreparingThread = async (
           domainRuntime.runPromise(Settings.Settings.use((settings) => settings.set(patch)).pipe(Effect.asVoid)),
         decisions,
         steers,
+        refusals,
+        failStart: () => Queue.offerUnsafe(startFailures, undefined),
         calls,
         stops,
         setBackgroundTasks: (tasks) => Queue.offerUnsafe(backgroundTaskChanges, { threadId: thread.id, tasks }),
@@ -1346,6 +1369,36 @@ it("starts a turn with a steer that waited for the previous turn to finish", asy
   })
 })
 
+const steerDuringStartThenEnd = (prompt: string, end: (probe: Probe) => Promise<void>) =>
+  withPreparingThread(async (probe) => {
+    const { runner, threads, thread, release, turns, steers, refusals, storedMessages } = probe
+    release()
+    await Effect.runPromise(runner.send(thread.id, prompt, []))
+    await vi.waitFor(() => expect(turns).toHaveLength(1))
+    const steering = Effect.runPromise(runner.steer(thread.id, "steered", []))
+    await vi.waitFor(() => expect(refusals).toStrictEqual(["steered"]))
+
+    await end(probe)
+    await steering
+
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).not.toBe("running"))
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([
+      { id: expect.any(String), text: "steered", attachments: [] },
+    ])
+    expect(turns).toHaveLength(1)
+    expect(steers).toStrictEqual([])
+    const users = (await storedMessages(thread.id)).filter((message) => message.role === "user")
+    expect(
+      users.map((message) => JSON.stringify(message.parts)).filter((parts) => parts.includes("steered")),
+    ).toStrictEqual([])
+  })
+
+it("queues a steer sent while the turn starts when Stop ends that turn", () =>
+  steerDuringStartThenEnd("holds its start", ({ runner, thread }) => Effect.runPromise(runner.interrupt(thread.id))))
+
+it("queues a steer sent while the turn starts when the start fails", () =>
+  steerDuringStartThenEnd("holds its start, then fails", async ({ failStart }) => failStart()))
+
 it("releases an idle thread by stopping its sub-agents and every task, shells too, and closing its session", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, calls, stops, setBackgroundTasks }) => {
     release()
@@ -1982,18 +2035,22 @@ it("cancels a scheduled message that is waiting on its worktree", async () => {
   })
 })
 
-const fakeClaudeCli = Layer.effect(
-  ClaudeProvider,
-  Effect.map(
-    makeClaudeHarness({ id: "claude", listModels: Effect.succeed([]), launchEnv: () => Effect.succeed({}) }),
-    (harness) =>
-      ClaudeProvider.of({
-        ...harness,
-        account: () => Effect.succeed({ type: "apiKey" }),
-        planLimits: () => Effect.succeed(null),
-      }),
-  ),
-)
+const claudeCli = (onSteerAnswered: () => void = () => {}) =>
+  Layer.effect(
+    ClaudeProvider,
+    Effect.map(
+      makeClaudeHarness({ id: "claude", listModels: Effect.succeed([]), launchEnv: () => Effect.succeed({}) }),
+      (harness) =>
+        ClaudeProvider.of({
+          ...harness,
+          steer: (...args) => harness.steer!(...args).pipe(Effect.ensuring(Effect.sync(onSteerAnswered))),
+          account: () => Effect.succeed({ type: "apiKey" }),
+          planLimits: () => Effect.succeed(null),
+        }),
+    ),
+  )
+
+const fakeClaudeCli = claudeCli()
 
 const fakeClaudeHome = () => {
   const dir = mkdtempSync(join(tmpdir(), "kk-runner-claude-home-"))
@@ -2109,6 +2166,7 @@ it("clears the stored session when Stop is followed by a lost session", async ()
 
 it("steers a Claude turn that has not opened yet into that turn", async () => {
   const home = fakeClaudeHome()
+  const steerAnswered = Promise.withResolvers<void>()
   await withPreparingThread(
     async ({ runner, threads, accounts, thread, release, storedMessages }) => {
       release()
@@ -2139,9 +2197,10 @@ it("steers a Claude turn that has not opened yet into that turn", async () => {
         timeout: 15_000,
       })
       expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running")
-      const steered = Effect.runPromise(runner.steer(thread.id, "steered", []))
+      const steered = Effect.runPromiseExit(runner.steer(thread.id, "steered", []))
+      await steerAnswered.promise
       writeFileSync(join(home.dir, "release-set-model"), "")
-      await steered
+      expect(await steered).toStrictEqual(Exit.void)
 
       await vi.waitFor(() => expect(promptTexts().filter((text) => /first|steered/.test(text))).toHaveLength(2), {
         timeout: 15_000,
@@ -2153,6 +2212,6 @@ it("steers a Claude turn that has not opened yet into that turn", async () => {
         users.map((message) => JSON.stringify(message.parts)).filter((parts) => parts.includes("steered")),
       ).toHaveLength(1)
     },
-    { claude: fakeClaudeCli },
+    { claude: claudeCli(() => steerAnswered.resolve()) },
   )
 }, 30_000)
