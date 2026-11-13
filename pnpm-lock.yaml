@@ -249,9 +249,6 @@ importers:
       playwright-core:
         specifier: 1.64.0
         version: 1.64.0
-      qrcode:
-        specifier: ^1.5.4
-        version: 1.5.4
       undici:
         specifier: 7.30.0
         version: 7.30.0
@@ -499,6 +496,9 @@ importers:
       playwright-bdd:
         specifier: 9.2.1
         version: 9.2.1(@playwright/test@1.64.0)
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       react:
         specifier: 19.3.0
         version: 19.3.0
