@@ -523,7 +523,7 @@ export const RpcMethods = {
   "subagents.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Subagent)),
   "subagents.stop": rpc(Schema.Struct({ threadId: Schema.String, subagentId: Schema.String }), Schema.Void),
   "subagents.transcript": rpc(
-    Schema.Struct({ threadId: Schema.String, callId: Schema.String }),
+    Schema.Struct({ threadId: Schema.String, callId: Schema.String, compact: Schema.optional(Schema.Boolean) }),
     Schema.Struct({
       spawn: Schema.NullOr(MessagePart),
       calls: Schema.Array(MessagePart),

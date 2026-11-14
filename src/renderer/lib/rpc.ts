@@ -618,8 +618,8 @@ export const accountLimitsAtom = Atom.make((get) => {
   )
 }).pipe(Atom.swr({ staleTime: "5 minutes", revalidateOnFocus: true, focusSignal: windowReturnSignal }))
 
-export const remoteStatusAtom = Atom.make(call("remote.status", undefined)).pipe(
-  refreshInStepWhileVisible(Duration.seconds(2)),
+export const remoteStatusAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(call("remote.status", undefined, { environment })).pipe(refreshInStepWhileVisible(Duration.seconds(2))),
 )
 
 export const machineResourcesAtom = Atom.family((environment: EnvironmentId) =>

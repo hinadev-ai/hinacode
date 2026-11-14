@@ -15,12 +15,16 @@ import { NotificationSettings } from "../components/settings/NotificationSetting
 import { RemoteSettings } from "../components/settings/RemoteSettings.tsx"
 import { RoutineSettings } from "../components/settings/routines/RoutineSettings.tsx"
 import { SettingsNav, settingsPageOf, useLeaveSettings } from "../components/settings/SettingsNav.tsx"
-import { PageActionSlotProvider, SETTINGS_FILL_WIDTH } from "../components/settings/SettingsSection.tsx"
+import {
+  PageActionSlotProvider,
+  SETTINGS_FILL_WIDTH,
+  SettingsSection,
+} from "../components/settings/SettingsSection.tsx"
 import { UsageSettings } from "../components/settings/UsageSettings.tsx"
 import { WorktreeSettings } from "../components/settings/WorktreeSettings.tsx"
 import { Button } from "../components/ui/button.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select.tsx"
-import { type Cloud, environmentName, useClouds, useSettingsEnvironment } from "../lib/environments.ts"
+import { environmentName, useClouds, useSettingsEnvironment } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { type EnvironmentId, settingsAtom } from "../lib/rpc.ts"
@@ -29,13 +33,20 @@ import { inBrowser } from "../lib/runtime.ts"
 import { CloudIcon, LaptopIcon } from "@hinacode/icons"
 
 function ConnectionSettings() {
+  const environment = useSettingsEnvironment()
   return (
     <div className="flex flex-col gap-12">
       <EnvironmentSettings />
       {!inBrowser() && (
-        <LoadedSettings environment={null}>
-          <RemoteSettings />
-        </LoadedSettings>
+        <SettingsSection
+          title={m.settings_remote()}
+          description={m.remote_description()}
+          action={<SettingsEnvironmentPicker labelId="remote-environment" />}
+        >
+          <LoadedSettings key={environment ?? ""} environment={environment}>
+            <RemoteSettings />
+          </LoadedSettings>
+        </SettingsSection>
       )}
     </div>
   )
@@ -57,10 +68,8 @@ const components: Record<string, ComponentType> = {
 
 export function SettingsRoute() {
   const { page: pageId } = useSearch({ from: "/settings" })
-  const navigate = useNavigate({ from: "/settings" })
   const leave = useLeaveSettings()
   const environment = useSettingsEnvironment()
-  const clouds = useClouds()
   const page = settingsPageOf(pageId)
   const Page = components[page.id]!
   const compact = usePanelLayout() === "compact"
@@ -98,19 +107,7 @@ export function SettingsRoute() {
               {page.description && <p className="text-sm text-pretty text-muted-foreground">{page.description()}</p>}
             </div>
             <div ref={setActionSlot} className="flex shrink-0 items-center gap-2 empty:hidden" />
-            {page.scope === "environment" && clouds.length > 0 && (
-              <EnvironmentPicker
-                labelId="settings-environment"
-                value={environment}
-                clouds={clouds}
-                onChange={(next) =>
-                  void navigate({
-                    search: (previous) => ({ ...previous, environment: next ?? undefined }),
-                    replace: true,
-                  })
-                }
-              />
-            )}
+            {page.scope === "environment" && <SettingsEnvironmentPicker labelId="settings-environment" />}
           </div>
         </header>
         {page.fill ? (
@@ -127,14 +124,13 @@ export function SettingsRoute() {
 
 const THIS_MACHINE = ""
 
-interface EnvironmentPickerProps {
-  readonly labelId: string
-  readonly value: EnvironmentId
-  readonly clouds: ReadonlyArray<Cloud>
-  readonly onChange: (environment: EnvironmentId) => void
-}
-
-function EnvironmentPicker({ labelId, value, clouds, onChange }: EnvironmentPickerProps) {
+function SettingsEnvironmentPicker({ labelId }: { labelId: string }) {
+  const navigate = useNavigate({ from: "/settings" })
+  const value = useSettingsEnvironment()
+  const clouds = useClouds()
+  if (clouds.length === 0) return null
+  const onChange = (next: EnvironmentId) =>
+    void navigate({ search: (previous) => ({ ...previous, environment: next ?? undefined }), replace: true })
   const items = [
     ...(inBrowser() ? [] : [{ value: THIS_MACHINE, label: m.environment_this_machine() }]),
     ...clouds.map((cloud) => ({ value: cloud.id, label: cloud.name })),

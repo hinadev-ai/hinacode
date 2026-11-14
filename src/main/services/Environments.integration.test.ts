@@ -455,6 +455,18 @@ describe("desktop environments", () => {
     expect(onCloud?.title).toBe("sent while offline")
   })
 
+  test("moving a cloud's listener over the link it answers on still answers, and the desktop finds it again", async () => {
+    const connections = () => electron.pushes.filter(statusOf(cloudId, "connected")).length
+    const before = connections()
+
+    const moved = result(await invoke("settings.set", { remote: { bindHost: "private" } }, cloudId))
+    expect(moved.remote).toStrictEqual({ enabled: true, bindHost: "private", port: cloudPort })
+
+    await vi.waitFor(() => expect(connections()).toBe(before + 1))
+    expect(result(await invoke("settings.get", undefined, cloudId)).remote.bindHost).toBe("private")
+    expect(result(await invoke("remote.status", undefined, cloudId))).toMatchObject({ listening: true, connected: 1 })
+  })
+
   test("removing a cloud forgets it and its token", async () => {
     result(await invoke("environments.remove", { id: cloudId }))
     expect(result(await invoke("environments.list", undefined))).toStrictEqual({ clouds: [] })

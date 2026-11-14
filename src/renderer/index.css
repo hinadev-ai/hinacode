@@ -769,6 +769,29 @@
   }
 }
 
+/* A sticky heading that stays clear glass. A fill would stack on the chrome's tint and show as a band, and
+   backdrop-filter paints an opaque band over native vibrancy, so the rows after it are cut at its bottom edge as they
+   scroll under it instead. The inset is the heading's height, h-7 in SectionHeading. */
+@utility glass-sticky-heading {
+  @variant glass {
+    background-color: transparent;
+    & ~ * {
+      animation: clip-under-sticky-heading linear forwards;
+      animation-timeline: view(block calc(var(--spacing) * 7) 0);
+      animation-range: exit;
+    }
+  }
+}
+
+@keyframes clip-under-sticky-heading {
+  from {
+    clip-path: inset(0 -1rem -1rem);
+  }
+  to {
+    clip-path: inset(100% -1rem -1rem);
+  }
+}
+
 /* A field raised off the glass chrome, the capsule macOS 26 draws for search fields. */
 @utility glass-field {
   border-radius: calc(infinity * 1px);

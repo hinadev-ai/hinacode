@@ -96,6 +96,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm format --check
+      - run: node --test scripts/*.test.ts .agents/skills/*/scripts/*.test.ts
       - if: needs.changes.outputs.app == 'true'
         run: pnpm typecheck
       - if: needs.changes.outputs.site == 'true'
@@ -111,7 +112,6 @@ jobs:
       - if: needs.changes.outputs.app == 'true'
         name: Verify the server package
         run: |
-          node --test scripts/server-package.test.ts
           pnpm build:server
           pnpm stage:server
           pnpm verify:server

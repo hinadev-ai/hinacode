@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect } from "@playwright/test"
 import { createBdd, test as base } from "playwright-bdd"
-import { defaultClientSettings } from "../../src/shared/domain.ts"
+import { defaultClientSettings, defaultSettings } from "../../src/shared/domain.ts"
 import { type HinacodeApp, spawnApp } from "./app.ts"
 import type { Listener } from "./listener.ts"
 import { rpc } from "./rpc.ts"
@@ -28,6 +28,10 @@ export interface ChosenModel {
   label: string | null
 }
 
+export interface DetailsWidth {
+  start: number | null
+}
+
 interface TestFixtures {
   readonly usageLimitApp: HinacodeApp
   readonly automaticResumeApp: HinacodeApp
@@ -42,6 +46,7 @@ interface TestFixtures {
   readonly agent: AgentState
   readonly webhook: WebhookState
   readonly chosenModel: ChosenModel
+  readonly detailsWidth: DetailsWidth
 }
 
 interface WorkerFixtures {
@@ -165,6 +170,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   agent: async ({}, provide) => provide({ connection: null, result: null }),
   webhook: async ({}, provide) => provide({ secrets: new Map(), response: null }),
   chosenModel: async ({}, provide) => provide({ label: null }),
+  detailsWidth: async ({}, provide) => provide({ start: null }),
 })
 /* oxlint-enable react/rules-of-hooks, no-empty-pattern */
 
@@ -176,6 +182,8 @@ AfterScenario(async ({ app, $testInfo }) => {
   }
   await rpc(app.page, "settings.set", {
     defaultModel: { claude: null, codex: null, muse: null },
+    providerBinary: defaultSettings.providerBinary,
+    pullRequestGuide: defaultSettings.pullRequestGuide,
     archive: { whenMerged: false, removeWorktree: false },
   })
   await rpc(app.page, "clientSettings.set", {
@@ -188,6 +196,7 @@ AfterScenario(async ({ app, $testInfo }) => {
     localStorage.removeItem("hinacode.sidebarProjects")
     localStorage.removeItem("hinacode.sidebarTab")
     localStorage.removeItem("hinacode.location")
+    for (const key of Object.keys(localStorage)) if (key.endsWith("Width")) localStorage.removeItem(key)
   })
   await app.setWindow({ width: 1280, height: 820, zoom: 1 })
   await app.page.setViewportSize({ width: 1280, height: 820 })

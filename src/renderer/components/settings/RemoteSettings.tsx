@@ -4,12 +4,29 @@ import { Effect } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
 import QRCode from "qrcode"
 import { type FormEvent, useId, useState, useTransition } from "react"
-import { PRIVATE_NETWORKS, type RemotePairing } from "../../../shared/domain.ts"
+import { PRIVATE_NETWORKS, type RemotePairing, type RemoteStatus } from "../../../shared/domain.ts"
 import { isPortInUse, pairingUrl } from "../../../shared/remote.ts"
+import { type Cloud, cloudAddress, useCloud, useSettingsEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { callPromise, remotePairingAtom, remoteStatusAtom, updateSettingsAtom } from "../../lib/rpc.ts"
+import {
+  callPromise,
+  type EnvironmentId,
+  remotePairingAtom,
+  remoteStatusAtom,
+  updateSettingsAtom,
+} from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog.tsx"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
@@ -17,13 +34,15 @@ import { Switch } from "../ui/switch.tsx"
 import { AppConnectionsSettings } from "./AppConnectionsSettings.tsx"
 import { BindHostSelect, LOOPBACK } from "./BindHostSelect.tsx"
 import { CopyField } from "./CopyField.tsx"
-import { SettingsGroup, SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
+import { SettingsGroup, settingsSurfaceClass } from "./SettingsSection.tsx"
 
 type RemoteSettingsValue = ReturnType<typeof useSettings>["remote"]
 
 export function RemoteSettings() {
-  const { remote } = useSettings(null)
-  const updateSettings = useAtomSet(updateSettingsAtom(null), { mode: "promise" })
+  const environment = useSettingsEnvironment()
+  const onThisMachine = environment === null
+  const { remote } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -38,30 +57,32 @@ export function RemoteSettings() {
     })
 
   return (
-    <SettingsSection title={m.settings_remote()} description={m.remote_description()}>
+    <>
       <SettingsGroup>
         <div className="flex flex-col gap-3">
-          <Field orientation="horizontal">
-            <FieldContent>
-              <FieldLabel htmlFor="remote-enabled">{m.remote_enable_label()}</FieldLabel>
-              <FieldDescription>{m.remote_enable_hint()}</FieldDescription>
-            </FieldContent>
-            <Switch
-              id="remote-enabled"
-              checked={remote.enabled}
-              disabled={pending}
-              onCheckedChange={(enabled) => save({ enabled })}
-            />
-          </Field>
-          <RemoteStatusLine remote={remote} />
-          <RelayStatusLine />
+          {onThisMachine && (
+            <Field orientation="horizontal">
+              <FieldContent>
+                <FieldLabel htmlFor="remote-enabled">{m.remote_enable_label()}</FieldLabel>
+                <FieldDescription>{m.remote_enable_hint()}</FieldDescription>
+              </FieldContent>
+              <Switch
+                id="remote-enabled"
+                checked={remote.enabled}
+                disabled={pending}
+                onCheckedChange={(enabled) => save({ enabled })}
+              />
+            </Field>
+          )}
+          <RemoteStatusLine environment={environment} remote={remote} />
+          <RelayStatusLine environment={environment} />
         </div>
-        <ListenerSettings remote={remote} pending={pending} onSave={save} />
+        <ListenerSettings environment={environment} remote={remote} pending={pending} onSave={save} />
       </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
-      {remote.enabled && <PairPhone />}
-      <AppConnectionsSettings />
-    </SettingsSection>
+      {onThisMachine && remote.enabled && <PairPhone />}
+      {onThisMachine && <AppConnectionsSettings />}
+    </>
   )
 }
 
@@ -69,10 +90,14 @@ function StatusDot({ className }: { className: string }) {
   return <span aria-hidden className={cn("size-2 shrink-0 rounded-full", className)} />
 }
 
-function RemoteStatusLine({ remote }: { remote: RemoteSettingsValue }) {
+interface OnMachine {
+  readonly environment: EnvironmentId
+}
+
+function RemoteStatusLine({ environment, remote }: OnMachine & { remote: RemoteSettingsValue }) {
   return (
     <p aria-live="polite" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-      {remote.enabled ? <ListenerStatus remote={remote} /> : <OffStatus />}
+      {remote.enabled ? <ListenerStatus environment={environment} remote={remote} /> : <OffStatus />}
     </p>
   )
 }
@@ -86,8 +111,8 @@ function OffStatus() {
   )
 }
 
-function ListenerStatus({ remote }: { remote: RemoteSettingsValue }) {
-  const status = useAtomValue(remoteStatusAtom)
+function ListenerStatus({ environment, remote }: OnMachine & { remote: RemoteSettingsValue }) {
+  const status = useAtomValue(remoteStatusAtom(environment))
 
   return AsyncResult.builder(status)
     .onInitial(() => <span className="text-muted-foreground">{m.remote_status_checking()}</span>)
@@ -118,18 +143,23 @@ function ListenerStatus({ remote }: { remote: RemoteSettingsValue }) {
     .orElse(() => null)
 }
 
-interface ListenerSettingsProps {
+interface ListenerSettingsProps extends OnMachine {
   readonly remote: RemoteSettingsValue
   readonly pending: boolean
   readonly onSave: (patch: Partial<RemoteSettingsValue>) => void
 }
 
-function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
-  const [port, setPort] = useState(String(remote.port))
+const answersWhereWeDial = (cloud: Cloud, bindHost: string, status: AsyncResult.AsyncResult<RemoteStatus, unknown>) =>
+  bindHost === cloud.host || (AsyncResult.isSuccess(status) && status.value.relay.state === "connected")
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    onSave({ port: Number(port) })
+function ListenerSettings({ environment, remote, pending, onSave }: ListenerSettingsProps) {
+  const cloud = useCloud(environment)
+  const status = useAtomValue(remoteStatusAtom(environment))
+  const [unconfirmedHost, setUnconfirmedHost] = useState<string | null>(null)
+
+  const onBindHost = (bindHost: string) => {
+    if (cloud === undefined || answersWhereWeDial(cloud, bindHost, status)) onSave({ bindHost })
+    else setUnconfirmedHost(bindHost)
   }
 
   return (
@@ -139,30 +169,13 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
           <FieldLabel htmlFor="remote-bind-host">{m.remote_bind_label()}</FieldLabel>
           <BindHostSelect
             id="remote-bind-host"
-            environment={null}
+            environment={environment}
             value={remote.bindHost}
-            onChange={(bindHost) => onSave({ bindHost })}
+            onChange={onBindHost}
             privateNetworks
           />
         </Field>
-        <form onSubmit={onSubmit} className="flex items-end gap-2">
-          <Field className="w-28">
-            <FieldLabel htmlFor="remote-port">{m.remote_port_label()}</FieldLabel>
-            <Input
-              id="remote-port"
-              type="number"
-              min={1}
-              max={65535}
-              required
-              value={port}
-              onChange={(event) => setPort(event.target.value)}
-              className="font-mono tabular-nums"
-            />
-          </Field>
-          <Button type="submit" variant="outline" disabled={pending || Number(port) === remote.port}>
-            {m.settings_save()}
-          </Button>
-        </form>
+        {cloud === undefined && <PortForm remote={remote} pending={pending} onSave={onSave} />}
       </div>
       <FieldDescription>
         {remote.bindHost === LOOPBACK
@@ -172,12 +185,67 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
             : m.remote_bind_address_hint({ address: remote.bindHost })}
       </FieldDescription>
       <FieldDescription>{m.remote_network_note()}</FieldDescription>
+      {cloud !== undefined && (
+        <AlertDialog open={unconfirmedHost !== null} onOpenChange={(open) => !open && setUnconfirmedHost(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="wrap-break-word">
+                {m.remote_bind_confirm_title({ name: cloud.name })}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="wrap-break-word">
+                {m.remote_bind_confirm_body({ name: cloud.name, address: cloudAddress(cloud) })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
+              <AlertDialogAction
+                action={() => {
+                  if (unconfirmedHost !== null) onSave({ bindHost: unconfirmedHost })
+                  setUnconfirmedHost(null)
+                }}
+              >
+                {m.remote_bind_confirm()}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   )
 }
 
-function RelayStatusLine() {
-  const status = useAtomValue(remoteStatusAtom)
+function PortForm({ remote, pending, onSave }: Omit<ListenerSettingsProps, "environment">) {
+  const [port, setPort] = useState(String(remote.port))
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    onSave({ port: Number(port) })
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="flex items-end gap-2">
+      <Field className="w-28">
+        <FieldLabel htmlFor="remote-port">{m.remote_port_label()}</FieldLabel>
+        <Input
+          id="remote-port"
+          type="number"
+          min={1}
+          max={65535}
+          required
+          value={port}
+          onChange={(event) => setPort(event.target.value)}
+          className="font-mono tabular-nums"
+        />
+      </Field>
+      <Button type="submit" variant="outline" disabled={pending || Number(port) === remote.port}>
+        {m.settings_save()}
+      </Button>
+    </form>
+  )
+}
+
+function RelayStatusLine({ environment }: OnMachine) {
+  const status = useAtomValue(remoteStatusAtom(environment))
   if (!AsyncResult.isSuccess(status)) return null
   const { relay } = status.value
   if (relay.state === "off" || relay.state === "linking") return null
@@ -213,7 +281,7 @@ function RelayStatusLine() {
 }
 
 function PairPhone() {
-  const status = useAtomValue(remoteStatusAtom)
+  const status = useAtomValue(remoteStatusAtom(null))
   return AsyncResult.isSuccess(status) && status.value.listening ? <PairingSection /> : null
 }
 

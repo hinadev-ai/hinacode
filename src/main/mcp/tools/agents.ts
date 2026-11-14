@@ -7,7 +7,7 @@ import * as McpTool from "./tool.ts"
 export const AgentTools = Toolkit.make(
   McpTool.make(RUN_AGENT_TOOL, {
     description:
-      "Run a sub-agent on any provider HinaCode supports, such as Codex from a Claude thread, through its SDK in this thread's workspace. Use it instead of running the `codex` or `claude` CLI in a shell. It shows in this thread's Agents tab, where the user can watch and stop it. The call returns the agent's final reply, or, if the agent is still working after a few minutes, its id: then call `wait_agent` with that id, as often as needed, to keep waiting. The agent stops when this thread's turn ends. The `<agents>` block in your instructions lists each provider with its model ids and efforts; pass them exactly. Defaults to that provider's first model, or this thread's model on the same provider. opencode runs only the models the user picked for it in Settings.",
+      "Run a sub-agent on any provider HinaCode supports, such as Codex from a Claude thread, through its SDK in this thread's workspace. Use it instead of running the `codex` or `claude` CLI in a shell. It shows in this thread's Agents tab, where the user can watch and stop it. The call returns the agent's final reply, or, if the agent is still working after a few minutes, its id: then call `wait_agent` with that id, as often as needed, to keep waiting. Pass `background` to get the id at once and keep working while it runs. The agent stops when this thread's turn ends. The `<agents>` block in your instructions lists each provider with its model ids and efforts; pass them exactly. Defaults to that provider's first model, or this thread's model on the same provider. opencode runs only the models the user picked for it in Settings.",
     parameters: Schema.Struct({
       provider: ProviderId,
       description: Schema.String.annotate({ description: "A few words shown as the sub-agent's label." }),
@@ -17,6 +17,12 @@ export const AgentTools = Toolkit.make(
       ),
       effort: Schema.optionalKey(
         Schema.String.annotate({ description: "Reasoning effort, one the model lists in `<agents>`." }),
+      ),
+      background: Schema.optionalKey(
+        Schema.Boolean.annotate({
+          description:
+            "Return the agent's id at once instead of waiting, so you can keep working and call `wait_agent` for its reply later in this turn.",
+        }),
       ),
     }),
   }).annotate(Tool.Readonly, true),

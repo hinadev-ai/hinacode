@@ -52,6 +52,7 @@ export function composerDecorations(
         decorations.push({ kind: "code", start, end })
         break
       case "bullet":
+      case "quote":
       case "rule":
         decorations.push({ kind: "muted", start, end })
         break

@@ -5,8 +5,8 @@ import { binaryStatuses } from "./agents/binary.ts"
 import { bindKey, keyFor, probe } from "./agents/magpie/gateway.ts"
 import { MAGPIE_KEY_SECRET } from "../shared/providers.ts"
 import { AgentError } from "./agents/provider.ts"
-import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
-import { compactSubagentWork } from "../shared/subagents.ts"
+import { compactMessage, previewTranscriptMessage, transcriptPage } from "../shared/compactTranscript.ts"
+import { compactSubagentWork, previewSubagentWork } from "../shared/subagents.ts"
 import type {
   NotificationPermission,
   Opener,
@@ -427,7 +427,7 @@ const handlers: Handlers = {
   "threads.transcript": ({ threadId, compact = false, page }) =>
     AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
       Effect.map((transcript) => {
-        const messages = transcript.messages.map(compact ? compactMessage : previewMessage)
+        const messages = transcript.messages.map(compact ? compactMessage : previewTranscriptMessage)
         return page === undefined
           ? { ...transcript, messages }
           : { ...transcript, ...transcriptPage(messages, page.before) }
@@ -469,9 +469,9 @@ const handlers: Handlers = {
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
   "subagents.stop": ({ threadId, subagentId }) =>
     AgentRunner.use((runner) => runner.stopSubagent(threadId, subagentId)),
-  "subagents.transcript": ({ threadId, callId }) =>
+  "subagents.transcript": ({ threadId, callId, compact = true }) =>
     AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
-      Effect.map(({ messages }) => compactSubagentWork(messages, callId)),
+      Effect.map(({ messages }) => (compact ? compactSubagentWork : previewSubagentWork)(messages, callId)),
     ),
   "backgroundTasks.list": ({ threadId }) => AgentRunner.use((runner) => runner.backgroundTasks(threadId)),
   "backgroundTasks.stop": ({ threadId, taskId }) =>
