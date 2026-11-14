@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Duration, Effect, Schema } from "effect"
 import { Toolkit } from "effect/ai"
 import { ProviderId } from "../../../shared/agent.ts"
 import { isThreadBusy, type Thread } from "../../../shared/domain.ts"
@@ -19,11 +19,14 @@ import {
   type Place,
   projectLabels,
   ReadLimit,
+  readWhenIdle,
   renderThread,
   SearchLimit,
   searchThreads,
 } from "./threadViews.ts"
 import * as McpTool from "./tool.ts"
+
+export const WAIT_LIMIT = Duration.minutes(4)
 
 const TargetThreadId = Schema.String.annotate({
   description: "Id of a thread in this project, on this machine or on another of the user's machines.",
@@ -35,7 +38,7 @@ const AnyThreadId = Schema.String.annotate({
 export const ThreadTools = Toolkit.make(
   McpTool.make("create_thread", {
     description:
-      "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model, and the model's default effort. It shows nested under this thread in the sidebar unless `nested` is false. Pass `worktree` to run it in a new git worktree, and `machine` to run it on another of the user's machines. Follow up with read_thread to check on it, send_to_thread to steer it, and stop_thread to interrupt it.",
+      "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model, and the model's default effort. It shows nested under this thread in the sidebar unless `nested` is false. Pass `worktree` to run it in a new git worktree, and `machine` to run it on another of the user's machines. Follow up with wait_for_thread to get its reply, send_to_thread to steer it, and stop_thread to interrupt it.",
     parameters: Schema.Struct({
       title: Schema.String.annotate({ description: "Shown in the sidebar." }),
       prompt: Schema.String.annotate({ description: "The new thread's first user message." }),
@@ -81,9 +84,17 @@ export const ThreadTools = Toolkit.make(
       limit: Schema.optionalKey(ReadLimit),
     }),
   }),
+  McpTool.make("wait_for_thread", {
+    description:
+      "Wait until another thread stops working, up to four minutes, then read it as read_thread does. Use it after create_thread or send_to_thread instead of sleeping and calling read_thread in a loop. Messages queued behind its turn count as work. It also returns when the thread waits on the user for an approval, a question or a secret. If it is still working after four minutes, the result starts with `Still running.`: call wait_for_thread again. It waits only for a thread on this machine.",
+    parameters: Schema.Struct({
+      threadId: AnyThreadId,
+      limit: Schema.optionalKey(ReadLimit),
+    }),
+  }),
   McpTool.make("send_to_thread", {
     description:
-      "Send a message to another thread of this project, on this machine or on another of the user's machines. A running thread gets it as steering input in its current turn; an idle one starts a new turn with it. `effort` applies from this message on. `model` can only change before the thread's first turn starts.",
+      "Send a message to another thread of this project, on this machine or on another of the user's machines. A running thread gets it as steering input in its current turn; an idle one starts a new turn with it. Call wait_for_thread for its reply. `effort` applies from this message on. `model` can only change before the thread's first turn starts.",
     parameters: Schema.Struct({
       threadId: TargetThreadId,
       prompt: Schema.String.annotate({ description: "The user message to send." }),
@@ -206,6 +217,41 @@ export const threadToolsLayer = ThreadTools.toLayer(
           : locate(targetId, "project"),
       )
 
+    const readThread = (targetId: string, limit: number | undefined) =>
+      Effect.gen(function* () {
+        const { thread: target, place } = yield* locate(targetId, "anyProject")
+        const { worktreeId } = target
+        const [transcript, worktree, links] = place.here
+          ? yield* Effect.all([
+              runner.transcript(targetId),
+              worktreeId === null
+                ? Effect.succeed(null)
+                : worktrees.get(worktreeId).pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(null))),
+              pullRequests.list(targetId),
+            ])
+          : yield* Effect.all(
+              [
+                peers.ask("threads.transcript", { threadId: targetId, compact: true }),
+                worktreeId === null
+                  ? Effect.succeed(null)
+                  : Effect.map(
+                      peers.ask("worktrees.list", undefined),
+                      (all) => all.find((worktree) => worktree.id === worktreeId) ?? null,
+                    ),
+                peers.ask("pullRequests.list", { threadId: targetId }),
+              ],
+              { concurrency: "unbounded" },
+            )
+        return renderThread({
+          thread: target,
+          place,
+          transcript,
+          worktree,
+          pullRequestUrls: links.map((link) => link.url),
+          limit,
+        })
+      })
+
     return ThreadTools.of({
       create_thread: ({ title, prompt, provider, model, effort, worktree, machine, nested = true }) =>
         Effect.gen(function* () {
@@ -327,38 +373,24 @@ export const threadToolsLayer = ThreadTools.toLayer(
           const [all, labels] = yield* Effect.all([threads.list, projectLabels(projects)])
           return yield* searchThreads({ threads: all, labels, search }, query, { limit, self })
         }).pipe(Effect.mapError((error) => ({ message: error.message }))),
-      read_thread: ({ threadId: targetId, limit }) =>
+      read_thread: ({ threadId: targetId, limit }) => readThread(targetId, limit),
+      wait_for_thread: ({ threadId: targetId, limit }) =>
         Effect.gen(function* () {
-          const { thread: target, place } = yield* locate(targetId, "anyProject")
-          const { worktreeId } = target
-          const [transcript, worktree, links] = place.here
-            ? yield* Effect.all([
-                runner.transcript(targetId),
-                worktreeId === null
-                  ? Effect.succeed(null)
-                  : worktrees.get(worktreeId).pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(null))),
-                pullRequests.list(targetId),
-              ])
-            : yield* Effect.all(
-                [
-                  peers.ask("threads.transcript", { threadId: targetId, compact: true }),
-                  worktreeId === null
-                    ? Effect.succeed(null)
-                    : Effect.map(
-                        peers.ask("worktrees.list", undefined),
-                        (all) => all.find((worktree) => worktree.id === worktreeId) ?? null,
-                      ),
-                  peers.ask("pullRequests.list", { threadId: targetId }),
-                ],
-                { concurrency: "unbounded" },
-              )
-          return renderThread({
-            thread: target,
-            place,
-            transcript,
-            worktree,
-            pullRequestUrls: links.map((link) => link.url),
-            limit,
+          if (targetId === (yield* McpTool.CallingThread)) {
+            return yield* Effect.fail({ message: "That is this thread. Its turn ends when you stop." })
+          }
+          const { place } = yield* locate(targetId, "anyProject")
+          if (!place.here) {
+            return yield* Effect.fail({
+              message: `Thread ${targetId} runs on ${place.machine?.name ?? "another machine"}, and wait_for_thread only waits for threads on this machine. Call read_thread to check on it.`,
+            })
+          }
+          return yield* readWhenIdle({
+            runner,
+            threads,
+            threadId: targetId,
+            limit: WAIT_LIMIT,
+            read: readThread(targetId, limit),
           })
         }),
       send_to_thread: ({ threadId: targetId, prompt, model, effort }) =>

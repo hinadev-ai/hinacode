@@ -105,7 +105,7 @@ The app server is its own authorization server, as the MCP authorization spec ex
 
 ### Tools
 
-`list_projects`, `list_threads({ projectId? })`, `search_threads`, `read_thread`, `wait_for_thread` (holds the call up to a minute until the turn ends, so the app does not poll), `create_thread({ projectId, title, prompt, provider?, model?, effort?, worktree? })`, `send_to_thread`, `stop_thread`.
+`list_projects`, `list_threads({ projectId? })`, `search_threads`, `read_thread`, `wait_for_thread` (holds the call up to a minute until the thread stops working or waits on the developer, so the app does not poll), `create_thread({ projectId, title, prompt, provider?, model?, effort?, worktree? })`, `send_to_thread`, `stop_thread`.
 
 They share the rendering of the thread server's tools and not their scoping: there is no calling thread, so `create_thread` names its project and threads are created with `created_by = app:<connection id>`.
 

@@ -155,6 +155,7 @@
   "tool_own_search_threads": "搜索对话",
   "tool_own_read_thread": "读取对话",
   "tool_own_send_to_thread": "发送到对话",
+  "tool_own_wait_for_thread": "等待对话",
   "tool_own_stop_thread": "停止对话",
   "tool_own_list_terminals": "列出终端",
   "tool_own_read_terminal": "读取终端",

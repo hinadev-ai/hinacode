@@ -43,10 +43,11 @@ Both tools run on the built-in MCP server, so the calling thread comes from the 
 - The thread is created with `created_by = thread:<callerId>`. The child is an ordinary thread of the project. It has its own worktree or none, its own turns and its own lifecycle. Archiving or deleting the parent does nothing to the child. `created_by` is provenance, not ownership: it answers "where did this thread come from" in the same way `automation:<id>` does.
 - The runner publishes `thread.updated` before starting the turn, so the sidebar shows the thread in the moment it is created.
 
-An agent that started threads needs to follow up on them, so four more tools sit next to `create_thread`:
+An agent that started threads needs to follow up on them, so five more tools sit next to `create_thread`:
 
 - `list_threads` returns the non-archived threads of the caller's project as JSON, with status, provider, model, `created_by`, the worktree branch, and `self` on the caller.
 - `read_thread({ threadId, limit? })` returns the status, the metadata listed in `2026-10-14-thread-mentions.md`, any pending approval, question or secret request, and the last `limit` messages (20 by default, at most 100) as plain text. Reasoning is left out.
+- `wait_for_thread({ threadId, limit? })` holds the call while `AgentRunner.isBusy` says the thread is working, then returns what `read_thread` returns. A message queued behind the turn keeps the thread busy across the handoff, so the call returns once the queue has run too. A thread that waits on the user for an approval, a question or a secret returns at once, so the caller can tell the user. After four minutes it returns the read with `Still running.` on the first line, because Muse gives an MCP call 300 seconds, and the agent calls it again. It shares `readWhenIdle` with the app server's tool of the same name, and waits only for a thread on this machine. Without it an agent that delegated work slept in its shell and called `read_thread` in a loop, which cost a model request per check.
 - `send_to_thread({ threadId, prompt })` steers a busy thread and starts a turn on an idle one, and says which it did.
 - `stop_thread({ threadId })` interrupts the thread's turn.
 

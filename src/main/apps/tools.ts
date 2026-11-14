@@ -1,4 +1,4 @@
-import { Context, Duration, Effect, Layer, Option, Schema } from "effect"
+import { Context, Duration, Effect, Layer, Schema } from "effect"
 import { Toolkit } from "effect/ai"
 import { ProviderId } from "../../shared/agent.ts"
 import { isThreadBusy } from "../../shared/domain.ts"
@@ -8,6 +8,7 @@ import {
   NewWorktree,
   projectLabels,
   ReadLimit,
+  readWhenIdle,
   renderThread,
   SearchLimit,
   searchThreads,
@@ -31,7 +32,6 @@ const AppTool = McpTool.toolsFor(CallingApp, {
 })
 
 export const WAIT_LIMIT = Duration.seconds(60)
-const POLL_EVERY = Duration.seconds(1)
 
 const ThreadId = Schema.String.annotate({ description: "Id of a thread, from list_threads or search_threads." })
 
@@ -64,7 +64,7 @@ const AppTools = Toolkit.make(
   }),
   AppTool.make("wait_for_thread", {
     description:
-      "Wait for a thread's running turn to end, up to one minute, then read it as read_thread does. Use it after create_thread or send_to_thread instead of sleeping and calling read_thread in a loop. It also returns when the thread waits on the developer for an approval, a question or a secret. If the turn is still running after a minute, the result starts with `Still running.`: call wait_for_thread again.",
+      "Wait until a thread stops working, up to one minute, then read it as read_thread does. Use it after create_thread or send_to_thread instead of sleeping and calling read_thread in a loop. Messages queued behind its turn count as work. It also returns when the thread waits on the developer for an approval, a question or a secret. If it is still working after a minute, the result starts with `Still running.`: call wait_for_thread again.",
     parameters: Schema.Struct({ threadId: ThreadId, limit: Schema.optionalKey(ReadLimit) }),
   }),
   AppTool.make("create_thread", {
@@ -159,16 +159,7 @@ const appToolsLayer = AppTools.toLayer(
         }),
       read_thread: ({ threadId, limit }) => readThread(threadId, limit),
       wait_for_thread: ({ threadId, limit }) =>
-        Effect.gen(function* () {
-          const settled = yield* Effect.gen(function* () {
-            for (;;) {
-              if ((yield* threads.get(threadId)).status !== "running") return
-              yield* Effect.sleep(POLL_EVERY)
-            }
-          }).pipe(Effect.timeoutOption(WAIT_LIMIT))
-          const view = yield* readThread(threadId, limit)
-          return Option.isSome(settled) ? view : `Still running.\n\n${view}`
-        }),
+        readWhenIdle({ runner, threads, threadId, limit: WAIT_LIMIT, read: readThread(threadId, limit) }),
       create_thread: ({ projectId, title, prompt, provider: chosenProvider, model, effort, worktree }) =>
         Effect.gen(function* () {
           const provider = chosenProvider ?? (yield* Effect.provide(newThreadProvider, defaults))

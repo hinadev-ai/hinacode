@@ -164,6 +164,7 @@
   "tool_own_search_threads": "Search threads",
   "tool_own_read_thread": "Read thread",
   "tool_own_send_to_thread": "Send to thread",
+  "tool_own_wait_for_thread": "Wait for thread",
   "tool_own_stop_thread": "Stop thread",
   "tool_own_list_terminals": "List terminals",
   "tool_own_read_terminal": "Read terminal",

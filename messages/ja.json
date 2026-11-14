@@ -164,6 +164,7 @@
   "tool_own_search_threads": "スレッドを検索",
   "tool_own_read_thread": "スレッドを読む",
   "tool_own_send_to_thread": "スレッドに送信",
+  "tool_own_wait_for_thread": "スレッドを待機",
   "tool_own_stop_thread": "スレッドを停止",
   "tool_own_list_terminals": "ターミナルを一覧表示",
   "tool_own_read_terminal": "ターミナルを読む",
