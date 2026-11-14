@@ -374,6 +374,7 @@
   "settings_cli_path": "CLI 路徑",
   "settings_cli_path_missing": "{path} 無法執行。",
   "settings_model_agent_default": "代理程式預設值",
+  "settings_effort_model_default": "模型預設值",
   "settings_accounts": "帳號",
   "settings_models": "模型",
   "settings_models_label": "{provider} 模型",

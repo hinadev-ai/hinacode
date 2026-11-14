@@ -374,6 +374,7 @@
   "settings_cli_path": "CLI のパス",
   "settings_cli_path_missing": "{path} を実行できません。",
   "settings_model_agent_default": "エージェントのデフォルト",
+  "settings_effort_model_default": "モデルのデフォルト",
   "settings_accounts": "アカウント",
   "settings_models": "モデル",
   "settings_models_label": "{provider} のモデル",
