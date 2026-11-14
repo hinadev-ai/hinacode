@@ -75,10 +75,12 @@ export function todosInCall(part: { readonly name: string; readonly input: unkno
 
 export const isSettled = (todo: Todo) => todo.status === "completed" || todo.status === "cancelled"
 
+const isLeadTodoCall = (part: MessagePart): part is ToolPart =>
+  part.type === "tool_call" && part.parentCallId === undefined && isTodoTool(part.name)
+
 const newerTurnStarted = (messages: ReadonlyArray<Message>) => {
   const lastTodoCall = messages.findLastIndex(
-    (message) =>
-      message.role === "assistant" && message.parts.some((part) => part.type === "tool_call" && isTodoTool(part.name)),
+    (message) => message.role === "assistant" && message.parts.some(isLeadTodoCall),
   )
   return messages.slice(lastTodoCall + 1).some((message) => message.role === "user")
 }
@@ -147,7 +149,7 @@ export function latestTodos(messages: ReadonlyArray<Message>): ReadonlyArray<Tod
   for (const message of messages) {
     if (message.role !== "assistant") continue
     for (const part of message.parts) {
-      if (part.type === "tool_call" && part.parentCallId === undefined) apply(part)
+      if (isLeadTodoCall(part)) apply(part)
     }
   }
   return todos

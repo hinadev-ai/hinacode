@@ -1,6 +1,6 @@
 # Agent CLI path
 
-Status: Building
+Status: Shipped
 Date: 2026-11-09
 
 ## Problem

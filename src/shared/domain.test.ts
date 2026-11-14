@@ -77,6 +77,13 @@ describe("older cloud responses", () => {
     expect(Schema.decodeUnknownSync(Settings)(withoutActions).actions).toStrictEqual([])
   })
 
+  it("keeps a cloud from before the VM provider choice on sbx, while new installs start on boat", () => {
+    const { tinyVmProvider: _tinyVmProvider, ...beforeTheChoice } = defaultSettings.experimental
+    const settings = Schema.decodeUnknownSync(Settings)({ ...defaultSettings, experimental: beforeTheChoice })
+    expect(settings.experimental.tinyVmProvider).toBe("sbx")
+    expect(defaultSettings.experimental.tinyVmProvider).toBe("boat")
+  })
+
   it("reads mergeability as unknown from a pull request summary that omits it", () => {
     const legacyPullRequest: Omit<PullRequest, "mergeable"> = {
       url: "https://github.com/a/b/pull/1",

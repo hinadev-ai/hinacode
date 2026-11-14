@@ -26,6 +26,7 @@ const POLL_INTERVAL_S = 5
 const MAX_HOSTS = 5
 const DEVICE_LINK_NEEDS_SESSION = "Approve this sign-in on the relay page in your browser."
 const SIGN_IN_CODE_GONE = "The sign-in expired or was already used. Sign in again."
+const tooManyMachines = (name: string) => `Your account already has ${MAX_HOSTS} machines. Remove one to link ${name}.`
 const ALREADY_DECIDED = "This request was already approved or denied."
 
 const Label = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(64))
@@ -222,7 +223,8 @@ export const makeApp = (deps: Deps) => {
       credentialHash: await sha256(credential),
       createdAt: now,
     }
-    await runStore(c.env.DB, (store) => store.linkHost(host))
+    const linked = await runStore(c.env.DB, (store) => store.linkHost(host, MAX_HOSTS))
+    if (!linked) return fail(c, 409, tooManyMachines(name))
     return c.json({ credential })
   })
 
@@ -325,7 +327,7 @@ export const makeApp = (deps: Deps) => {
     if (link.kind === "machine") {
       const others = await runStore(c.env.DB, (store) => store.countOtherHosts(userId, link.environmentId))
       if (others >= MAX_HOSTS) {
-        return fail(c, 409, `Your account already has ${MAX_HOSTS} machines. Remove one to link ${link.name}.`)
+        return fail(c, 409, tooManyMachines(link.name))
       }
     }
     const approved = await runStore(c.env.DB, (store) => store.approveLink(link.deviceCodeHash, userId))

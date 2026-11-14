@@ -51,7 +51,7 @@ import { familyOf, beforeFirstHandshake, reportFailure } from "@/lib/remote"
 import { pickImages, stageImage } from "@/lib/stage-images"
 import { type DraftImage, useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
-import { modelsLoadAtom, modelsOn, useModels } from "@/stores/models"
+import { modelsLoadAtom, modelsOn, modelsSheetAtom, useModels } from "@/stores/models"
 import { updateThread, useThreads } from "@/stores/threads"
 
 type OnError = (message: string) => void
@@ -226,6 +226,12 @@ export function Composer({ thread }: { thread: Thread }) {
           </Text>
         </View>
       ))}
+      {unstarted && (
+        <View testID="composer-start-options" style={[styles.chips, styles.startOptions]}>
+          <LocationChip thread={thread} onError={setError} />
+          <WorkspaceChip thread={thread} onError={setError} />
+        </View>
+      )}
       <Suggestions
         text={text}
         caret={caret}
@@ -282,12 +288,6 @@ export function Composer({ thread }: { thread: Thread }) {
           }
           style={styles.input}
         />
-        {unstarted && (
-          <View testID="composer-start-options" style={styles.chips}>
-            <LocationChip thread={thread} onError={setError} />
-            <WorkspaceChip thread={thread} onError={setError} />
-          </View>
-        )}
         <View style={styles.toolbar}>
           <View style={styles.chips}>
             <AttachButton staging={staging} onPress={() => void attachImages()} />
@@ -673,7 +673,9 @@ export function SettingsSheet({
   const scheme = useScheme()
   const { models, current } = useThreadModels(thread)
   const unstarted = useUnstarted(thread) || isNew
-  const options = useServerOptions(useThreadServer(thread.id)?.id, open, onError)
+  const server = useThreadServer(thread.id)?.id
+  const options = useServerOptions(server, open, onError)
+  useAtomSubscribe(modelsSheetAtom(server, thread.provider, open), reportFailure(onError))
   const shownModels = presetModels(models, options?.settings.modelPresets[thread.provider] ?? [], thread.model)
   const accounts =
     options === null
@@ -827,6 +829,7 @@ const styles = StyleSheet.create({
   },
   toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   chips: { flexShrink: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  startOptions: { paddingHorizontal: 10 },
   suggestions: { borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   suggestion: { minHeight: SUGGESTION_HEIGHT, justifyContent: "center", gap: 2, paddingHorizontal: 12, paddingVertical: 6 },
   suggestionName: { fontFamily: mono, fontSize: 14 },

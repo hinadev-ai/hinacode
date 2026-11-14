@@ -28,7 +28,7 @@ export default function FloatingVm({ threadId }: { threadId: string }) {
 
 function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const { pending, error, run } = useVmAction()
-  const { dropping, onDropFiles } = useVmDrop(threadId, run)
+  const drop = useVmDrop(threadId, run)
   const width = useUi((state) => state.vmFloatingWidth)
   const setWidth = useUi((state) => state.setVmFloatingWidth)
   const setPlacement = useUi((state) => state.setVmPlacement)
@@ -76,8 +76,7 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
             fullscreenControls={control}
             onHandBack={() => run(() => callPromise("vm.control", { threadId, control: "agent" }))}
             onReconnect={() => setAttempt((count) => count + 1)}
-            onDropFiles={onDropFiles}
-            dropping={dropping}
+            drop={drop}
           />
         </Suspense>
       </section>

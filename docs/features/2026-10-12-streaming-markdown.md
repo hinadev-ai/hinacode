@@ -1,5 +1,8 @@
 # Bound Markdown updates during streaming
 
+Status: Shipped
+Date: 2026-10-12
+
 Issue #12 reports repeated full parsing of the growing trailing text part. The current component memo reuses unchanged parts, but each new trailing string requires another ReactMarkdown parse.
 
 The measured production Electron workload sends 20,000 characters in 160 deltas of 125 characters, 20 ms apart. A fixed publication cadence reduces the frequency of full parses. It reduces parser invocations without changing the parser, GFM configuration, reference resolution or component rendering.
@@ -10,11 +13,11 @@ A ready thread may have one open window of adjacent text or reasoning deltas and
 
 Approval, terminal, tool, file-change and message-replacement events remain synchronous. Text separated by a tool or reasoning part remains in separate Markdown documents. Every published string and the final string use the existing whole-document renderer.
 
-Scrolling up cancels the list's initial bottom target as well as its automatic following. Legend List 3.6.0 retained the initial target after wheel input, so later streaming updates or a viewport resize could return the reader to the bottom. The patch in `patches/@legendapp__list@3.6.0.patch` cancels that target and synchronizes the observed scroll offset before another update runs. Keep the patch on dependency upgrades until the paced-output scenario passes with native wheel input and a viewport resize on both macOS and Linux.
+Scrolling up cancels the list's initial bottom target as well as its automatic following. Legend List 3.6.0 retained the initial target after wheel input, so later streaming updates or a viewport resize could return the reader to the bottom. The patch in `patches/@legendapp__list@3.6.0.patch` cancels that target and synchronizes the observed scroll offset before another update runs. It also makes the initial reveal re-resolve its end offset when its 8-frame watchdog gives up. Unpatched, the watchdog scrolled to the offset stored at mount, so a reply that grew during the reveal on a slow renderer left the transcript at the top while the list believed it was at the end. Keep the patch on dependency upgrades until the paced-output scenario passes with native wheel input and a viewport resize on both macOS and Linux.
 
 ## Verification
 
-Compare candidate cadences against the same visible Electron IPC workload. Measure frame spacing, parser invocations, total parsed characters and parser time. Check references across blocks, open fences and tables, exact final DOM, tool boundaries, approval and terminal events, scrolling, typing, and unload/reload behavior. Keep raw measurements and traces under `.context/perf/`, and check logs and summaries under `.context/issue-12/`.
+Compare candidate cadences against the same visible Electron IPC workload. Measure frame spacing, parser invocations, total parsed characters and parser time. Check references across blocks, open fences and tables, exact final DOM, tool boundaries, approval and terminal events, scrolling, typing, and unload/reload behavior. Keep raw measurements and traces under `.context/perf/`.
 
 The 50 ms candidate reduced parsing but increased gaps above 33 ms in its comparison. The 100 ms candidate reduced both. Keep the existing whole-document renderer rather than add completed-block caching. A later reference definition can change an earlier block, and a single open fence or table can keep growing. This fix reduces parse frequency; it does not make an individual large parse cheaper.
 

@@ -1,6 +1,6 @@
 # 0020. The relay is a Cloudflare tunnel per machine, handed out by a HinaCode service
 
-Status: Accepted
+Status: Accepted. Since #298 clients dial the relay last, 500 ms after the direct addresses (`dialPlan` in `src/shared/remote.ts`).
 Date: 2026-10-24
 
 ## Context

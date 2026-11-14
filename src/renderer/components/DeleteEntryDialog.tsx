@@ -1,3 +1,4 @@
+import { useState } from "react"
 import type { FsEntry } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import {
@@ -18,13 +19,16 @@ interface DeleteEntryDialogProps {
 }
 
 export function DeleteEntryDialog({ entry, onCancel, onDelete }: DeleteEntryDialogProps) {
+  const [shown, setShown] = useState(entry)
+  if (entry !== null && entry !== shown) setShown(entry)
+
   return (
     <AlertDialog open={entry !== null} onOpenChange={(open) => !open && onCancel()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{m.explorer_delete_title({ name: entry?.name ?? "" })}</AlertDialogTitle>
+          <AlertDialogTitle>{m.explorer_delete_title({ name: shown?.name ?? "" })}</AlertDialogTitle>
           <AlertDialogDescription>
-            {entry?.kind === "dir" ? m.explorer_delete_folder_body() : m.explorer_delete_file_body()}
+            {shown?.kind === "dir" ? m.explorer_delete_folder_body() : m.explorer_delete_file_body()}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -10,6 +10,7 @@ export const CommentMessageSchema = z.object({
   author: CommentAuthorSchema,
   body: z.string(),
   createdAt: z.string(),
+  undelivered: z.literal(true).optional(),
 })
 
 export const CommentAnchorSchema = z.discriminatedUnion("kind", [

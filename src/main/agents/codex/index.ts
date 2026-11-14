@@ -34,6 +34,7 @@ import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
 import { installedBinary } from "../binary.ts"
 import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
+import { instructionsUpdate } from "../instructions.ts"
 import {
   AgentError,
   type AgentProvider,
@@ -41,6 +42,7 @@ import {
   LISTED_SESSIONS,
   MCP_TOOL_TIMEOUT_SECONDS,
   type SessionHistory,
+  interruptedTurn,
   type SubagentChange,
   tmpEnv,
 } from "../provider.ts"
@@ -92,6 +94,7 @@ import type {
   ThreadBackgroundTerminalsTerminateParams,
   TurnSteerParams,
   ThreadCompactStartParams,
+  ThreadInjectItemsParams,
   UserInput,
 } from "./protocol.ts"
 
@@ -161,10 +164,10 @@ const copySession = (threadId: string, from: AccountHome | null, to: AccountHome
     ),
   )
 
-const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
-
 // FIXME: Codex has no notification for background terminals
-const TERMINAL_POLL_INTERVAL = Duration.seconds(2)
+export const TerminalPollInterval = Context.Reference<Duration.Input>("hinacode/CodexTerminalPollInterval", {
+  defaultValue: () => Duration.seconds(2),
+})
 
 type Terminals = {
   readonly client: CodexClient
@@ -178,6 +181,7 @@ const sameTasks = (a: ReadonlyArray<BackgroundTask>, b: ReadonlyArray<Background
 
 const make = Effect.gen(function* () {
   const providerScope = yield* Effect.scope
+  const terminalPollInterval = yield* TerminalPollInterval
   const clientLock = yield* Semaphore.make(1)
   const clients = new Map<string, { readonly client: CodexClient; readonly scope: Scope.Closeable }>()
 
@@ -217,7 +221,7 @@ const make = Effect.gen(function* () {
   const subagentClients = new Map<string, CodexClient>()
   const threadsInTurn = new Set<string>()
   const subagentChanges = yield* Queue.unbounded<SubagentChange>()
-  const loadedCompactLimits = new Map<string, number | null>()
+  const loadedThreads = new Map<string, { readonly autoCompactTokens: number | null; readonly instructions: string }>()
   const loadedSessions = new Map<string, { readonly client: CodexClient; readonly codexThreadId: string }>()
   const terminalsByThread = new Map<string, Terminals>()
   const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
@@ -229,19 +233,36 @@ const make = Effect.gen(function* () {
     return undefined
   }
 
+  const applyChildMessage = (subagents: Subagents, childThreadId: string, method: string, params: unknown) =>
+    applyChildTurn(subagents, childThreadId, method, params, new Date().toISOString()) ??
+    applyChildNotification(subagents, childThreadId, method, params, toolName)
+
+  const childThreadIdOf = (message: Incoming) =>
+    message.kind === "notification" ? (message.params as { threadId?: string } | undefined)?.threadId : undefined
+
   const reportSubagentsOfIdleThreads = (client: CodexClient) => (message: Incoming) => {
     if (message.kind !== "notification") return
-    const childThreadId = (message.params as { threadId?: string } | undefined)?.threadId
+    const childThreadId = childThreadIdOf(message)
     const parent = childThreadId === undefined ? undefined : parentOf(childThreadId)
     if (childThreadId === undefined || parent === undefined || threadsInTurn.has(parent.threadId)) return
     subagentClients.set(childThreadId, client)
     const childScope = message.params as { turnId?: string; turn?: { id: string } }
     const childTurnId = childScope.turnId ?? childScope.turn?.id
     if (childTurnId !== undefined) subagentTurns.set(childThreadId, childTurnId)
-    const changed =
-      applyChildTurn(parent.subagents, childThreadId, message.method, message.params, new Date().toISOString()) ??
-      applyChildNotification(parent.subagents, childThreadId, message.method, message.params, toolName)
+    const changed = applyChildMessage(parent.subagents, childThreadId, message.method, message.params)
     if (changed) Queue.offerUnsafe(subagentChanges, { threadId: parent.threadId, subagent: changed })
+  }
+
+  const leaveTurn = (client: CodexClient, threadId: string, inbox: Queue.Dequeue<Incoming>) => {
+    threadsInTurn.delete(threadId)
+    const report = reportSubagentsOfIdleThreads(client)
+    const children = subagentsByThread.get(threadId)
+    let unread = Queue.takeUnsafe(inbox)
+    while (unread !== undefined && Exit.isSuccess(unread)) {
+      const childThreadId = childThreadIdOf(unread.value)
+      if (childThreadId !== undefined && children?.has(childThreadId)) report(unread.value)
+      unread = Queue.takeUnsafe(inbox)
+    }
   }
 
   const listTerminals = (terminals: Terminals) =>
@@ -285,7 +306,7 @@ const make = Effect.gen(function* () {
       terminalsByThread.set(threadId, terminals)
       terminals.poll = yield* Effect.gen(function* () {
         while (true) {
-          yield* Effect.sleep(TERMINAL_POLL_INTERVAL)
+          yield* Effect.sleep(terminalPollInterval)
           const tasks = yield* refreshTerminals(threadId, terminals)
           if (tasks.length === 0 && !runs.has(threadId)) return
         }
@@ -330,7 +351,7 @@ const make = Effect.gen(function* () {
       const loaded = loadedSessions.get(threadId)
       if (loaded === undefined) return Effect.void
       loadedSessions.delete(threadId)
-      loadedCompactLimits.delete(loaded.codexThreadId)
+      loadedThreads.delete(loaded.codexThreadId)
       return loaded.client.request("thread/unsubscribe", { threadId: loaded.codexThreadId }).pipe(Effect.ignore)
     })
 
@@ -510,7 +531,7 @@ const make = Effect.gen(function* () {
           yield* client.subscribe((message) => Queue.offerUnsafe(inbox, message))
           yield* Effect.acquireRelease(
             Effect.sync(() => threadsInTurn.add(input.threadId)),
-            () => Effect.sync(() => threadsInTurn.delete(input.threadId)),
+            () => Effect.sync(() => leaveTurn(client, input.threadId, inbox)),
           )
 
           const overrides = {
@@ -532,8 +553,9 @@ const make = Effect.gen(function* () {
             developerInstructions: input.instructions,
           } satisfies ThreadStartParams
           const resumed = input.resumeSessionId
-          const loadedLimit = resumed === null ? undefined : loadedCompactLimits.get(resumed)
-          if (resumed !== null && loadedLimit !== undefined && loadedLimit !== input.autoCompactTokens) {
+          const loaded = resumed === null ? undefined : loadedThreads.get(resumed)
+          const reloads = loaded !== undefined && loaded.autoCompactTokens !== input.autoCompactTokens
+          if (resumed !== null && reloads) {
             // FIXME: Codex ignores thread/resume config for a thread it has loaded
             yield* client.request("thread/unsubscribe", { threadId: resumed })
           }
@@ -552,7 +574,19 @@ const make = Effect.gen(function* () {
                     lastTurnId: input.forkAt,
                     excludeTurns: true,
                   } satisfies ThreadForkParams)
-          loadedCompactLimits.set(thread.id, input.autoCompactTokens)
+          const update =
+            loaded === undefined || reloads || thread.id !== resumed
+              ? null
+              : instructionsUpdate(loaded.instructions, input.instructions)
+          if (update !== null) {
+            yield* client
+              .request("thread/inject_items", {
+                threadId: thread.id,
+                items: [{ type: "message", role: "developer", content: [{ type: "input_text", text: update }] }],
+              } satisfies ThreadInjectItemsParams)
+              .pipe(Effect.ignore)
+          }
+          loadedThreads.set(thread.id, { autoCompactTokens: input.autoCompactTokens, instructions: input.instructions })
           loadedSessions.set(input.threadId, { client, codexThreadId: thread.id })
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 
@@ -588,12 +622,13 @@ const make = Effect.gen(function* () {
           )
           const turn = yield* Fiber.join(run.turnStart)
           run.turn = turn
+          yield* input.onOpen ?? Effect.void
 
           const commandOutput = new Map<string, string>()
           const startedTools = new Set<string>()
           const openTools = new Set<string>()
           const backgroundable = new Set<string>()
-          const approvalIdByRpcId = new Map<string | number, string>()
+          const pendingApprovals = new Map<string | number, { approvalId: string; cancel: Effect.Effect<void> }>()
           const questionIdByRpcId = new Map<string | number, string>()
           let subagents = subagentsByThread.get(input.threadId)
           if (subagents === undefined) subagentsByThread.set(input.threadId, (subagents = new Map()))
@@ -613,8 +648,8 @@ const make = Effect.gen(function* () {
 
           yield* Effect.addFinalizer(() =>
             Effect.gen(function* () {
-              for (const [rpcId, approvalId] of approvalIdByRpcId) {
-                if (approvals.delete(approvalId)) yield* client.respond(rpcId, { decision: "cancel" })
+              for (const { approvalId, cancel } of pendingApprovals.values()) {
+                if (approvals.delete(approvalId)) yield* cancel
               }
               for (const [rpcId, questionId] of questionIdByRpcId) {
                 if (questions.delete(questionId)) yield* client.respond(rpcId, userInputResponse({}))
@@ -687,7 +722,10 @@ const make = Effect.gen(function* () {
               const approvalId = randomUUID()
               const decision = yield* Deferred.make<ApprovalDecision>()
               approvals.set(approvalId, decision)
-              approvalIdByRpcId.set(rpcId, approvalId)
+              pendingApprovals.set(rpcId, {
+                approvalId,
+                cancel: client.respond(rpcId, { action: "cancel", content: null, _meta: null }),
+              })
               yield* emit({
                 type: "approval_requested",
                 request: {
@@ -721,7 +759,7 @@ const make = Effect.gen(function* () {
               const approvalId = randomUUID()
               const decision = yield* Deferred.make<ApprovalDecision>()
               approvals.set(approvalId, decision)
-              approvalIdByRpcId.set(rpcId, approvalId)
+              pendingApprovals.set(rpcId, { approvalId, cancel: client.respond(rpcId, { decision: "cancel" }) })
               const isCommand = method === "item/commandExecution/requestApproval"
               const command = isCommand
                 ? (params as ServerRequestParams["item/commandExecution/requestApproval"])
@@ -778,13 +816,7 @@ const make = Effect.gen(function* () {
                 const childTurnId = childScope.turnId ?? childScope.turn?.id
                 if (childTurnId !== undefined) subagentTurns.set(childThreadId, childTurnId)
                 yield* handleChildTool(childThreadId, message.method, message.params)
-                const changed = applyChildNotification(
-                  subagents,
-                  childThreadId,
-                  message.method,
-                  message.params,
-                  toolName,
-                )
+                const changed = applyChildMessage(subagents, childThreadId, message.method, message.params)
                 if (changed) yield* emitSubagents([changed])
                 return false
               }
@@ -926,8 +958,8 @@ const make = Effect.gen(function* () {
                 default: {
                   if (message.method === "serverRequest/resolved") {
                     const { requestId } = message.params as { requestId: string | number }
-                    const approvalId = approvalIdByRpcId.get(requestId)
-                    if (approvalId) yield* resolveApproval(approvalId)
+                    const approval = pendingApprovals.get(requestId)
+                    if (approval) yield* resolveApproval(approval.approvalId)
                     const questionId = questionIdByRpcId.get(requestId)
                     if (questionId) yield* resolveQuestion(questionId)
                   }
@@ -952,7 +984,7 @@ const make = Effect.gen(function* () {
               Effect.forkIn(providerScope),
             )
           }
-          yield* emit(interruptedEvent)
+          yield* emit(interruptedTurn)
         }
         yield* Queue.end(out)
       }),
@@ -980,7 +1012,8 @@ const make = Effect.gen(function* () {
       const run = runs.get(threadId)
       const active = run?.turn
       const client = run?.client
-      if (!active || !client?.isAlive()) {
+      if (!active) return false
+      if (!client?.isAlive()) {
         return yield* new AgentError({ provider: "codex", message: "No turn is running on this thread" })
       }
       const params: TurnSteerParams = {
@@ -989,6 +1022,7 @@ const make = Effect.gen(function* () {
         expectedTurnId: active.turnId,
       }
       yield* client.request("turn/steer", params)
+      return true
     })
 
   const respondApproval = (requestId: string, decision: ApprovalDecision) =>

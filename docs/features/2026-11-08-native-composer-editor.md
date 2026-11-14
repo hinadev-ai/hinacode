@@ -1,5 +1,8 @@
 # Native composer editor
 
+Status: Shipped
+Date: 2026-11-08
+
 ## Problem
 
 The phone composer is a `TextInput` with nested `Text` spans. It can tint a skill, but it cannot draw the desktop's chip, because a `TextInput` only takes text: an inline `Image` crashes Fabric on Android (`Unable to add a view into a non-ViewGroup`). It also gets slow on long drafts, since every keystroke rebuilds and resends every span: about 195 ms of CPU per typed character on an 18 KB draft on the Android emulator.

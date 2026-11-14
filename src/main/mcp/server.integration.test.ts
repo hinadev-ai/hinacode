@@ -157,7 +157,7 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
           return Stream.fromEffect(Deferred.await(done)).pipe(Stream.as({ type: "turn_completed" } as AgentEvent))
         }),
       ),
-    steer: () => Effect.void,
+    steer: () => Effect.succeed(true),
     interrupt: (threadId) => {
       const done = turns.get(threadId)
       return done ? Effect.asVoid(Deferred.succeed(done, undefined)) : Effect.void
@@ -783,6 +783,34 @@ layer(testLayer)("run_agent", (it) => {
         isError: true,
         text: "No agent not-an-agent runs in this thread's turn.",
       })
+      yield* runner.interrupt(a)
+    }),
+  )
+
+  it.effect("returns a background agent's id at once, and wait_agent returns its reply", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      yield* runner.send(a, "hi", [])
+
+      const started = yield* callAs(connection, "run_agent", {
+        provider: "codex",
+        description: "Background review",
+        prompt: "Reply Looks good. after 2 minutes",
+        model: "gpt-test",
+        background: true,
+      })
+      const [running] = yield* runner.subagents(a)
+      expect(running).toMatchObject({ label: "Background review", status: "running" })
+      expect(started).toMatchObject({ isError: false })
+      expect(started.text).toContain(`wait_agent with agentId "${running?.id}"`)
+
+      const finished = yield* settled(
+        yield* Effect.forkChild(callAs(connection, "wait_agent", { agentId: running?.id })),
+      )
+      expect(finished).toMatchObject({ isError: false, text: "Looks good." })
       yield* runner.interrupt(a)
     }),
   )

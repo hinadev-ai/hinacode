@@ -31,6 +31,6 @@ Live timers, provider CPU time, and timing a whole run across steers. A response
 
 Pure tests cover original part order, which parts count as activity, tool-call folding, per-kind counts, completion timing, and duration formatting. Electron acceptance scenarios exercise the hidden-by-default activity, keyboard toggling, tool output, Find revealing a hidden tool call, restart, and both themes. The streaming scenarios check that finished text, tool output, and errors survive the completion boundary.
 
-A Linux Xvfb run of isolated Electron profiles seeded one completed response with eleven tool calls, built once from the parent commit and once from this change. Screenshots in `.context/shots/tools-*` show the before transcript, the hidden default, the expanded activity with two folded groups, the capped list scrolling a 120-line output, and the light theme.
+A Linux Xvfb run of isolated Electron profiles seeded one completed response with eleven tool calls, built once from the parent commit and once from this change. Its screenshots showed the before transcript, the hidden default, the expanded activity with two folded groups, the capped list scrolling a 120-line output, and the light theme.
 
 Checkpoints are the presentation tests, renderer typecheck and lint, the Electron acceptance suite, then the screenshots. Required final checks are `pnpm typecheck`, `pnpm lint`, and `pnpm test`.

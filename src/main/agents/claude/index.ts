@@ -52,6 +52,7 @@ import {
   type BackgroundTasksChange,
   type SessionInput,
   type SteerPriority,
+  interruptedTurn,
   type Wake,
   tmpEnv,
 } from "../provider.ts"
@@ -137,7 +138,6 @@ interface Session extends MapState, ApprovalSession {
   readonly threadId: string
   readonly cwd: string
   readonly home: AccountHome | null
-  readonly instructions: string
   readonly prompts: Queue.Queue<SDKUserMessage>
   readonly abort: AbortController
   readonly stderr: StderrTail
@@ -202,7 +202,6 @@ const awaitsAnswer = (session: Session) => [...session.turnPrompts].some((uuid) 
 interface SessionContext {
   readonly cwd: string
   readonly home: AccountHome | null
-  readonly instructions: string
 }
 
 interface Resumable extends SessionContext {
@@ -259,31 +258,30 @@ const commandsKey = (cwd: string, home: AccountHome | null) => JSON.stringify({ 
 
 const sameHome = (a: AccountHome | null, b: AccountHome | null) => a?.dir === b?.dir && a?.binary === b?.binary
 
-const sameContext = (a: SessionContext, b: SessionContext) =>
-  a.cwd === b.cwd && sameHome(a.home, b.home) && a.instructions === b.instructions
+const sameContext = (a: SessionContext, b: SessionContext) => a.cwd === b.cwd && sameHome(a.home, b.home)
 
 const homeEnv = (home: AccountHome | null): NodeJS.ProcessEnv =>
   home === null ? { ...process.env } : { ...process.env, CLAUDE_CONFIG_DIR: home.dir }
 
 const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
-const agentError = (message: string) => (cause: unknown) =>
-  new AgentError({ provider: "claude", message: `${message}: ${errorMessage(cause)}` })
+const agentError = (provider: ProviderId, message: string) => (cause: unknown) =>
+  new AgentError({ provider, message: `${message}: ${errorMessage(cause)}` })
 
-const writeSettingsFile = (directory: string | null, settings: object) =>
+const writeSettingsFile = (provider: ProviderId, directory: string | null, settings: object) =>
   Effect.tryPromise({
     try: async () => {
       const path = join(directory ?? tmpdir(), `claude-settings-${randomUUID()}.json`)
       await writeFile(path, JSON.stringify(settings), { mode: 0o600, flag: "wx" })
       return path
     },
-    catch: agentError("Failed to write Claude Code settings"),
+    catch: agentError(provider, "Failed to write Claude Code settings"),
   })
 
 const copySession = (sessionId: string, from: AccountHome | null, to: AccountHome | null) =>
   Effect.tryPromise({
     try: () => copyTranscripts(sessionId, from?.dir ?? claudeHome(), to?.dir ?? claudeHome()),
-    catch: agentError("Failed to copy Claude transcripts"),
+    catch: agentError("claude", "Failed to copy Claude transcripts"),
   }).pipe(
     Effect.flatMap((copied) =>
       copied
@@ -302,19 +300,19 @@ type ImageMediaType = Extract<Extract<ContentBlock, { type: "image" }>["source"]
 
 const isImageMediaType = (mime: string): mime is ImageMediaType => AGENT_IMAGE_TYPES.includes(mime)
 
-const attachmentBlocks = (attachment: Attachment) =>
+const attachmentBlocks = (provider: ProviderId) => (attachment: Attachment) =>
   Effect.gen(function* () {
     const fileBlock: ContentBlock = { type: "text", text: `Attached file: ${attachment.path}` }
     if (attachment.kind !== "image" || !isImageMediaType(attachment.mime)) return [fileBlock]
     if (attachment.bytes > AGENT_IMAGE_MAX_BYTES) {
       return yield* new AgentError({
-        provider: "claude",
+        provider,
         message: `${attachment.name} is larger than 5 MB, the limit for images sent to Claude`,
       })
     }
     const data = yield* Effect.tryPromise({
       try: () => readFile(attachment.path, "base64"),
-      catch: agentError(`Cannot read ${attachment.name}`),
+      catch: agentError(provider, `Cannot read ${attachment.name}`),
     })
     const block: ContentBlock = {
       type: "image",
@@ -324,9 +322,14 @@ const attachmentBlocks = (attachment: Attachment) =>
     return context === null ? [block] : [block, { type: "text" as const, text: context }]
   })
 
-const userMessage = (prompt: string, attachments: ReadonlyArray<Attachment>, priority?: SDKUserMessage["priority"]) =>
+const userMessage = (
+  provider: ProviderId,
+  prompt: string,
+  attachments: ReadonlyArray<Attachment>,
+  priority?: SDKUserMessage["priority"],
+) =>
   Effect.gen(function* () {
-    const blocks = (yield* Effect.forEach(attachments, attachmentBlocks)).flat()
+    const blocks = (yield* Effect.forEach(attachments, attachmentBlocks(provider))).flat()
     const content: SDKUserMessage["message"]["content"] =
       blocks.length === 0 ? prompt : [...(prompt === "" ? [] : [{ type: "text" as const, text: prompt }]), ...blocks]
     return {
@@ -353,6 +356,7 @@ const baseOptions = (home: AccountHome | null) =>
   }))
 
 const probe = <A>(
+  provider: ProviderId,
   read: (probe: Query) => Promise<A>,
   failure: string,
   home: AccountHome | null,
@@ -366,17 +370,17 @@ const probe = <A>(
       prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
       options: { ...base, settingSources: [], persistSession: false, ...options },
     })
-    return yield* Effect.tryPromise({ try: () => read(cli), catch: agentError(failure) }).pipe(
+    return yield* Effect.tryPromise({ try: () => read(cli), catch: agentError(provider, failure) }).pipe(
       Effect.timeout(Duration.seconds(30)),
       Effect.catchTag("TimeoutError", () =>
-        Effect.fail(new AgentError({ provider: "claude", message: `${failure}: timed out` })),
+        Effect.fail(new AgentError({ provider, message: `${failure}: timed out` })),
       ),
       Effect.ensuring(Effect.sync(() => cli.close())),
     )
   })
 
 const account = (home: AccountHome | null) =>
-  probe((cli) => cli.accountInfo(), "Failed to read the Claude account", home).pipe(
+  probe("claude", (cli) => cli.accountInfo(), "Failed to read the Claude account", home).pipe(
     Effect.flatMap(Schema.decodeUnknownEffect(AccountInfoSchema)),
     Effect.catchTag("SchemaError", () =>
       Effect.fail(
@@ -387,6 +391,7 @@ const account = (home: AccountHome | null) =>
   )
 const planLimits = (home: AccountHome | null) =>
   probe(
+    "claude",
     (cli) => cli.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
     "Failed to read Claude plan limits",
     home,
@@ -395,16 +400,16 @@ const planLimits = (home: AccountHome | null) =>
     Effect.orElseSucceed(() => null),
   )
 
-const probeCommands = (key: string) => {
+const probeCommands = (provider: ProviderId) => (key: string) => {
   const { cwd, home } = JSON.parse(key) as { cwd: string; home: AccountHome | null }
-  return probe((cli) => cli.supportedCommands(), "Failed to list Claude commands", home, {
+  return probe(provider, (cli) => cli.supportedCommands(), "Failed to list Claude commands", home, {
     cwd,
     settingSources: ["user", "project", "local"],
   })
 }
 
 const fetchModels = Effect.gen(function* () {
-  const models = yield* probe((cli) => cli.supportedModels(), "Failed to list Claude models", null)
+  const models = yield* probe("claude", (cli) => cli.supportedModels(), "Failed to list Claude models", null)
   const byId = new Map<string, ModelInfo>()
   for (const model of models) {
     if (model.value === "default") continue
@@ -426,13 +431,13 @@ const fetchModels = Effect.gen(function* () {
 const listSessions = (cwd: string, home: AccountHome | null) =>
   Effect.tryPromise({
     try: () => listClaudeSessions(home?.dir ?? claudeHome(), cwd),
-    catch: agentError("Failed to list Claude sessions"),
+    catch: agentError("claude", "Failed to list Claude sessions"),
   })
 
 const readSession = (sessionId: string, cwd: string, home: AccountHome | null) =>
   Effect.tryPromise({
     try: () => readClaudeSession(home?.dir ?? claudeHome(), cwd, sessionId),
-    catch: agentError("Failed to read the Claude session"),
+    catch: agentError("claude", "Failed to read the Claude session"),
   })
 
 interface ClaudeHarness {
@@ -454,10 +459,9 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
     const sessionLocks = new Map<string, Semaphore.Semaphore>()
     const wakes = yield* Queue.unbounded<Wake>()
     const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
-    const probedCommands = yield* Cache.make({
-      lookup: probeCommands,
+    const probedCommands = yield* Cache.makeWith(probeCommands(id), {
       capacity: 32,
-      timeToLive: Duration.minutes(1),
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.minutes(1) : Duration.zero),
     })
 
     const emit = (session: Session, event: AgentEvent) => {
@@ -465,8 +469,8 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
       if ((event.type === "turn_failed" || event.type === "turn_limited") && session.interrupted)
         event =
           event.type === "turn_failed" && event.sessionLost
-            ? { type: "turn_failed", message: "Interrupted", sessionLost: true }
-            : { type: "turn_failed", message: "Interrupted" }
+            ? { ...interruptedTurn, sessionLost: true }
+            : interruptedTurn
       if (event.type === "turn_completed" && session.sessionId !== null && session.lastAssistantUuid !== null)
         event = { ...event, forkPoint: { sessionId: session.sessionId, checkpoint: session.lastAssistantUuid } }
       Queue.offerUnsafe(session.turn, event)
@@ -643,7 +647,6 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         resumable.set(session.threadId, {
           cwd: session.cwd,
           home: session.home,
-          instructions: session.instructions,
           sessionId: message.session_id,
           sessionGrants: session.sessionGrants,
           attachmentPaths: session.attachmentPaths,
@@ -678,7 +681,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
       Stream.fromAsyncIterable(
         // FIXME: the Query's return() closes the transport, the raw generator's does not
         { [Symbol.asyncIterator]: () => session.query },
-        agentError("Claude Code stream failed"),
+        agentError(id, "Claude Code stream failed"),
       ).pipe(
         Stream.runForEach((message) =>
           (startsByItself(session, message) ? wake(session) : Effect.sync(() => route(session, message))).pipe(
@@ -716,7 +719,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         const base = yield* baseOptions(input.home)
         const effort = effortLevelOf(input.effort)
         const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"))
-        const settingsFile = yield* writeSettingsFile(input.tmpDirectory, {
+        const settingsFile = yield* writeSettingsFile(id, input.tmpDirectory, {
           ...(Object.keys(launch).length > 0 && { env: { ...launch } }),
           fastMode: input.fastMode,
           ...(input.autoCompactTokens !== null && { autoCompactWindow: input.autoCompactTokens }),
@@ -767,13 +770,13 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
                 },
               },
             }),
-          catch: agentError("Failed to start Claude Code"),
+          catch: agentError(id, "Failed to start Claude Code"),
         }).pipe(Effect.tapError(() => Effect.sync(() => rmSync(settingsFile, { force: true }))))
         const session: Session = {
           threadId: input.threadId,
+          provider: id,
           cwd: input.cwd,
           home: input.home,
-          instructions: input.instructions,
           model: input.model,
           effort: input.effort,
           fastMode: input.fastMode,
@@ -879,7 +882,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         if (mode === session.permissionMode) return
         yield* Effect.tryPromise({
           try: () => session.query.setPermissionMode(mode),
-          catch: agentError("Failed to switch access mode"),
+          catch: agentError(id, "Failed to switch access mode"),
         })
         session.permissionMode = mode
       })
@@ -928,7 +931,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         if (session.model !== input.model) {
           yield* Effect.tryPromise({
             try: () => session.query.setModel(input.model),
-            catch: agentError("Failed to switch model"),
+            catch: agentError(id, "Failed to switch model"),
           })
           session.model = input.model
         }
@@ -940,13 +943,13 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
                 ultracode: input.effort === ULTRACODE,
                 fastMode: input.fastMode,
               }),
-            catch: agentError("Failed to switch effort or fast mode"),
+            catch: agentError(id, "Failed to switch effort or fast mode"),
           })
           session.effort = input.effort
           session.fastMode = input.fastMode
         }
         yield* switchPermissionMode(session, mode)
-        const message = yield* userMessage(withUltrathink(input.prompt, input.effort), input.attachments)
+        const message = yield* userMessage(id, withUltrathink(input.prompt, input.effort), input.attachments)
         if (session.turn !== null) {
           return yield* new AgentError({
             provider: id,
@@ -959,6 +962,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         yield* Effect.addFinalizer(() => abandon(session, turn))
         for (const attachment of input.attachments) session.attachmentPaths.add(attachment.path)
         yield* Queue.offer(session.prompts, message)
+        yield* input.onOpen ?? Effect.void
       })
 
     const runTurn = (input: RunTurnInput) =>
@@ -974,22 +978,21 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
 
     const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>, priority: SteerPriority) =>
       Effect.gen(function* () {
-        const message = yield* userMessage(text, attachments, priority)
+        const message = yield* userMessage(id, text, attachments, priority)
         const session = sessions.get(threadId)
-        if (session?.turn == null) {
-          return yield* new AgentError({ provider: id, message: "No turn is running on this thread" })
-        }
+        if (session?.turn == null) return false
         session.turnPrompts.add(message.uuid)
         session.unanswered.add(message.uuid)
         for (const attachment of attachments) session.attachmentPaths.add(attachment.path)
         yield* Queue.offer(session.prompts, message)
+        return true
       })
 
     const transcriptUsage = perHome(makeTranscriptUsage)
     const usage = (sessionId: string, home: AccountHome | null) =>
       Effect.tryPromise({
         try: () => transcriptUsage(home?.dir ?? claudeHome())(sessionId),
-        catch: agentError("Failed to read Claude transcripts"),
+        catch: agentError(id, "Failed to read Claude transcripts"),
       })
 
     const listCommands = ({
@@ -1007,7 +1010,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           ? lease(session, (leased) =>
               Effect.tryPromise({
                 try: () => leased.query.supportedCommands(),
-                catch: agentError("Failed to list Claude commands"),
+                catch: agentError(id, "Failed to list Claude commands"),
               }),
             )
           : Cache.get(probedCommands, commandsKey(cwd, home))
@@ -1032,7 +1035,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
             return lease(session, (leased) =>
               Effect.tryPromise({
                 try: () => leased.query.stopTask(taskId),
-                catch: agentError("Failed to stop the background task"),
+                catch: agentError(id, "Failed to stop the background task"),
               }),
             )
           }),
@@ -1043,7 +1046,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
             return lease(session, (leased) =>
               Effect.tryPromise({
                 try: () => leased.query.backgroundTasks(callId),
-                catch: agentError("Failed to move the command to the background"),
+                catch: agentError(id, "Failed to move the command to the background"),
               }),
             )
           }),
@@ -1066,7 +1069,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           return lease(session, (leased) =>
             Effect.tryPromise({
               try: () => leased.query.getContextUsage(),
-              catch: agentError("Failed to read the context usage"),
+              catch: agentError(id, "Failed to read the context usage"),
             }),
           ).pipe(Effect.map(toContextBreakdown))
         }),
@@ -1077,7 +1080,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           return lease(session, (leased) =>
             Effect.tryPromise({
               try: () => leased.query.stopTask(subagentId),
-              catch: agentError("Failed to stop the sub-agent"),
+              catch: agentError(id, "Failed to stop the sub-agent"),
             }),
           )
         }),

@@ -1,3 +1,4 @@
+import { pullRequestNumberLabelOfUrl } from "@shared/codeHost.ts"
 import type { PullRequestLink, Thread } from "@shared/domain.ts"
 import { openChecks, type RowState, rowEmphasis, rowState, rowStatusIndicator } from "@shared/threadStatus.ts"
 import { StyleSheet, Text, View } from "react-native"
@@ -17,7 +18,7 @@ import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { checksLabel, statusLabel as pullRequestStatusLabel } from "@/lib/pull-request-labels"
 import { relativeTime } from "@/lib/relative-time"
-import { pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
+import { usePullRequests } from "@/stores/pull-requests"
 import { threadBranch, useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
 
@@ -84,7 +85,7 @@ export function ThreadRow({
     usePullRequestAttention(links),
   )
   const latest = links.at(-1)
-  const number = latest === undefined ? null : pullRequestNumber(latest.url)
+  const number = latest === undefined ? null : pullRequestNumberLabelOfUrl(latest.url)
   const summary = usePullRequestSummary(latest?.url ?? null)
   const checks = openChecks(summary ?? undefined)
   const watching = links.some((link) => link.watch !== null)

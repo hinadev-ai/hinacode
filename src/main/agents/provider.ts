@@ -24,6 +24,11 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   loginCommand: Schema.optional(Schema.String),
 }) {}
 
+export const interruptedTurn: Extract<AgentEvent, { type: "turn_failed" }> = {
+  type: "turn_failed",
+  message: "Turn interrupted",
+}
+
 export type SteerPriority = "now" | "next"
 
 export interface Wake {
@@ -57,7 +62,7 @@ export interface SessionHistory {
 
 export const LISTED_SESSIONS = 50
 
-export type SessionInput = Omit<RunTurnInput, "prompt" | "attachments">
+export type SessionInput = Omit<RunTurnInput, "prompt" | "attachments" | "onOpen">
 
 export interface AgentProvider {
   readonly id: ProviderId
@@ -92,7 +97,7 @@ export interface AgentProvider {
     text: string,
     attachments: ReadonlyArray<Attachment>,
     priority: SteerPriority,
-  ) => Effect.Effect<void, AgentError>
+  ) => Effect.Effect<boolean, AgentError>
   readonly interrupt: (threadId: string) => Effect.Effect<void>
   readonly closeSession?: (threadId: string, home: AccountHome | null) => Effect.Effect<void, AgentError>
   readonly backgroundTasks?: {

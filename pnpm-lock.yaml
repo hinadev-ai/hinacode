@@ -198,7 +198,7 @@ overrides:
   '@anthropic-ai/claude-agent-sdk>@anthropic-ai/claude-agent-sdk-win32-x64': '-'
 
 patchedDependencies:
-  '@legendapp/list@3.6.0': 426c3a855cb95755b0022f1ffde624d54843b0bfbfe324ef820e6a2343137d28
+  '@legendapp/list@3.6.0': 54cd636ccdb5344ce53277d46d6d4ef5208bb92fade738b0054adac5fd358018
   '@tiptap/core@3.32.2': e695bb961460b8c5ad4a38461eb3e1a9104fb2b7e2baf37c47190df0ace411e3
   '@tiptap/extension-table@3.32.2': d310a1d5429d15e6dfe5bc6023d0d54b59304dcb915740521c3c431b85ce812a
   marked@17.0.6: 8fa7a5164c14aa4f41e7bd8971ede0c0faf2a3a2dcf8e75245566970f4fe3802
@@ -216,12 +216,6 @@ importers:
       '@effect/sql-sqlite-node':
         specifier: 4.0.3
         version: 4.0.3(effect@4.0.3)
-      '@excalidraw/excalidraw':
-        specifier: 0.18.1
-        version: 0.18.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@fontsource-variable/noto-sans-sc':
-        specifier: ^5.3.1
-        version: 5.3.1
       '@grpc/grpc-js':
         specifier: ^1.14.6
         version: 1.14.6
@@ -231,9 +225,6 @@ importers:
       '@hinacode/artifacts':
         specifier: workspace:*
         version: link:packages/artifacts
-      '@joplin/turndown-plugin-gfm':
-        specifier: 1.0.68
-        version: 1.0.68
       '@linear/sdk':
         specifier: 97.1.0
         version: 97.1.0(graphql@17.0.2)
@@ -258,18 +249,6 @@ importers:
       playwright-core:
         specifier: 1.64.0
         version: 1.64.0
-      qrcode:
-        specifier: ^1.5.4
-        version: 1.5.4
-      rehype-raw:
-        specifier: 7.0.0
-        version: 7.0.0
-      rehype-sanitize:
-        specifier: 6.0.0
-        version: 6.0.0
-      turndown:
-        specifier: 7.2.5
-        version: 7.2.5
       undici:
         specifier: 7.30.0
         version: 7.30.0
@@ -316,6 +295,9 @@ importers:
       '@effect/vitest':
         specifier: 4.0.3
         version: 4.0.3(effect@4.0.3)(vitest@5.0.3)
+      '@excalidraw/excalidraw':
+        specifier: 0.18.1
+        version: 0.18.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@fontsource-variable/dm-sans':
         specifier: ^5.3.0
         version: 5.3.0
@@ -328,6 +310,9 @@ importers:
       '@fontsource-variable/noto-sans-jp':
         specifier: ^5.3.0
         version: 5.3.0
+      '@fontsource-variable/noto-sans-sc':
+        specifier: ^5.3.1
+        version: 5.3.1
       '@fontsource-variable/noto-sans-tc':
         specifier: ^5.3.0
         version: 5.3.0
@@ -342,7 +327,7 @@ importers:
         version: 2.27.0(typescript@6.0.3)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1))
       '@legendapp/list':
         specifier: 3.6.0
-        version: 3.6.0(patch_hash=426c3a855cb95755b0022f1ffde624d54843b0bfbfe324ef820e6a2343137d28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 3.6.0(patch_hash=54cd636ccdb5344ce53277d46d6d4ef5208bb92fade738b0054adac5fd358018)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@novnc/novnc':
         specifier: 1.7.0
         version: 1.7.0
@@ -508,6 +493,9 @@ importers:
       playwright-bdd:
         specifier: 9.2.1
         version: 9.2.1(@playwright/test@1.64.0)
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -520,6 +508,12 @@ importers:
       react-markdown:
         specifier: 10.1.0
         version: 10.1.0(@types/react@19.3.0)(react@19.3.0)(supports-color@7.2.0)
+      rehype-raw:
+        specifier: 7.0.0
+        version: 7.0.0
+      rehype-sanitize:
+        specifier: 6.0.0
+        version: 6.0.0
       remark-gfm:
         specifier: 4.0.1
         version: 4.0.1(supports-color@7.2.0)
@@ -541,6 +535,9 @@ importers:
       tsrs:
         specifier: 0.18.0-ts7.1.0-dev.20260929
         version: 0.18.0-ts7.1.0-dev.20260929
+      turndown:
+        specifier: 7.2.5
+        version: 7.2.5
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -2147,9 +2144,6 @@ packages:
   '@isaacs/fs-minipass@4.0.1':
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
     engines: {node: '>=18.0.0'}
-
-  '@joplin/turndown-plugin-gfm@1.0.68':
-    resolution: {integrity: sha512-m8DfAQNC/V7g0j5H6Jv60WhekBBjodD+zTPGrU+g2m+ux/z8ZX07KQIl6kaAmbKwfvsQhC04op52g63I78sVgg==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -10278,8 +10272,6 @@ snapshots:
     dependencies:
       minipass: 7.1.3
 
-  '@joplin/turndown-plugin-gfm@1.0.68': {}
-
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
@@ -10306,7 +10298,7 @@ snapshots:
 
   '@js-sdsl/ordered-map@4.4.2': {}
 
-  '@legendapp/list@3.6.0(patch_hash=426c3a855cb95755b0022f1ffde624d54843b0bfbfe324ef820e6a2343137d28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@legendapp/list@3.6.0(patch_hash=54cd636ccdb5344ce53277d46d6d4ef5208bb92fade738b0054adac5fd358018)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       react: 19.3.0
       use-sync-external-store: 1.7.0(react@19.3.0)

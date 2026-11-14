@@ -40,7 +40,8 @@ import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { registerIpc } from "../ipc.ts"
-import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
+import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED } from "../../shared/transport.ts"
+import { RemoteAccess } from "../remote/access.ts"
 import { unusedLoopbackPort } from "../remote/testing.ts"
 import { makeTestAppLayer } from "../testing.ts"
 import { Artifacts } from "./Artifacts.ts"
@@ -97,7 +98,7 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   usage: () => Effect.succeed(null),
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.empty,
-  steer: () => Effect.void,
+  steer: () => Effect.succeed(true),
   interrupt: () => Effect.void,
   respondApproval: () => Effect.succeed(false),
   respondQuestion: () => Effect.void,
@@ -452,6 +453,18 @@ describe("desktop environments", () => {
     expect(result(await update).title).toBe("sent while offline")
     const [onCloud] = await cloud.runPromise(Threads.use((threads) => threads.list))
     expect(onCloud?.title).toBe("sent while offline")
+  })
+
+  test("moving a cloud's listener over the link it answers on still answers, and the desktop finds it again", async () => {
+    const connections = () => electron.pushes.filter(statusOf(cloudId, "connected")).length
+    const before = connections()
+
+    const moved = result(await invoke("settings.set", { remote: { bindHost: "private" } }, cloudId))
+    expect(moved.remote).toStrictEqual({ enabled: true, bindHost: "private", port: cloudPort })
+
+    await vi.waitFor(() => expect(connections()).toBe(before + 1))
+    expect(result(await invoke("settings.get", undefined, cloudId)).remote.bindHost).toBe("private")
+    expect(result(await invoke("remote.status", undefined, cloudId))).toMatchObject({ listening: true, connected: 1 })
   })
 
   test("removing a cloud forgets it and its token", async () => {

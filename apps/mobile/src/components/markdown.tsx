@@ -13,7 +13,6 @@ import "./markdown.css"
 
 const HEADING_SIZES = [22, 20, 18, 16, 15, 15] as const
 const BLOCK_GAP = 10
-const CODE_BLOCK_RADIUS = 16
 
 const MEASURES = {
   reply: { text: 15, line: 22, gap: BLOCK_GAP, headings: HEADING_SIZES, headingGaps: [0, 0, 0, 0, 0, 0] },
@@ -58,8 +57,9 @@ function markdownStyle(
       lineHeight: 19,
       color: syntax.plain,
       backgroundColor: theme.surface,
-      borderRadius: CODE_BLOCK_RADIUS,
-      padding: 14,
+      borderWidth: 0,
+      borderRadius: radius.sm,
+      padding: 12,
       marginBottom: gap,
       syntaxColors: {
         keyword: syntax.keyword,

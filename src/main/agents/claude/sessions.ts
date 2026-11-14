@@ -4,8 +4,8 @@ import type { SessionStore } from "@anthropic-ai/claude-agent-sdk"
 import { Option, Schema } from "effect"
 import { makeTranscriptBuilder } from "../importTranscript.ts"
 import { LISTED_SESSIONS, type NativeSession, type SessionHistory } from "../provider.ts"
+import { FILE_EDIT_TOOLS } from "./mapMessage.ts"
 
-const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
 const PREVIEW_LENGTH = 300
 
 type Entry = {

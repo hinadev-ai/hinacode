@@ -10,6 +10,7 @@ const newState = (): MapState => ({
   subagents: new Map(),
   subagentRequests: new Map(),
   lastRequest: null,
+  provider: "claude",
   home: null,
   model: "claude-opus-5-5",
   limitMessage: null,

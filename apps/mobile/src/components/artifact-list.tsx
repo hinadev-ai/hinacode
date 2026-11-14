@@ -1,18 +1,20 @@
 import { useAtomValue } from "@effect/atom-react"
-import type { Artifact, ArtifactKind } from "@shared/artifact.ts"
+import type { Artifact } from "@shared/artifact.ts"
 import { Cause, Effect, Option } from "effect"
 import { AsyncResult, AtomRegistry } from "effect/reactivity"
-import { router, useFocusEffect } from "expo-router"
-import { useState } from "react"
+import { useFocusEffect } from "expo-router"
+import { useState, useTransition } from "react"
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { GroupedCard } from "@/components/grouped-card"
-import { Icon, type IconName } from "@/components/icon"
+import { Icon } from "@/components/icon"
 import { Spinner } from "@/components/motion"
-import { EmptyState, Notice } from "@/components/ui"
+import { Button, EmptyState, Notice } from "@/components/ui"
 import { HIT, READABLE_WIDTH } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
+import { useThreadConnection, useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { type RpcError, useConnection } from "@/lib/connection"
+import { artifactKinds, openArtifact } from "@/lib/artifact-kinds"
+import { call, type RpcError, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { relativeTime } from "@/lib/relative-time"
@@ -23,17 +25,6 @@ type Loaded =
   | { status: "loading" }
   | { status: "ready"; artifacts: readonly Artifact[] }
   | { status: "error"; message: string }
-
-const kindIcon: Record<ArtifactKind, IconName> = { page: "Layout", document: "FileText", whiteboard: "Flow" }
-
-const kindLabel = (kind: ArtifactKind) =>
-  copy(
-    kind === "document"
-      ? "mobile_artifact_card_document"
-      : kind === "whiteboard"
-        ? "mobile_artifacts_whiteboard"
-        : "mobile_artifact_card_page",
-  )
 
 const newestFirst = (artifacts: readonly Artifact[]) =>
   [...artifacts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -89,6 +80,7 @@ export function ArtifactList({ threadId }: { threadId?: string }) {
     >
       <View style={styles.column}>
         {!connected && <Notice text={copy("mobile_overview_offline")} />}
+        {threadId !== undefined && <NewDocument threadId={threadId} />}
         {state.status === "loading" ? (
           connected && (
             <View style={styles.loading}>
@@ -117,9 +109,9 @@ function ArtifactRow({ artifact, showThread }: { artifact: Artifact; showThread:
   const kind = artifact.kind ?? "page"
   const thread = useThreads((state) => (artifact.threadId === undefined ? undefined : state.byId[artifact.threadId]))
   const threadId = artifact.threadId
-  const openable = kind === "document" && threadId !== undefined
+  const openable = threadId !== undefined
   const meta = [
-    kindLabel(kind),
+    artifactKinds[kind].label,
     copy("mobile_artifact_card_version", { version: String(artifact.version) }),
     relativeTime(artifact.updatedAt, now),
   ].join(" · ")
@@ -130,21 +122,15 @@ function ArtifactRow({ artifact, showThread }: { artifact: Artifact; showThread:
       accessibilityRole={openable ? "button" : undefined}
       accessibilityLabel={[artifact.title, meta, thread?.title].filter(Boolean).join(", ")}
       disabled={!openable}
-      onPress={() =>
-        openable &&
-        router.push({
-          pathname: "/thread/[id]/document",
-          params: { id: threadId, artifactId: artifact.id, title: artifact.title },
-        })
-      }
+      onPress={() => openable && openArtifact(threadId, { id: artifact.id, kind, title: artifact.title })}
       style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
     >
       <View style={styles.rowIcon}>
-        <Icon name={kindIcon[kind]} size={18} color={theme.text} />
+        <Icon name={artifactKinds[kind].icon} size={18} color={theme.text} />
       </View>
       <View style={styles.rowBody}>
         <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>
-          {artifact.title || copy("mobile_artifact_untitled_page")}
+          {artifact.title || artifactKinds[kind].untitled}
         </Text>
         <Text numberOfLines={1} style={[styles.meta, { color: theme.textMuted }]}>
           {meta}
@@ -163,7 +149,39 @@ function ArtifactRow({ artifact, showThread }: { artifact: Artifact; showThread:
   )
 }
 
+function NewDocument({ threadId }: { threadId: string }) {
+  const server = useThreadServer(threadId)?.id
+  const connected = useThreadConnection(threadId) === "connected"
+  const [creating, startCreating] = useTransition()
+  const [failure, setFailure] = useState<string | null>(null)
+  const create = () =>
+    startCreating(async () => {
+      setFailure(null)
+      try {
+        const title = copy("mobile_artifact_untitled_document")
+        const created = await call("artifacts.createDocument", { threadId, title }, { server })
+        openArtifact(threadId, { id: created.id, kind: "document", title: created.title })
+      } catch (cause) {
+        setFailure(copy("mobile_artifacts_create_failed", { message: errorText(cause) }))
+      }
+    })
+  return (
+    <View style={styles.create}>
+      <Button
+        testID="new-document"
+        label={copy("mobile_artifacts_new_document")}
+        icon="FileText"
+        busy={creating}
+        disabled={!connected}
+        onPress={create}
+      />
+      {failure !== null && <Notice tone="danger" text={failure} />}
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
+  create: { gap: 8, paddingBottom: 8 },
   page: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32 },
   column: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center", gap: 4 },
   loading: { alignItems: "center", paddingVertical: 24 },

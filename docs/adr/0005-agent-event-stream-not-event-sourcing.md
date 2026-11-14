@@ -1,6 +1,6 @@
 # 0005. One AgentEvent stream, folded into messages, not event-sourced
 
-Status: Accepted
+Status: Accepted. Since #553 the interval is the longer of 500 ms and the last write's bytes at 256 KiB/s (`AgentRunner.ts`).
 Date: 2026-10-11
 
 ## Context

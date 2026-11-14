@@ -72,10 +72,10 @@ const agentProcesses = Effect.acquireRelease(
   ({ close }) => Effect.sync(close),
 )
 
-const loggedOnce = (logPath: string, method: string) =>
+const logged = (logPath: string, method: string, times = 1) =>
   Effect.callback<void>((resume) => {
     const check = () => {
-      if (!readFileSync(logPath, "utf8").includes(`"method":"${method}"`)) return
+      if (readFileSync(logPath, "utf8").split(`"method":"${method}"`).length - 1 < times) return
       watcher.close()
       resume(Effect.void)
     }
@@ -83,6 +83,8 @@ const loggedOnce = (logPath: string, method: string) =>
     check()
     return Effect.sync(() => watcher.close())
   })
+
+const ids = (models: ReadonlyArray<{ readonly id: string }>) => models.map((model) => model.id)
 
 const input = (fields: Partial<RunTurnInput> = {}): RunTurnInput => ({
   threadId: "t1",
@@ -363,6 +365,93 @@ describe("makeAcpProvider", () => {
     }).pipe(Effect.scoped),
   )
 
+  it.effect("probes models again after an empty list, then once per ten minutes, for all pickers at once", () =>
+    Effect.gen(function* () {
+      const { provider: make, received } = setup({ FAKE_ACP_MODELS: "after-first-session" })
+      const provider = yield* make
+      const probes = () => received().filter((message) => message.method === "session/new").length
+
+      expect(yield* provider.listModels).toStrictEqual([])
+      const [first, second] = yield* Effect.all([provider.listModels, provider.listModels], { concurrency: 2 })
+      expect([ids(first), ids(second)]).toStrictEqual([
+        ["fake/default", "fake/other"],
+        ["fake/default", "fake/other"],
+      ])
+      expect(probes()).toBe(2)
+
+      yield* TestClock.adjust("9 minutes")
+      yield* provider.listModels
+      expect(probes()).toBe(2)
+    }).pipe(Effect.scoped),
+  )
+
+  it.effect("answers with the last models at once after ten minutes, and probes again in the background", () =>
+    Effect.gen(function* () {
+      const { provider: make, logPath } = setup({ FAKE_ACP_MODELS: "stall-after-first-session" })
+      const provider = yield* make
+      const models = yield* provider.listModels
+
+      yield* TestClock.adjust("11 minutes")
+      expect(yield* provider.listModels).toStrictEqual(models)
+      yield* logged(logPath, "session/new", 2)
+    }).pipe(Effect.scoped),
+  )
+
+  it.effect("replaces the last models with the list a background probe brings back", () =>
+    Effect.gen(function* () {
+      const { provider: make, logPath } = setup({ FAKE_ACP_MODELS: "new-after-first-session" })
+      const provider = yield* make
+      expect(ids(yield* provider.listModels)).toStrictEqual(["fake/default", "fake/other"])
+
+      yield* TestClock.adjust("11 minutes")
+      expect(ids(yield* provider.listModels)).toStrictEqual(["fake/default", "fake/other"])
+      yield* logged(logPath, "session/new", 2)
+      const refreshed = yield* provider.listModels.pipe(
+        Effect.tap(() => Effect.yieldNow),
+        Effect.repeat({ until: (models) => models.length === 3 }),
+      )
+      expect(ids(refreshed)).toStrictEqual(["fake/default", "fake/other", "fake/new"])
+    }).pipe(Effect.scoped),
+  )
+
+  it.effect("drops the last models once a background probe finds the agent signed out", () =>
+    Effect.gen(function* () {
+      const { provider: make } = setup({ FAKE_ACP_AUTH: "after-first-session" })
+      const provider = yield* make
+      const models = yield* provider.listModels
+
+      yield* TestClock.adjust("11 minutes")
+      expect(yield* provider.listModels).toStrictEqual(models)
+      const error = yield* provider.listModels.pipe(
+        Effect.tap(() => Effect.yieldNow),
+        Effect.forever,
+        Effect.flip,
+      )
+      expect(error.message).toBe("opencode is not signed in")
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("shares one failed probe among pickers that open at once, and probes again on the next open", () =>
+    Effect.gen(function* () {
+      const { provider: make, received } = setup({ FAKE_ACP_AUTH: "required" })
+      const provider = yield* make
+      const probes = () => received().filter((message) => message.method === "session/new").length
+
+      const failures = yield* Effect.all(
+        Array.from({ length: 3 }, () => Effect.flip(provider.listModels)),
+        {
+          concurrency: 3,
+        },
+      )
+      expect(failures.map((error) => error.message)).toStrictEqual(Array(3).fill(failures[0]!.message))
+      expect(failures[0]!.message).toBe("opencode is not signed in")
+      expect(probes()).toBe(1)
+
+      yield* Effect.flip(provider.listModels)
+      expect(probes()).toBe(2)
+    }).pipe(Effect.scoped),
+  )
+
   it.live("lists a new thread's commands from a session opened in its cwd, once per cwd", () =>
     Effect.gen(function* () {
       const { provider: make, received } = setup()
@@ -374,6 +463,17 @@ describe("makeAcpProvider", () => {
       expect(received().filter((message) => message.method === "session/new")).toMatchObject([
         { params: { cwd, mcpServers: [] } },
       ])
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("lists commands again after a failed probe", () =>
+    Effect.gen(function* () {
+      const { provider: make, received } = setup({ FAKE_ACP_AUTH: "required" })
+      const provider = yield* make
+      const cwd = mkdtempSync(join(tmpdir(), "kk-acp-project-"))
+      yield* provider.listCommands({ threadId: "t1", cwd, home: null }).pipe(Effect.flip)
+      yield* provider.listCommands({ threadId: "t1", cwd, home: null }).pipe(Effect.flip)
+      expect(received().filter((message) => message.method === "session/new")).toHaveLength(2)
     }).pipe(Effect.scoped),
   )
 
@@ -450,6 +550,16 @@ describe("makeAcpProvider", () => {
         [{ headers: [{ name: "authorization", value: "Bearer test" }] }],
         [{ headers: [{ name: "authorization", value: "Bearer other" }] }],
       ])
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("runs the turn's agent with the thread's tmp folder as its temp directory", () =>
+    Effect.gen(function* () {
+      const { provider: make } = setup()
+      const provider = yield* make
+      const threadTmp = mkdtempSync(join(tmpdir(), "hc-thread-"))
+      const events = yield* runToEnd(provider, input({ prompt: "tmp", tmpDirectory: threadTmp }))
+      expect(events).toContainEqual({ type: "text_delta", text: `${threadTmp} ${threadTmp} ${threadTmp}` })
     }).pipe(Effect.scoped),
   )
 })
@@ -534,7 +644,7 @@ describe("an ACP agent that fails", () => {
       const { provider: make, logPath } = setup({ FAKE_ACP_LIFELINE: agents.path, FAKE_ACP_SILENT_INITIALIZE: "1" })
       const provider = yield* make
       const turn = yield* startTurn(provider, input())
-      yield* loggedOnce(logPath, "initialize")
+      yield* logged(logPath, "initialize")
       yield* TestClock.adjust("31 seconds")
       const error = yield* Fiber.join(turn.fiber).pipe(Effect.flip)
       expect(error.message).toMatch(/did not answer initialize/)

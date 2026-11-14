@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url"
 
 const helper = fileURLToPath(new URL("./rpc.ts", import.meta.url))
 
-const callRendererAt = async (rendererUrl: string) => {
+const callRendererAt = async (rendererUrl: string, signal: AbortSignal) => {
   const sockets = new Set<Socket>()
   const server = createServer((_, response) => {
     const address = server.address() as AddressInfo
@@ -47,21 +47,11 @@ const callRendererAt = async (rendererUrl: string) => {
     stdout += chunk
   })
   const exited = new Promise((resolve) => child.once("exit", (code) => resolve(code)))
-  let timeout: NodeJS.Timeout | undefined
+  signal.addEventListener("abort", () => child.kill())
   try {
-    const code = await Promise.race([
-      exited,
-      new Promise((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error("RPC response printed, but helper still waits for CDP close")),
-          2000,
-        )
-      }),
-    ])
-    assert.equal(code, 0)
+    assert.equal(await exited, 0)
     assert.deepEqual(JSON.parse(stdout), { status: "preparing" })
   } finally {
-    clearTimeout(timeout)
     child.kill()
     for (const socket of sockets) socket.destroy()
     await exited
@@ -69,7 +59,10 @@ const callRendererAt = async (rendererUrl: string) => {
   }
 }
 
-test("rpc exits after printing its response without waiting for CDP to close", () =>
-  callRendererAt("file:///app/out/renderer/index.html"))
+test("rpc exits after printing its response without waiting for CDP to close", { timeout: 10_000 }, (t) =>
+  callRendererAt("file:///app/out/renderer/index.html", t.signal),
+)
 
-test("rpc finds the renderer served by pnpm dev", () => callRendererAt("http://localhost:5173/"))
+test("rpc finds the renderer served by pnpm dev", { timeout: 10_000 }, (t) =>
+  callRendererAt("http://localhost:5173/", t.signal),
+)

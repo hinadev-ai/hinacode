@@ -10,14 +10,12 @@ asarUnpack:
   - "**/node_modules/node-pty/**"
 # Each platform lists its whole file set, with no top-level `files`. electron-builder keeps a top-level list
 # apart from a platform one, and a platform list of only exclusions then packages the entire repo.
-# Claude threads run the user's own `claude`, which updates faster than hinacode ships, so the SDK's binary is left out.
 # Packages' TypeScript sources and source maps never run.
 mac:
   files:
     - out/**
     - package.json
     - "!out/server/**"
-    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
     - "!**/node_modules/node-pty/prebuilds/{win32,linux,darwin-x64}*/**"
     - "!**/node_modules/electron-liquid-glass/{js,src,prebuilds/darwin-x64}/**"
@@ -31,12 +29,24 @@ mac:
   icon: assets/icon.png
   hardenedRuntime: true
   notarize: true
+# The background's size sets the window size. electron-builder picks up dmg-background@2x.png for Retina.
+# Redraw both PNGs from the SVG with rsvg-convert at 540x380 and 1080x760. Both icons sit inside its track.
+dmg:
+  background: assets/dmg-background.png
+  iconSize: 96
+  contents:
+    - x: 140
+      y: 180
+      type: file
+    - x: 400
+      y: 180
+      type: link
+      path: /Applications
 win:
   files:
     - out/**
     - package.json
     - "!out/server/**"
-    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
     - "!**/node_modules/node-pty/prebuilds/{darwin,linux,win32-arm64}*/**"
     - "!**/node_modules/node-pty/build/**"
@@ -52,7 +62,6 @@ linux:
     - out/**
     - package.json
     - "!out/server/**"
-    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
     - "!**/node_modules/node-pty/prebuilds/{darwin,win32,linux-arm64}*/**"
   target:

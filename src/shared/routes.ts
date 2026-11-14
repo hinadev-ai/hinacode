@@ -120,6 +120,7 @@ export const routes: Record<RpcMethod, Route> = {
   "secrets.clear": named,
   "github.auth": named,
   "github.pullRequest": named,
+  "github.issue": named,
   "github.pullRequestDetail": named,
   "github.pullRequestFiles": named,
   "pullRequestGuides.get": named,
@@ -220,7 +221,6 @@ export const routes: Record<RpcMethod, Route> = {
 
   "worktrees.remove": owner("worktree", "id"),
   "worktrees.checkoutState": owner("worktree", "id"),
-  "worktrees.setupLog": owner("worktree", "id"),
   "worktrees.stopSetup": owner("worktree", "id"),
   "worktrees.pullRequest": owner("worktree", "id"),
 

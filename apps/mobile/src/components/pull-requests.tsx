@@ -1,4 +1,5 @@
 import { useAtomMount, useAtomValue } from "@effect/atom-react"
+import { codeHostName, codeHostOfUrl, pullRequestNumberLabel } from "@shared/codeHost.ts"
 import type { PullRequest, PullRequestLink, Thread } from "@shared/domain.ts"
 import { Effect } from "effect"
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity"
@@ -158,6 +159,7 @@ function PullRequestCard({
   const watching = (link?.watch ?? null) !== null
   const failed = remote?.status === "error" ? remote.message : null
   const reference = pullRequestReference(url)
+  const host = codeHostOfUrl(url)
   const review = pr !== null && (pr.status === "open" || pr.status === "draft") ? pr.review : null
   const label =
     pr === null
@@ -166,7 +168,7 @@ function PullRequestCard({
           .join(", ")
       : [
           pr.title,
-          pullRequestLabel(String(pr.number), pr),
+          pullRequestLabel(pullRequestNumberLabel(host, pr.number), pr),
           review !== null && reviewLabel(review),
           watching && copy("mobile_pr_watching"),
         ]
@@ -196,7 +198,7 @@ function PullRequestCard({
             </Text>
             {failed !== null && (
               <Text numberOfLines={1} style={[styles.note, { color: theme.textMuted }]}>
-                {copy("mobile_pr_lookup_failed")}
+                {copy("mobile_pr_lookup_failed", { host: codeHostName(host) })}
               </Text>
             )}
           </View>
@@ -212,7 +214,7 @@ function PullRequestCard({
         <>
           <View style={styles.headline}>
             <PullRequestState status={pr.status} />
-            <Text style={[styles.number, { color: theme.textMuted }]}>#{pr.number}</Text>
+            <Text style={[styles.number, { color: theme.textMuted }]}>{pullRequestNumberLabel(host, pr.number)}</Text>
             <LineCounts added={pr.additions} removed={pr.deletions} />
             <View style={styles.spacer} />
             <Icon name="ChevronRight" size={18} color={theme.textMuted} />

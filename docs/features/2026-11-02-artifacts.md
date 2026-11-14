@@ -1,6 +1,6 @@
 # Artifacts
 
-Status: Building
+Status: Shipped
 Date: 2026-11-02
 
 ## Problem
@@ -135,7 +135,7 @@ An artifact has a `kind`. Everything above describes a `page`. A `document` is M
 - Publishing the package to npm. The bin is TypeScript, which Node refuses to run under `node_modules`, so it needs a build first. Until then the package is private and harnesses run it from the checkout.
 
 - Publishing to a URL, comments and access control. Sharing means connected machines only.
-- The phone app. It has no artifact view yet.
+- The phone app. See [artifacts on the phone](2026-11-12-mobile-artifacts.md).
 - Version history in the UI. The store keeps one previous version for readers in flight, not for browsing.
 - Runtime capabilities such as storage shared between viewers.
 

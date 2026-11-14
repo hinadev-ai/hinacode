@@ -5,8 +5,8 @@ import { binaryStatuses } from "./agents/binary.ts"
 import { bindKey, keyFor, probe } from "./agents/magpie/gateway.ts"
 import { MAGPIE_KEY_SECRET } from "../shared/providers.ts"
 import { AgentError } from "./agents/provider.ts"
-import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
-import { compactSubagentWork } from "../shared/subagents.ts"
+import { compactMessage, previewTranscriptMessage, transcriptPage } from "../shared/compactTranscript.ts"
+import { compactSubagentWork, previewSubagentWork } from "../shared/subagents.ts"
 import type {
   NotificationPermission,
   Opener,
@@ -293,7 +293,6 @@ const handlers: Handlers = {
   "worktrees.remove": ({ id, deleteBranch }) => Worktrees.use((worktrees) => worktrees.remove(id, deleteBranch)),
   "worktrees.checkouts": () => Worktrees.use((worktrees) => worktrees.checkouts),
   "worktrees.checkoutState": ({ id }) => Worktrees.use((worktrees) => worktrees.checkoutState(id)),
-  "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.stopSetup": ({ id }) => Worktrees.use((worktrees) => worktrees.stopSetup(id)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
@@ -405,10 +404,7 @@ const handlers: Handlers = {
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),
-  "accounts.rename": ({ id, name }) =>
-    AgentAccounts.use((accounts) => accounts.rename(id, name)).pipe(
-      Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
-    ),
+  "accounts.rename": ({ id, name }) => AgentAccounts.use((accounts) => accounts.rename(id, name)),
   "accounts.delete": ({ id }) =>
     AgentRunner.use((runner) => runner.removeAccount(id)).pipe(
       Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
@@ -435,7 +431,7 @@ const handlers: Handlers = {
   "threads.transcript": ({ threadId, compact = false, page }) =>
     AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
       Effect.map((transcript) => {
-        const messages = transcript.messages.map(compact ? compactMessage : previewMessage)
+        const messages = transcript.messages.map(compact ? compactMessage : previewTranscriptMessage)
         return page === undefined
           ? { ...transcript, messages }
           : { ...transcript, ...transcriptPage(messages, page.before) }
@@ -477,9 +473,9 @@ const handlers: Handlers = {
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
   "subagents.stop": ({ threadId, subagentId }) =>
     AgentRunner.use((runner) => runner.stopSubagent(threadId, subagentId)),
-  "subagents.transcript": ({ threadId, callId }) =>
+  "subagents.transcript": ({ threadId, callId, compact = true }) =>
     AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
-      Effect.map(({ messages }) => compactSubagentWork(messages, callId)),
+      Effect.map(({ messages }) => (compact ? compactSubagentWork : previewSubagentWork)(messages, callId)),
     ),
   "backgroundTasks.list": ({ threadId }) => AgentRunner.use((runner) => runner.backgroundTasks(threadId)),
   "backgroundTasks.stop": ({ threadId, taskId }) =>
@@ -497,6 +493,7 @@ const handlers: Handlers = {
     PullRequests.use((pullRequests) => pullRequests.unwatch(threadId, url)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => SourceControl.use((sourceControl) => sourceControl.pullRequest(url)),
+  "github.issue": ({ url }) => GitHub.use((github) => github.issue(url)),
   "github.pullRequestDetail": ({ url, fresh }) =>
     SourceControl.use((sourceControl) => sourceControl.pullRequestDetail(url, { fresh })).pipe(
       Effect.tap(startGuideForHead),

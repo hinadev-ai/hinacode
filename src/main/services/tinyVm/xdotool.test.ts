@@ -26,13 +26,26 @@ describe("xdotoolScript", () => {
     )
   })
 
-  it("quotes typed text and keys for the shell", () => {
+  it("quotes typed text for the shell and sends keys as keysyms", () => {
     expect(xdotoolScript([{ type: "type", text: "it's $HOME" }])).toBe(
       `xdotool type --clearmodifiers --delay 1 -- 'it'\\''s $HOME'`,
     )
     expect(xdotoolScript([{ type: "key", keys: "ctrl+l Return" }])).toBe(
-      "xdotool key --clearmodifiers 'ctrl+l'\nxdotool key --clearmodifiers 'Return'",
+      "xdotool key --clearmodifiers 0xffe3+0x6c\nxdotool key --clearmodifiers 0xff0d",
     )
+  })
+
+  it("presses the keys sbx accepts, such as enter, esc and lowercase names, by keysym", () => {
+    expect(xdotoolScript([{ type: "key", keys: "enter esc ctrl+L page_down" }])).toBe(
+      ["0xff0d", "0xff1b", "0xffe3+0x6c", "0xff56"].map((chord) => `xdotool key --clearmodifiers ${chord}`).join("\n"),
+    )
+  })
+
+  it("passes other X keysym names to xdotool unchanged", () => {
+    expect(xdotoolScript([{ type: "key", keys: "Caps_Lock shift+KP_Enter" }])).toBe(
+      "xdotool key --clearmodifiers Caps_Lock\nxdotool key --clearmodifiers 0xffe1+KP_Enter",
+    )
+    expect(() => xdotoolScript([{ type: "key", keys: "ctrl+$(reboot)" }])).toThrow('Unknown key "$(reboot)"')
   })
 
   it("refuses points outside the boat screen and unknown modifiers", () => {

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
-import { Context, Deferred, Duration, Effect, Fiber, Layer, ManagedRuntime, PubSub } from "effect"
+import { Context, Deferred, Effect, Fiber, Layer, ManagedRuntime, PubSub } from "effect"
 import { SqlClient } from "effect/sql"
 import { TestClock } from "effect/testing"
 import type { PushEvent } from "../../shared/contract.ts"
@@ -37,12 +37,12 @@ const makeLayer = (
   dbPath: string,
   pushes: PubSub.PubSub<PushEvent>,
   events: Events["Service"] = Events.of({ publish: (event) => Effect.asVoid(PubSub.publish(pushes, event)) }),
-  setupTimeout: Duration.Input = WorktreesLayer.SETUP_TIMEOUT,
+  setupTiming: WorktreesLayer.SetupTiming = WorktreesLayer.SETUP_TIMING,
 ) =>
   ThreadsLayer.layer.pipe(
     Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
     Layer.provide(Terminals.layer),
-    Layer.provideMerge(WorktreesLayer.layerWithSetupTimeout(setupTimeout)),
+    Layer.provideMerge(WorktreesLayer.layerWithSetupTiming(setupTiming)),
     Layer.provideMerge(ProjectsLayer.layer),
     Layer.provide(AgentAccounts.layer),
     Layer.provideMerge(SettingsLayer.layer(dirname(dbPath))),
@@ -102,7 +102,7 @@ const withRepo = <A, E>(
   f: (repo: Repo) => Effect.Effect<A, E, Services>,
   options: {
     readonly events?: (pushes: PubSub.PubSub<PushEvent>) => Events["Service"]
-    readonly setupTimeout?: Duration.Input
+    readonly setupTiming?: Partial<WorktreesLayer.SetupTiming>
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -129,7 +129,9 @@ const withRepo = <A, E>(
       return yield* f({ root, projectId: project.id, restart })
     }).pipe(
       Effect.ensuring(waitForAllSetups),
-      Effect.provide(makeLayer(dbPath, pushes, options.events?.(pushes), options.setupTimeout)),
+      Effect.provide(
+        makeLayer(dbPath, pushes, options.events?.(pushes), { ...WorktreesLayer.SETUP_TIMING, ...options.setupTiming }),
+      ),
     )
   })
 
@@ -320,67 +322,73 @@ describe("background setup", () => {
   })
 
   it.live("archiving stops a setup script that never finishes and removes its checkout", () =>
-    withRepo(({ root, projectId }) =>
-      Effect.gen(function* () {
-        const pidPath = join(root, "setup.pid")
-        yield* startHangingSetup(projectId, pidPath)
-        const thread = yield* createThread(projectId, "hung", "kk/hung")
-        yield* waitForSetupOutput(thread.worktreeId)
-        const { path } = yield* worktreeOf(thread.worktreeId)
+    withRepo(
+      ({ root, projectId }) =>
+        Effect.gen(function* () {
+          const pidPath = join(root, "setup.pid")
+          yield* startHangingSetup(projectId, pidPath)
+          const thread = yield* createThread(projectId, "hung", "kk/hung")
+          yield* waitForSetupOutput(thread.worktreeId)
+          const { path } = yield* worktreeOf(thread.worktreeId)
 
-        const archived = yield* archiveRemovingWorktree(thread.id)
-        expect(archived.status).toBe("archived")
-        expect((yield* worktreeOf(thread.worktreeId)).status).toBe("removed")
-        expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
-        yield* waitUntilDeleted(path)
-      }),
+          const archived = yield* archiveRemovingWorktree(thread.id)
+          expect(archived.status).toBe("archived")
+          expect((yield* worktreeOf(thread.worktreeId)).status).toBe("removed")
+          expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
+          yield* waitUntilDeleted(path)
+        }),
+      { setupTiming: quickForceKill },
     ),
   )
 
   it.live("stopping a setup script that never finishes fails the worktree and releases a send waiting on it", () =>
-    withRepo(({ root, projectId }) =>
-      Effect.gen(function* () {
-        const pidPath = join(root, "setup.pid")
-        yield* startHangingSetup(projectId, pidPath)
-        const thread = yield* createThread(projectId, "hung", "kk/hung")
-        yield* waitForSetupOutput(thread.worktreeId)
-        const waiting = yield* Effect.forkChild(
-          Worktrees.use((worktrees) => worktrees.whenPrepared(thread.worktreeId!)),
-        )
+    withRepo(
+      ({ root, projectId }) =>
+        Effect.gen(function* () {
+          const pidPath = join(root, "setup.pid")
+          yield* startHangingSetup(projectId, pidPath)
+          const thread = yield* createThread(projectId, "hung", "kk/hung")
+          yield* waitForSetupOutput(thread.worktreeId)
+          const waiting = yield* Effect.forkChild(
+            Worktrees.use((worktrees) => worktrees.whenPrepared(thread.worktreeId!)),
+          )
 
-        yield* Worktrees.use((worktrees) => worktrees.stopSetup(thread.worktreeId!))
-        const prepared = yield* Fiber.join(waiting)
-        expect(prepared.status).toBe("failed")
-        expect(prepared.setupLog).toMatch(/Setup script was stopped\.\n$/)
-        expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
-        expect(existsSync(prepared.path)).toBe(true)
-      }),
+          yield* Worktrees.use((worktrees) => worktrees.stopSetup(thread.worktreeId!))
+          const prepared = yield* Fiber.join(waiting)
+          expect(prepared.status).toBe("failed")
+          expect(prepared.setupLog).toMatch(/Setup script was stopped\.\n$/)
+          expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
+          expect(existsSync(prepared.path)).toBe(true)
+        }),
+      { setupTiming: quickForceKill },
     ),
   )
 
   it.live("a background process holding the setup output does not keep the worktree preparing", () =>
-    withRepo(({ root, projectId }) =>
-      Effect.gen(function* () {
-        const pidPath = join(root, "background.pid")
-        const notices = yield* PubSub.subscribe(yield* Pushes)
-        yield* Projects.use((projects) =>
-          projects.update({
-            id: projectId,
-            setupScript: ['printf "setup started\\n"', "sleep 20 &", `echo $! > "${pidPath}"`].join("\n"),
-          }),
-        )
-        const thread = yield* createThread(projectId, "background", "kk/background")
-        const prepared = yield* Worktrees.use((worktrees) => worktrees.whenPrepared(thread.worktreeId!))
+    withRepo(
+      ({ root, projectId }) =>
+        Effect.gen(function* () {
+          const pidPath = join(root, "background.pid")
+          const notices = yield* PubSub.subscribe(yield* Pushes)
+          yield* Projects.use((projects) =>
+            projects.update({
+              id: projectId,
+              setupScript: ['printf "setup started\\n"', "sleep 20 &", `echo $! > "${pidPath}"`].join("\n"),
+            }),
+          )
+          const thread = yield* createThread(projectId, "background", "kk/background")
+          const prepared = yield* Worktrees.use((worktrees) => worktrees.whenPrepared(thread.worktreeId!))
 
-        expect(prepared.status).toBe("ready")
-        expect(prepared.setupLog).toMatch(/background process/)
-        expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
-        expect(yield* takeSetupNotice(notices, prepared.id)).toBe("backgroundOutput")
-      }).pipe(Effect.scoped),
+          expect(prepared.status).toBe("ready")
+          expect(prepared.setupLog).toMatch(/background process/)
+          expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
+          expect(yield* takeSetupNotice(notices, prepared.id)).toBe("backgroundOutput")
+        }).pipe(Effect.scoped),
+      { setupTiming: { outputDrainTimeout: "100 millis" } },
     ),
   )
 
-  it.live("a setup script that runs past the timeout fails the worktree and stops the script", () =>
+  it.effect("a setup script that runs past the timeout fails the worktree and stops the script", () =>
     withRepo(
       ({ root, projectId }) =>
         Effect.gen(function* () {
@@ -388,17 +396,21 @@ describe("background setup", () => {
           const notices = yield* PubSub.subscribe(yield* Pushes)
           yield* startHangingSetup(projectId, pidPath)
           const thread = yield* createThread(projectId, "slow", "kk/slow")
+          yield* waitForSetupOutput(thread.worktreeId)
+          yield* TestClock.adjust(WorktreesLayer.SETUP_TIMING.timeout)
           const prepared = yield* Worktrees.use((worktrees) => worktrees.whenPrepared(thread.worktreeId!))
 
           expect(prepared.status).toBe("failed")
-          expect(prepared.setupLog).toMatch(/timed out after 1s/)
+          expect(prepared.setupLog).toMatch(/timed out after 1m/)
           expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
           expect(yield* takeSetupNotice(notices, prepared.id)).toBe("timedOut")
         }).pipe(Effect.scoped),
-      { setupTimeout: "1 second" },
+      { setupTiming: quickForceKill },
     ),
   )
 })
+
+const quickForceKill = { forceKillAfter: "50 millis" } as const
 
 const takeSetupNotice = (updates: PubSub.Subscription<PushEvent>, worktreeId: string) =>
   Effect.gen(function* () {

@@ -27,7 +27,7 @@ import { serverName } from "@/hooks/use-server"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { HIT, mono, type Palette, ProviderColors, radius } from "@/constants/theme"
 import { call, type ConnectionStatus, reconnectNow, type RpcError, type Server, useConnection } from "@/lib/connection"
-import { confirmDestructive } from "@/lib/confirm"
+import { confirmAction } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import {
@@ -37,7 +37,7 @@ import {
 } from "@/lib/notifications"
 import type { Appearance, Preferences } from "@/lib/preferences"
 import { rpcFamily } from "@/lib/remote"
-import { modelsLoadAtom, modelsOn, useModels } from "@/stores/models"
+import { modelsLoadAtom, modelsOn, modelsSheetAtom, useModels } from "@/stores/models"
 import { usePreferences } from "@/stores/preferences"
 
 export default function SettingsScreen() {
@@ -410,8 +410,8 @@ function ModelSheet({
 }) {
   const theme = useTheme()
   const models = useModels((state) => modelsOn(state, server, provider))
-  const loading = useAtomValue(modelsLoadAtom(server, provider))
-  const retry = useAtomRefresh(modelsLoadAtom(server, provider))
+  const loading = useAtomValue(modelsSheetAtom(server, provider, true))
+  const retry = useAtomRefresh(modelsSheetAtom(server, provider, true))
   const agent = agents.find((entry) => entry.provider === provider)?.label ?? provider
   const failure = AsyncResult.isFailure(loading) && !loading.waiting ? errorText(Cause.squash(loading.cause)) : null
   return (
@@ -580,11 +580,12 @@ function ServerSheet({ server, onClose }: { server: Server; onClose: () => void 
 }
 
 const confirmForget = (name: string, forget: () => void) =>
-  confirmDestructive(
+  confirmAction(
     copy("mobile_settings_server_forget_title", { server: name }),
     copy("mobile_settings_server_forget_message"),
     copy("mobile_settings_server_forget"),
     forget,
+    { destructive: true },
   )
 
 const styles = StyleSheet.create({

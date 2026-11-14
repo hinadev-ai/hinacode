@@ -34,12 +34,33 @@ describe("networkAddresses", () => {
       { name: "enp1s0", address: "192.0.2.10" },
     ])
   })
+
+  it("keeps a public 100.x address outside 100.64.0.0/10 in place behind Tailscale", () => {
+    expect(
+      networkAddresses({
+        en0: [ipv4("100.20.0.5")],
+        utun4: [ipv4("100.76.89.23")],
+        en1: [ipv4("100.200.0.5")],
+      }),
+    ).toStrictEqual([
+      { name: "utun4", address: "100.76.89.23" },
+      { name: "en0", address: "100.20.0.5" },
+      { name: "en1", address: "100.200.0.5" },
+    ])
+  })
 })
 
 describe("tailscaleAddress", () => {
   it("finds the Tailscale address, or null on a machine without one", () => {
     expect(tailscaleAddress(interfaces)).toBe("100.64.0.2")
     expect(tailscaleAddress({ enp1s0: [ipv4("192.0.2.10")] })).toBeNull()
+  })
+
+  it("takes only Tailscale's 100.64.0.0/10, not every 100.x address", () => {
+    expect(tailscaleAddress({ utun4: [ipv4("100.64.0.0")] })).toBe("100.64.0.0")
+    expect(tailscaleAddress({ utun4: [ipv4("100.127.255.255")] })).toBe("100.127.255.255")
+    expect(tailscaleAddress({ en0: [ipv4("100.63.255.255")] })).toBeNull()
+    expect(tailscaleAddress({ en0: [ipv4("100.128.0.0")] })).toBeNull()
   })
 })
 

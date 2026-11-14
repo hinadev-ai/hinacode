@@ -13,7 +13,11 @@ type Message = {
 
 const logPath = process.env["FAKE_ACP_LOG"]
 const legacyModels = process.env["FAKE_ACP_MODELS"] === "legacy"
+const signedInAfterFirstSession = process.env["FAKE_ACP_MODELS"] === "after-first-session"
+const stallAfterFirstSession = process.env["FAKE_ACP_MODELS"] === "stall-after-first-session"
+const newModelAfterFirstSession = process.env["FAKE_ACP_MODELS"] === "new-after-first-session"
 const authRequired = process.env["FAKE_ACP_AUTH"] === "required"
+const signedOutAfterFirstSession = process.env["FAKE_ACP_AUTH"] === "after-first-session"
 const silentInitialize = process.env["FAKE_ACP_SILENT_INITIALIZE"] === "1"
 const lifeline = process.env["FAKE_ACP_LIFELINE"]
 if (lifeline !== undefined) connect(lifeline).on("error", () => {})
@@ -56,6 +60,7 @@ const configFor = (sessionId: string) => {
       options: [
         { value: "fake/other", name: "Fake Other" },
         { value: "fake/default", name: "Fake Default" },
+        ...(newModelAfterFirstSession && sessionId !== "ses_1" ? [{ value: "fake/new", name: "Fake New" }] : []),
       ],
     },
     ...(levels === undefined
@@ -74,17 +79,19 @@ const configFor = (sessionId: string) => {
 }
 
 const modelSetup = (sessionId: string) =>
-  legacyModels
-    ? {
-        models: {
-          currentModelId: "legacy-default",
-          availableModels: [
-            { modelId: "legacy-other", name: "Legacy Other" },
-            { modelId: "legacy-default", name: "Legacy Default" },
-          ],
-        },
-      }
-    : { configOptions: configFor(sessionId) }
+  signedInAfterFirstSession && sessionId === "ses_1"
+    ? {}
+    : legacyModels
+      ? {
+          models: {
+            currentModelId: "legacy-default",
+            availableModels: [
+              { modelId: "legacy-other", name: "Legacy Other" },
+              { modelId: "legacy-default", name: "Legacy Default" },
+            ],
+          },
+        }
+      : { configOptions: configFor(sessionId) }
 
 const writeTool = async (sessionId: string, cwd: string) => {
   const path = `${cwd}/hello.txt`
@@ -200,6 +207,14 @@ const prompt = async (message: Message) => {
     send({ method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk" } } })
   }
   if (text === "malformed") return send({ id: message.id, result: { stopReason: 42 } })
+  if (text === "tmp") {
+    const { TMPDIR, TMP, TEMP } = process.env
+    update(sessionId, {
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: `${TMPDIR} ${TMP} ${TEMP}` },
+    })
+    return send({ id: message.id, result: { stopReason: "end_turn" } })
+  }
   if (text === "ask" || text === "ask to run") {
     let cancelled = false
     cancels.set(sessionId, () => void (cancelled = true))
@@ -240,7 +255,7 @@ const handle = (message: Message) => {
         },
       })
     case "session/new": {
-      if (authRequired) {
+      if (authRequired || (signedOutAfterFirstSession && createdSessions() > 1)) {
         return send({
           id: message.id,
           error: {
@@ -250,6 +265,7 @@ const handle = (message: Message) => {
           },
         })
       }
+      if (stallAfterFirstSession && createdSessions() > 1) return
       const sessionId = `ses_${createdSessions()}`
       send({ id: message.id, result: { sessionId, ...modelSetup(sessionId) } })
       return setImmediate(() =>
@@ -280,7 +296,6 @@ const handle = (message: Message) => {
       return send({ id: message.id, result: { configOptions: configFor(sessionId) } })
     }
     case "session/set_model":
-    case "session/close":
       return send({ id: message.id, result: {} })
     case "session/prompt":
       return void prompt(message)

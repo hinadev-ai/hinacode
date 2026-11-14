@@ -225,4 +225,3 @@ export const loadFilesAtom = loaderFamily((url: string, head: string) => usePull
 
 export const loadGuideAtom = loaderFamily((url: string) => usePullRequests.getState().loadGuide(url))
 
-export const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? null

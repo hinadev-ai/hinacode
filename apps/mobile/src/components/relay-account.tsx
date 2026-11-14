@@ -8,7 +8,7 @@ import { Button, Notice } from "@/components/ui"
 import { mono, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useTheme } from "@/hooks/use-theme"
-import { confirmDestructive } from "@/lib/confirm"
+import { confirmAction } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
 import { DEFAULT_RELAY_URL } from "@/lib/relay-account"
 import { relativeTime } from "@/lib/relative-time"
@@ -81,11 +81,12 @@ function RelayStatus({ serviceUrl }: { serviceUrl: string }) {
           icon="RiLogoutBoxRLine"
           label={copy("mobile_relay_sign_out")}
           onPress={() =>
-            confirmDestructive(
+            confirmAction(
               copy("mobile_relay_sign_out_title"),
               copy("mobile_relay_sign_out_message"),
               copy("mobile_relay_sign_out"),
               () => void signOut(),
+              { destructive: true },
             )
           }
         />

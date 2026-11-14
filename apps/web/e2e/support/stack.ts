@@ -37,6 +37,8 @@ export interface Machine {
 const serveEnv = (userData: string) => ({
   ...process.env,
   HINACODE_USER_DATA: userData,
+  HINACODE_SERVE_RELAY: undefined,
+  HINACODE_SERVE_HOST: undefined,
   HINACODE_SERVE_AUTO_UPDATE: "0",
   HINACODE_SKIP_AGENT_UPDATES: "1",
   HINACODE_MOCK_AGENTS: "markdown",

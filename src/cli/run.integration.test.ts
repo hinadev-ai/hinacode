@@ -75,7 +75,7 @@ const scripted = (id: AgentProvider["id"]): AgentProvider => ({
       Stream.concat(Stream.fromIterable(finishingTurn)),
     )
   },
-  steer: () => Effect.void,
+  steer: () => Effect.succeed(true),
   interrupt: () => Effect.void,
   respondApproval: (requestId) =>
     Effect.as(Deferred.succeed(answered.get(requestId) ?? Deferred.makeUnsafe<void>(), undefined), true),

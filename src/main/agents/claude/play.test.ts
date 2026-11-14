@@ -82,12 +82,12 @@ describe("play", () => {
     }),
   )
 
-  it.effect("holds until Stop, then ends as Interrupted with the command still running", () =>
+  it.effect("holds until Stop, then ends as Turn interrupted with the command still running", () =>
     Effect.gen(function* () {
       const stopped = Deferred.makeUnsafe<void>()
       yield* Deferred.succeed(stopped, undefined)
       const events = yield* run(stoppable(), { stopped })
-      expect(events.at(-1)).toEqual({ type: "turn_failed", message: "Interrupted" })
+      expect(events.at(-1)).toEqual({ type: "turn_failed", message: "Turn interrupted" })
       expect(finishedCalls(events)).toEqual([])
     }),
   )

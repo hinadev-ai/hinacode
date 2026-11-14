@@ -10,7 +10,7 @@ import {
   threadMention,
 } from "./mentions.ts"
 
-export type SyntaxKind = "text" | "bullet" | "code" | "strong" | "rule" | "command" | "mention"
+export type SyntaxKind = "text" | "bullet" | "quote" | "code" | "strong" | "rule" | "command" | "mention"
 
 export interface KnownTokens {
   readonly commands: ReadonlySet<string>
@@ -44,6 +44,7 @@ export const segmentText = (segment: Segment) =>
 
 const FENCE = /^\s*```\s*([^\s`]*)/
 const BULLET = /^(\s*)([-*+]|\d+[.)])(?=\s)/
+const QUOTE = "> "
 const RULE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/
 const LIST_ITEM = /^(\s*)(?:([-*+])|(\d+)([.)]))(\s+)(\[[ xX]\]\s+)?/
 const NAME = String.raw`[\w:-]+(?:\.[\w:-]+)*`
@@ -56,6 +57,16 @@ const WHOLE_NAME = new RegExp(`^${NAME}$`)
 export const isUnorderedBullet = (marker: string) => /^[-*+]$/.test(marker)
 
 export const isCommandName = (name: string) => WHOLE_NAME.test(name)
+
+const noTokens: ReadonlySet<string> = new Set()
+
+export const highlightedCommands = (text: string, commands: ReadonlySet<string>) =>
+  new Set(
+    highlight(text, { commands, files: noTokens, threads: noTokens, terminals: noTokens, artifacts: noTokens })
+      .filter((segment) => segment.kind === "command")
+      .map(segmentText),
+  )
+
 const TRAILING_PUNCTUATION = /[,.;:!?)\]]+$/
 
 const knownIds = (known: KnownTokens) =>
@@ -317,6 +328,29 @@ export function listBackspace(text: string, caret: number): TextEdit | null {
   return { from, to: caret, insert: "", anchor: from }
 }
 
+export function quoteContentStart(text: string, lineStart: number): number | null {
+  const isQuote = text.startsWith(QUOTE, lineStart) && !insideFence(text, lineStart)
+  return isQuote ? lineStart + QUOTE.length : null
+}
+
+export function quoteBackspace(text: string, caret: number): TextEdit | null {
+  const lineStart = text.slice(0, caret).lastIndexOf("\n") + 1
+  if (caret !== quoteContentStart(text, lineStart)) return null
+  return { from: lineStart, to: caret, insert: "", anchor: lineStart }
+}
+
+export function continueQuote(text: string, from: number, to: number): TextEdit | null {
+  const lineStart = text.slice(0, from).lastIndexOf("\n") + 1
+  const contentStart = quoteContentStart(text, lineStart)
+  if (contentStart === null || from < contentStart) return null
+  const nextBreak = text.indexOf("\n", from)
+  const lineEnd = nextBreak === -1 ? text.length : nextBreak
+  if (from === to && text.slice(contentStart, lineEnd).trim() === "")
+    return { from: lineStart, to: lineEnd, insert: "", anchor: lineStart }
+  const insert = `\n${QUOTE}`
+  return { from, to, insert, anchor: from + insert.length }
+}
+
 export function highlight(text: string, known: KnownTokens): ReadonlyArray<Segment> {
   const segments: Array<Segment> = []
   const lines = text.split("\n")
@@ -339,6 +373,10 @@ export function highlight(text: string, known: KnownTokens): ReadonlyArray<Segme
     }
     if (RULE.test(line)) {
       segments.push({ kind: "rule", text: line })
+      continue
+    }
+    if (line.startsWith(QUOTE)) {
+      segments.push({ kind: "quote", text: QUOTE }, ...inline(line.slice(QUOTE.length), known))
       continue
     }
     const bullet = BULLET.exec(line)

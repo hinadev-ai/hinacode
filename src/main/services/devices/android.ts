@@ -55,7 +55,6 @@ type Unary<Request, Response> = (
 
 interface EmulatorController extends grpc.Client {
   readonly getDisplayConfigurations: Unary<object, DisplayConfigurations>
-  readonly getScreenshot: Unary<ImageFormat, Image>
   readonly streamScreenshot: (request: ImageFormat, metadata: grpc.Metadata) => grpc.ClientReadableStream<Image>
   readonly sendTouch: Unary<
     { touches: ReadonlyArray<{ x: number; y: number; identifier: number; pressure: number }> },
@@ -540,13 +539,6 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     return link
   }
 
-  const screenshot: DevicePlatformDriver["screenshot"] = async (id) =>
-    withController(await runningEmulator(id), async ({ client, unary }) => {
-      const image = await unary(client.getScreenshot, { format: "PNG", width: 0, height: 0 })
-      if (image.format.width === 0) throw new DeviceError("The emulator's screen is off.")
-      return image.image
-    })
-
   const describe: DevicePlatformDriver["describe"] = async (id) => {
     const emulator = await runningEmulator(id)
     const [{ scale }, dump] = await Promise.all([
@@ -606,7 +598,6 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     shutdown,
     remove,
     connect,
-    screenshot,
     describe,
     launch,
   }

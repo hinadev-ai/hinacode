@@ -19,6 +19,7 @@ export interface RunOptions {
   readonly okExitCodes?: ReadonlyArray<number>
   readonly env?: Record<string, string>
   readonly timeout?: Duration.Input
+  readonly forceKillAfter?: Duration.Input
   readonly onStderr?: (chunk: string) => Effect.Effect<void>
 }
 
@@ -67,7 +68,7 @@ export const makeExec =
           stdin: "ignore",
           env: options?.env,
           extendEnv: true,
-          forceKillAfter: "3 seconds",
+          forceKillAfter: options?.forceKillAfter ?? "3 seconds",
         }),
       )
       const [stdout, stderr, exitCode] = yield* Effect.all(

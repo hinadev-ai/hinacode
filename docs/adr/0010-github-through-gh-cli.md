@@ -1,6 +1,6 @@
 # 0010. GitHub through the gh CLI
 
-Status: Proposed (PR #35)
+Status: Accepted. Merging later shipped too. The panel merges, closes and comments through `SourceControl` (`src/main/services/SourceControl.ts`), which sends each pull request URL to `GitHub` over `gh` or to `GitLab` over `glab`.
 Date: 2026-10-12
 
 ## Context

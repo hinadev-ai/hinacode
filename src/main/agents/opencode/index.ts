@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from "effect"
+import { providerInfo } from "../../../shared/providers.ts"
 import { makeAcpProvider } from "../acp/index.ts"
 import { installedBinary } from "../binary.ts"
 import { type AgentProvider, MCP_TOOL_TIMEOUT_SECONDS } from "../provider.ts"
@@ -16,7 +17,7 @@ export class OpencodeProvider extends Context.Service<OpencodeProvider, AgentPro
         }),
       },
       loginCommand: "opencode auth login",
-      account: installedBinary("opencode", "opencode").pipe(
+      account: installedBinary("opencode", providerInfo.opencode.binary).pipe(
         Effect.as({ type: "external", service: "opencode" } as const),
       ),
     }),

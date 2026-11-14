@@ -58,7 +58,7 @@ export function PullRequestMark({
     <View style={styles.mark}>
       {stacked && <Icon name="Stack" size={size} color={status.color} />}
       <Icon name={status.name} size={size} color={status.color} />
-      <Text style={[textStyle, { color: status.color }]}>#{number}</Text>
+      <Text style={[textStyle, { color: status.color }]}>{number}</Text>
       {checks !== null && (
         <View style={styles.checks}>
           <Icon {...indicatorGlyph(theme, checksIndicator[checks])} size={size} />

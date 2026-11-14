@@ -11,18 +11,20 @@ import {
   type AgentEvent,
   type BackgroundTask,
   type BackgroundTaskKind,
+  type ProviderId,
   signedOutFailure,
   type Subagent,
   type TokenUsage,
 } from "../../../shared/agent.ts"
 
-const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
+export const FILE_EDIT_TOOLS: ReadonlySet<string> = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
 
 export interface MapState {
   readonly pendingEdits: Map<string, string>
   readonly subagents: Map<string, Subagent>
   readonly subagentRequests: Map<string, Pick<Subagent, "model" | "effort">>
   lastRequest: { readonly model: string; readonly usedTokens: number } | null
+  readonly provider: ProviderId
   readonly home: AccountHome | null
   readonly model: string
   limitMessage: string | null
@@ -316,7 +318,8 @@ function mapResult(result: SDKResultMessage, state: MapState): AgentEvent {
     return {
       type: "turn_failed",
       message,
-      ...(state.signedOut && signedOutFailure("claude", state.home, state.model)),
+      ...(state.signedOut &&
+        (state.provider === "claude" ? signedOutFailure("claude", state.home, state.model) : { signedOut: true })),
     }
   }
   return { type: "turn_completed", usage: toUsage(result, state) }

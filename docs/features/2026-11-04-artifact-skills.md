@@ -3,6 +3,8 @@
 Status: Shipped
 Date: 2026-11-04
 
+The phone's read-only document screen below was replaced by `2026-11-10-native-document-editor.md`.
+
 ## Problem
 
 `publish_document` gives agents a place to write, but nothing tells them how to write well. The documents developers actually ask for fall into a few genres: investigation reports with ranked findings, research maps that end in a verdict, feature design docs, review ledgers, comparisons that end in a decision, experiments with before and after numbers, and plans. Each has a shape that works, and agents rediscover it every time, or don't. Long-form prose meant for other readers, such as a blog post or an announcement, needs different guidance again.
@@ -79,7 +81,7 @@ The card reads everything from the tool call's input and output, so it needs no 
 - **Compact preview.** The phone reads a compact transcript, so `compactInput` keeps a publish call's title and, for a document, its outline. It never keeps the Markdown or a page's files. A successful publish keeps the first line of its result, which names the id and version. A failed one keeps nothing, because a conflict's error carries the developer's whole document. A 1 MB document compacts to about 2 KB, and an older phone ignores the extra keys.
 - **Card.** The card draws the same marks as the desktop from `src/shared/documentThumbnail.ts`. Only a published document opens. A page, a running call and a call from an older server have no screen to open, so they are plain views with no chevron.
 - **Reading.** `thread/[id]/document` is read-only. It reads `artifacts.readDocument` and reads again on `artifact.updated` and after a reconnect. The thread's server answers for an artifact no server has claimed yet, such as a card's after a restart.
-- **Format.** `src/lib/document-segments.ts` splits callouts out of the Markdown into tinted views. A valid chart becomes its title, notes and a table of its rows, because the phone has no chart renderer. Mermaid stays as source, because a diagram renderer means Pele in a WebView.
+- **Format.** `apps/mobile/src/lib/document-segments.ts`, since removed, split callouts out of the Markdown into tinted views. A valid chart became its title, notes and a table of its rows, because the phone had no chart renderer. Mermaid stayed as source, because a diagram renderer means Pele in a WebView.
 - **`auto_open`.** It does not navigate. A phone has no side panel, and pushing a screen while someone types would take over the app.
 
 ## Out of scope
@@ -98,5 +100,5 @@ The card reads everything from the tool call's input and output, so it needs no 
 - `DocumentView.component.test.tsx`: callouts and mermaid blocks round-trip through Markdown.
 - The real app with `verify-hinacode` and `HINACODE_MOCK_CLAUDE=documents`: send `/artifact:doc`, see the panel open by itself, the preview card, a callout and a diagram, then reload and see that nothing reopens.
 - The phone through Expo web against the same mock: `/art` lists both commands, the card opens the document, callouts, a chart table and mermaid source render, and a second turn reloads the open screen. No iOS or Android runtime ran this, so the `react-native-svg` thumbnail, `EnrichedMarkdownText` inside a callout and the iPad split still need a look on a device.
-- `src/shared/compactTranscript.test.ts`, `src/shared/documentThumbnail.test.ts` and `apps/mobile/src/lib/document-segments.test.ts`: the preview's bounds, the marks and the segments.
+- `src/shared/compactTranscript.test.ts` and `src/shared/documentThumbnail.test.ts`: the preview's bounds and the marks.
 - The phone's web build at 402x874 with `HINACODE_MOCK_AGENTS=documents`: list the commands, send `/artifact:doc`, open the card, publish an update from a second turn and see the open screen reload, stop the server and see the banner keep the document. Native rendering still needs a development build.

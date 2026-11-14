@@ -58,9 +58,18 @@ interface CreateWorktree {
 
 type DeleteBranch = "keep" | "ifMerged" | "force"
 
-export const SETUP_TIMEOUT: Duration.Input = "60 seconds"
+export interface SetupTiming {
+  readonly timeout: Duration.Input
+  readonly forceKillAfter: Duration.Input
+  readonly outputDrainTimeout: Duration.Input
+}
+
+export const SETUP_TIMING: SetupTiming = {
+  timeout: "60 seconds",
+  forceKillAfter: "3 seconds",
+  outputDrainTimeout: "1 second",
+}
 export const FETCH_INTERVAL: Duration.Input = "5 minutes"
-const SETUP_OUTPUT_DRAIN_TIMEOUT: Duration.Input = "1 second"
 const GIT_BASH_MISSING =
   "Setup scripts on Windows run in Git Bash, which comes with Git for Windows. Install it from https://git-scm.com, then try again."
 
@@ -129,7 +138,7 @@ const parseCheckouts = (output: string) =>
     })
     .filter((checkout) => checkout.path !== "")
 
-const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
+const make = Effect.fnUntraced(function* (setupTiming: SetupTiming) {
   const sql = yield* SqlClient.SqlClient
   const projects = yield* Projects
   const git = yield* Git
@@ -254,7 +263,7 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
           },
           extendEnv: true,
           stdin: "ignore",
-          forceKillAfter: "3 seconds",
+          forceKillAfter: setupTiming.forceKillAfter,
         }),
       )
       const logging = yield* handle.all.pipe(
@@ -263,7 +272,7 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
         Effect.forkScoped,
       )
       const exitCode = yield* handle.exitCode
-      const drained = yield* Fiber.join(logging).pipe(Effect.timeoutOption(SETUP_OUTPUT_DRAIN_TIMEOUT))
+      const drained = yield* Fiber.join(logging).pipe(Effect.timeoutOption(setupTiming.outputDrainTimeout))
       if (Option.isNone(drained)) {
         yield* reportSetup(
           worktree,
@@ -281,9 +290,9 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
     Effect.gen(function* () {
       const script = project.setupScript?.trim()
       if (!script) return yield* setStatus(worktree.id, "ready")
-      const finished = yield* runSetupScript(worktree, project, script).pipe(Effect.timeoutOption(setupTimeout))
+      const finished = yield* runSetupScript(worktree, project, script).pipe(Effect.timeoutOption(setupTiming.timeout))
       if (Option.isNone(finished)) {
-        const after = Duration.format(Duration.fromInputUnsafe(setupTimeout))
+        const after = Duration.format(Duration.fromInputUnsafe(setupTiming.timeout))
         yield* reportSetup(worktree, "timedOut", `\nSetup script timed out after ${after} and was stopped.\n`)
         return yield* setStatus(worktree.id, "failed")
       }
@@ -672,6 +681,6 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
   })
 })
 
-export const layerWithSetupTimeout = (setupTimeout: Duration.Input) => Layer.effect(Worktrees, make(setupTimeout))
+export const layerWithSetupTiming = (setupTiming: SetupTiming) => Layer.effect(Worktrees, make(setupTiming))
 
-export const layer = layerWithSetupTimeout(SETUP_TIMEOUT)
+export const layer = layerWithSetupTiming(SETUP_TIMING)

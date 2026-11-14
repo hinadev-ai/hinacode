@@ -1,6 +1,6 @@
 # Update clouds from the desktop
 
-Status: Building
+Status: Shipped
 Date: 2026-10-20
 
 ## Problem

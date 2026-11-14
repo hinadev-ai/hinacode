@@ -91,10 +91,14 @@ export const encodeTar = (entries: ReadonlyArray<TarEntry>): Uint8Array => {
 const toTarError = (path: string) => (cause: unknown) =>
   new TarError({ message: `Cannot read ${path}: ${cause instanceof Error ? cause.message : String(cause)}` })
 
-export const readTree = (topPath: string, maxBytes: number): Effect.Effect<ReadonlyArray<TarEntry>, TarError> =>
+export const readTree = (
+  topPath: string,
+  maxBytes: number,
+  usedBytes = 0,
+): Effect.Effect<ReadonlyArray<TarEntry>, TarError> =>
   Effect.gen(function* () {
     const entries: Array<TarEntry> = []
-    let total = 0
+    let total = usedBytes
     const walk = (path: string, archivePath: string): Effect.Effect<void, TarError> =>
       Effect.gen(function* () {
         const stats = yield* Effect.tryPromise({ try: () => lstat(path), catch: toTarError(path) })
@@ -110,7 +114,10 @@ export const readTree = (topPath: string, maxBytes: number): Effect.Effect<Reado
           total += stats.size
           if (total > maxBytes)
             return yield* new TarError({
-              message: `${topPath} is larger than ${Math.round(maxBytes / 1024 / 1024)} MB`,
+              message:
+                usedBytes === 0
+                  ? `${topPath} is larger than ${Math.round(maxBytes / 1024 / 1024)} MB`
+                  : `Adding ${topPath} makes the files larger than ${Math.round(maxBytes / 1024 / 1024)} MB`,
             })
           const data = yield* Effect.tryPromise({ try: () => readFile(path), catch: toTarError(path) })
           entries.push({ type: "file", path: archivePath, data, mode: stats.mode, mtime })

@@ -1,6 +1,6 @@
 # Resource monitor
 
-Status: Building
+Status: Shipped
 Date: 2026-10-22
 
 ## Problem

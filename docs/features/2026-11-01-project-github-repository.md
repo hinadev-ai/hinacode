@@ -1,6 +1,6 @@
 # Add a project with a new GitHub repository
 
-Status: Building
+Status: Shipped
 Date: 2026-11-01
 
 ## Problem

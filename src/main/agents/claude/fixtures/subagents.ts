@@ -176,7 +176,7 @@ export function mockSubagents(now: number) {
     script: Script,
     status: Exclude<Subagent["status"], "running">,
     at: number,
-    report: string | undefined = script.report,
+    report: string | null,
   ) => {
     const current = agents.get(script.id)
     if (current === undefined) return []
@@ -219,7 +219,8 @@ export function mockSubagents(now: number) {
       }),
     ]
     if (script.status === "running") return events
-    return [...events, ...finish(script, script.status, Date.parse(startedAt) + (script.ranSeconds ?? 0) * 1000)]
+    const endedAt = Date.parse(startedAt) + (script.ranSeconds ?? 0) * 1000
+    return [...events, ...finish(script, script.status, endedAt, script.report ?? null)]
   })
 
   const tick = (at: number): Array<AgentEvent> =>
@@ -228,7 +229,7 @@ export function mockSubagents(now: number) {
       if (current?.status !== "running") return []
       const done = progress.get(script.id) ?? 0
       const step = script.upcoming?.[done]
-      if (step === undefined) return script.report ? finish(script, "completed", at) : []
+      if (step === undefined) return script.report ? finish(script, "completed", at, script.report) : []
       progress.set(script.id, done + 1)
       return [
         ...stepEvents(script, step, script.steps.length + done),
@@ -243,7 +244,7 @@ export function mockSubagents(now: number) {
 
   const stop = (subagentId: string, at: number) => {
     const script = scripts.find((candidate) => candidate.id === subagentId)
-    return script && agents.get(subagentId)?.status === "running" ? finish(script, "stopped", at, undefined) : []
+    return script && agents.get(subagentId)?.status === "running" ? finish(script, "stopped", at, null) : []
   }
 
   return { initial, tick, stop }

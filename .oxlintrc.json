@@ -109,6 +109,7 @@
         "hinacode/no-promise-state-in-effect": "error",
         "hinacode/no-responsive-padding-on-scroller": "error",
         "hinacode/prefer-start-transition": "warn",
+        "hinacode/stable-scrollbar-gutter": "warn",
         "tailwindcss/no-conflicting-classes": "error",
         "tailwindcss/no-contradicting-variants": "warn",
         "tailwindcss/no-dark-without-light": "warn",
@@ -150,15 +151,15 @@
       }
     },
     {
-      "files": [
-        "src/**/*.test.ts",
-        "src/**/fakeAppServer.mjs",
-        "e2e/**",
-        "apps/web/e2e/**",
-        "apps/mobile/src/**/*.test.ts"
-      ],
+      "files": ["**/*.test.ts", "**/*.test.tsx", "src/**/fakeAppServer.mjs", "e2e/**", "apps/web/e2e/**"],
       "rules": {
         "hinacode/no-wall-clock-in-test": "error"
+      }
+    },
+    {
+      "files": ["src/renderer/**/*.component.test.tsx"],
+      "rules": {
+        "hinacode/stable-scrollbar-gutter": "off"
       }
     }
   ],

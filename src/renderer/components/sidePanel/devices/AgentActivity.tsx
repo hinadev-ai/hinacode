@@ -20,7 +20,7 @@ const buttonLabel: Record<DeviceButton, () => string> = {
   recents: m.devices_recents,
 }
 
-export const agentActionLabel = (action: AgentAction) => {
+const agentActionLabel = (action: AgentAction) => {
   switch (action.kind) {
     case "tap":
       return m.devices_action_tap()

@@ -108,7 +108,7 @@ export function MessageList({
               {...listProps}
               ListHeaderComponent={header ?? edgeSpacer}
               ListFooterComponent={endSpacer}
-              className="min-h-0 flex-1 scroll-fade"
+              className="min-h-0 flex-1 scroll-fade scrollbar-gutter-stable"
             />
             <Button
               variant="outline"
@@ -165,7 +165,7 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
           </code>
         </pre>
       )
-    if (segment.kind === "bullet")
+    if (segment.kind === "bullet" || segment.kind === "quote")
       return (
         <span key={index} className="text-muted-foreground">
           {isUnorderedBullet(segment.text) ? "•" : segment.text}

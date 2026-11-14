@@ -1,12 +1,11 @@
 import { spawn } from "node:child_process"
 import { createHash, randomUUID } from "node:crypto"
-import { access, constants, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
-import { homedir, tmpdir } from "node:os"
+import { access, constants, mkdir, rename, writeFile } from "node:fs/promises"
+import { homedir } from "node:os"
 import { join } from "node:path"
 import { Schema } from "effect"
 import type {
   Device,
-  DeviceButton,
   DeviceCommand,
   DeviceElement,
   DeviceId,
@@ -15,7 +14,7 @@ import type {
   SimulatorModel,
 } from "../../../shared/device.ts"
 import { findBinary } from "../../agents/binary.ts"
-import { hidUsage, keystrokesFor } from "./hidUsage.ts"
+import { consumerUsage, hidUsage, keystrokesFor } from "./hidUsage.ts"
 import { DeviceError, type DeviceLink, type DevicePlatformDriver, type Frame } from "./platform.ts"
 
 export interface SimhelperSources {
@@ -42,12 +41,6 @@ const BUNDLE_ID = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/
 const PORTRAIT = 1
 const LANDSCAPE_LEFT = 3
 
-const buttonUsages: Partial<Record<DeviceButton, number>> = {
-  home: 0x40,
-  lock: 0x30,
-  volumeUp: 0xe9,
-  volumeDown: 0xea,
-}
 const LEFT_SHIFT = 0xe1
 
 const run = (command: string, args: ReadonlyArray<string>, timeout = 60_000): Promise<Buffer> =>
@@ -426,8 +419,8 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
           return
         }
         case "button": {
-          const usage = buttonUsages[command.button]
-          return usage === undefined ? undefined : input(`consumer ${usage} down`, `consumer ${usage} up`)
+          const usage = consumerUsage(command.button)
+          return input(`consumer ${usage} down`, `consumer ${usage} up`)
         }
         case "rotate":
           orientation = orientation === PORTRAIT ? LANDSCAPE_LEFT : PORTRAIT
@@ -568,16 +561,6 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
     },
 
     connect,
-
-    screenshot: async (id) => {
-      const path = join(tmpdir(), `hinacode-screenshot-${randomUUID()}.png`)
-      try {
-        await simctl(["io", udidOf(id), "screenshot", "--type=png", path])
-        return await readFile(path)
-      } finally {
-        await rm(path, { force: true })
-      }
-    },
 
     describe: async (id) => {
       const axe = await findAxe()

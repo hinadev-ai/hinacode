@@ -1,24 +1,31 @@
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { afterAll, expect, layer } from "@effect/vitest"
-import { Effect, Layer, Queue, Stream } from "effect"
-import { unlistedModel } from "../../shared/agent.ts"
+import { afterAll, expect, it as vitest, layer } from "@effect/vitest"
+import { Deferred, Effect, Fiber, Layer, Option, Queue, Schedule, Stream } from "effect"
+import { type AgentEvent, unlistedModel } from "../../shared/agent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
-import type { AgentProvider } from "../agents/provider.ts"
+import { AgentError, type AgentProvider } from "../agents/provider.ts"
 import { seedThread } from "../db/testing.ts"
 import { makeTestAppLayer } from "../testing.ts"
+import { AgentRunner } from "./AgentRunner.ts"
 import { ArtifactFeedback } from "./ArtifactFeedback.ts"
 import { Artifacts } from "./Artifacts.ts"
 import { Events, PushBroadcast, WindowPush } from "./Events.ts"
+import { Messages } from "./Messages.ts"
 import { Threads } from "./Threads.ts"
 
 const base = mkdtempSync(join(tmpdir(), "kk-artifact-feedback-"))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
+
+const untilIdle = (threadId: string) =>
+  AgentRunner.use((runner) =>
+    runner.isBusy(threadId).pipe(Effect.repeat({ until: (busy) => !busy, schedule: Schedule.spaced("10 millis") })),
+  )
 
 const newThread = Effect.suspend(() => seedThread({ rootPath: mkdtempSync(join(base, "project-")) })).pipe(
   Effect.map(({ threadId }) => threadId),
@@ -39,6 +46,11 @@ const ownerAndSibling = Effect.gen(function* () {
 const delivered = Effect.runSync(Queue.unbounded<{ readonly threadId: string; readonly text: string }>())
 const receive = (threadId: string, text: string) => Queue.offer(delivered, { threadId, text }).pipe(Effect.asVoid)
 
+const KEEP_WORKING = "Keep working until I stop you."
+const STALLS_STEER = "This steer never returns."
+const REFUSES_STEER = "This steer fails, so it waits in the queue."
+const stalledSteer = Effect.runSync(Deferred.make<void>())
+
 const provider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
@@ -46,8 +58,18 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   planLimits: () => Effect.succeed(null),
   usage: () => Effect.succeed(null),
   listCommands: () => Effect.succeed([]),
-  runTurn: (input) => Stream.fromEffect(receive(input.threadId, input.prompt)).pipe(Stream.drain),
-  steer: receive,
+  runTurn: (input) =>
+    Stream.fromEffect(receive(input.threadId, input.prompt)).pipe(
+      Stream.drain,
+      Stream.concat(
+        input.prompt === KEEP_WORKING ? Stream.never : Stream.succeed<AgentEvent>({ type: "turn_completed" }),
+      ),
+    ),
+  steer: (threadId, text) => {
+    if (text.includes(STALLS_STEER)) return Deferred.succeed(stalledSteer, undefined).pipe(Effect.andThen(Effect.never))
+    if (text.includes(REFUSES_STEER)) return Effect.fail(new AgentError({ provider: id, message: "steer refused" }))
+    return receive(threadId, text).pipe(Effect.as(true))
+  },
   interrupt: () => Effect.void,
   respondApproval: () => Effect.succeed(false),
   respondQuestion: () => Effect.void,
@@ -67,6 +89,9 @@ const quietEvents = Layer.mergeAll(
   Layer.succeed(WindowPush, WindowPush.of({ send: () => Effect.void })),
   Layer.succeed(PushBroadcast, PushBroadcast.of({ subscribe: () => Effect.void })),
 )
+
+const restartableApp = () =>
+  makeTestAppLayer(join(mkdtempSync(join(base, "restart-")), "hinacode.sqlite"), { providers, events: quietEvents })
 
 layer(makeTestAppLayer(join(base, "hinacode.sqlite"), { providers, events: quietEvents }), {
   excludeTestServices: true,
@@ -194,4 +219,127 @@ layer(makeTestAppLayer(join(base, "hinacode.sqlite"), { providers, events: quiet
       expect((yield* threads.get(owner)).status).not.toBe("archived")
     }),
   )
+
+  it.effect("keeps a comment marked undelivered when no thread could take it", () =>
+    Effect.gen(function* () {
+      const rootPath = mkdtempSync(join(base, "project-"))
+      const { threadId: owner } = yield* seedThread({ rootPath })
+      const document = yield* documentOf(owner)
+      rmSync(rootPath, { recursive: true, force: true })
+
+      const saved = yield* ArtifactFeedback.use((feedback) => feedback.comment({ id: document.id, body: "Lost?" }))
+
+      expect(saved.comments[0]?.messages[0]?.undelivered).toBe(true)
+      expect(yield* Queue.size(delivered)).toBe(0)
+    }),
+  )
+
+  it.effect("starts the next queued message when the first one is already in the transcript", () =>
+    Effect.gen(function* () {
+      const owner = yield* newThread
+      const runner = yield* AgentRunner
+      yield* runner.send(owner, "first", [])
+      expect(yield* Queue.take(delivered)).toEqual({ threadId: owner, text: "first" })
+      yield* untilIdle(owner)
+      const [recorded] = yield* Messages.use((messages) => messages.list(owner))
+      yield* Threads.use((threads) =>
+        threads.update({
+          id: owner,
+          queue: [
+            { id: recorded?.id ?? "", text: "already sent", attachments: [] },
+            { id: "still-waiting", text: "still waiting", attachments: [] },
+          ],
+        }),
+      )
+
+      yield* runner.send(owner, "second", [])
+
+      expect(yield* Queue.take(delivered)).toEqual({ threadId: owner, text: expect.stringMatching(/second$/) })
+      expect(yield* Queue.take(delivered).pipe(Effect.timeoutOption("5 seconds"))).toEqual(
+        Option.some({ threadId: owner, text: expect.stringMatching(/still waiting$/) }),
+      )
+    }),
+  )
 })
+
+vitest.live("delivers a comment saved right before the app quit once it starts again", () =>
+  Effect.gen(function* () {
+    const restartable = restartableApp()
+    const { threadId, artifactId } = yield* Effect.gen(function* () {
+      const owner = yield* newThread
+      const document = yield* documentOf(owner)
+      yield* AgentRunner.use((runner) => runner.send(owner, KEEP_WORKING, []))
+      expect(yield* Queue.take(delivered)).toEqual({ threadId: owner, text: KEEP_WORKING })
+
+      const commenting = yield* ArtifactFeedback.use((feedback) =>
+        feedback.comment({ id: document.id, body: STALLS_STEER }),
+      ).pipe(Effect.forkChild)
+      yield* Deferred.await(stalledSteer)
+      yield* Fiber.interrupt(commenting)
+      return { threadId: owner, artifactId: document.id }
+    }).pipe(Effect.provide(restartable))
+
+    const redelivered = yield* Effect.gen(function* () {
+      const saved = yield* ArtifactFeedback.use((feedback) => feedback.feedback(artifactId))
+      expect(saved.comments.map((comment) => comment.messages[0]?.body)).toEqual([STALLS_STEER])
+      return yield* Queue.take(delivered).pipe(Effect.timeoutOption("5 seconds"))
+    }).pipe(Effect.provide(restartable))
+
+    expect(redelivered).toEqual(Option.some({ threadId, text: expect.stringContaining(STALLS_STEER) }))
+  }),
+)
+
+vitest.live("does not deliver a comment twice when the app quit after queueing it", () =>
+  Effect.gen(function* () {
+    const restartable = restartableApp()
+    const { threadId, artifactId } = yield* Effect.gen(function* () {
+      const owner = yield* newThread
+      const document = yield* documentOf(owner)
+      yield* AgentRunner.use((runner) => runner.send(owner, KEEP_WORKING, []))
+      expect(yield* Queue.take(delivered)).toEqual({ threadId: owner, text: KEEP_WORKING })
+      yield* ArtifactFeedback.use((feedback) => feedback.comment({ id: document.id, body: REFUSES_STEER }))
+
+      const { store } = yield* Artifacts
+      const file = join(store.root, document.id, "feedback.json")
+      const saved = JSON.parse(readFileSync(file, "utf8"))
+      saved.comments[0].messages[0].undelivered = true
+      writeFileSync(file, JSON.stringify(saved))
+      return { threadId: owner, artifactId: document.id }
+    }).pipe(Effect.provide(restartable))
+
+    const { redelivered, after, queue } = yield* Effect.gen(function* () {
+      const redelivered = yield* Queue.take(delivered).pipe(Effect.timeoutOption("1 second"))
+      const after = yield* ArtifactFeedback.use((feedback) => feedback.feedback(artifactId))
+      const { queue } = yield* Threads.use((threads) => threads.get(threadId))
+      return { redelivered, after, queue }
+    }).pipe(Effect.provide(restartable))
+
+    expect(redelivered).toEqual(Option.none())
+    expect(queue.map((message) => message.text)).toEqual([expect.stringContaining(REFUSES_STEER)])
+    expect(after.comments[0]?.messages[0]?.undelivered).toBeUndefined()
+  }),
+)
+
+vitest.live("delivers the comments of other artifacts when one feedback.json is corrupt", () =>
+  Effect.gen(function* () {
+    const restartable = restartableApp()
+    const threadId = yield* Effect.gen(function* () {
+      const owner = yield* newThread
+      const { store } = yield* Artifacts
+      const corrupt = yield* documentOf(owner)
+      writeFileSync(join(store.root, corrupt.id, "feedback.json"), "{ truncated")
+      const healthy = yield* documentOf(owner)
+      yield* Effect.promise(() =>
+        store.comment(healthy.id, { author: { kind: "developer" }, body: "Still here?", undelivered: true }),
+      )
+      return owner
+    }).pipe(Effect.provide(restartable))
+
+    const redelivered = yield* Queue.take(delivered).pipe(
+      Effect.timeoutOption("5 seconds"),
+      Effect.provide(restartable),
+    )
+
+    expect(redelivered).toEqual(Option.some({ threadId, text: expect.stringContaining("Still here?") }))
+  }),
+)

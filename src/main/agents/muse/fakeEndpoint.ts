@@ -23,6 +23,7 @@ export interface FakeEndpoint {
   unauthorized: (when: string) => void
   holdSummaries: () => () => void
   requested: (when: string) => Promise<void>
+  lastRequest: (containing: string) => string
   close: () => Promise<void>
 }
 
@@ -211,6 +212,7 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
         for (const answer of held.splice(0)) answer()
       }
     },
+    lastRequest: (containing) => bodies.findLast((body) => body.includes(containing)) ?? "",
     requested: (when) =>
       bodies.some((body) => body.includes(when))
         ? Promise.resolve()

@@ -9,7 +9,7 @@ We've added a lot of features. Now we reduce and refine them.
 
 ## Features today
 
-- Threads for Claude Code, Codex and Muse Code, with inbox, pins and archive
+- Threads for Claude Code, Codex, Muse Code, opencode and magpie, with inbox, pins and archive
 - A worktree per thread, including worktrees from a pull request
 - Composer with model picker, thread options, queued messages, mentions and attachments
 - Inline approvals, agent questions and steering a running turn

@@ -201,6 +201,13 @@ describe("visibleTodos", () => {
   it("shows the list a new turn writes", () => {
     expect(visibleTodos([todoCall("completed"), prompt, todoCall("pending")], true)).toHaveLength(1)
   })
+
+  it("drops a finished list when only a subagent writes todos in the next turn", () => {
+    const subagentTodos = message(
+      tool("TodoWrite", { todos: [{ content: "Search", status: "pending" }] }, "ok", "task"),
+    )
+    expect(visibleTodos([todoCall("completed"), prompt, subagentTodos], true)).toEqual([])
+  })
 })
 
 describe("todosInCall", () => {

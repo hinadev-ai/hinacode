@@ -12,6 +12,9 @@ concurrency:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       app: ${{ steps.app.outputs.app }}
       desktop: ${{ steps.app.outputs.desktop }}
@@ -19,7 +22,9 @@ jobs:
       relay: ${{ steps.relay.outputs.relay }}
       resource-monitor: ${{ steps.resource-monitor.outputs.resource-monitor }}
     steps:
-      - uses: actions/checkout@v7
+      # paths-filter reads a pull request's files from the API
+      - if: github.event_name != 'pull_request'
+        uses: actions/checkout@v7
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: app
         with:
@@ -78,7 +83,7 @@ jobs:
               - 'tools/resource-monitor/**'
               - '.github/workflows/ci.yml'
 
-  check:
+  static:
     needs: changes
     runs-on: ubuntu-latest
     steps:
@@ -89,14 +94,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cache/electron
-          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-      # FIXME: GitHub's release downloads time out with a 504 now and then, and the Electron binary comes from there
-      - run: for attempt in 1 2 3 4 5; do pnpm exec install-electron && exit 0; sleep $((attempt * 15)); done; exit 1
       - run: pnpm lint
       - run: pnpm format --check
+      - run: node --test scripts/*.test.ts .agents/skills/*/scripts/*.test.ts
       - if: needs.changes.outputs.app == 'true'
         run: pnpm typecheck
       - if: needs.changes.outputs.site == 'true'
@@ -110,29 +110,81 @@ jobs:
       - if: needs.changes.outputs.relay == 'true'
         run: pnpm --dir relay deploy:dry-run
       - if: needs.changes.outputs.app == 'true'
-        run: pnpm --dir apps/web deploy:dry-run
-      - if: needs.changes.outputs.app == 'true'
-        name: Install search test dependency
-        run: sudo apt-get update && sudo apt-get install --yes ripgrep
-      - if: needs.changes.outputs.app == 'true'
-        name: Install and select the pinned Chromium
-        run: |
-          pnpm exec playwright install --with-deps chromium
-          echo "HINACODE_BROWSER_EXECUTABLE_PATH=$(node -p 'require("playwright").chromium.executablePath()')" >> "$GITHUB_ENV"
-      - if: needs.changes.outputs.app == 'true'
-        name: Allow Chromium sandbox namespaces
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - if: needs.changes.outputs.app == 'true'
-        run: pnpm test
-      - if: needs.changes.outputs.app == 'true'
         name: Verify the server package
         run: |
-          node --test scripts/server-package.test.ts
           pnpm build:server
           pnpm stage:server
           pnpm verify:server
 
+  web-build:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v6
+        with:
+          path: node_modules/.cache/react-compiler/apps/web
+          key: react-compiler-web-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: react-compiler-web-${{ hashFiles('pnpm-lock.yaml') }}-
+      - run: pnpm --dir apps/web deploy:dry-run
+
+  test:
+    name: test (${{ matrix.shard }}/3)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - name: Start installing ripgrep for the search tests
+        run: (status=0; sudo apt-get update && sudo apt-get install --yes ripgrep || status=$?; echo $status > "$RUNNER_TEMP/apt.exit") > "$RUNNER_TEMP/apt.log" 2>&1 &
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      # FIXME: GitHub's release downloads time out with a 504 now and then, and the Electron binary comes from there
+      - run: for attempt in 1 2 3 4 5; do pnpm exec install-electron && exit 0; sleep $((attempt * 15)); done; exit 1
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install and select the pinned Chromium
+        run: |
+          pnpm exec playwright install chromium
+          echo "HINACODE_BROWSER_EXECUTABLE_PATH=$(node -p 'require("playwright").chromium.executablePath()')" >> "$GITHUB_ENV"
+      - name: Allow Chromium sandbox namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Wait for apt
+        run: until [ -s "$RUNNER_TEMP/apt.exit" ]; do sleep 1; done; cat "$RUNNER_TEMP/apt.log"; exit "$(cat "$RUNNER_TEMP/apt.exit")"
+      - run: pnpm test --shard ${{ matrix.shard }}/3
+
+  # The main ruleset requires a check named "check", so this job reports the result of the jobs it replaced.
+  check:
+    needs: [changes, static, web-build, test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+
   executable:
+    name: executable and mobile
     needs: changes
     if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
@@ -143,35 +195,20 @@ jobs:
         with:
           node-version: 26
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build:exe
-      - run: pnpm verify:exe
-
-  mobile:
-    needs: changes
-    if: needs.changes.outputs.app == 'true'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/mobile
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
           cache-dependency-path: |
             pnpm-lock.yaml
             apps/mobile/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:exe
+      - run: pnpm verify:exe
       # tsc resolves effect types for src/shared from the root, so the root install is needed too.
       - run: pnpm install --frozen-lockfile
-        working-directory: .
-      - run: pnpm install --frozen-lockfile
+        working-directory: apps/mobile
       - run: npx tsc --noEmit
+        working-directory: apps/mobile
 
   e2e-linux:
-    name: e2e (linux ${{ matrix.shard }}/4)
+    name: e2e (linux ${{ matrix.part }})
     needs: changes
     if: needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
@@ -179,17 +216,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        part: [1/6, 2/6, 3/6, 4/6, 5/6, 6/6, desktop]
     steps:
+      # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
+      - name: Start installing xvfb, openbox, ripgrep
+        run: (status=0; sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep || status=$?; echo $status > "$RUNNER_TEMP/apt.exit") > "$RUNNER_TEMP/apt.log" 2>&1 &
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
-      # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
-      - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep
       - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v6
+        with:
+          path: node_modules/.cache/react-compiler/src/renderer
+          key: react-compiler-electron-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: react-compiler-electron-${{ hashFiles('pnpm-lock.yaml') }}-
       - uses: actions/cache@v6
         with:
           path: ~/.cache/electron
@@ -197,13 +240,18 @@ jobs:
       # FIXME: GitHub's release downloads time out with a 504 now and then, and the Electron binary comes from there
       - run: for attempt in 1 2 3 4 5; do pnpm exec install-electron && exit 0; sleep $((attempt * 15)); done; exit 1
       - run: pnpm exec bddgen -c e2e/playwright.config.ts
-      # A shard runs every test of the projects its tests depend on, so desktop runs as its own pass instead.
-      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --shard ${{ matrix.shard }}/4'
-      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project desktop --no-deps --shard ${{ matrix.shard }}/4'
+      - name: Wait for apt
+        run: until [ -s "$RUNNER_TEMP/apt.exit" ]; do sleep 1; done; cat "$RUNNER_TEMP/apt.log"; exit "$(cat "$RUNNER_TEMP/apt.exit")"
+      # The desktop scenarios need the display to themselves, so they run in their own job on one worker.
+      - env:
+          PART: ${{ matrix.part }}
+        run: |
+          if [ "$PART" = desktop ]; then args="--project desktop --no-deps"; else args="--project parallel --workers 4 --shard $PART"; fi
+          xvfb-run -a sh -c "openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts $args"
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-report-linux-${{ matrix.shard }}
+          name: e2e-report-linux-${{ strategy.job-index }}
           path: |
             e2e/playwright-report
             e2e/test-results
@@ -222,8 +270,17 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e:web
+      - uses: actions/cache@v6
+        with:
+          path: node_modules/.cache/react-compiler/apps/web
+          key: react-compiler-web-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: react-compiler-web-${{ hashFiles('pnpm-lock.yaml') }}-
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm exec playwright install chromium
+      - run: pnpm test:e2e:web --workers 4
       - if: failure()
         uses: actions/upload-artifact@v7
         with:

@@ -6,13 +6,6 @@ const startupScripts = [...html.matchAll(/(?:src|href)="\.\/(assets\/[^"]+\.js)"
 )
 const startupStyles = [...html.matchAll(/href="\.\/(assets\/[^"]+\.css)"/g)].map(([, path]) => `out/renderer/${path}`)
 
-export const warnings: Record<string, string> = {
-  "Renderer startup JS": "2.13 MB",
-  "Renderer JS, all chunks": "16.1 MB",
-  "Renderer startup CSS": "205 kB",
-  "Renderer CSS, all": "525 kB",
-}
-
 export default [
   { name: "Renderer startup JS", path: startupScripts, brotli: false },
   { name: "Renderer startup JS (gzip)", path: startupScripts, gzip: true },

@@ -387,7 +387,7 @@ interface CloneTargetProps {
 function CloneTarget({ repository, value, canBrowse, environment, onChange }: CloneTargetProps) {
   const browse = async () => {
     const parent = await callPromise("dialog.pickFolder", undefined)
-    if (parent) onChange(`${parent}/${repository.name}`)
+    if (parent) onChange(`${parent}${separatorOf(parent)}${repository.name}`)
   }
 
   return (

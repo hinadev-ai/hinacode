@@ -26,13 +26,30 @@ const account = (id: string) => ({
   binary: "claude",
 })
 
+let listedModels = [model("first"), model("second"), model("third")]
+let codexModels: ReadonlyArray<ModelInfo> | null = null
+const accountLimits = [
+  {
+    provider: "claude",
+    accountId: "one",
+    limits: {
+      windows: [{ window: { kind: "session" }, usedPercent: 40, resetsAt: null }],
+      readAt: "2026-11-01T00:00:00.000Z",
+    },
+  },
+]
+
 const rpc = vi.fn(async (method: string, payload?: unknown) => {
   if (method === "agents.account") return { result: { type: "apiKey" } }
   if (method === "accounts.list") return { result: ["one", "two", "three", "four"].map(account) }
   if (method === "threads.switchAccount")
     return { result: { ...thread, accountId: (payload as { accountId: string }).accountId } }
   if (method === "threads.update") return { result: thread }
-  if (method === "models.list") return { result: [model("first"), model("second"), model("third")] }
+  if (method === "limits.list") return { result: accountLimits }
+  if (method === "models.list")
+    return {
+      result: (payload as { provider: string }).provider === "codex" ? (codexModels ?? listedModels) : listedModels,
+    }
   return { error: { tag: "NotStubbed", message: method } }
 })
 vi.stubGlobal("hinacode", { rpc, onEvent: () => () => {}, pathForFile: () => "", liquidGlass: false })
@@ -95,21 +112,94 @@ test("keeps the thread's own agent when it is signed out, and hides other agents
   expect(pickerProviders("muse", ["opencode", "claude"])).toStrictEqual(["claude", "muse", "opencode"])
 })
 
-test("fills the space above the trigger up to 520px, whatever the model count", async () => {
+const popover = () => document.querySelector<HTMLElement>("[data-slot=popover-content]")!
+
+test("fills the space above the trigger up to 520px with a long model list", async () => {
+  const shortList = listedModels
+  listedModels = Array.from({ length: 40 }, (_, index) => model(index === 1 ? "second" : `model-${index}`))
+  try {
+    await render(
+      <div className="pt-[60vh]">
+        <ThreadPicker thread={thread} canSwitchAgent onError={() => {}} />
+      </div>,
+    )
+    await page.getByRole("button", { name: /second/ }).click()
+    await expect.element(page.getByRole("option", { name: "model-39" })).toBeInTheDocument()
+    const trigger = page.getByRole("button", { name: /second/ }).element()
+    const available = Number.parseFloat(getComputedStyle(popover()).getPropertyValue("--available-height"))
+    expect(available).toBeGreaterThan(100)
+    expect(Math.abs(popover().offsetHeight - Math.min(520, available))).toBeLessThan(1)
+    expect(popover().dataset["side"]).toBe("top")
+    expect(trigger.getBoundingClientRect().top - popover().getBoundingClientRect().bottom).toBeGreaterThanOrEqual(0)
+  } finally {
+    listedModels = shortList
+  }
+})
+
+test("fits a short model list and keeps its height while the search filters it", async () => {
   await render(
-    <div className="pt-[60vh]">
+    <div className="pt-[80vh]">
       <ThreadPicker thread={thread} canSwitchAgent onError={() => {}} />
     </div>,
   )
   await page.getByRole("button", { name: /second/ }).click()
-  await expect.element(page.getByRole("option", { name: "first" })).toBeVisible()
-  const popup = document.querySelector<HTMLElement>("[data-slot=popover-content]")!
-  const trigger = page.getByRole("button", { name: /second/ }).element()
-  const available = Number.parseFloat(getComputedStyle(popup).getPropertyValue("--available-height"))
-  expect(available).toBeGreaterThan(100)
-  expect(Math.abs(popup.offsetHeight - Math.min(520, available))).toBeLessThan(1)
-  expect(popup.dataset["side"]).toBe("top")
-  expect(trigger.getBoundingClientRect().top - popup.getBoundingClientRect().bottom).toBeGreaterThanOrEqual(0)
+  await expect.element(page.getByRole("option", { name: "third" })).toBeVisible()
+  const list = page.getByRole("listbox", { name: "Model" }).element()
+  const rows = [...list.querySelectorAll<HTMLElement>("[role=option]")]
+  const lastRow = rows.at(-1)!.getBoundingClientRect()
+  expect(list.getBoundingClientRect().bottom - lastRow.bottom).toBeLessThan(lastRow.height / 2)
+  const height = popover().offsetHeight
+  expect(height).toBeLessThan(
+    Math.min(520, Number.parseFloat(getComputedStyle(popover()).getPropertyValue("--available-height"))),
+  )
+  await userEvent.keyboard("thi")
+  await expect.poll(() => document.querySelectorAll("[role=option]").length).toBe(1)
+  expect(popover().offsetHeight).toBe(height)
+  await userEvent.keyboard("zzz")
+  await expect.element(page.getByText("No matching models")).toBeVisible()
+  expect(popover().offsetHeight).toBe(height)
+})
+
+test("keeps its height when leaving an account tab that shows its usage", async () => {
+  await render(
+    <div className="pt-[80vh]">
+      <ThreadPicker thread={thread} canSwitchAgent onError={() => {}} />
+    </div>,
+  )
+  await page.getByRole("button", { name: /second/ }).click()
+  await expect.element(page.getByText("40% used")).toBeVisible()
+  const height = popover().offsetHeight
+  await page.getByRole("tab", { name: "Codex" }).click()
+  await expect.poll(selectedTab).toContain("Codex")
+  await expect.element(page.getByRole("option", { name: "third" })).toBeVisible()
+  expect(popover().offsetHeight).toBe(height)
+})
+
+test("grows for a longer agent's list and does not shrink back while open", async () => {
+  codexModels = Array.from({ length: 8 }, (_, index) => ({ ...model(`codex-${index}`), provider: "codex" }))
+  try {
+    await render(
+      <div className="pt-[80vh]">
+        <ThreadPicker thread={thread} canSwitchAgent onError={() => {}} />
+      </div>,
+    )
+    await page.getByRole("button", { name: /second/ }).click()
+    await expect.element(page.getByRole("option", { name: "third" })).toBeVisible()
+    const short = popover().offsetHeight
+    await page.getByRole("tab", { name: "Codex" }).click()
+    await expect.element(page.getByRole("option", { name: "codex-7" })).toBeVisible()
+    const tall = popover().offsetHeight
+    expect(tall).toBeGreaterThan(short)
+    await page.getByRole("tab", { name: /account name one/ }).click()
+    await expect.element(page.getByRole("option", { name: "third" })).toBeVisible()
+    expect(popover().offsetHeight).toBe(tall)
+    await userEvent.keyboard("{Escape}")
+    await page.getByRole("button", { name: /second/ }).click()
+    await expect.element(page.getByRole("option", { name: "third" })).toBeVisible()
+    expect(popover().offsetHeight).toBe(short)
+  } finally {
+    codexModels = null
+  }
 })
 
 test("focuses the search box on the current model and moves through the models with the arrow keys", async () => {
@@ -122,6 +212,18 @@ test("focuses the search box on the current model and moves through the models w
   await expect.poll(highlighted).toContain("third")
   await userEvent.keyboard("{ArrowUp}{ArrowUp}")
   await expect.poll(highlighted).toContain("first")
+})
+
+test("lists the models again each time it opens, so a provider signed in meanwhile shows up", async () => {
+  await openPicker()
+  await userEvent.keyboard("{Escape}")
+  listedModels = [...listedModels, model("fourth")]
+  try {
+    await page.getByRole("button", { name: /second/ }).click()
+    await expect.element(page.getByRole("option", { name: "fourth" })).toBeVisible()
+  } finally {
+    listedModels = listedModels.slice(0, 3)
+  }
 })
 
 test("typing filters the models instead of running shortcuts", async () => {

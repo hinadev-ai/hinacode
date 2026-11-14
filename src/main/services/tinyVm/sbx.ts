@@ -123,7 +123,7 @@ const decodeFrames = (body: Buffer) =>
     } satisfies ExecResult
   })
 
-const describeCause = (cause: unknown) => {
+export const describeCause = (cause: unknown) => {
   if (!(cause instanceof Error)) return String(cause)
   const inner = cause.cause instanceof Error ? `: ${cause.cause.message}` : ""
   return `${cause.message}${inner}`

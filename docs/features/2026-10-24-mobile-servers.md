@@ -1,6 +1,6 @@
 # Phone: pair with several servers and pick where work runs
 
-Status: Building
+Status: Shipped
 Date: 2026-10-24
 
 ## Problem

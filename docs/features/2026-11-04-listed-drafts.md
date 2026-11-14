@@ -1,6 +1,6 @@
 # Listed unsent threads
 
-Status: Building
+Status: Shipped
 Date: 2026-11-04
 
 ## Problem

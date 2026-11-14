@@ -9,6 +9,7 @@ import "../index.css"
 import { Markdown } from "./Markdown.tsx"
 
 const existing = "https://github.com/hinadev-ai/hinacode/pull/7"
+const issueUrl = "https://github.com/hinadev-ai/hinacode/issues/756"
 
 const pullRequest: PullRequest = {
   url: existing,
@@ -30,6 +31,17 @@ const bridge: HinacodeBridge = {
     if (method === "github.pullRequest" && (payload as { url: string }).url === existing) {
       return { result: pullRequest } as never
     }
+    if (method === "github.issue" && (payload as { url: string }).url === issueUrl) {
+      return {
+        result: {
+          url: issueUrl,
+          number: 756,
+          title: "Relay keeps the old owner table",
+          status: "open",
+          author: "octocat",
+        },
+      } as never
+    }
     if (method === "github.pullRequest") {
       return { error: { tag: "GitHubError", message: "Could not resolve to a PullRequest" } }
     }
@@ -42,17 +54,30 @@ const bridge: HinacodeBridge = {
 }
 Object.defineProperty(window, "hinacode", { value: bridge })
 
-test("links #n only when the thread's repository has that pull request", async () => {
+const renderMarkdown = (text: string) => {
   const rootRoute = createRootRoute({
     component: () => (
       <ThreadRepository value={{ owner: "hinadev-ai", name: "hinacode" }}>
-        <Markdown text="Fixed in #7. Other repos discuss it in #27949." />
+        <Markdown text={text} />
       </ThreadRepository>
     ),
   })
-  await render(<RouterProvider router={createRouter({ routeTree: rootRoute, history: createMemoryHistory() })} />)
+  return render(<RouterProvider router={createRouter({ routeTree: rootRoute, history: createMemoryHistory() })} />)
+}
+
+test("links #n only when the thread's repository has that pull request", async () => {
+  await renderMarkdown("Fixed in #7. Other repos discuss it in #27949.")
 
   await expect.element(page.getByRole("link", { name: "#7" })).toHaveAttribute("href", existing)
   await expect.element(page.getByRole("link", { name: "#27949" })).not.toBeInTheDocument()
   await expect.element(page.getByRole("paragraph")).toHaveTextContent("Fixed in #7. Other repos discuss it in #27949.")
+})
+
+test("links #n to the issue and previews it when that number is an issue", async () => {
+  await renderMarkdown("Tracked in #756.")
+
+  const link = page.getByRole("link", { name: "#756" })
+  await expect.element(link).toHaveAttribute("href", issueUrl)
+  await link.hover()
+  await expect.element(page.getByText("Relay keeps the old owner table")).toBeVisible()
 })

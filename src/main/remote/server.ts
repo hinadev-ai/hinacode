@@ -5,21 +5,14 @@ import { Cause, Duration, Effect, Fiber, FiberHandle, Layer, Stream } from "effe
 import type { WebSocket } from "ws"
 import { newNonce } from "../../shared/proof.ts"
 import { PRIVATE_NETWORKS, type Settings as SettingsValue } from "../../shared/domain.ts"
-import { isAddressNotUpYet } from "../../shared/remote.ts"
+import { isAddressNotUpYet, RemoteFeature } from "../../shared/remote.ts"
 import { AppConnections } from "../apps/AppConnections.ts"
 import { isPrivateAddress } from "../network.ts"
 import { dispatch } from "../rpc.ts"
+import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED } from "../../shared/transport.ts"
 import { PushBroadcast } from "../services/Events.ts"
 import { Settings } from "../services/Settings.ts"
-import {
-  advertisedHosts,
-  CLOSE_AUTH_TIMEOUT,
-  CLOSE_MALFORMED_FRAME,
-  CLOSE_TOKEN_ROTATED,
-  CLOSE_UNAUTHORIZED,
-  RemoteAccess,
-  relayHostname,
-} from "./access.ts"
+import { advertisedHosts, CLOSE_AUTH_TIMEOUT, CLOSE_MALFORMED_FRAME, RemoteAccess, relayHostname } from "./access.ts"
 import { type Hub, Peers } from "./peers.ts"
 import { describeError, listenWebSockets, makeSessions, readFrame, retryUntilAddressIsUp, send } from "./session.ts"
 
@@ -72,7 +65,7 @@ const make = Effect.gen(function* () {
     call: (raw) => dispatch(raw, null),
     subscribe: broadcast.subscribe,
     environment: access.identity,
-    features: ["heartbeat", "call-keys", "terminal-attach", "asks", "watch"],
+    features: RemoteFeature,
   })
   const countConnected = () => runFork(access.report({ connected: sessions.count() }))
 

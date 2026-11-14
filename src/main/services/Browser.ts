@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { access, constants } from "node:fs/promises"
 import { join } from "node:path"
-import { Context, Effect, Layer, Schedule, Schema } from "effect"
+import { Clock, Context, Effect, Layer, Schedule, Schema } from "effect"
 import type {
   Browser as ChromiumBrowser,
   BrowserContext,
@@ -132,6 +132,7 @@ const executablePath = async (override: string | undefined) => {
 
 const make = (options: BrowserOptions) =>
   Effect.gen(function* () {
+    const clock = yield* Clock.Clock
     const activeWorkspace = yield* makeActiveWorkspace
     const attachments = yield* Attachments
     const scope = yield* Effect.scope
@@ -577,7 +578,7 @@ const make = (options: BrowserOptions) =>
       if (!live || live.closed || live.threadId !== threadId) {
         throw new BrowserError({ message: "Browser session does not belong to this thread or has expired" })
       }
-      live.lease = Date.now()
+      live.lease = clock.currentTimeMillisUnsafe()
       return live
     }
 
@@ -616,7 +617,7 @@ const make = (options: BrowserOptions) =>
                 viewport: { width: input.width, height: input.height },
                 latest: null,
                 sequence: 0,
-                lease: Date.now(),
+                lease: clock.currentTimeMillisUnsafe(),
                 casting: false,
                 closed: false,
                 pickEpoch: 0,
@@ -778,7 +779,9 @@ const make = (options: BrowserOptions) =>
       })
 
     const sweep = Effect.promise(async () => {
-      const expired = [...sessions.values()].filter((live) => Date.now() - live.lease > (options.leaseMs ?? 60000))
+      const expired = [...sessions.values()].filter(
+        (live) => clock.currentTimeMillisUnsafe() - live.lease > (options.leaseMs ?? 60000),
+      )
       await Promise.all(expired.map((live) => closeLive(live)))
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("browser cleanup failed", cause)))
     yield* sweep.pipe(Effect.schedule(Schedule.spaced(options.sweepMs ?? 10000)), Effect.forkScoped)
