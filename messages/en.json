@@ -374,6 +374,7 @@
   "settings_cli_path": "CLI path",
   "settings_cli_path_missing": "Nothing runs at {path}.",
   "settings_model_agent_default": "Agent default",
+  "settings_effort_model_default": "Model default",
   "settings_accounts": "Accounts",
   "settings_models": "Models",
   "settings_models_label": "{provider} models",
