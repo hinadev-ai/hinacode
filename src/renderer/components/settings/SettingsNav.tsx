@@ -15,6 +15,7 @@ import {
   BranchIcon,
   CpuIcon,
   FlaskIcon,
+  GaugeIcon,
   type IconComponent,
   KeyboardIcon,
   PaletteIcon,
@@ -117,6 +118,13 @@ const settingsPages: ReadonlyArray<SettingsPage> = [
     description: m.routines_description,
     icon: BoltIcon,
     keywords: [m.routines_bind_label],
+  },
+  {
+    id: "usage",
+    scope: "environment",
+    label: m.settings_usage,
+    icon: GaugeIcon,
+    keywords: [m.usage_copy_image, m.usage_save_png, m.usage_show_projects],
   },
   {
     id: "connections",

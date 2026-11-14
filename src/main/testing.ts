@@ -43,6 +43,7 @@ import * as PullRequestGuides from "./services/PullRequestGuides.ts"
 import * as RelayAccount from "./services/RelayAccount.ts"
 import * as Scratch from "./services/Scratch.ts"
 import * as Search from "./services/Search.ts"
+import * as Usage from "./services/Usage.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Settle from "./services/Settle.ts"
@@ -82,6 +83,7 @@ export const makeTestAppLayer = (
     Artifacts.layer(join(dirname(dbPath), "artifacts")),
     ArtifactInspector.unavailable,
     Search.layer,
+    Usage.layer,
     Files.layer,
   )
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))

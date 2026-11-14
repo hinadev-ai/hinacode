@@ -2725,5 +2725,34 @@
   "mobile_whiteboard_empty": "這個白板是空的",
   "mobile_artifacts_new_document": "新增文件",
   "mobile_artifacts_create_failed": "無法建立文件：{message}",
-  "site_remote_shot_alt": "在 Mac mini 上執行、正在等待核准的對話串"
+  "site_remote_shot_alt": "在 Mac mini 上執行、正在等待核准的對話串",
+  "settings_usage": "用量",
+  "usage_period": "期間",
+  "usage_period_7d": "7 天",
+  "usage_period_30d": "30 天",
+  "usage_period_all": "全部",
+  "usage_card_period_7d": "最近 7 天",
+  "usage_card_period_30d": "最近 30 天",
+  "usage_card_period_all": "全部時間",
+  "usage_show_projects": "顯示專案名稱",
+  "usage_copy_image": "複製圖片",
+  "usage_save_png": "儲存 PNG",
+  "usage_turns": "回合",
+  "usage_threads": "對話串",
+  "usage_tokens": "Token",
+  "usage_agents": "代理",
+  "usage_projects": "常用專案",
+  "usage_project_masked": "專案 {rank}",
+  "usage_provider_turns": [
+    {
+      "declarations": ["input count", "input turns", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{turns} 回合",
+        "countPlural=other": "{turns} 回合"
+      }
+    }
+  ],
+  "usage_empty": "這段期間沒有回合",
+  "usage_card_label": "用量卡片"
 }

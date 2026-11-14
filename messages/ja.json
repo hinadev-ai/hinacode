@@ -2689,5 +2689,34 @@
   "mobile_whiteboard_empty": "このホワイトボードは空です",
   "mobile_artifacts_new_document": "新しいドキュメント",
   "mobile_artifacts_create_failed": "ドキュメントを作成できませんでした：{message}",
-  "site_remote_shot_alt": "Mac mini で動き、承認を待っているスレッド"
+  "site_remote_shot_alt": "Mac mini で動き、承認を待っているスレッド",
+  "settings_usage": "使用状況",
+  "usage_period": "期間",
+  "usage_period_7d": "7 日間",
+  "usage_period_30d": "30 日間",
+  "usage_period_all": "全期間",
+  "usage_card_period_7d": "直近 7 日間",
+  "usage_card_period_30d": "直近 30 日間",
+  "usage_card_period_all": "全期間",
+  "usage_show_projects": "プロジェクト名を表示",
+  "usage_copy_image": "画像をコピー",
+  "usage_save_png": "PNG を保存",
+  "usage_turns": "ターン",
+  "usage_threads": "スレッド",
+  "usage_tokens": "トークン",
+  "usage_agents": "エージェント",
+  "usage_projects": "よく使うプロジェクト",
+  "usage_project_masked": "プロジェクト {rank}",
+  "usage_provider_turns": [
+    {
+      "declarations": ["input count", "input turns", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{turns} ターン",
+        "countPlural=other": "{turns} ターン"
+      }
+    }
+  ],
+  "usage_empty": "この期間のターンはありません",
+  "usage_card_label": "使用状況カード"
 }

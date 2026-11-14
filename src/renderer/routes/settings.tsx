@@ -20,6 +20,7 @@ import {
   SETTINGS_FILL_WIDTH,
   SettingsSection,
 } from "../components/settings/SettingsSection.tsx"
+import { UsageSettings } from "../components/settings/UsageSettings.tsx"
 import { WorktreeSettings } from "../components/settings/WorktreeSettings.tsx"
 import { Button } from "../components/ui/button.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select.tsx"
@@ -60,6 +61,7 @@ const components: Record<string, ComponentType> = {
   worktrees: WorktreeSettings,
   integrations: IntegrationSettings,
   routines: RoutineSettings,
+  usage: UsageSettings,
   connections: ConnectionSettings,
   experimental: ExperimentalSettings,
 }

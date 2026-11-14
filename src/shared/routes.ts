@@ -105,6 +105,7 @@ export const routes: Record<RpcMethod, Route> = {
   "artifacts.list": all,
 
   "settings.get": named,
+  "usage.rows": named,
   "settings.set": named,
   "accounts.list": named,
   "accounts.create": named,

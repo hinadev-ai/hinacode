@@ -207,6 +207,11 @@
   --color-provider-gemini: var(--provider-gemini);
   --color-provider-grok: var(--provider-grok);
   --color-provider-mistral: var(--provider-mistral);
+  --color-share-ink: var(--share-ink);
+  --color-share-paper: var(--share-paper);
+  --color-share-muted: var(--share-muted);
+  --color-share-line: var(--share-line);
+  --color-share-coral: var(--share-coral);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -617,6 +622,30 @@
   --primary-foreground: oklch(1 0 0);
   --ring: oklch(0.663 0.182 2.166);
   --destructive: oklch(0.527 0.189 24.748);
+}
+
+/*
+ * The usage card keeps the mark's palette in every theme so a shared image looks the same for everyone.
+ * Its spacing and type scale with the card's width, so the preview fits the panel and the export keeps the layout.
+ */
+.share-card {
+  container-type: inline-size;
+  --share-ink: oklch(0.32 0.026 195.945);
+  --share-paper: oklch(0.975 0.007 106.521);
+  --share-muted: oklch(0.78 0.014 106.5);
+  --share-line: oklch(0.385 0.028 196);
+  --share-coral: oklch(0.662 0.153 36.6);
+  --sun: var(--share-coral);
+  --spacing: calc(100cqw / 300);
+  --radius: calc(100cqw / 120);
+  --text-xs: calc(100cqw * 12 / 1200);
+  --text-sm: calc(100cqw * 14 / 1200);
+  --text-base: calc(100cqw * 16 / 1200);
+  --text-lg: calc(100cqw * 18 / 1200);
+  --text-xl: calc(100cqw * 20 / 1200);
+  --text-2xl: calc(100cqw * 24 / 1200);
+  --text-4xl: calc(100cqw * 36 / 1200);
+  --text-5xl: calc(100cqw * 48 / 1200);
 }
 
 /*

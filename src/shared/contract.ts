@@ -11,6 +11,7 @@ import {
   WhiteboardScene,
 } from "./artifact.ts"
 import { ArtifactTheme } from "./artifactTheme.ts"
+import { UsageRow } from "./usage.ts"
 import {
   AccountLimits,
   AccountProviderId,
@@ -443,6 +444,7 @@ export const RpcMethods = {
     Schema.Struct({ threadId: Schema.String, query: Schema.String, limit: Schema.optional(Schema.Number) }),
     Schema.Array(FileSearchHit),
   ),
+  "usage.rows": rpc(Schema.Struct({ since: Schema.NullOr(Schema.String) }), Schema.Array(UsageRow)),
 
   "fs.list": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Array(FsEntry)),
   "fs.read": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), FsFileContent),
@@ -840,6 +842,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "files.list": "read",
   "search.threads": "read",
   "search.files": "read",
+  "usage.rows": "read",
   "fs.list": "read",
   "fs.read": "read",
   "fs.preview": "read",

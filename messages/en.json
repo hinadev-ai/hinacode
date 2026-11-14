@@ -2789,5 +2789,34 @@
   "mobile_whiteboard_empty": "This whiteboard is empty",
   "mobile_artifacts_new_document": "New document",
   "mobile_artifacts_create_failed": "Could not create the document: {message}",
-  "site_remote_shot_alt": "A thread running on a Mac mini, waiting for approval in the desktop app"
+  "site_remote_shot_alt": "A thread running on a Mac mini, waiting for approval in the desktop app",
+  "settings_usage": "Usage",
+  "usage_period": "Period",
+  "usage_period_7d": "7 days",
+  "usage_period_30d": "30 days",
+  "usage_period_all": "All time",
+  "usage_card_period_7d": "Last 7 days",
+  "usage_card_period_30d": "Last 30 days",
+  "usage_card_period_all": "All time",
+  "usage_show_projects": "Show project names",
+  "usage_copy_image": "Copy image",
+  "usage_save_png": "Save PNG",
+  "usage_turns": "Turns",
+  "usage_threads": "Threads",
+  "usage_tokens": "Tokens",
+  "usage_agents": "Agents",
+  "usage_projects": "Top projects",
+  "usage_project_masked": "Project {rank}",
+  "usage_provider_turns": [
+    {
+      "declarations": ["input count", "input turns", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{turns} turn",
+        "countPlural=other": "{turns} turns"
+      }
+    }
+  ],
+  "usage_empty": "No turns in this period",
+  "usage_card_label": "Usage card"
 }
