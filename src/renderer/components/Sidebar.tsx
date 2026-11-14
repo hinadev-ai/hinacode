@@ -46,7 +46,7 @@ import {
   selectPinnedThreads,
   selectProjectThreads,
   selectSnoozedThreads,
-  selectUnpinnedProjectThreads,
+  selectProjectListThreads,
   type ThreadsState,
   useThreads,
 } from "../stores/threads.ts"
@@ -258,7 +258,7 @@ type Query = string
 const includes = (text: string, query: Query) => text.toLocaleLowerCase().includes(query)
 
 const projectThreads = (state: Pick<ThreadsState, "byId">, projects: ReadonlyArray<Project>, query: Query) =>
-  selectUnpinnedProjectThreads(...projects.map((project) => project.id))(state).filter(
+  selectProjectListThreads(...projects.map((project) => project.id))(state).filter(
     (thread) =>
       query === "" ||
       includes(thread.title, query) ||
