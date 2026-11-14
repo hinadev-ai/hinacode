@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { expect } from "@playwright/test"
 import { type ChosenModel, Given, Then, When } from "../support/fixtures.ts"
 import type { ProviderId } from "../../src/shared/agent.ts"
+import { defaultSettings } from "../../src/shared/domain.ts"
 import { rpc } from "../support/rpc.ts"
 
 const COMMAND_IDS: Record<string, string> = {
@@ -66,6 +67,14 @@ Given("the Claude Code CLI is installed", async ({ app }) => {
   const { providerBinary } = await rpc(app.page, "settings.get", undefined)
   await rpc(app.page, "settings.set", { providerBinary: { ...providerBinary, claude } })
   await app.reload()
+})
+
+Then("the Claude Code binary and the pull request guide are at their defaults", async ({ app }) => {
+  const { providerBinary, pullRequestGuide } = await rpc(app.page, "settings.get", undefined)
+  expect({ providerBinary, pullRequestGuide }).toEqual({
+    providerBinary: defaultSettings.providerBinary,
+    pullRequestGuide: defaultSettings.pullRequestGuide,
+  })
 })
 
 When("I open the settings section {string}", async ({ app }, section: string) => {

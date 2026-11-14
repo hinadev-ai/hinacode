@@ -15,9 +15,9 @@ import { beforeEach, describe, expect, it } from "@effect/vitest"
 import { Deferred, Effect, Fiber, Option, PubSub, Queue, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AccountHome, AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
-import { AGENT_INSTRUCTIONS } from "../instructions.ts"
+import { AGENT_INSTRUCTIONS, instructionsUpdate } from "../instructions.ts"
 import type { BackgroundTasksChange } from "../provider.ts"
-import { CodexProvider } from "./index.ts"
+import { CodexProvider, TerminalPollInterval } from "./index.ts"
 import fruitShop from "./fixtures/fruit-shop-thread.json" with { type: "json" }
 
 const bin = mkdtempSync(join(tmpdir(), "kk-fake-codex-"))
@@ -123,6 +123,8 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   instructions: AGENT_INSTRUCTIONS,
 })
 
+const environment = (branch: string) => `<environment>\n  git branch: \`${branch}\`\n</environment>`
+
 const startTurn = (threadId: string, home: AccountHome | null = null) =>
   Effect.gen(function* () {
     const provider = yield* CodexProvider
@@ -150,6 +152,9 @@ const finishesSoon = <A, E>(fiber: Fiber.Fiber<A, E>) => Fiber.join(fiber)
 
 const withProvider = <A, E>(effect: Effect.Effect<A, E, CodexProvider>) =>
   effect.pipe(Effect.provide(CodexProvider.layer))
+
+const withFastTerminalPolls = <A, E>(effect: Effect.Effect<A, E, CodexProvider>) =>
+  effect.pipe(Effect.provide(CodexProvider.layer), Effect.provideService(TerminalPollInterval, "10 millis"))
 
 describe("Codex app-server log", () => {
   it("reads an appended message only after its JSONL terminator arrives", () => {
@@ -262,6 +267,40 @@ describe("Codex auto-compact", () => {
           "thread/unsubscribe",
           "thread/resume",
         ])
+      }),
+    ),
+  )
+
+  it.live("tells a loaded thread about changed instructions with a developer message", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        const turn = (instructions: string) =>
+          provider
+            .runTurn({ ...input("instructions-change"), resumeSessionId: "codex-thread", instructions })
+            .pipe(Stream.runDrain)
+        yield* turn(environment("main"))
+        yield* turn(environment("main"))
+        expect(countOf("thread/inject_items")).toBe(0)
+
+        yield* turn(environment("fix/restart"))
+        yield* turn(environment("fix/restart"))
+        expect(sent("thread/inject_items").map((message) => message.params)).toStrictEqual([
+          {
+            threadId: "codex-thread",
+            items: [
+              {
+                type: "message",
+                role: "developer",
+                content: [
+                  { type: "input_text", text: instructionsUpdate(environment("main"), environment("fix/restart")) },
+                ],
+              },
+            ],
+          },
+        ])
+        expect(countOf("thread/unsubscribe")).toBe(0)
       }),
     ),
   )
@@ -800,7 +839,7 @@ const pendingQuestion = (turn: Turn) => {
 
 describe("Codex background terminals", () => {
   it.live("lists a command left running after the turn, stops it, and empties the set", () =>
-    withProvider(
+    withFastTerminalPolls(
       Effect.gen(function* () {
         const provider = yield* CodexProvider
         const backgroundTasks = provider.backgroundTasks ?? (yield* Effect.die("backgroundTasks is missing"))
@@ -836,7 +875,7 @@ describe("Codex background terminals", () => {
 
 describe("Codex closed sessions", () => {
   it.live("terminates the background terminals of a session the thread leaves, and empties the set", () =>
-    withProvider(
+    withFastTerminalPolls(
       Effect.gen(function* () {
         const provider = yield* CodexProvider
         const backgroundTasks = provider.backgroundTasks ?? (yield* Effect.die("backgroundTasks is missing"))

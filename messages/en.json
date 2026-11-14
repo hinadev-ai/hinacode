@@ -1115,6 +1115,9 @@
   "remote_bind_loopback_hint": "Only this machine can connect.",
   "remote_bind_address_hint": "Devices that can reach {address} can connect with the access token.",
   "remote_bind_private_hint": "Devices on the same Wi-Fi or tailnet can connect with the access token. Connections from public addresses are refused.",
+  "remote_bind_confirm_title": "Change the listener on {name}?",
+  "remote_bind_confirm_body": "This device reaches {name} at {address}, and {name} is not reachable through the relay. If the new listener does not answer at that address, the connection drops and you can only change it back on {name} itself.",
+  "remote_bind_confirm": "Change listener",
   "settings_bind_address_gone": "{address} (not on this machine now)",
   "remote_network_note": "A plain LAN connection is unencrypted. Use Tailscale, or keep this off on untrusted networks.",
   "remote_port_label": "Port",
@@ -2789,5 +2792,11 @@
   "site_artifacts_whiteboard_body": "The agent sketches the design. Draw on it, select a part and press Ask.",
   "site_artifacts_whiteboard_alt": "A whiteboard of the relay that an agent drew",
   "site_remote_lede": "Agents run where the code lives. You drive them from the desktop, a browser or your phone.",
+  "mobile_artifact_loading": "Loading the artifact",
+  "mobile_artifact_removed": "This artifact was deleted.",
+  "mobile_artifact_crashed": "This page keeps crashing the viewer.",
+  "mobile_whiteboard_empty": "This whiteboard is empty",
+  "mobile_artifacts_new_document": "New document",
+  "mobile_artifacts_create_failed": "Could not create the document: {message}",
   "site_remote_shot_alt": "A thread running on a Mac mini, waiting for approval in the desktop app"
 }

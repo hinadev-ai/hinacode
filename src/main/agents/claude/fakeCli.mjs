@@ -15,6 +15,7 @@ const control = () => {
 }
 const { lifeline, exitOnStart, lingerAfterLostSession, bypassDisabled } = control()
 if (lifeline !== undefined) connect(lifeline).on("error", () => {})
+process.stdin.on("end", () => process.exit(0))
 
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`)
 const die = (code, lastWords) => {

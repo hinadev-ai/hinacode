@@ -102,6 +102,10 @@ describe("composerDecorations for prose", () => {
     expect(kinds("a **big** deal")).toEqual(["muted:**", "strong:big", "muted:**"])
   })
 
+  it("mutes a quote's marker", () => {
+    expect(kinds("> said **so**")).toEqual(["muted:> ", "muted:**", "strong:so", "muted:**"])
+  })
+
   it("italicizes *emphasis* but leaves multiplication, a_b and *args alone", () => {
     expect(kinds("an *odd* one")).toEqual(["muted:*", "emphasis:odd", "muted:*"])
     expect(kinds("a * b * c and a_b and f(*args, **kw)")).toEqual([])

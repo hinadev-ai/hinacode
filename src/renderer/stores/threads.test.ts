@@ -6,7 +6,7 @@ import {
   selectInboxThreads,
   selectPinnedThreads,
   selectSnoozedThreads,
-  selectUnpinnedProjectThreads,
+  selectProjectListThreads,
   useThreads,
 } from "./threads.ts"
 
@@ -77,8 +77,15 @@ test("pinned threads are listed in the order they were pinned, without archived 
   expect(ids(selectPinnedThreads(state))).toStrictEqual(["pinnedFirst", "pinnedLater", "pinnedSnoozed"])
 })
 
-test("a project's unpinned threads leave out the pinned ones", () => {
-  expect(ids(selectUnpinnedProjectThreads("p1")(state))).toStrictEqual(["old", "wakesLater", "wakesSoon", "woke"])
+test("a project's list leaves out the pinned threads", () => {
+  expect(ids(selectProjectListThreads("p1")(state))).toStrictEqual(["old", "wakesLater", "wakesSoon", "woke"])
+})
+
+test("a project's list leaves out settled threads, which the Inbox shelves", () => {
+  const settled = {
+    byId: { open: thread("open", {}), settled: thread("settled", { settledAt: "2026-10-14T05:00:00.000Z" }) },
+  }
+  expect(ids(selectProjectListThreads("p1")(settled))).toStrictEqual(["open"])
 })
 
 test("awake threads are the active ones not snoozed, pinned or not, which the Dock badge counts", () => {

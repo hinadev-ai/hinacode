@@ -46,7 +46,7 @@ import {
   selectPinnedThreads,
   selectProjectThreads,
   selectSnoozedThreads,
-  selectUnpinnedProjectThreads,
+  selectProjectListThreads,
   type ThreadsState,
   useThreads,
 } from "../stores/threads.ts"
@@ -186,7 +186,7 @@ export function Sidebar({
           viewportClassName={tab === "inbox" ? "animate-none! data-has-overflow-y:pe-0" : "data-has-overflow-y:pe-0"}
           scrollbarClassName={quietScrollbar}
         >
-          <div className="flex flex-col gap-4 pb-3">
+          <div className="flex flex-col gap-3 pb-3">
             <PinnedThreads query={query.trim().toLocaleLowerCase()} />
             <TabsContent value="inbox" className="flex flex-col">
               <InboxList query={query.trim().toLocaleLowerCase()} />
@@ -258,7 +258,7 @@ type Query = string
 const includes = (text: string, query: Query) => text.toLocaleLowerCase().includes(query)
 
 const projectThreads = (state: Pick<ThreadsState, "byId">, projects: ReadonlyArray<Project>, query: Query) =>
-  selectUnpinnedProjectThreads(...projects.map((project) => project.id))(state).filter(
+  selectProjectListThreads(...projects.map((project) => project.id))(state).filter(
     (thread) =>
       query === "" ||
       includes(thread.title, query) ||
@@ -285,7 +285,7 @@ function PinnedThreads({ query }: { query: Query }) {
     <Collapsible
       open={open}
       onOpenChange={setOpen}
-      className="flex flex-col"
+      className="flex flex-col border-b border-sidebar-border pb-3"
       render={<section aria-label={m.sidebar_pinned()} />}
     >
       <CollapsibleTrigger className="group/heading mx-2 flex h-7 items-center gap-0.5 rounded-md px-2.5 text-xs font-medium text-sidebar-meta outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-inset">
@@ -566,7 +566,7 @@ function InboxList({ query }: { query: Query }) {
               ]),
           {
             key: READY_GROUP,
-            spaced: drafts.length > 0,
+            divided: drafts.length > 0,
             group: READY_GROUP,
             headingClassName: "sticky top-0 z-20 bg-sidebar",
             heading: (
@@ -597,7 +597,7 @@ function InboxList({ query }: { query: Query }) {
         ]}
       />
       {snoozed.length > 0 && (
-        <section aria-label={m.sidebar_snoozed()} className="pt-4">
+        <section aria-label={m.sidebar_snoozed()} className="mt-3 border-t border-sidebar-border pt-3">
           <SectionHeading title={m.sidebar_snoozed()} count={snoozed.length} />
           <SidebarThreadList group="snoozed" threads={snoozed} reorderable={false} showProject className="px-2" />
         </section>

@@ -2,7 +2,7 @@ import { createServer, type RequestListener, type Server } from "node:http"
 import type { AddressInfo } from "node:net"
 import { afterEach, describe, expect, test } from "@effect/vitest"
 import { Effect } from "effect"
-import { Favicons, layer } from "./Favicons.ts"
+import { Favicons, layer, layerWithLookupTimeout } from "./Favicons.ts"
 
 type Route = { readonly type: string; readonly body: string | Buffer } | RequestListener
 
@@ -41,8 +41,8 @@ const serve = async (routes: Record<string, Route>) => {
   return { origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, requests }
 }
 
-const favicon = (url: string) =>
-  Effect.runPromise(Favicons.use((favicons) => favicons.favicon(url)).pipe(Effect.provide(layer)))
+const favicon = (url: string, faviconsLayer = layer) =>
+  Effect.runPromise(Favicons.use((favicons) => favicons.favicon(url)).pipe(Effect.provide(faviconsLayer)))
 
 const dataUrl = (type: string, body: Buffer | string) => `data:${type};base64,${Buffer.from(body).toString("base64")}`
 
@@ -136,9 +136,9 @@ describe("Favicons.favicon", () => {
     expect(await favicon(origin)).toBe(null)
   })
 
-  test("gives up on a site within 8 seconds, however its requests stall", { timeout: 9000 }, async () => {
+  test("gives up on a site at the lookup deadline, however its requests stall", { timeout: 1300 }, async () => {
     const { origin } = await serve({ "/": hang, "/favicon.ico": hang })
-    expect(await favicon(origin)).toBe(null)
+    expect(await favicon(origin, layerWithLookupTimeout(300))).toBe(null)
   })
 
   test("only looks up http and https", async () => {

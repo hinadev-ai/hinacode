@@ -160,3 +160,24 @@ export const agentInstructions = (
       : []),
     ...(experimental.devices ? [DEVICE_INSTRUCTIONS] : []),
   ].join("\n\n")
+
+const SECTION = /^<([a-z-]+)>$[\s\S]*?^<\/\1>$/gm
+
+const sections = (instructions: string) =>
+  new Map([...instructions.matchAll(SECTION)].map((match) => [match[1] ?? "", match[0]]))
+
+export const instructionsUpdate = (seen: string, current: string): string | null => {
+  if (seen === current) return null
+  const before = sections(seen)
+  const after = sections(current)
+  const changed = [...after].flatMap(([tag, text]) => (before.get(tag) === text ? [] : [text]))
+  const removed = [...before.keys()].flatMap((tag) =>
+    after.has(tag) ? [] : [`<${tag}>\nNo longer applies.\n</${tag}>`],
+  )
+  const blocks = changed.length + removed.length === 0 ? [current] : [...changed, ...removed]
+  return `<hinacode-update>
+HinaCode changed your instructions since you last read them. Each block below replaces the block of the same name.
+
+${blocks.join("\n\n")}
+</hinacode-update>`
+}

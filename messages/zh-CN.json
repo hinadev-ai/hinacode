@@ -1106,6 +1106,9 @@
   "remote_bind_loopback_hint": "只有本机可以连接。",
   "remote_bind_address_hint": "能访问 {address} 的设备可以使用访问令牌连接。",
   "remote_bind_private_hint": "同一 Wi-Fi 或 tailnet 上的设备可以使用访问令牌连接。来自公网地址的连接会被拒绝。",
+  "remote_bind_confirm_title": "要更改 {name} 的监听地址吗？",
+  "remote_bind_confirm_body": "此设备通过 {address} 连接到 {name}，并且 {name} 目前无法通过中继访问。如果新的监听地址不在这个地址上应答，连接会断开，之后只能在 {name} 本机上改回来。",
+  "remote_bind_confirm": "更改监听地址",
   "settings_bind_address_gone": "{address}（当前不在本机上）",
   "remote_network_note": "普通局域网连接不加密。请使用 Tailscale，或在不受信任的网络上保持关闭。",
   "remote_port_label": "端口",
@@ -2771,5 +2774,11 @@
   "site_artifacts_whiteboard_body": "智能体画出设计。你在上面画、选中一块，再点「提问」。",
   "site_artifacts_whiteboard_alt": "智能体画的 relay 架构白板",
   "site_remote_lede": "智能体在代码所在的机器上运行，你从桌面、浏览器或手机操控。",
+  "mobile_artifact_loading": "正在加载成品",
+  "mobile_artifact_removed": "这个成品已删除。",
+  "mobile_artifact_crashed": "这个页面反复让查看器崩溃。",
+  "mobile_whiteboard_empty": "这个白板是空的",
+  "mobile_artifacts_new_document": "新建文档",
+  "mobile_artifacts_create_failed": "无法创建文档：{message}",
   "site_remote_shot_alt": "在 Mac mini 上运行、正在等待批准的对话"
 }

@@ -1106,6 +1106,9 @@
   "remote_bind_loopback_hint": "このマシンからのみ接続できます。",
   "remote_bind_address_hint": "{address} に到達できるデバイスが、アクセストークンで接続できます。",
   "remote_bind_private_hint": "同じ Wi-Fi または tailnet 上のデバイスが、アクセストークンで接続できます。パブリックアドレスからの接続は拒否されます。",
+  "remote_bind_confirm_title": "{name} のリスナーを変更しますか？",
+  "remote_bind_confirm_body": "このデバイスは {address} で {name} に接続していて、{name} はリレー経由では到達できません。新しいリスナーがそのアドレスで応答しない場合、接続が切れ、{name} 本体でしか元に戻せません。",
+  "remote_bind_confirm": "リスナーを変更",
   "settings_bind_address_gone": "{address}（現在このマシンにありません）",
   "remote_network_note": "通常の LAN 接続は暗号化されません。Tailscale を使うか、信頼できないネットワークではオフにしてください。",
   "remote_port_label": "ポート",
@@ -2689,5 +2692,11 @@
   "site_artifacts_whiteboard_body": "エージェントが設計を描きます。描き足して一部を選び、「質問」を押します。",
   "site_artifacts_whiteboard_alt": "エージェントが描いたリレーの構成図",
   "site_remote_lede": "エージェントはコードのあるマシンで動き、デスクトップ、ブラウザ、スマホから操作します。",
+  "mobile_artifact_loading": "アーティファクトを読み込んでいます",
+  "mobile_artifact_removed": "このアーティファクトは削除されました。",
+  "mobile_artifact_crashed": "このページは表示中に何度もクラッシュしています。",
+  "mobile_whiteboard_empty": "このホワイトボードは空です",
+  "mobile_artifacts_new_document": "新しいドキュメント",
+  "mobile_artifacts_create_failed": "ドキュメントを作成できませんでした：{message}",
   "site_remote_shot_alt": "Mac mini で動き、承認を待っているスレッド"
 }

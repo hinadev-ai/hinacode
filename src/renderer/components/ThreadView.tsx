@@ -163,9 +163,10 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const load = useMessages((state) => state.load)
   const label = providerLabel[thread.provider]()
+  const agentCommands = useAtomValue(commandsAtom(completionKey(thread)))
   const commands = [
     ...artifactSkillCommands(),
-    ...AsyncResult.getOrElse(useAtomValue(commandsAtom(completionKey(thread))), (): ReadonlyArray<AgentCommand> => []),
+    ...AsyncResult.getOrElse(agentCommands, (): ReadonlyArray<AgentCommand> => []),
   ]
   const isChat = useIsChat(thread.projectId)
   const findOpen = useUi((state) => state.findThreadId === thread.id)
@@ -182,7 +183,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
 
   const retry = () => {
     useUi.getState().requestComposerFocus()
-    void load(thread.id)
+    return load(thread.id)
   }
 
   if (history === undefined || history.status === "loading") {
@@ -194,7 +195,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
         <p className="text-center text-sm wrap-break-word text-destructive">
           {m.thread_load_failed({ message: history.message })}
         </p>
-        <Button variant="outline" size="sm" onClick={retry}>
+        <Button variant="outline" size="sm" action={retry}>
           {m.common_retry()}
         </Button>
       </div>

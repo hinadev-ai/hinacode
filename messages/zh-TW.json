@@ -1079,6 +1079,9 @@
   "remote_bind_loopback_hint": "只有這台電腦可以連線。",
   "remote_bind_address_hint": "能連到 {address} 的裝置可憑存取權杖連線。",
   "remote_bind_private_hint": "同一個 Wi-Fi 或 tailnet 上的裝置可憑存取權杖連線。來自公開位址的連線會被拒絕。",
+  "remote_bind_confirm_title": "要變更 {name} 的監聽位址嗎？",
+  "remote_bind_confirm_body": "這台裝置透過 {address} 連到 {name}，而且 {name} 目前無法透過中繼連線。如果新的監聽位址不在這個位址回應，連線會中斷，之後只能到 {name} 本機上改回來。",
+  "remote_bind_confirm": "變更監聽位址",
   "settings_bind_address_gone": "{address}（目前不在這台電腦上）",
   "remote_network_note": "一般區域網路連線不會加密。請使用 Tailscale，或在不信任的網路上關閉。",
   "remote_port_label": "連接埠",
@@ -2725,5 +2728,11 @@
   "site_artifacts_whiteboard_body": "代理畫出設計。你在上面畫、選一塊，再按「提問」。",
   "site_artifacts_whiteboard_alt": "代理畫的 relay 架構白板",
   "site_remote_lede": "代理在程式碼所在的機器上跑，你從桌面、瀏覽器或手機操控。",
+  "mobile_artifact_loading": "正在載入成品",
+  "mobile_artifact_removed": "這個成品已刪除。",
+  "mobile_artifact_crashed": "這個頁面一再讓檢視器當掉。",
+  "mobile_whiteboard_empty": "這個白板是空的",
+  "mobile_artifacts_new_document": "新增文件",
+  "mobile_artifacts_create_failed": "無法建立文件：{message}",
   "site_remote_shot_alt": "在 Mac mini 上執行、正在等待核准的對話串"
 }

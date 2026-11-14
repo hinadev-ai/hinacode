@@ -287,7 +287,7 @@ interface TurnSection {
   readonly flat?: boolean
   readonly showActivity?: boolean
   readonly empty?: ReactNode
-  readonly spaced?: boolean
+  readonly divided?: boolean
   readonly drafts?: ReadonlyArray<{ readonly thread: Thread; readonly title: string }>
   readonly projectNames?: ReadonlyMap<string, string>
 }
@@ -307,10 +307,10 @@ export function TurnList({ sections, className }: { sections: ReadonlyArray<Turn
           still={filtering}
         >
           {sections.flatMap((section) => [
-            ...(section.spaced
+            ...(section.divided
               ? [
-                  <SidebarRow key={`space-${section.key}`} aria-hidden>
-                    <div className="h-3" />
+                  <SidebarRow key={`divider-${section.key}`} aria-hidden>
+                    <div className="-mx-2 my-2 border-t border-sidebar-border" />
                   </SidebarRow>,
                 ]
               : []),

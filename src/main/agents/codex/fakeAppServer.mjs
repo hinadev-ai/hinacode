@@ -144,6 +144,8 @@ const reply = ({ id, method, params }) => {
     case "thread/resume":
       if (!loadedSandboxes.has("codex-thread")) loadedSandboxes.set("codex-thread", sandboxPolicy(params.sandbox))
       return send({ id, result: { thread: { id: "codex-thread" }, sandbox: loadedSandboxes.get("codex-thread") } })
+    case "thread/inject_items":
+      return send({ id, result: {} })
     case "thread/unsubscribe":
       loadedSandboxes.delete(params.threadId)
       return send({ id, result: {} })

@@ -36,7 +36,7 @@ final class EditingState {
   var replay: String?
   var applyingModel = false
   var lostFocusedBlock = false
-  var keyboardOverlap: CGFloat = 0
+  var keyboardFrame: CGRect?
   var base: [NSAttributedString.Key: Any] = [:]
   var minimumLineHeight: CGFloat = 0
   lazy var editor = EditorTextView()
@@ -575,13 +575,19 @@ extension DocumentBlocksView: UITextViewDelegate, UIGestureRecognizerDelegate {
     guard let end = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect, window != nil else {
       return
     }
-    let keyboard = collectionView.convert(end, from: nil)
-    editing.keyboardOverlap = max(0, collectionView.bounds.maxY - keyboard.minY)
+    editing.keyboardFrame = end
     revealCaret()
   }
 
   @objc private func keyboardWillHide(_ notification: Notification) {
-    editing.keyboardOverlap = 0
+    editing.keyboardFrame = nil
+  }
+
+  /// Measured on every use, because a KeyboardAvoidingView around the document shrinks it after the keyboard
+  /// notification, and an overlap stored at notification time would then count the keyboard twice.
+  private var keyboardOverlap: CGFloat {
+    guard let frame = editing.keyboardFrame else { return 0 }
+    return max(0, collectionView.bounds.maxY - collectionView.convert(frame, from: nil).minY)
   }
 
   func revealCaret() {
@@ -591,7 +597,7 @@ extension DocumentBlocksView: UITextViewDelegate, UIGestureRecognizerDelegate {
     guard caret.height > 0, !caret.isInfinite, !caret.isNull else { return }
     let margin: CGFloat = 16
     let inset = collectionView.contentInset
-    let bottomInset = max(inset.bottom, editing.keyboardOverlap)
+    let bottomInset = max(inset.bottom, keyboardOverlap)
     let visibleTop = collectionView.contentOffset.y + inset.top
     let visibleBottom = collectionView.contentOffset.y + collectionView.bounds.height - bottomInset
     var offset = collectionView.contentOffset.y
