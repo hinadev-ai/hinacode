@@ -226,6 +226,12 @@ export function Composer({ thread }: { thread: Thread }) {
           </Text>
         </View>
       ))}
+      {unstarted && (
+        <View testID="composer-start-options" style={[styles.chips, styles.startOptions]}>
+          <LocationChip thread={thread} onError={setError} />
+          <WorkspaceChip thread={thread} onError={setError} />
+        </View>
+      )}
       <Suggestions
         text={text}
         caret={caret}
@@ -282,12 +288,6 @@ export function Composer({ thread }: { thread: Thread }) {
           }
           style={styles.input}
         />
-        {unstarted && (
-          <View testID="composer-start-options" style={styles.chips}>
-            <LocationChip thread={thread} onError={setError} />
-            <WorkspaceChip thread={thread} onError={setError} />
-          </View>
-        )}
         <View style={styles.toolbar}>
           <View style={styles.chips}>
             <AttachButton staging={staging} onPress={() => void attachImages()} />
@@ -829,6 +829,7 @@ const styles = StyleSheet.create({
   },
   toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   chips: { flexShrink: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  startOptions: { paddingHorizontal: 10 },
   suggestions: { borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   suggestion: { minHeight: SUGGESTION_HEIGHT, justifyContent: "center", gap: 2, paddingHorizontal: 12, paddingVertical: 6 },
   suggestionName: { fontFamily: mono, fontSize: 14 },
