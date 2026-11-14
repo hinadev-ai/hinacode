@@ -785,6 +785,34 @@ layer(testLayer)("run_agent", (it) => {
     }),
   )
 
+  it.effect("returns a background agent's id at once, and wait_agent returns its reply", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      yield* runner.send(a, "hi", [])
+
+      const started = yield* callAs(connection, "run_agent", {
+        provider: "codex",
+        description: "Background review",
+        prompt: "Reply Looks good. after 2 minutes",
+        model: "gpt-test",
+        background: true,
+      })
+      const [running] = yield* runner.subagents(a)
+      expect(running).toMatchObject({ label: "Background review", status: "running" })
+      expect(started).toMatchObject({ isError: false })
+      expect(started.text).toContain(`wait_agent with agentId "${running?.id}"`)
+
+      const finished = yield* settled(
+        yield* Effect.forkChild(callAs(connection, "wait_agent", { agentId: running?.id })),
+      )
+      expect(finished).toMatchObject({ isError: false, text: "Looks good." })
+      yield* runner.interrupt(a)
+    }),
+  )
+
   it.effect("runs opencode only on a listed or picked model, and names them when it refuses", () =>
     Effect.gen(function* () {
       const runner = yield* AgentRunner

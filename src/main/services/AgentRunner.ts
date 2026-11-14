@@ -114,6 +114,7 @@ interface AgentRequest {
   readonly prompt: string
   readonly model?: string | undefined
   readonly effort?: string | undefined
+  readonly background?: boolean | undefined
 }
 
 interface QueueOptions {
@@ -1108,6 +1109,9 @@ const make = Effect.gen(function* () {
         Effect.flatMap(Effect.exit(execution), (exit) => Deferred.done(finalReply, exit)),
         scope,
       )
+      if (request.background === true) {
+        return `The agent runs in the background. Call ${WAIT_AGENT_TOOL} with agentId "${id}" for its reply before you end your turn, because it stops when the turn ends.`
+      }
       return yield* waitForAgent(threadId, id)
     })
 
