@@ -196,6 +196,26 @@ test("draws a line that starts with > as a quote and continues it on shift+enter
   await expect.poll(() => value).toBe("> quoted\n> more\n")
 })
 
+test("sets inline code and code blocks in the monospace font", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  await type("extract the `state`")
+  await press("Enter", shift)
+  await type("```ts")
+  await press("Enter", shift)
+  await type("const actor")
+  await expect.poll(() => value).toBe("extract the `state`\n```ts\nconst actor")
+
+  const mono = getComputedStyle(document.documentElement).getPropertyValue("--app-font-mono").trim()
+  const [prose, fenceOpen, fenceCode] = [...document.querySelectorAll<HTMLElement>(".cm-line")]
+  const inlineCode = [...prose!.querySelectorAll("span")].find((span) => span.textContent === "`state`")!
+  expect(getComputedStyle(prose!).fontFamily).not.toBe(mono)
+  expect(getComputedStyle(inlineCode).fontFamily).toBe(mono)
+  expect(getComputedStyle(fenceOpen!).fontFamily).toBe(mono)
+  expect(getComputedStyle(fenceCode!).fontFamily).toBe(mono)
+})
+
 test("removes only the marker of a quote on backspace", async () => {
   await renderComposer()
   await page.getByRole("combobox", { name: "Message" }).click()
