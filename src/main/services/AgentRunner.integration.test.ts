@@ -36,6 +36,7 @@ import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
 import * as Attachments from "./Attachments.ts"
 import * as Messages from "./Messages.ts"
+import { agentPidsOf } from "./Ports.ts"
 import * as Projects from "./Projects.ts"
 import * as PullRequests from "./PullRequests.ts"
 import { PullRequestWatcher, layer as watcherLayer } from "./PullRequestWatcher.ts"
@@ -2159,6 +2160,42 @@ it("clears the stored session when Stop is followed by a lost session", async ()
 
       await vi.waitFor(() => Effect.runPromise(runner.send(thread.id, "after stop", [])))
       await replyMatching(/^echo: <conversation_handoff>[\s\S]*after stop$/)
+    },
+    { claude: fakeClaudeCli },
+  )
+}, 30_000)
+
+it("fails the turn with the abort message and closes the agent process", async () => {
+  const home = fakeClaudeHome()
+  await withPreparingThread(
+    async ({ runner, threads, accounts, thread, release, storedMessages }) => {
+      release()
+      const account = await Effect.runPromise(
+        accounts.create({ provider: "claude", name: "Fake", configDir: home.dir, binary: home.binary }),
+      )
+      await Effect.runPromise(threads.update({ id: thread.id, accountId: account.id }))
+      const lastReply = async () =>
+        assistantText((await storedMessages(thread.id)).findLast((message) => message.role === "assistant"))
+
+      await Effect.runPromise(runner.send(thread.id, "approve", []))
+      await vi.waitFor(async () =>
+        expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+      )
+      expect(agentPidsOf(thread.id).size).toBe(1)
+
+      await Effect.runPromise(runner.abort(thread.id, "Stopped to free memory."))
+
+      const aborted = await Effect.runPromise(threads.get(thread.id))
+      expect({ status: aborted.status, hasSession: aborted.providerSessionId !== null }).toStrictEqual({
+        status: "idle",
+        hasSession: true,
+      })
+      expect(await lastReply()).toContain("**Error:** Stopped to free memory.")
+      await vi.waitFor(() => expect([...agentPidsOf(thread.id)]).toStrictEqual([]))
+
+      await Effect.runPromise(runner.send(thread.id, "hello again", []))
+      await vi.waitFor(async () => expect(await lastReply()).toBe("echo: hello again"), { timeout: 15_000 })
+      expect((await Effect.runPromise(threads.get(thread.id))).providerSessionId).toBe(aborted.providerSessionId)
     },
     { claude: fakeClaudeCli },
   )

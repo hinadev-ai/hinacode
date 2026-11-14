@@ -29,6 +29,10 @@ export const interruptedTurn: Extract<AgentEvent, { type: "turn_failed" }> = {
   message: "Turn interrupted",
 }
 
+export const subagentSessionId = (threadId: string, agentId: string) => `${threadId}:agent:${agentId}`
+
+export const threadOfSession = (sessionId: string) => sessionId.split(":agent:")[0] ?? sessionId
+
 export type SteerPriority = "now" | "next"
 
 export interface Wake {

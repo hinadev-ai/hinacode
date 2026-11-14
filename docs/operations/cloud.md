@@ -29,6 +29,7 @@ Options, flags first, then environment, then stored settings:
 | `--rotate-token`        | `HINACODE_SERVE_ROTATE_TOKEN=1` | Replace the pairing token at boot and disconnect every client |
 | `--relay`, `--no-relay` | `HINACODE_SERVE_RELAY`          | Link the cloud to the HinaCode relay, or unlink it            |
 |                         | `HINACODE_SERVE_AUTO_UPDATE=0`  | Do not install new releases on its own when idle              |
+|                         | `HINACODE_MEMORY_GUARD=0`       | Do not stop threads when the machine runs short of memory     |
 
 Nothing compiles at install: `node-pty` ships prebuilds for macOS, Linux and Windows on x64 and arm64.
 
@@ -79,5 +80,7 @@ The cloud then prints the pairing block with its relay hostname in every URL, an
 - `remote address is not up yet, retrying ... EADDRNOTAVAIL`: the `--host` address is not on any interface yet, as when the cloud starts at boot before Tailscale. The cloud keeps running and binds once the address comes up, retrying every 30 seconds at most.
 - `routine webhook listener failed ... 48080`: the desktop app on the same machine holds the webhook port. The cloud keeps running; only its webhooks are off.
 - Phone cannot connect: use the Tailscale URL the daemon printed, and confirm both devices are on the same tailnet and the firewall allows the port. The transport is plain WebSocket, encrypted by Tailscale or your LAN only.
+- A turn failed with `Stopped to free memory ...`: the machine was about to run out, and the memory guard stopped the thread whose processes held the most (`docs/features/2026-11-13-memory-guard.md`). Send the thread a message to resume it, and run fewer heavy threads at once. The log has one `memory guard stopped thread` line per stop, with the free memory and the stall it saw.
+- `Failed with result 'oom-kill'` in `systemctl --user status`: the kernel or `systemd-oomd` killed the cloud before the guard could act, or the guard is off. Every running turn is lost. `journalctl -u systemd-oomd` and `journalctl -k` name the killer.
 - Lost the pairing URL: run `hinacode pair` with the same `HINACODE_USER_DATA`. It prints the same token without a restart. Restart with `--rotate-token` only when a token may have leaked, since every client must pair again.
 - Secrets on a cloud are stored as plaintext in its database, since a headless machine has no keyring to unlock without a password. The data directory is created `0700`; its permissions are the protection. A cloud that an older release ran on macOS sealed its secrets with Chromium's mock key, logs `secret remote.token was sealed under another key`, and prints a new pairing URL. Pair its clients again.

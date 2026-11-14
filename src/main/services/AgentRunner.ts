@@ -72,6 +72,7 @@ import {
   type SessionInput,
   type SteerPriority,
   type SubagentChange,
+  subagentSessionId,
   type Wake,
 } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
@@ -211,6 +212,7 @@ export class AgentRunner extends Context.Service<
     }) => Effect.Effect<boolean, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
     readonly stop: (threadId: string) => Effect.Effect<void>
+    readonly abort: (threadId: string, message: string) => Effect.Effect<void>
     readonly isBusy: (threadId: string) => Effect.Effect<boolean>
     readonly release: <A, E>(threadId: string, whileIdle: Effect.Effect<A, E>) => Effect.Effect<Option.Option<A>, E>
     readonly warm: (threadId: string) => Effect.Effect<void>
@@ -649,6 +651,7 @@ const make = Effect.gen(function* () {
     let completed = false
     let persistedAt = Date.now()
     let persistedBytes = 0
+    let abortMessage: string | undefined
     const dirty = new Map<string, Message>()
     const subagentCalls = new Set<string>()
 
@@ -729,7 +732,13 @@ const make = Effect.gen(function* () {
                   forkPoint: { ...received.forkPoint, owner: { provider: provider.id, accountId: thread.accountId } },
                 }
               : received.type === "turn_failed" && (yield* Deferred.isDone(stop))
-                ? { ...received, stopped: true }
+                ? abortMessage === undefined
+                  ? { ...received, stopped: true }
+                  : {
+                      type: "turn_failed",
+                      message: abortMessage,
+                      ...(received.sessionLost && { sessionLost: true }),
+                    }
                 : received
         if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
         if (event.type === "approval_requested" && (yield* threads.get(thread.id)).accessMode === "full") {
@@ -915,10 +924,12 @@ const make = Effect.gen(function* () {
         ),
       )
 
-    const interrupt = Effect.gen(function* () {
-      yield* Deferred.succeed(stop, undefined)
-      yield* provider.interrupt(thread.id)
-    })
+    const interrupt = (message?: string) =>
+      Effect.gen(function* () {
+        abortMessage ??= message
+        yield* Deferred.succeed(stop, undefined)
+        yield* provider.interrupt(thread.id)
+      })
 
     return {
       provider,
@@ -987,7 +998,7 @@ const make = Effect.gen(function* () {
       const instructions = yield* subagentInstructions(experimental, environment)
 
       const id = randomUUID()
-      const sessionId = `${threadId}:agent:${id}`
+      const sessionId = subagentSessionId(threadId, id)
       const callId = spawningCallId(turn.messages(), request.prompt) ?? sessionId
       let subagent: Subagent = {
         id,
@@ -1761,10 +1772,15 @@ const make = Effect.gen(function* () {
   const hasPendingWakeup = (threadId: string) =>
     (backgroundTasks.get(threadId) ?? []).some((task) => task.kind === "wakeup")
 
+  const turnEnded = (threadId: string) =>
+    FiberMap.get(turns, threadId).pipe(
+      Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: Fiber.await })),
+      Effect.asVoid,
+    )
+
   const closeSessionAfterTurn = (threadId: string) =>
     Effect.gen(function* () {
-      const turn = yield* FiberMap.get(turns, threadId)
-      if (Option.isSome(turn)) yield* Fiber.await(turn.value)
+      yield* turnEnded(threadId)
       yield* Effect.gen(function* () {
         if (busyThreads.has(threadId) || !hasPendingWakeup(threadId)) return
         yield* closeProviderSession(yield* threads.get(threadId))
@@ -1808,12 +1824,21 @@ const make = Effect.gen(function* () {
       Effect.andThen(
         Effect.suspend(() => {
           const turn = activeTurns.get(threadId)
-          if (turn !== undefined) return turn.interrupt
+          if (turn !== undefined) return turn.interrupt()
           const pending = pendingSends.get(threadId)
           return pending === undefined ? Effect.void : Deferred.succeed(pending, undefined).pipe(Effect.asVoid)
         }),
       ),
     )
+
+  const abort = (threadId: string, message: string) =>
+    Effect.gen(function* () {
+      if (!activeTurns.has(threadId)) return
+      yield* stopBackgroundWork(threadId)
+      yield* activeTurns.get(threadId)?.interrupt(message) ?? Effect.void
+      yield* turnEnded(threadId)
+      yield* release(threadId, Effect.void)
+    })
 
   const requestSecret = (threadId: string, name: string, description: string) =>
     Effect.gen(function* () {
@@ -1880,12 +1905,8 @@ const make = Effect.gen(function* () {
       steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),
     steerWhen,
     interrupt,
-    stop: (threadId) =>
-      interrupt(threadId).pipe(
-        Effect.andThen(FiberMap.get(turns, threadId)),
-        Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: Fiber.await })),
-        Effect.asVoid,
-      ),
+    stop: (threadId) => Effect.andThen(interrupt(threadId), turnEnded(threadId)),
+    abort,
     isBusy: (threadId) => Effect.sync(() => isBusy(threadId)),
     release,
     warm,

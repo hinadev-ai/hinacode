@@ -14,6 +14,7 @@ import * as AppServer from "./apps/server.ts"
 import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
 import * as Mcp from "./mcp/index.ts"
+import { memoryGuardLayer } from "./memoryGuard.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import * as CliSocket from "./remote/cliSocket.ts"
 import * as Peers from "./remote/peers.ts"
@@ -235,6 +236,7 @@ export const makeAppLayer = ({
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
     AppConnections.followRelayLayer,
     AppServer.layer.pipe(Layer.provide(Secrets.layer)),
+    process.env["HINACODE_MEMORY_GUARD"] === "0" ? Layer.empty : memoryGuardLayer,
   ).pipe(Layer.provideMerge(agents))
   return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
