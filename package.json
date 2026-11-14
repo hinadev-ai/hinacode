@@ -86,7 +86,6 @@
     "@formkit/auto-animate": "0.10.0",
     "@hinacode/icons": "workspace:*",
     "@inlang/paraglide-js": "2.27.0",
-    "@joplin/turndown-plugin-gfm": "1.0.68",
     "@legendapp/list": "3.6.0",
     "@novnc/novnc": "1.7.0",
     "@observablehq/plot": "0.6.17",

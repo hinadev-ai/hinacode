@@ -19,7 +19,7 @@ import {
   suggestionsFor,
 } from "../../shared/composerSyntax.ts"
 import { useTheme } from "../lib/appearance.ts"
-import { markdownOfClipboard } from "../lib/clipboardMarkdown.ts"
+import { inlineFormatsOfClipboard } from "../lib/clipboardMarkdown.ts"
 import { atomicBefore, composerSyntax, setComposerConfig } from "../lib/composerEditor.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { usePullRequestSearch } from "../lib/usePullRequestSearch.ts"
@@ -193,11 +193,11 @@ export function ComposerInput({
               paste: (event, editor) => {
                 pasted(event)
                 if (event.defaultPrevented) return true
-                const markdown = event.clipboardData === null ? null : markdownOfClipboard(event.clipboardData)
-                if (markdown === null) return false
+                const formatted = event.clipboardData === null ? null : inlineFormatsOfClipboard(event.clipboardData)
+                if (formatted === null) return false
                 event.preventDefault()
                 editor.dispatch({
-                  ...editor.state.replaceSelection(markdown),
+                  ...editor.state.replaceSelection(formatted),
                   scrollIntoView: true,
                   userEvent: "input.paste",
                 })

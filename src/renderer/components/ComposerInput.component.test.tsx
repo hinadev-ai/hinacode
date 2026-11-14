@@ -202,20 +202,44 @@ const paste = (data: Record<string, string>) => {
     .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }))
 }
 
-test("pastes a formatted web page as markdown", async () => {
+test("pastes a formatted web page as text that keeps only its inline formats", async () => {
   await renderComposer()
   await page.getByRole("combobox", { name: "Message" }).click()
 
   paste({
     "text/plain": "Setup\nRun the dev server.\nSee docs",
-    "text/html": `<meta charset="utf-8"><h2>Setup</h2><ul><li>Run <code>pnpm dev</code><ol start="3"><li>nested</li><li>again</li></ol></li></ul><p>See <a href="https://example.com/docs">docs</a></p><pre><code class="language-sh">pnpm build</code></pre>`,
+    "text/html": `<meta charset="utf-8"><h2>Setup <em>now</em></h2><ul><li>Run <code>pnpm dev</code><ol start="3"><li><strong>nested</strong></li><li>snake_case * 2</li></ol></li></ul><blockquote><p>See <a href="https://example.com/docs">docs</a>, <del>later</del><br>or not</p></blockquote><hr><img src="https://example.com/a.png" alt="shot"><table><tr><th>a</th><th>b</th></tr><tr><td>1</td><td>2</td></tr></table><pre><code class="language-sh">pnpm build\n  --watch</code></pre>`,
   })
 
   await expect
     .poll(() => value)
     .toBe(
-      "## Setup\n\n- Run `pnpm dev`\n  3. nested\n  4. again\n\nSee [docs](https://example.com/docs)\n\n```sh\npnpm build\n```",
+      "Setup *now*\n\nRun `pnpm dev`\n**nested**\nsnake_case * 2\n\nSee docs, ~~later~~\nor not\n\na\tb\n1\t2\n\npnpm build\n  --watch",
     )
+})
+
+test("keeps the indentation of pasted code and the blank line two breaks make", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  paste({
+    "text/plain": "first\nsecond\ndone\n\nafter",
+    "text/html": `<ul><li><pre><code>  first\n    second</code></pre></li></ul><p><b>done</b><br><br>after</p>`,
+  })
+
+  await expect.poll(() => value).toBe("  first\n    second\n\n**done**\n\nafter")
+})
+
+test("pastes a web page without inline formats as its plain text", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  paste({
+    "text/plain": "Setup\nRun the dev server.\npnpm build",
+    "text/html": `<meta charset="utf-8"><h2>Setup</h2><ul><li>Run the <a href="https://example.com">dev server</a>.</li></ul><pre><code>pnpm build</code></pre>`,
+  })
+
+  await expect.poll(() => value).toBe("Setup\nRun the dev server.\npnpm build")
 })
 
 test("pastes styled editor text as it was typed", async () => {
@@ -236,8 +260,8 @@ test("unwraps the bold wrapper Google Docs puts around a copy", async () => {
 
   paste({
     "text/plain": "Plan\nShip it",
-    "text/html": `<b style="font-weight:normal;" id="docs-internal-guid-1"><h1><span>Plan</span></h1><p><span>Ship </span><a href="https://example.com">it</a></p></b>`,
+    "text/html": `<b style="font-weight:normal;" id="docs-internal-guid-1"><h1><span>Plan</span></h1><p><span>Ship </span><a href="https://example.com">it</a> <i>soon</i></p></b>`,
   })
 
-  await expect.poll(() => value).toBe("# Plan\n\nShip [it](https://example.com)")
+  await expect.poll(() => value).toBe("Plan\n\nShip it *soon*")
 })
