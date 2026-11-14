@@ -1,7 +1,15 @@
-import { type Extension, type Range, StateEffect, StateField } from "@codemirror/state"
-import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
+import { EditorState, type Extension, type Range, StateEffect, StateField } from "@codemirror/state"
+import {
+  Decoration,
+  type DecorationSet,
+  EditorView,
+  keymap,
+  ViewPlugin,
+  type ViewUpdate,
+  WidgetType,
+} from "@codemirror/view"
 import type { AgentCommand } from "../../shared/agent.ts"
-import type { KnownTokens } from "../../shared/composerSyntax.ts"
+import { type KnownTokens, quoteContentStart } from "../../shared/composerSyntax.ts"
 import { chipIconClass, chipIconShape, commandChipClass } from "../components/CommandChip.tsx"
 import { codeRuns, highlighterFor, type Loaded } from "./codeTokens.ts"
 import { composerMarks } from "./composerMarks.ts"
@@ -117,13 +125,16 @@ const dot = new TextWidget("text-muted-foreground", "•")
 const rule = new TextWidget("inline-block w-full border-t border-border align-middle")
 
 const markClass = {
-  bullet: "text-muted-foreground",
   code: "rounded-sm bg-muted",
   strong: "font-semibold",
   command: "text-syntax-token",
   mention: "text-syntax-token",
   marker: "text-muted-foreground",
 }
+
+const LIST_INDENT_COLUMN_EM = 0.5
+const LIST_MARKER_WIDTH = "1.25em"
+const listTextStart = `calc(var(--list-indent) + ${LIST_MARKER_WIDTH})`
 
 const placeholderBefore =
   "before:pointer-events-none before:float-left before:-mb-[1lh] before:h-lh before:w-full before:truncate before:text-muted-foreground before:content-[attr(data-placeholder)]"
@@ -149,6 +160,23 @@ function build(view: EditorView) {
       const replaced = Decoration.replace({ widget: dot }).range(mark.from, mark.to)
       decorations.push(replaced)
       atomic.push(replaced)
+    } else if (mark.kind === "hidden") {
+      const hidden = Decoration.replace({}).range(mark.from, mark.to)
+      decorations.push(hidden)
+      atomic.push(hidden)
+    } else if (mark.kind === "listItem") {
+      const indent = `--list-indent: ${mark.indentColumns * LIST_INDENT_COLUMN_EM}em`
+      decorations.push(Decoration.line({ class: "cm-list-line", attributes: { style: indent } }).range(mark.from))
+      if (mark.markerFrom > mark.from)
+        decorations.push(Decoration.mark({ class: "cm-list-indent" }).range(mark.from, mark.markerFrom))
+      decorations.push(
+        Decoration.mark({ class: "cm-list-marker text-muted-foreground", inclusiveStart: true }).range(
+          mark.markerFrom,
+          mark.to,
+        ),
+      )
+    } else if (mark.kind === "quoteLine") {
+      decorations.push(Decoration.line({ class: "cm-quote-line" }).range(mark.from))
     } else if (mark.kind === "rule") {
       decorations.push(Decoration.replace({ widget: rule }).range(mark.from, mark.to))
     } else if (mark.kind === "fenceLine") {
@@ -240,6 +268,28 @@ export function atomicBefore(view: EditorView, pos: number) {
   return found as { from: number; to: number } | null
 }
 
+const caretAfterQuoteMarker = EditorState.transactionFilter.of((transaction) => {
+  const { main } = transaction.newSelection
+  if (!main.empty || main.head !== transaction.newDoc.lineAt(main.head).from) return transaction
+  const contentStart = quoteContentStart(transaction.newDoc.toString(), main.head)
+  return contentStart === null ? transaction : [transaction, { selection: { anchor: contentStart }, sequential: true }]
+})
+
+const leaveQuoteBackward = (view: EditorView) => {
+  const { main } = view.state.selection
+  const lineStart = view.state.doc.lineAt(main.head).from
+  const atContentStart = main.empty && main.head === quoteContentStart(view.state.doc.toString(), lineStart)
+  if (!atContentStart || lineStart === 0) return false
+  view.dispatch({ selection: { anchor: lineStart - 1 }, scrollIntoView: true, userEvent: "select" })
+  return true
+}
+
+const quoteKeys = keymap.of([
+  { key: "ArrowLeft", run: leaveQuoteBackward },
+  { key: "Ctrl-ArrowLeft", mac: "Alt-ArrowLeft", run: leaveQuoteBackward },
+  { mac: "Ctrl-b", run: leaveQuoteBackward },
+])
+
 const layout = EditorView.theme({
   "&": { maxHeight: "15rem", minHeight: "calc(1lh + 1rem)" },
   "&.cm-focused": { outline: "none" },
@@ -252,7 +302,22 @@ const layout = EditorView.theme({
   },
   ".cm-line": { padding: "0" },
   ".cm-line.cm-fence-line": { margin: "0 -0.25rem", padding: "0 0.25rem" },
+  ".cm-line.cm-list-line": { paddingInlineStart: listTextStart, textIndent: `calc(-1 * ${listTextStart})` },
+  ".cm-list-indent, .cm-list-marker": { display: "inline-block", textIndent: "0", whiteSpace: "pre" },
+  ".cm-list-indent": { width: "var(--list-indent)" },
+  ".cm-list-marker": { minWidth: LIST_MARKER_WIDTH, textAlign: "end" },
+  ".cm-line.cm-quote-line": {
+    borderInlineStart: "0.13em solid var(--muted-foreground)",
+    paddingInlineStart: "0.75em",
+  },
   "&[data-composing] [data-placeholder]::before, &[data-composing] [data-placeholder]::after": { content: "none" },
 })
 
-export const composerSyntax: Extension = [configField, marksPlugin, layout, EditorView.lineWrapping]
+export const composerSyntax: Extension = [
+  configField,
+  marksPlugin,
+  caretAfterQuoteMarker,
+  quoteKeys,
+  layout,
+  EditorView.lineWrapping,
+]

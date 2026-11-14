@@ -58,11 +58,31 @@ describe("composerMarks", () => {
 
   test("bold the text between its muted markers, and show a bullet as a dot", () => {
     expect(composerMarks("- **hi**\n2. x", known, commands, null)).toStrictEqual([
+      { kind: "listItem", from: 0, markerFrom: 0, to: 2, indentColumns: 0 },
       { kind: "dot", from: 0, to: 1 },
       { kind: "strong", from: 2, to: 8 },
       { kind: "marker", from: 2, to: 4 },
       { kind: "marker", from: 6, to: 8 },
-      { kind: "bullet", from: 9, to: 11 },
+      { kind: "listItem", from: 9, markerFrom: 9, to: 12, indentColumns: 0 },
+    ])
+  })
+
+  test("measure a nested item's indent in columns, a tab as four", () => {
+    expect(composerMarks("1. a\n   - b\n\t3. c", known, commands, null)).toStrictEqual([
+      { kind: "listItem", from: 0, markerFrom: 0, to: 3, indentColumns: 0 },
+      { kind: "listItem", from: 5, markerFrom: 8, to: 10, indentColumns: 3 },
+      { kind: "dot", from: 8, to: 9 },
+      { kind: "listItem", from: 12, markerFrom: 13, to: 16, indentColumns: 4 },
+    ])
+  })
+
+  test("hide a quote's marker and mark its line", () => {
+    expect(composerMarks("a\n> **b**\n>c", known, commands, null)).toStrictEqual([
+      { kind: "quoteLine", from: 2 },
+      { kind: "hidden", from: 2, to: 4 },
+      { kind: "strong", from: 4, to: 9 },
+      { kind: "marker", from: 4, to: 6 },
+      { kind: "marker", from: 7, to: 9 },
     ])
   })
 

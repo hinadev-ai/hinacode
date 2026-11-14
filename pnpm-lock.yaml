@@ -325,9 +325,6 @@ importers:
       '@inlang/paraglide-js':
         specifier: 2.27.0
         version: 2.27.0(typescript@6.0.3)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1))
-      '@joplin/turndown-plugin-gfm':
-        specifier: 1.0.68
-        version: 1.0.68
       '@legendapp/list':
         specifier: 3.6.0
         version: 3.6.0(patch_hash=54cd636ccdb5344ce53277d46d6d4ef5208bb92fade738b0054adac5fd358018)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -2147,9 +2144,6 @@ packages:
   '@isaacs/fs-minipass@4.0.1':
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
     engines: {node: '>=18.0.0'}
-
-  '@joplin/turndown-plugin-gfm@1.0.68':
-    resolution: {integrity: sha512-m8DfAQNC/V7g0j5H6Jv60WhekBBjodD+zTPGrU+g2m+ux/z8ZX07KQIl6kaAmbKwfvsQhC04op52g63I78sVgg==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -10277,8 +10271,6 @@ snapshots:
   '@isaacs/fs-minipass@4.0.1':
     dependencies:
       minipass: 7.1.3
-
-  '@joplin/turndown-plugin-gfm@1.0.68': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
