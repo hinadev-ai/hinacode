@@ -1,0 +1,401 @@
+import { createHash, randomBytes } from "node:crypto"
+import { createServer } from "node:http"
+import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer"
+import { ByteSize, Clock, Duration, Effect, Layer, Option } from "effect"
+import { McpProtocol, McpServer as AiMcpServer } from "effect/ai"
+import { HttpIncomingMessage, HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http"
+import { Relay } from "../remote/relay.ts"
+import { Secrets } from "../services/Secrets.ts"
+import { AppConnections } from "./AppConnections.ts"
+import {
+  type Approver,
+  brokenLinkPage,
+  localeOf,
+  notStartedPage,
+  type PageLocale,
+  signInFailedPage,
+  signInLostPage,
+  waitingPage,
+} from "./approvalPage.ts"
+import {
+  ANSWER_PATH,
+  AnswerForm,
+  AUTHORIZATION_SERVER_PATH,
+  AUTHORIZE_PATH,
+  AuthorizationParams,
+  authorizationServerMetadata,
+  checkAuthorization,
+  clientOf,
+  isRedirectUri,
+  MCP_PATH,
+  type OAuthError,
+  PROTECTED_RESOURCE_PATH,
+  protectedResourceMetadata,
+  readClient,
+  redirectTo,
+  REGISTER_PATH,
+  Registration,
+  SIGN_IN_PATH,
+  SIGNED_IN_PATH,
+  SignedInParams,
+  registrationResponse,
+  resourceOf,
+  SCOPE,
+  signClient,
+  TOKEN_PATH,
+  TokenRequest,
+  verifierMatches,
+  WAIT_PATH,
+  WaitParams,
+} from "./oauth.ts"
+import * as Tools from "./tools.ts"
+
+const CLIENT_KEY_SECRET = "apps.clientKey"
+const MAX_OAUTH_BODY = ByteSize.kilobytes(64)
+const MAX_MCP_BYTES = 1024 * 1024
+const PUBLIC_PATHS = new Set([
+  PROTECTED_RESOURCE_PATH,
+  `${PROTECTED_RESOURCE_PATH}${MCP_PATH}`,
+  AUTHORIZATION_SERVER_PATH,
+  REGISTER_PATH,
+  AUTHORIZE_PATH,
+  WAIT_PATH,
+  SIGN_IN_PATH,
+  SIGNED_IN_PATH,
+  ANSWER_PATH,
+  TOKEN_PATH,
+])
+
+const SIGN_IN_COOKIE = "hinacode_sign_in"
+const OWNER_COOKIE = "hinacode_owner"
+const OWNER_LIFE = Duration.minutes(10)
+const COOKIE = { path: "/oauth", httpOnly: true, secure: true, sameSite: "lax", maxAge: OWNER_LIFE } as const
+const SIGN_IN_NAME = "HinaCode app approval"
+
+const sha256 = (value: string) => createHash("sha256").update(value).digest("hex")
+const randomToken = () => randomBytes(32).toString("base64url")
+const waitPath = (request: string) => `${WAIT_PATH}?${new URLSearchParams({ request })}`
+
+const NO_STORE = { "cache-control": "no-store" }
+const notFound = HttpServerResponse.empty({ status: 404 })
+
+const oauthError = (error: OAuthError, description: string) =>
+  HttpServerResponse.jsonUnsafe({ error, error_description: description }, { status: 400, headers: NO_STORE })
+
+const page = ({ html, headers }: ReturnType<typeof brokenLinkPage>, status = 200) =>
+  HttpServerResponse.html(html).pipe(HttpServerResponse.setStatus(status), HttpServerResponse.setHeaders(headers))
+
+const localeOfRequest = Effect.map(HttpServerRequest.HttpServerRequest, (request) =>
+  localeOf(request.headers["accept-language"]),
+)
+
+const clientKey = Effect.gen(function* () {
+  const secrets = yield* Secrets
+  const stored = yield* secrets.get(CLIENT_KEY_SECRET)
+  if (Option.isSome(stored)) return Buffer.from(stored.value, "base64url")
+  const key = randomBytes(32)
+  yield* secrets.set(CLIENT_KEY_SECRET, key.toString("base64url"))
+  return key
+})
+
+const gate = HttpRouter.middleware(
+  Effect.gen(function* () {
+    const connections = yield* AppConnections
+    return (httpEffect) =>
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const issuer = yield* connections.issuer
+        if (Option.isNone(issuer) || !(yield* connections.inUse)) return notFound
+        const path = request.url.split("?", 1)[0]!
+        if (PUBLIC_PATHS.has(path)) {
+          return yield* Effect.provideService(httpEffect, HttpIncomingMessage.MaxBodySize, MAX_OAUTH_BODY)
+        }
+        if (path !== MCP_PATH) return notFound
+        const app = yield* connections.authenticate(request.headers["authorization"])
+        if (Option.isSome(app)) {
+          if (request.method === "POST" && !(Number(request.headers["content-length"]) <= MAX_MCP_BYTES)) {
+            return HttpServerResponse.empty({ status: 413 })
+          }
+          return yield* Effect.provideService(httpEffect, Tools.CallingApp, app.value)
+        }
+        return HttpServerResponse.jsonUnsafe(
+          { error: "invalid_token" },
+          {
+            status: 401,
+            headers: { "www-authenticate": `Bearer resource_metadata="${issuer.value}${PROTECTED_RESOURCE_PATH}"` },
+          },
+        )
+      }).pipe(Effect.catchTag("PersistenceError", () => Effect.succeed(HttpServerResponse.empty({ status: 500 }))))
+  }),
+  { global: true },
+)
+
+const forgetExpired = <V extends { readonly expiresAt: number }>(entries: Map<string, V>, wanted: string | undefined) =>
+  Effect.map(Clock.currentTimeMillis, (now) => {
+    for (const [stale, entry] of entries) if (entry.expiresAt <= now) entries.delete(stale)
+    return wanted === undefined ? undefined : entries.get(wanted)
+  })
+
+const routes = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const router = yield* HttpRouter.HttpRouter
+    const connections = yield* AppConnections
+    const key = yield* clientKey
+
+    const withIssuer = <R>(
+      respond: (issuer: string) => Effect.Effect<HttpServerResponse.HttpServerResponse, never, R>,
+    ) => Effect.flatMap(connections.issuer, Option.match({ onNone: () => Effect.succeed(notFound), onSome: respond }))
+
+    const resourceMetadata = withIssuer((issuer) =>
+      Effect.succeed(HttpServerResponse.jsonUnsafe(protectedResourceMetadata(issuer))),
+    )
+    yield* router.add("GET", PROTECTED_RESOURCE_PATH, resourceMetadata)
+    yield* router.add("GET", `${PROTECTED_RESOURCE_PATH}${MCP_PATH}`, resourceMetadata)
+    yield* router.add(
+      "GET",
+      AUTHORIZATION_SERVER_PATH,
+      withIssuer((issuer) => Effect.succeed(HttpServerResponse.jsonUnsafe(authorizationServerMetadata(issuer)))),
+    )
+
+    yield* router.add(
+      "POST",
+      REGISTER_PATH,
+      HttpServerRequest.schemaBodyJson(Registration).pipe(
+        Effect.map((registration) => {
+          if (registration.redirect_uris.length === 0 || !registration.redirect_uris.every(isRedirectUri)) {
+            return oauthError("invalid_redirect_uri", "redirect_uris must be https, or http on loopback")
+          }
+          return Option.match(clientOf(registration), {
+            onNone: () => oauthError("invalid_client_metadata", "client_name or redirect_uris is too long"),
+            onSome: (client) =>
+              HttpServerResponse.jsonUnsafe(registrationResponse(signClient(key, client), client), {
+                status: 201,
+                headers: NO_STORE,
+              }),
+          })
+        }),
+        Effect.catch(() => Effect.succeed(oauthError("invalid_client_metadata", "The body must be JSON metadata"))),
+      ),
+    )
+
+    const authorization = (issuer: string, params: AuthorizationParams, locale: PageLocale) => {
+      const check = checkAuthorization(key, issuer, params)
+      if (check.ok) return { ok: true, client: check.client, codeChallenge: check.codeChallenge } as const
+      return {
+        ok: false,
+        response: check.redirect
+          ? HttpServerResponse.redirect(
+              redirectTo(params.redirect_uri, {
+                error: check.error,
+                error_description: check.description,
+                state: params.state,
+              }),
+              { headers: NO_STORE },
+            )
+          : page(brokenLinkPage(locale), 400),
+      } as const
+    }
+
+    yield* router.add(
+      "GET",
+      AUTHORIZE_PATH,
+      withIssuer((issuer) =>
+        HttpServerRequest.schemaSearchParams(AuthorizationParams).pipe(
+          Effect.flatMap((params) =>
+            Effect.gen(function* () {
+              const locale = yield* localeOfRequest
+              const checked = authorization(issuer, params, locale)
+              if (!checked.ok) return checked.response
+              const id = yield* connections.request({
+                clientId: params.client_id,
+                name: checked.client.name,
+                redirectUri: params.redirect_uri,
+                codeChallenge: checked.codeChallenge,
+                state: params.state,
+              })
+              return Option.match(id, {
+                onNone: () => page(notStartedPage(locale), 409),
+                onSome: (request) =>
+                  HttpServerResponse.redirect(`${WAIT_PATH}?${new URLSearchParams({ request })}`, {
+                    status: 303,
+                    headers: NO_STORE,
+                  }),
+              })
+            }),
+          ),
+          Effect.catch(() => Effect.map(localeOfRequest, (locale) => page(brokenLinkPage(locale), 400))),
+        ),
+      ),
+    )
+
+    const relay = yield* Relay
+    const signIns = new Map<
+      string,
+      { readonly request: string; readonly verifier: string; readonly expiresAt: number }
+    >()
+    const owners = new Map<
+      string,
+      { readonly request: string; readonly email: string | null; readonly expiresAt: number }
+    >()
+
+    const ownerOf = (cookies: Readonly<Record<string, string | undefined>>, request: string) =>
+      Effect.map(forgetExpired(owners, cookies[OWNER_COOKIE] && sha256(cookies[OWNER_COOKIE])), (owner) =>
+        owner?.request === request ? owner : undefined,
+      )
+
+    const later = Effect.map(Clock.currentTimeMillis, (now) => now + Duration.toMillis(OWNER_LIFE))
+
+    yield* router.add(
+      "GET",
+      WAIT_PATH,
+      Effect.gen(function* () {
+        const locale = yield* localeOfRequest
+        const { request } = yield* HttpServerRequest.schemaSearchParams(WaitParams)
+        const outcome = yield* connections.outcome(request)
+        if (outcome.type === "unknown") return page(brokenLinkPage(locale), 404)
+        const { name, redirectUri, state } = outcome.request
+        if (outcome.type === "waiting") {
+          const owner = yield* ownerOf((yield* HttpServerRequest.HttpServerRequest).cookies, request)
+          const approver: Approver =
+            owner === undefined
+              ? { signedIn: false, signInPath: `${SIGN_IN_PATH}?${new URLSearchParams({ request })}` }
+              : { signedIn: true, email: owner.email, answerPath: ANSWER_PATH, request }
+          return page(waitingPage({ appName: name, redirectHost: new URL(redirectUri).host, approver, locale }))
+        }
+        const answer =
+          outcome.type === "approved"
+            ? { code: outcome.authorizationCode }
+            : { error: "access_denied", error_description: "The developer denied the connection" }
+        return HttpServerResponse.redirect(redirectTo(redirectUri, { ...answer, state }), { headers: NO_STORE })
+      }).pipe(Effect.catch(() => Effect.map(localeOfRequest, (locale) => page(brokenLinkPage(locale), 400)))),
+    )
+
+    yield* router.add(
+      "GET",
+      SIGN_IN_PATH,
+      withIssuer((issuer) =>
+        Effect.gen(function* () {
+          const locale = yield* localeOfRequest
+          const { request } = yield* HttpServerRequest.schemaSearchParams(WaitParams)
+          if (Option.isNone(yield* connections.waiting(request))) return page(brokenLinkPage(locale), 404)
+          const verifier = randomToken()
+          const nonce = randomToken()
+          yield* forgetExpired(signIns, undefined)
+          for (const [earlier, entry] of signIns) if (entry.request === request) signIns.delete(earlier)
+          signIns.set(nonce, { request, verifier, expiresAt: yield* later })
+          const signIn = new URL("/sign-in", relay.serviceUrl)
+          signIn.searchParams.set("redirect_uri", `${issuer}${SIGNED_IN_PATH}`)
+          signIn.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"))
+          signIn.searchParams.set("name", SIGN_IN_NAME)
+          return HttpServerResponse.redirect(signIn.href, { status: 303, headers: NO_STORE }).pipe(
+            HttpServerResponse.setCookieUnsafe(SIGN_IN_COOKIE, nonce, COOKIE),
+          )
+        }).pipe(Effect.catch(() => Effect.map(localeOfRequest, (locale) => page(brokenLinkPage(locale), 400)))),
+      ),
+    )
+
+    yield* router.add(
+      "GET",
+      SIGNED_IN_PATH,
+      Effect.gen(function* () {
+        const locale = yield* localeOfRequest
+        const { cookies } = yield* HttpServerRequest.HttpServerRequest
+        const nonce = cookies[SIGN_IN_COOKIE]
+        const pending = yield* forgetExpired(signIns, nonce)
+        if (nonce === undefined || pending === undefined) return page(signInLostPage(locale), 400)
+        signIns.delete(nonce)
+        const { code } = yield* HttpServerRequest.schemaSearchParams(SignedInParams)
+        const signedIn = yield* relay.verifyOwnerSignIn({ code, codeVerifier: pending.verifier }).pipe(Effect.result)
+        if (signedIn._tag === "Failure") return page(signInFailedPage(locale, signedIn.failure.message), 403)
+        const token = randomToken()
+        owners.set(sha256(token), { request: pending.request, email: signedIn.success.email, expiresAt: yield* later })
+        return HttpServerResponse.redirect(waitPath(pending.request), { status: 303, headers: NO_STORE }).pipe(
+          HttpServerResponse.setCookieUnsafe(OWNER_COOKIE, token, COOKIE),
+        )
+      }).pipe(Effect.catch(() => Effect.map(localeOfRequest, (locale) => page(signInLostPage(locale), 400)))),
+    )
+
+    yield* router.add(
+      "POST",
+      ANSWER_PATH,
+      Effect.gen(function* () {
+        const locale = yield* localeOfRequest
+        const { request, decision } = yield* HttpServerRequest.schemaBodyUrlParams(AnswerForm)
+        const owner = yield* ownerOf((yield* HttpServerRequest.HttpServerRequest).cookies, request)
+        if (owner === undefined) return page(signInLostPage(locale), 403)
+        yield* connections.answer({ id: request, approve: decision === "approve" })
+        return HttpServerResponse.redirect(waitPath(request), { status: 303, headers: NO_STORE })
+      }).pipe(
+        Effect.catchTag("PersistenceError", () => Effect.succeed(HttpServerResponse.empty({ status: 500 }))),
+        Effect.catch(() => Effect.map(localeOfRequest, (locale) => page(brokenLinkPage(locale), 400))),
+      ),
+    )
+
+    yield* router.add(
+      "POST",
+      TOKEN_PATH,
+      withIssuer((issuer) =>
+        HttpServerRequest.schemaBodyUrlParams(TokenRequest).pipe(
+          Effect.catch(() =>
+            Effect.fail(oauthError("invalid_request", "code, redirect_uri, client_id and code_verifier are required")),
+          ),
+          Effect.flatMap((request) =>
+            Effect.gen(function* () {
+              if (request.grant_type !== "authorization_code") {
+                return oauthError("unsupported_grant_type", "grant_type must be authorization_code")
+              }
+              if (Option.isNone(readClient(key, request.client_id))) {
+                return oauthError("invalid_client", "client_id is not one this server registered")
+              }
+              if (request.resource !== undefined && request.resource !== resourceOf(issuer)) {
+                return oauthError("invalid_target", `resource must be ${resourceOf(issuer)}`)
+              }
+              const grant = yield* connections.redeem(request.code)
+              if (
+                Option.isNone(grant) ||
+                grant.value.clientId !== request.client_id ||
+                grant.value.redirectUri !== request.redirect_uri ||
+                !verifierMatches(request.code_verifier, grant.value.codeChallenge)
+              ) {
+                return oauthError("invalid_grant", "The authorization code is not valid for this request")
+              }
+              const { token } = yield* connections.connect(grant.value.name)
+              return HttpServerResponse.jsonUnsafe(
+                { access_token: token, token_type: "Bearer", scope: SCOPE },
+                { headers: NO_STORE },
+              )
+            }),
+          ),
+          Effect.catchTag("PersistenceError", () => Effect.succeed(HttpServerResponse.empty({ status: 500 }))),
+          Effect.catch((response) => Effect.succeed(response)),
+        ),
+      ),
+    )
+  }),
+)
+
+const httpServer = HttpRouter.serve(
+  Layer.mergeAll(Tools.layer, routes, gate).pipe(
+    Layer.provideMerge(
+      AiMcpServer.layerHttp({
+        name: "hinacode",
+        version: "0.1.0",
+        path: MCP_PATH,
+        protocols: [McpProtocol.v2025_11_25, McpProtocol.v2025_06_18, McpProtocol.v2025_03_26],
+        allowSessionTermination: true,
+      }),
+    ),
+  ),
+  { disableListenLog: true, disableLogger: true },
+).pipe(Layer.provideMerge(NodeHttpServer.layer(createServer, { port: 0, host: "127.0.0.1" })))
+
+const announce = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const { address } = yield* HttpServer.HttpServer
+    if (address._tag === "UnixPathAddress") return yield* Effect.die("app server must listen on TCP")
+    yield* Effect.logInfo("app server listening", address.port)
+    yield* (yield* AppConnections).listening(address.port)
+  }),
+)
+
+export const layer = announce.pipe(Layer.provide(httpServer))

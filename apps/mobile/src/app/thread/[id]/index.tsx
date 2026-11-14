@@ -1,6 +1,6 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router"
 import { useHeaderHeight } from "expo-router/react-navigation"
-import { type ReactNode, useCallback, useEffect, useState } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import { AppState, KeyboardAvoidingView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { ArtifactList } from "@/components/artifact-list"
@@ -30,7 +30,6 @@ import { useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
 import { useThreadVm, useVms } from "@/stores/vms"
 
-/** Room the native header keeps for its back and menu items on each side of a custom title. */
 const HEADER_ITEMS_WIDTH = 72
 
 export default function ThreadScreen() {
@@ -44,22 +43,18 @@ export default function ThreadScreen() {
   })
   const loaded = useThreads((state) => state.status === "ready")
   const status = useThreadConnection(id)
-  // KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
+  // FIXME: KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
   const headerHeight = useHeaderHeight()
   const [tab, setTab] = useState<ThreadTab>("chat")
-  // Files and the shell keep their state across tab switches once opened, and end with this screen.
   const [opened, setOpened] = useState<ReadonlySet<ThreadTab>>(() => new Set(["chat"]))
 
-  // Seeing the thread clears its unopened result, also when the app comes back to it from the background.
-  useFocusEffect(
-    useCallback(() => {
-      useUnseen.getState().clear(id)
-      const subscription = AppState.addEventListener("change", (state) => {
-        if (state === "active") useUnseen.getState().clear(id)
-      })
-      return () => subscription.remove()
-    }, [id]),
-  )
+  useFocusEffect(() => {
+    useUnseen.getState().clear(id)
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") useUnseen.getState().clear(id)
+    })
+    return () => subscription.remove()
+  })
 
   useEffect(() => {
     if (status === "connected") void useVms.getState().load(id).catch(() => {})
@@ -95,7 +90,6 @@ export default function ThreadScreen() {
       )}
       {!isIOS && (
         <View style={styles.header}>
-          {/* In a split the list replaces the back stack, so this corner shows or hides it instead. */}
           {split ? (
             <SidebarButton />
           ) : (
@@ -130,7 +124,7 @@ export default function ThreadScreen() {
           </Text>
         </View>
       ) : (
-        // Android draws edge to edge, so the window no longer shrinks for the keyboard and needs padding too.
+        // FIXME: Android draws edge to edge, so the window no longer shrinks for the keyboard and needs padding too.
         <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
           <View style={styles.flex}>
             <TabPanel shown={tab === "chat"} readable>
@@ -155,16 +149,12 @@ export default function ThreadScreen() {
           </View>
         </KeyboardAvoidingView>
       )}
-      {/* Below the keyboard's reach, so typing covers the tabs instead of lifting them over the composer. */}
       {thread !== undefined && <ThreadControlBar tab={tab} onSelect={select} />}
     </SafeAreaView>
   )
 }
 
-/**
- * A tab kept mounted behind the shown one at full size, invisible and out of reach. Hiding it with `display: none`
- * would collapse its list to no height, and the list would lose its scroll position when it came back.
- */
+// FIXME: `display: none` collapses a hidden tab's list to no height and loses its scroll position, so hidden tabs stay laid out.
 function TabPanel({ shown, readable = false, children }: { shown: boolean; readable?: boolean; children: ReactNode }) {
   return (
     <View
@@ -178,9 +168,6 @@ function TabPanel({ shown, readable = false, children }: { shown: boolean; reada
   )
 }
 
-/**
- * The thread's actions in the native iOS header menu, with the same behavior as the list's long-press sheet.
- */
 function ThreadMenu({ thread, onOpenTerminal }: { thread: Thread; onOpenTerminal: () => void }) {
   const state = useThreadActions(thread)
   const hasVm = useHasVm(thread.id)
@@ -226,13 +213,11 @@ const leave = () => (router.canGoBack() ? router.back() : router.replace("/"))
 
 const openVm = (id: string) => router.push({ pathname: "/thread/[id]/vm", params: { id } })
 
-/** Whether the thread has a VM to look at: once the agent starts one, until it is stopped. */
 const useHasVm = (threadId: string) => {
   const vm = useThreadVm(threadId)
   return vm !== undefined && vm.status !== "none"
 }
 
-/** Android's header button for the thread's VM, which iOS shows as a toolbar item. */
 function VmButton({ threadId }: { threadId: string }) {
   const theme = useTheme()
   if (!useHasVm(threadId)) return null
@@ -247,7 +232,6 @@ function VmButton({ threadId }: { threadId: string }) {
   )
 }
 
-/** Android's header button for the actions iOS shows as a native menu, with the same sheet the list opens. */
 function ThreadActionsButton({ thread, onOpenTerminal }: { thread: Thread; onOpenTerminal: () => void }) {
   const theme = useTheme()
   const state = useThreadActions(thread)
@@ -279,7 +263,6 @@ const statusColor = (theme: Palette, status: ThreadStatus) =>
       ? theme.running
       : theme.textMuted
 
-/** The thread's title over the open view, its status and how long ago it last changed. */
 function ThreadTitle({
   title,
   thread,

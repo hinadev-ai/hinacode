@@ -98,6 +98,7 @@ export const CommentMessage = Schema.Struct({
   author: CommentAuthor,
   body: Schema.String,
   createdAt: Schema.String,
+  undelivered: Schema.optionalKey(Schema.Literal(true)),
 })
 export type CommentMessage = typeof CommentMessage.Type
 

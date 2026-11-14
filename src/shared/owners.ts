@@ -69,10 +69,10 @@ export const learnFromAnswer = (
     case "terminal.open":
     case "terminal.list":
       return each(result, learnId(teach, "terminal"))
-    case "automations.list":
-    case "automations.create":
-    case "automations.update":
-      return each(result, learnId(teach, "automation"))
+    case "routines.list":
+    case "routines.create":
+    case "routines.update":
+      return each(result, learnId(teach, "routine"))
     case "artifacts.list":
     case "artifacts.createDocument":
     case "artifacts.createWhiteboard":
@@ -101,8 +101,8 @@ export const learnFromPush = (owners: Owners, environmentId: string, event: Push
       return teach("terminal", event.id)
     case "terminal.updated":
       return teach("terminal", event.session.id)
-    case "automation.run":
-      teach("automation", event.run.automationId)
+    case "routine.run":
+      teach("routine", event.run.routineId)
       return teach("thread", event.run.threadId)
     case "artifact.updated":
       return teach("artifact", event.artifact.id)

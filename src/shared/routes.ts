@@ -5,7 +5,7 @@ export type Entity =
   | "project"
   | "worktree"
   | "terminal"
-  | "automation"
+  | "routine"
   | "request"
   | "root"
   | "stream"
@@ -83,6 +83,10 @@ export const routes: Record<RpcMethod, Route> = {
   "relayAccount.machines": client,
   "relayAccount.setShown": client,
   "relayAccount.removeMachine": client,
+  "appConnections.status": client,
+  "appConnections.start": client,
+  "appConnections.answer": client,
+  "appConnections.remove": client,
   "updates.status": named,
   "updates.check": named,
   "updates.install": named,
@@ -116,6 +120,7 @@ export const routes: Record<RpcMethod, Route> = {
   "secrets.clear": named,
   "github.auth": named,
   "github.pullRequest": named,
+  "github.issue": named,
   "github.pullRequestDetail": named,
   "github.pullRequestFiles": named,
   "pullRequestGuides.get": named,
@@ -137,7 +142,7 @@ export const routes: Record<RpcMethod, Route> = {
   "projects.clone": named,
   "projects.cancelClone": named,
   "ports.kill": named,
-  "automations.list": named,
+  "routines.list": all,
 
   "projects.update": project,
   "projects.delete": project,
@@ -151,7 +156,8 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.create": owner("project", "projectId"),
   "threads.draft": owner("project", "projectId"),
   "worktrees.create": owner("project", "projectId"),
-  "automations.create": owner("project", "projectId"),
+  "routines.create": owner("project", "projectId"),
+  "commands.forProject": owner("project", "projectId"),
   "github.repository": owner("project", "projectId"),
 
   "threads.update": owner("thread", "id"),
@@ -215,7 +221,6 @@ export const routes: Record<RpcMethod, Route> = {
 
   "worktrees.remove": owner("worktree", "id"),
   "worktrees.checkoutState": owner("worktree", "id"),
-  "worktrees.setupLog": owner("worktree", "id"),
   "worktrees.stopSetup": owner("worktree", "id"),
   "worktrees.pullRequest": owner("worktree", "id"),
 
@@ -224,11 +229,12 @@ export const routes: Record<RpcMethod, Route> = {
   "terminal.close": owner("terminal", "id"),
   "terminal.attach": owner("terminal", "id"),
 
-  "automations.update": owner("automation", "id"),
-  "automations.delete": owner("automation", "id"),
-  "automations.runNow": owner("automation", "id"),
-  "automations.runs": owner("automation", "id"),
-  "automations.webhookUrl": owner("automation", "id"),
+  "routines.update": owner("routine", "id"),
+  "routines.delete": owner("routine", "id"),
+  "routines.run": owner("routine", "id"),
+  "routines.runs": owner("routine", "id"),
+  "routines.webhook": owner("routine", "id"),
+  "routines.rotateWebhookSecret": owner("routine", "id"),
 
   "approvals.respond": owner("request", "requestId"),
   "questions.respond": owner("request", "requestId"),

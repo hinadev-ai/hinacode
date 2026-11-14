@@ -37,7 +37,6 @@ function useAction() {
   return { busy, error, run }
 }
 
-/** A request rises in, fades out once answered, and the cards still waiting slide into its place. */
 function ResolvableCard({ children }: { children: ReactNode }) {
   return (
     <motion.View {...rise} exit={{ opacity: 0, transition: { duration: duration.fast } }} layout>
@@ -46,13 +45,8 @@ function ResolvableCard({ children }: { children: ReactNode }) {
   )
 }
 
-/** The bar fills as a request waits, full at ten minutes. */
 const AGE_FULL_MS = 10 * 60_000
 
-/**
- * A request's ticket: an age bar along the top edge, the caller's `header`, then the request. Without `since`, the bar
- * is drawn full; with `ageBar` false it is left out.
- */
 function Ticket({
   testID,
   accessibilityLabel,
@@ -94,7 +88,6 @@ function Ticket({
   )
 }
 
-/** What the request is, and how long ago it arrived when the caller knows. */
 function TicketHead({ label, since, note }: { label: string; since?: string; note?: string }) {
   const theme = useTheme()
   const now = useNow()
@@ -122,7 +115,6 @@ export function ApprovalCard({
 }: {
   request: ApprovalRequest
   header?: ReactNode
-  /** When the thread started waiting, for the age bar and the elapsed time. Requests carry no time of their own. */
   since?: string
 }) {
   const theme = useTheme()
@@ -282,7 +274,6 @@ export function QuestionCard({
 }: {
   request: QuestionRequest
   header?: ReactNode
-  /** As on `ApprovalCard`. */
   since?: string
 }) {
   const theme = useTheme()

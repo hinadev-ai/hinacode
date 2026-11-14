@@ -22,12 +22,6 @@ export function IntegrationSettings() {
           placeholder={m.settings_linear_placeholder()}
           hint={m.settings_linear_hint()}
         />
-        <SecretField
-          name="slack.token"
-          label={m.settings_slack_label()}
-          placeholder="xoxp-…"
-          hint={m.settings_slack_hint()}
-        />
       </SettingsGroup>
     </SettingsSection>
   )

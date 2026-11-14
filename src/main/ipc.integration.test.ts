@@ -37,6 +37,7 @@ import { Events } from "./services/Events.ts"
 import * as Messages from "./services/Messages.ts"
 import { privateAddresses } from "./network.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED } from "../shared/transport.ts"
 import { MAX_CALL_KEYS } from "./remote/session.ts"
 import { unusedLoopbackPort } from "./remote/testing.ts"
 import * as PullRequests from "./services/PullRequests.ts"
@@ -228,6 +229,30 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
           Stream.flatMap(() => Stream.fromIterable(scriptedTurn)),
         )
       }
+      if (input.prompt === "simulate a sub-agent") {
+        return Stream.make<Array<AgentEvent>>(
+          {
+            type: "tool_call_started",
+            callId: "agent",
+            name: "Agent",
+            input: { description: "Survey", prompt: "Look" },
+          },
+          {
+            type: "tool_call_started",
+            callId: "child",
+            name: "Read",
+            input: { file_path: "a.ts" },
+            parentCallId: "agent",
+          },
+          { type: "tool_call_finished", callId: "child", output: longOutput, isError: false },
+          { type: "tool_call_finished", callId: "agent", output: "Surveyed.", isError: false },
+        ).pipe(
+          Stream.concat(Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(Stream.drain)),
+          Stream.concat(
+            Stream.make<Array<AgentEvent>>({ type: "text_delta", text: "Done." }, { type: "turn_completed" }),
+          ),
+        )
+      }
       if (input.prompt === "simulate a long tool output") {
         return Stream.make<Array<AgentEvent>>(
           { type: "tool_call_started", callId: "long-1", name: "Bash", input: { command: "seq" } },
@@ -296,7 +321,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
       )
     }),
   ...(id === "claude" ? { wakes: Stream.fromQueue(claudeWakes) } : {}),
-  steer: () => Effect.void,
+  steer: () => Effect.succeed(true),
   interrupt: (threadId) => Effect.sync(() => void interruptedThreads.push(threadId)),
   stopSubagent: (threadId, subagentId) => Effect.sync(() => void stoppedSubagents.push({ threadId, subagentId })),
   respondApproval: (requestId, decision, note) =>
@@ -1166,7 +1191,7 @@ const removalHeldOnItsFirstCopy = async () => {
   return { chosen, held, waiting, removal, resume: () => pause.resume.resolve() }
 }
 
-const cachedLogin = (label: string) => existsSync(join(dir, "cache", `${label}.json`))
+const cachedLogin = (accountId: string) => existsSync(join(dir, "cache", `${accountId}.json`))
 
 const history = () => join(dir, "history")
 const inHistory = (...args: Array<string>) =>
@@ -1406,6 +1431,46 @@ describe("long tool outputs over rpc", () => {
       "NotFoundError",
     )
     expect(result(await invoke("threads.toolOutput", { threadId: thread.id, callId: "long-1" }))).toBe(longOutput)
+  })
+})
+
+describe("sub-agent work over rpc", () => {
+  test("stays in an open message, leaves a completed one and loads per sub-agent", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    heldTurn = Promise.withResolvers()
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a sub-agent" }))
+    const latest = async () => result(await invoke("threads.transcript", { threadId: thread.id })).messages.at(-1)
+
+    await expect.poll(latest).toMatchObject({
+      completedAt: null,
+      parts: [
+        { type: "tool_call", callId: "agent", status: "done" },
+        { type: "tool_call", callId: "child", parentCallId: "agent", fullOutputBytes: longOutput.length },
+      ],
+    })
+
+    heldTurn.resolve()
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+    const parts = (await latest())?.parts
+    expect(parts).toMatchObject([
+      { type: "tool_call", callId: "agent", output: "Surveyed." },
+      { type: "text", text: "Done." },
+    ])
+
+    const work = result(await invoke("subagents.transcript", { threadId: thread.id, callId: "agent", compact: false }))
+    expect(work.spawn).toMatchObject({ callId: "agent", input: { description: "Survey", prompt: "Look" } })
+    expect(work.calls).toMatchObject([
+      { type: "tool_call", callId: "child", input: { file_path: "a.ts" }, fullOutputBytes: longOutput.length },
+    ])
+    const preview = work.calls[0]?.type === "tool_call" ? String(work.calls[0].output) : ""
+    expect(preview.length).toBeLessThanOrEqual(TOOL_OUTPUT_PREVIEW_CHARS)
+    expect(longOutput.endsWith(preview)).toBe(true)
+
+    const compact = result(await invoke("subagents.transcript", { threadId: thread.id, callId: "agent" }))
+    expect(compact.calls).toStrictEqual([
+      { type: "tool_call", callId: "child", name: "Read", input: { file_path: "a.ts" }, status: "done" },
+    ])
   })
 })
 
@@ -1649,7 +1714,7 @@ describe("agent approvals over rpc", () => {
   test("decodes the note and hands it to the provider with the decision", async () => {
     heldTurn = Promise.withResolvers()
     const project = result(await invoke("projects.list", undefined))[0]!
-    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const thread = result(await invoke("threads.create", { projectId: project.id, accessMode: "supervised" }))
     result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held approval" }))
     await expect
       .poll(async () => result(await invoke("threads.transcript", { threadId: thread.id })).approvals)
@@ -1839,18 +1904,16 @@ describe("agent accounts over rpc", () => {
     await acceptedOnceSettled(() => invoke("accounts.delete", { id: chosen.id }))
   })
 
-  test("drops an account's cached sign-in when it is renamed or removed", async () => {
+  test("keeps an account's cached sign-in through a rename and drops it on removal", async () => {
     const account = result(await invoke("accounts.create", newAccount("codex", "Billing")))
     result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
-    expect(cachedLogin("billing_codex")).toBe(true)
+    expect(cachedLogin(account.id)).toBe(true)
 
     result(await invoke("accounts.rename", { id: account.id, name: "Invoices" }))
-    expect(cachedLogin("billing_codex")).toBe(false)
-    result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
-    expect(cachedLogin("invoices_codex")).toBe(true)
+    expect(cachedLogin(account.id)).toBe(true)
 
     result(await invoke("accounts.delete", { id: account.id }))
-    expect(cachedLogin("invoices_codex")).toBe(false)
+    expect(cachedLogin(account.id)).toBe(false)
   })
 })
 
@@ -1924,7 +1987,7 @@ describe("remote mode", () => {
 
     const wrong = phone(port)
     await wrong.send({ type: "auth", token: "not-the-token" })
-    expect((await wrong.closed()).code).toBe(RemoteAccess.CLOSE_UNAUTHORIZED)
+    expect((await wrong.closed()).code).toBe(CLOSE_UNAUTHORIZED)
   })
 
   test("the first frame is a challenge, and a proof of the token gets a ready that proves it back", async () => {
@@ -1951,7 +2014,7 @@ describe("remote mode", () => {
     const challenge = await forged.challenge()
     const nonce = newNonce()
     await forged.send({ type: "auth", nonce, proof: clientProof("not-the-token", challenge.nonce, nonce) })
-    expect((await forged.closed()).code).toBe(RemoteAccess.CLOSE_UNAUTHORIZED)
+    expect((await forged.closed()).code).toBe(CLOSE_UNAUTHORIZED)
   })
 
   test("a client that predates the challenge still connects with the token, and its ready proves nothing", async () => {
@@ -1969,7 +2032,7 @@ describe("remote mode", () => {
     await proved.send({ type: "auth", nonce, proof: clientProof(token, challenge.nonce, nonce) })
     await proved.ready()
     result(await invoke("remote.rotateToken", undefined))
-    expect((await proved.closed()).code).toBe(RemoteAccess.CLOSE_TOKEN_ROTATED)
+    expect((await proved.closed()).code).toBe(CLOSE_TOKEN_ROTATED)
   })
 
   test("a paired phone calls rpc, receives pushes and is refused desktop-only methods", async () => {
@@ -2270,11 +2333,11 @@ describe("remote mode", () => {
 
     const after = result(await invoke("remote.rotateToken", undefined))
     expect(after.token).not.toBe(before.token)
-    expect((await paired.closed()).code).toBe(RemoteAccess.CLOSE_TOKEN_ROTATED)
+    expect((await paired.closed()).code).toBe(CLOSE_TOKEN_ROTATED)
 
     const stale = phone(port)
     await stale.send({ type: "auth", token: before.token })
-    expect((await stale.closed()).code).toBe(RemoteAccess.CLOSE_UNAUTHORIZED)
+    expect((await stale.closed()).code).toBe(CLOSE_UNAUTHORIZED)
   })
 
   test("turning remote off closes a socket that has not authenticated yet", async () => {

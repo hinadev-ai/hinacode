@@ -12,7 +12,7 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { Button } from "./ui/button.tsx"
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./ui/dialog.tsx"
-import { CloseIcon, FileIcon } from "@hinacode/icons"
+import { CloseIcon, FileIcon, PencilIcon } from "@hinacode/icons"
 import { resourceUrl } from "../lib/resourceUrl.ts"
 
 const format = (value: number, unit: string) =>
@@ -113,11 +113,37 @@ function Preview({ attachment, onError }: { attachment: Attachment; onError?: ()
   )
 }
 
-export function PendingAttachment({ attachment, onRemove }: { attachment: Attachment; onRemove: () => void }) {
+export function PendingAttachment({
+  attachment,
+  onRemove,
+  onEdit,
+}: {
+  attachment: Attachment
+  onRemove: () => void
+  onEdit?: () => void
+}) {
   const picked = pickedLabel(attachment)
   return (
     <div className="relative">
-      <Preview attachment={attachment} />
+      {onEdit && attachment.kind === "image" ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={m.attachment_edit({ name: picked ?? attachment.name })}
+          title={m.attachment_edit({ name: picked ?? attachment.name })}
+          className="group/edit relative block rounded-lg pressable outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Preview attachment={attachment} />
+          <span
+            aria-hidden
+            className="absolute right-1 bottom-1 grid size-5 place-items-center rounded-full bg-background/90 text-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity duration-150 group-hover/edit:opacity-100 group-focus-visible/edit:opacity-100 motion-reduce:transition-none"
+          >
+            <PencilIcon className="size-3" />
+          </span>
+        </button>
+      ) : (
+        <Preview attachment={attachment} />
+      )}
       <Button
         type="button"
         size="icon-xs"

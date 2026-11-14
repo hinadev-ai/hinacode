@@ -16,6 +16,7 @@ import {
   Semaphore,
   Stream,
 } from "effect"
+import { SqlClient } from "effect/sql"
 import { type RpcResponse, type TranscriptPush, transcriptThreadId } from "../../shared/contract.ts"
 import type {
   AccountHome,
@@ -43,7 +44,6 @@ import type {
   QueuedMessage,
   ScheduledMessage,
   Thread,
-  ThreadStatus,
   WorkspaceChoice,
 } from "../../shared/domain.ts"
 import { enabledProviders, isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
@@ -67,6 +67,7 @@ import { McpCredentials } from "../mcp/credentials.ts"
 import {
   AgentError,
   type AgentProvider,
+  interruptedTurn,
   type SessionInput,
   type SteerPriority,
   type SubagentChange,
@@ -81,6 +82,7 @@ import {
   NotFoundError,
   AccountInUseError,
   type PersistenceError,
+  persistence,
   type PullRequestElsewhereError,
   type RootBusyError,
   ThreadStartedError,
@@ -90,14 +92,16 @@ import { Git, type CommandError } from "./Git.ts"
 import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
 import { Messages, type ToolCallRef } from "./Messages.ts"
 import { PullRequests } from "./PullRequests.ts"
-import { Attachments, extensionOf } from "./Attachments.ts"
+import { Attachments, extensionForMime } from "./Attachments.ts"
 import { Scratch } from "./Scratch.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
+import { Projects } from "./Projects.ts"
 import { Threads, type UpdateThread } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import { type ActiveWorkspace, makeActiveWorkspace } from "./workspace.ts"
+import { initialTurnState, step, type TurnEffect } from "./turnState.ts"
 
 const PERSIST_INTERVAL_MS = 500
 const RUN_AGENT_WAIT = Duration.minutes(4)
@@ -110,11 +114,18 @@ interface AgentRequest {
   readonly prompt: string
   readonly model?: string | undefined
   readonly effort?: string | undefined
+  readonly background?: boolean | undefined
+}
+
+interface QueueOptions {
+  readonly messageId?: string | undefined
+  readonly when?: Effect.Effect<boolean, PersistenceError> | undefined
 }
 
 interface SendOptions {
   readonly workspace?: WorkspaceChoice | undefined
   readonly scheduledId?: string | undefined
+  readonly messageId?: string | undefined
 }
 
 type SendError =
@@ -175,6 +186,7 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       text: string,
       attachments: ReadonlyArray<Attachment>,
+      options?: QueueOptions,
     ) => Effect.Effect<void, SendError>
     readonly unqueue: (
       threadId: string,
@@ -195,6 +207,7 @@ export class AgentRunner extends Context.Service<
       readonly threadId: string
       readonly text: string
       readonly attachments: ReadonlyArray<Attachment>
+      readonly messageId?: string | undefined
       readonly when: Effect.Effect<boolean, PersistenceError>
     }) => Effect.Effect<boolean, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
@@ -264,28 +277,12 @@ export class AgentRunner extends Context.Service<
     readonly listCommands: (
       threadId: string,
     ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError | FolderMissingError>
+    readonly listProjectCommands: (
+      projectId: string,
+      provider: ProviderId,
+    ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError>
   }
 >()("hinacode/AgentRunner") {}
-
-const statusAfter = (event: AgentEvent): ThreadStatus | undefined => {
-  switch (event.type) {
-    case "approval_requested":
-    case "question_requested":
-    case "secret_requested":
-      return "awaiting_approval"
-    case "approval_resolved":
-    case "question_resolved":
-    case "secret_resolved":
-      return "running"
-    case "turn_completed":
-    case "turn_failed":
-      return "idle"
-    case "turn_limited":
-      return "limited"
-    default:
-      return undefined
-  }
-}
 
 const userMessage = (
   threadId: string,
@@ -325,7 +322,7 @@ const savedImage = (threadId: string, attachments: typeof Attachments.Service, r
   const mimeType = source["mimeType"] ?? source["media_type"]
   const data = source["data"]
   if (typeof mimeType !== "string" || typeof data !== "string") return Effect.succeed({ type: "image", mimeType })
-  const name = `image${extensionOf(mimeType)}`
+  const name = `image${extensionForMime(mimeType)}`
   return attachments.stage(threadId, { dataUrl: `data:${mimeType};base64,${data}`, name }).pipe(
     Effect.map((attachment) => ({ type: "image", mimeType, attachment })),
     Effect.orElseSucceed(() => ({ type: "image", mimeType })),
@@ -357,11 +354,13 @@ const make = Effect.gen(function* () {
   const git = yield* Git
   const pullRequests = yield* PullRequests
   const messages = yield* Messages
+  const sql = yield* SqlClient.SqlClient
   const push = yield* Events
   const mcp = yield* McpCredentials
   const settings = yield* Settings
   const naming = yield* ThreadNaming
   const accounts = yield* AgentAccounts
+  const projects = yield* Projects
   const activeWorkspace = yield* makeActiveWorkspace
 
   const providers: Record<ProviderId, AgentProvider> = {
@@ -431,8 +430,27 @@ const make = Effect.gen(function* () {
   yield* messages.closeInterrupted
   yield* threads.resetInterrupted
 
+  const inTransaction = <A, E>(effect: Effect.Effect<A, E>) =>
+    sql
+      .withTransaction(effect)
+      .pipe(Effect.catchTag("SqlError", (error) => Effect.fail(persistence("agentRunner.transaction")(error))))
+
   const updateThread = (input: Parameters<typeof threads.update>[0]) =>
     threads.update(input).pipe(Effect.tap((thread) => push.publish({ type: "thread.updated", thread })))
+
+  const nextQueued = (threadId: string) =>
+    Effect.gen(function* () {
+      const { queue } = yield* threads.get(threadId)
+      const unsent = yield* Effect.filter(queue, (queued) => Effect.map(messages.has(queued.id), (sent) => !sent))
+      if (unsent.length < queue.length) yield* updateThread({ id: threadId, queue: unsent })
+      return unsent[0]
+    })
+
+  const isQueued = (threadId: string, id: string) =>
+    threads.get(threadId).pipe(
+      Effect.map(({ queue }) => queue.some((queued) => queued.id === id)),
+      Effect.catchTag("NotFoundError", () => Effect.succeed(false)),
+    )
 
   const removeScheduled = (threadId: string, id: string) =>
     Effect.gen(function* () {
@@ -608,8 +626,7 @@ const make = Effect.gen(function* () {
     stop: Deferred.Deferred<void>,
   ) => {
     let turnMessages: ReadonlyArray<Message> = [initial]
-    let status: ThreadStatus = "running"
-    let completed = false
+    let state = initialTurnState(thread.providerSessionId)
     let persistedAt = Date.now()
     let persistedBytes = 0
     const dirty = new Map<string, Message>()
@@ -652,32 +669,29 @@ const make = Effect.gen(function* () {
         if (event.type === "approval_resolved") approvals.delete(event.requestId)
         if (event.type === "question_requested") questions.set(event.request.id, event.request)
         if (event.type === "question_resolved") questions.delete(event.requestId)
-        if (event.type === "session_bound" && event.providerSessionId !== thread.providerSessionId) {
-          yield* updateThread({ id: thread.id, providerSessionId: event.providerSessionId })
-        }
-        if (event.type === "turn_failed" && event.sessionLost)
-          yield* updateThread({ id: thread.id, providerSessionId: null })
-        if (event.type === "turn_completed" || event.type === "turn_failed") completed = event.type === "turn_completed"
-        const resolvedStatus = statusAfter(event)
-        const nextStatus = resolvedStatus === "running" && waitsOnUser(thread.id) ? "awaiting_approval" : resolvedStatus
-        if (nextStatus !== undefined && nextStatus !== status) {
-          status = nextStatus
-          yield* updateThread({
-            id: thread.id,
-            status,
-            ...(event.type === "turn_limited" ? { usageLimit: event.limit } : {}),
-          })
-        }
-        if (
-          event.type === "approval_resolved" ||
-          event.type === "question_resolved" ||
-          event.type === "secret_resolved"
-        ) {
-          yield* steerHeld
-        }
+        const [after, effects] = step(state, event, { waitsOnUser: waitsOnUser(thread.id) })
+        yield* Effect.forEach(effects, perform, { discard: true })
+        state = after
         const interval = Math.max(PERSIST_INTERVAL_MS, (persistedBytes / PERSIST_BYTES_PER_SECOND) * 1000)
         if (dirty.size > 0 && Date.now() - persistedAt >= interval) yield* persist
       })
+
+    const perform = (effect: TurnEffect) => {
+      switch (effect.type) {
+        case "bind_session":
+          return updateThread({ id: thread.id, providerSessionId: effect.providerSessionId })
+        case "drop_session":
+          return updateThread({ id: thread.id, providerSessionId: null })
+        case "set_status":
+          return updateThread({
+            id: thread.id,
+            status: effect.status,
+            ...(effect.usageLimit !== undefined && { usageLimit: effect.usageLimit }),
+          })
+        case "steer_held":
+          return steerHeld
+      }
+    }
 
     const deltas = makeDeltaCoalescer({ apply, exclusive: exclusive(thread.id), scope })
 
@@ -695,6 +709,9 @@ const make = Effect.gen(function* () {
                 ? { ...received, stopped: true }
                 : received
         if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
+        if (event.type === "approval_requested" && (yield* threads.get(thread.id)).accessMode === "full") {
+          return yield* Effect.asVoid(providers[event.request.provider].respondApproval(event.request.id, "allow"))
+        }
         yield* deltas.offer(event)
       }).pipe(exclusive(thread.id))
 
@@ -702,35 +719,89 @@ const make = Effect.gen(function* () {
       if (provider.steer === undefined || waitsOnUser(thread.id)) return
       const held = (yield* threads.get(thread.id)).queue.filter((message) => message.steer)
       for (const message of held) {
-        yield* steerTurn(message.text, message.attachments, "next")
-        const { queue } = yield* threads.get(thread.id)
-        yield* updateThread({ id: thread.id, queue: queue.filter((queued) => queued.id !== message.id) })
+        const dequeue = Effect.gen(function* () {
+          const { queue } = yield* threads.get(thread.id)
+          yield* updateThread({ id: thread.id, queue: queue.filter((queued) => queued.id !== message.id) })
+        })
+        yield* steerTurn(message.text, message.attachments, "next", message.id, dequeue)
       }
     }).pipe(Effect.catch((error) => Effect.logWarning("held message did not steer", error)))
 
-    const steer = (
+    const steerOrHold = (
       text: string,
       attachments: ReadonlyArray<Attachment>,
       when: Effect.Effect<boolean, PersistenceError>,
+      messageId: string,
     ) =>
       Effect.gen(function* () {
         if (finishing) return "finished" as const
         if (provider.steer === undefined || !(yield* when)) return false
         if (!waitsOnUser(thread.id)) {
-          yield* steerTurn(text, attachments, "now")
-          return true
+          return (yield* steerTurn(text, attachments, "now", messageId)) ? true : ("refused" as const)
         }
         const { queue } = yield* threads.get(thread.id)
-        yield* updateThread({ id: thread.id, queue: [...queue, { id: randomUUID(), text, attachments, steer: true }] })
+        yield* updateThread({ id: thread.id, queue: [...queue, { id: messageId, text, attachments, steer: true }] })
         return true
       }).pipe(exclusive(thread.id))
 
-    const steerTurn = (text: string, attachments: ReadonlyArray<Attachment>, priority: SteerPriority) =>
+    const steer = (
+      text: string,
+      attachments: ReadonlyArray<Attachment>,
+      when: Effect.Effect<boolean, PersistenceError>,
+      messageId: string,
+    ): Effect.Effect<boolean | "finished", SendError> =>
       Effect.gen(function* () {
-        if (provider.steer === undefined) return
+        let refused = false
+        while (true) {
+          const openedBefore = Deferred.isDoneUnsafe(opened)
+          const steered = yield* steerOrHold(text, attachments, when, messageId)
+          if (steered === true || steered === false || (steered === "finished" && !refused)) return steered
+          refused = true
+          yield* steered === "refused" && !openedBefore
+            ? Effect.raceFirst(Deferred.await(opened), Deferred.await(ended))
+            : Deferred.await(ended)
+          if (Deferred.isDoneUnsafe(ended)) return yield* afterRefusedTurn(text, attachments, when, messageId)
+        }
+      })
+
+    const afterRefusedTurn = (
+      text: string,
+      attachments: ReadonlyArray<Attachment>,
+      when: Effect.Effect<boolean, PersistenceError>,
+      messageId: string,
+    ) =>
+      Effect.suspend((): Effect.Effect<boolean | "finished", PersistenceError | NotFoundError> =>
+        state.outcome === "completed" && !Deferred.isDoneUnsafe(stop)
+          ? Effect.succeed("finished" as const)
+          : Effect.gen(function* () {
+              if (!(yield* when)) return false
+              const { queue } = yield* threads.get(thread.id)
+              yield* updateThread({ id: thread.id, queue: [...queue, { id: messageId, text, attachments }] })
+              return true
+            }).pipe(exclusive(thread.id)),
+      )
+
+    const steerTurn = (
+      text: string,
+      attachments: ReadonlyArray<Attachment>,
+      priority: SteerPriority,
+      messageId: string,
+      alsoOnRecord: Effect.Effect<void, PersistenceError | NotFoundError> = Effect.void,
+    ) =>
+      Effect.gen(function* () {
+        if (provider.steer === undefined) return false
         yield* deltas.flush
-        yield* provider.steer(thread.id, expandDocumentCommand(expandArtifactSkill(text)), attachments, priority)
+        const accepted = yield* provider.steer(
+          thread.id,
+          expandDocumentCommand(expandArtifactSkill(text)),
+          attachments,
+          priority,
+        )
+        if (!accepted) return false
         const now = yield* nowIso
+        yield* inTransaction(
+          insertMessage(userMessage(thread.id, text, attachments, now, messageId)).pipe(Effect.andThen(alsoOnRecord)),
+        )
         const current = turnMessages.at(-1)!
         const closed: Message = { ...current, completedAt: now }
         setTurnMessages(replaceLast(turnMessages, closed))
@@ -738,13 +809,15 @@ const make = Effect.gen(function* () {
         yield* publishTranscript({ type: "message.updated", message: closed })
 
         const next = openAssistantMessage(thread.id, now)
-        yield* insertMessage(userMessage(thread.id, text, attachments, now))
         yield* insertMessage(next)
         turnMessages = [...turnMessages, next]
+        return true
       })
 
     let next: QueuedMessage | undefined
     let finishing = false
+    const opened = Deferred.makeUnsafe<void>()
+    const ended = Deferred.makeUnsafe<void>()
     const withdraw = (event: AgentEvent) => publishTranscript({ type: "thread.event", threadId: thread.id, event })
     const finish = Effect.gen(function* () {
       finishing = true
@@ -775,18 +848,16 @@ const make = Effect.gen(function* () {
       setTurnMessages(replaceLast(turnMessages, closed))
       yield* persist
       if (closed !== last) yield* publishTranscript({ type: "message.updated", message: closed })
-      if (isThreadBusy(status)) yield* updateThread({ id: thread.id, status: "idle" })
-      if (!completed || (yield* Deferred.isDone(stop))) return
-      const [first, ...rest] = (yield* threads.get(thread.id)).queue
-      if (first === undefined) return
-      yield* updateThread({ id: thread.id, queue: rest })
-      next = first
+      if (isThreadBusy(state.status)) yield* updateThread({ id: thread.id, status: "idle" })
+      if (state.outcome !== "completed" || (yield* Deferred.isDone(stop))) return
+      next = yield* nextQueued(thread.id)
     }).pipe(
       Effect.catch((error) => Effect.logError("failed to finish turn", error)),
       Effect.ensuring(
         Effect.sync(() => {
           if (next === undefined) busyThreads.delete(thread.id)
           activeTurns.delete(thread.id)
+          Deferred.doneUnsafe(ended, Effect.void)
         }),
       ),
       exclusive(thread.id),
@@ -814,9 +885,9 @@ const make = Effect.gen(function* () {
           Effect.gen(function* () {
             const input = yield* sessionInput(thread, provider, cwd, home, environment)
             if (yield* Deferred.isDone(stop)) {
-              return Stream.succeed<AgentEvent>({ type: "turn_failed", message: "Turn interrupted" })
+              return Stream.succeed(interruptedTurn)
             }
-            return provider.runTurn({ ...input, prompt, attachments })
+            return provider.runTurn({ ...input, prompt, attachments, onOpen: Deferred.succeed(opened, undefined) })
           }),
         ),
       )
@@ -1014,6 +1085,9 @@ const make = Effect.gen(function* () {
         Effect.flatMap(Effect.exit(execution), (exit) => Deferred.done(finalReply, exit)),
         scope,
       )
+      if (request.background === true) {
+        return `The agent runs in the background. Call ${WAIT_AGENT_TOOL} with agentId "${id}" for its reply before you end your turn, because it stops when the turn ends.`
+      }
       return yield* waitForAgent(threadId, id)
     })
 
@@ -1127,11 +1201,24 @@ const make = Effect.gen(function* () {
             yield* threads.recordTurnBase({ threadId, tree })
             const agentPrompt = yield* promptForSession(thread, expandDocumentCommand(expandArtifactSkill(prompt)))
             const now = yield* nowIso
+            const user = userMessage(threadId, prompt, attachments, now, options.messageId ?? options.scheduledId)
             const assistant = openAssistantMessage(threadId, now)
-            yield* insertMessage(userMessage(threadId, prompt, attachments, now, options.scheduledId))
-            if (options.scheduledId !== undefined) yield* removeScheduled(threadId, options.scheduledId)
-            yield* insertMessage(assistant)
-            yield* updateThread({ id: threadId, status: "running" })
+            const running = yield* inTransaction(
+              Effect.gen(function* () {
+                yield* messages.insert(user)
+                if (options.scheduledId !== undefined) yield* removeScheduled(threadId, options.scheduledId)
+                yield* messages.insert(assistant)
+                const { queue } = yield* threads.get(threadId)
+                return yield* threads.update({
+                  id: threadId,
+                  status: "running",
+                  queue: queue.filter((queued) => queued.id !== user.id),
+                })
+              }),
+            )
+            yield* publishTranscript({ type: "message.created", message: user })
+            yield* publishTranscript({ type: "message.created", message: assistant })
+            yield* push.publish({ type: "thread.updated", thread: running })
             return { thread, environment, agentPrompt, turn: makeTurn(thread, provider, cwd, home, assistant, stop) }
           }),
         )
@@ -1195,15 +1282,22 @@ const make = Effect.gen(function* () {
   const send = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>, options: SendOptions = {}) =>
     sendWhen(threadId, prompt, attachments, options, Effect.succeed(true)).pipe(Effect.asVoid)
 
-  const queue = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
+  const queue = (
+    threadId: string,
+    text: string,
+    attachments: ReadonlyArray<Attachment>,
+    { messageId = randomUUID(), when = Effect.succeed(true) }: QueueOptions = {},
+  ) =>
     Effect.gen(function* () {
       const queued = yield* Effect.gen(function* () {
-        if (!busyThreads.has(threadId)) return false
+        if (!busyThreads.has(threadId)) return "send" as const
+        if (!(yield* when)) return "declined" as const
         const thread = yield* threads.get(threadId)
-        yield* updateThread({ id: threadId, queue: [...thread.queue, { id: randomUUID(), text, attachments }] })
-        return true
+        yield* updateThread({ id: threadId, queue: [...thread.queue, { id: messageId, text, attachments }] })
+        return "queued" as const
       }).pipe(exclusive(threadId))
-      if (!queued) yield* send(threadId, text, attachments)
+      if (queued === "send") return yield* sendWhen(threadId, text, attachments, { messageId }, when)
+      return queued === "queued"
     })
 
   const unqueue = (threadId: string, id: string) =>
@@ -1215,34 +1309,41 @@ const make = Effect.gen(function* () {
       return message
     }).pipe(exclusive(threadId))
 
-  const startQueued = (threadId: string, message: QueuedMessage) =>
-    startClaimed(threadId, message.text, message.attachments, {}, Effect.succeed(true)).pipe(
-      Effect.asVoid,
-      Effect.catch((error) =>
-        Effect.gen(function* () {
-          yield* Effect.logWarning("queued message did not start", error)
-          const thread = yield* threads.get(threadId)
-          yield* updateThread({ id: threadId, queue: [message, ...thread.queue] })
-        }).pipe(
-          exclusive(threadId),
-          Effect.catch((cause) => Effect.logError("failed to put back a queued message", cause)),
-        ),
-      ),
+  const startQueued = (threadId: string, message: QueuedMessage): Effect.Effect<void> =>
+    startClaimed(
+      threadId,
+      message.text,
+      message.attachments,
+      { messageId: message.id },
+      isQueued(threadId, message.id),
+    ).pipe(
+      Effect.catch((error) => Effect.logWarning("queued message did not start", error).pipe(Effect.as(false))),
+      Effect.flatMap((started) => (started ? Effect.void : startNextQueued(threadId, message))),
+    )
+
+  const startNextQueued = (threadId: string, skipped: QueuedMessage) =>
+    Effect.gen(function* () {
+      if (busyThreads.has(threadId) || (yield* isQueued(threadId, skipped.id))) return undefined
+      const next = yield* nextQueued(threadId)
+      if (next !== undefined) busyThreads.add(threadId)
+      return next
+    }).pipe(
+      exclusive(threadId),
+      Effect.flatMap((next) => (next === undefined ? Effect.void : Effect.forkDetach(startQueued(threadId, next)))),
+      Effect.catch((cause) => Effect.logError("failed to start the next queued message", cause)),
     )
 
   const steerWhen: typeof AgentRunner.Service.steerWhen = (input) =>
     Effect.suspend(() => {
-      const { threadId, text, attachments, when } = input
+      const { threadId, text, attachments, when, messageId = randomUUID() } = input
       const turn = activeTurns.get(threadId)
-      if (turn === undefined) return sendWhen(threadId, text, attachments, {}, when)
+      if (turn === undefined) return sendWhen(threadId, text, attachments, { messageId }, when)
       if (turn.provider.steer !== undefined) {
-        return Effect.flatMap(turn.steer(text, attachments, when), (steered) =>
-          steered === "finished" ? steerWhen(input) : Effect.succeed(steered),
+        return Effect.flatMap(turn.steer(text, attachments, when, messageId), (steered) =>
+          steered === "finished" ? steerWhen({ ...input, messageId }) : Effect.succeed(steered),
         )
       }
-      return Effect.flatMap(when, (ready) =>
-        ready ? Effect.as(queue(threadId, text, attachments), true) : Effect.succeed(false),
-      )
+      return queue(threadId, text, attachments, { messageId, when })
     })
 
   const resumeAtReset = (threadId: string, enabled: boolean) =>
@@ -1856,6 +1957,14 @@ const make = Effect.gen(function* () {
         const { cwd } = yield* activeWorkspace(threadId)
         const home = yield* accounts.home(thread.accountId)
         return withDocumentCommand(yield* providers[thread.provider].listCommands({ threadId, cwd, home }))
+      }),
+    listProjectCommands: (projectId, provider) =>
+      Effect.gen(function* () {
+        const { rootPath } = yield* projects.get(projectId)
+        const home = yield* accounts.home((yield* settings.get).defaultAccount[provider])
+        return withDocumentCommand(
+          yield* providers[provider].listCommands({ threadId: `project:${projectId}`, cwd: rootPath, home }),
+        )
       }),
   })
 })

@@ -19,11 +19,6 @@ type Session = { readonly id: string; size: string; generation: number }
 
 const clamp = (value: number) => Math.min(1000, Math.max(1, Math.floor(value)))
 
-/**
- * The thread's shell, replaced by a fresh one when the developer asks after it exits. A desktop that cannot attach
- * to a running shell gets a new one after each reconnect instead. Its server's features outlast a disconnect, so
- * going offline keeps the output on screen.
- */
 export function TerminalPanel({ threadId }: { threadId: string }) {
   const [shell, setShell] = useState(0)
   const server = useThreadServer(threadId)
@@ -37,21 +32,14 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
   )
 }
 
-/**
- * A shell in the thread's worktree. The session opens once the view knows its grid size and is
- * closed when this component unmounts, i.e. when the thread screen goes away. After a reconnect it
- * attaches to the same session and catches up from the last output it showed.
- */
 function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart: () => void }) {
   const theme = useTheme()
   const generation = useConnection((state) => state.generation)
   const view = useRef<TerminalViewHandle>(null)
   const session = useRef<Session | null>(null)
   const opening = useRef(false)
-  // `terminal.open` can answer after the screen is gone; that shell has to be closed, not kept.
   const mounted = useRef(false)
-  // Output can arrive before `terminal.open` answers with the session id.
-  const early = useRef<TerminalPush[]>([])
+  const pushesBeforeOpen = useRef<TerminalPush[]>([])
   const [output] = useState(() => new TerminalOutput())
   const latestSize = useRef({ cols: 80, rows: 24 })
   const repaint = useRef(false)
@@ -104,7 +92,7 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
   const onPush = useEffectEvent((event: PushEvent) => {
     if (event.type !== "terminal.data" && event.type !== "terminal.exited") return
     if (session.current === null) {
-      if (opening.current) early.current.push(event)
+      if (opening.current) pushesBeforeOpen.current.push(event)
     } else if (event.id === session.current.id) apply(event)
   })
   useEffect(() => onEvent(onPush), [])
@@ -117,12 +105,12 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
     }
   }, [])
 
-  const reattach = useEffectEvent(() => {
+  const reattach = useEffectEvent((connectionGeneration: number) => {
     const current = session.current
-    if (current === null || current.generation === generation) return
+    if (current === null || current.generation === connectionGeneration) return
     if (useConnection.getState().features.has("terminal-attach")) attach(current)
   })
-  useEffect(() => reattach(), [generation])
+  useEffect(() => reattach(generation), [generation])
 
   const resize = (current: Session) => {
     const { cols, rows } = latestSize.current
@@ -151,8 +139,8 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
         }
         session.current = current
         if (useConnection.getState().features.has("terminal-attach")) attach(current)
-        for (const push of early.current) if (push.id === opened.id) apply(push)
-        early.current = []
+        for (const push of pushesBeforeOpen.current) if (push.id === opened.id) apply(push)
+        pushesBeforeOpen.current = []
         resize(current)
       },
       (cause) => {
@@ -213,7 +201,6 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
 const KEY_HEIGHT = 40
 const keySlop = { top: (HIT - KEY_HEIGHT) / 2, bottom: (HIT - KEY_HEIGHT) / 2 }
 
-/** The keys a phone keyboard lacks. Ctrl applies to the next character typed on the keyboard. */
 function KeyRow({ ctrl, onCtrl, onKey }: { ctrl: boolean; onCtrl: () => void; onKey: (key: TerminalKey) => void }) {
   const theme = useTheme()
   const keyStyle =

@@ -18,8 +18,6 @@ export interface EnvironmentIdentity {
   readonly name: string
 }
 
-export const CLOSE_UNAUTHORIZED = 4001
-export const CLOSE_TOKEN_ROTATED = 4002
 export const CLOSE_LISTENER_STOPPED = 4003
 export const CLOSE_AUTH_TIMEOUT = 4004
 export const CLOSE_MALFORMED_FRAME = 4005

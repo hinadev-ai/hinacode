@@ -23,9 +23,13 @@ const byTag: Readonly<Record<string, (detail: string) => string>> = {
   TerminalError: (detail) => m.error_terminal({ detail }),
   ThreadBusyError: () => m.error_thread_busy(),
   FsAccessError: () => m.error_fs_access(),
+  FolderMissingError: () => m.error_folder_missing(),
   EnvironmentUnauthorized: () => m.error_environment_unauthorized(),
   Defect: (detail) => m.error_unexpected({ detail }),
 }
+
+export const isFolderMissing = (cause: unknown): boolean =>
+  cause instanceof RpcError && cause.tag === "FolderMissingError"
 
 export function errorMessage(cause: unknown): string {
   if (cause instanceof RpcError) return byTag[cause.tag]?.(cause.message) ?? cause.message

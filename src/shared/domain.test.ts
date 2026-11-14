@@ -5,6 +5,7 @@ import {
   chatFolder,
   defaultSettings,
   enabledProviders,
+  isCronExpression,
   PullRequest,
   Settings,
   startingProvider,
@@ -74,6 +75,13 @@ describe("older cloud responses", () => {
   it("has no global actions when settings predate them", () => {
     const { actions: _actions, ...withoutActions } = defaultSettings
     expect(Schema.decodeUnknownSync(Settings)(withoutActions).actions).toStrictEqual([])
+  })
+
+  it("keeps a cloud from before the VM provider choice on sbx, while new installs start on boat", () => {
+    const { tinyVmProvider: _tinyVmProvider, ...beforeTheChoice } = defaultSettings.experimental
+    const settings = Schema.decodeUnknownSync(Settings)({ ...defaultSettings, experimental: beforeTheChoice })
+    expect(settings.experimental.tinyVmProvider).toBe("sbx")
+    expect(defaultSettings.experimental.tinyVmProvider).toBe("boat")
   })
 
   it("reads mergeability as unknown from a pull request summary that omits it", () => {
@@ -147,7 +155,7 @@ describe("listener settings", () => {
   it("refuse an address that binds every interface", () => {
     for (const bindHost of ["0.0.0.0", "::"]) {
       expect(() => setSettings({ remote: { enabled: true, bindHost, port: 48081 } })).toThrow()
-      expect(() => setSettings({ automations: { bindHost, port: 48080 } })).toThrow()
+      expect(() => setSettings({ routines: { bindHost, port: 48080 } })).toThrow()
     }
   })
 
@@ -172,5 +180,14 @@ describe("enabledProviders", () => {
 
   it("starts new threads on the first installed agent when the default one is missing", () => {
     expect(startingProvider(defaultSettings, installed)).toBe("codex")
+  })
+})
+
+describe("isCronExpression", () => {
+  it("accepts a schedule that runs and rejects one that never does", () => {
+    expect(isCronExpression("0 9 * * 1-5", "Asia/Tokyo")).toBe(true)
+    expect(isCronExpression("0 9 30 2 *", "UTC")).toBe(false)
+    expect(isCronExpression("0 9 * * *", "Not/AZone")).toBe(false)
+    expect(isCronExpression("nope", "UTC")).toBe(false)
   })
 })

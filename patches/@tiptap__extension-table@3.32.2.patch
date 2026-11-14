@@ -1,0 +1,180 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 697b6d667c7fd314bddbed3293a3ee55dabc8656..9dd98dc8433c39dc7bf567fe962df1eae5e6e276 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -646,11 +646,12 @@ const Table = _tiptap_core.Node.create({
+ 		name: "table",
+ 		level: "block",
+ 		start: (src) => {
+-			const lines = src.split("\n");
+-			if (lines.length < 2) return -1;
+-			const sep = lines[1];
++			const firstEnd = src.indexOf("\n");
++			if (firstEnd < 0) return -1;
++			const sepEnd = src.indexOf("\n", firstEnd + 1);
++			const sep = src.slice(firstEnd + 1, sepEnd < 0 ? void 0 : sepEnd);
+ 			if (!/^[ \t|:]*-[ \t|:-]*$/.test(sep) || !sep.includes("|")) return -1;
+-			return lines[0].includes("|") ? 0 : -1;
++			return src.slice(0, firstEnd).includes("|") ? 0 : -1;
+ 		},
+ 		tokenize(src, _tokens, helper) {
+ 			const blankLineIndex = src.indexOf("\n\n");
+@@ -664,7 +665,7 @@ const Table = _tiptap_core.Node.create({
+ 			const tableToken = helper.blockTokens(preprocessed)[0];
+ 			if ((tableToken === null || tableToken === void 0 ? void 0 : tableToken.type) !== "table" || !tableToken.raw) return void 0;
+ 			const lineCount = tableToken.raw.split("\n").length;
+-			const raw = src.split("\n").slice(0, lineCount).join("\n");
++			const raw = candidateLines.slice(0, lineCount).join("\n");
+ 			return {
+ 				...tableToken,
+ 				raw
+diff --git a/dist/index.js b/dist/index.js
+index 135f35f6c2ea2558bdeeedaed267a97bc32368ec..1612ee8bf38852d339d7e50f6a30cfa55969141c 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -645,11 +645,12 @@ const Table = Node$1.create({
+ 		name: "table",
+ 		level: "block",
+ 		start: (src) => {
+-			const lines = src.split("\n");
+-			if (lines.length < 2) return -1;
+-			const sep = lines[1];
++			const firstEnd = src.indexOf("\n");
++			if (firstEnd < 0) return -1;
++			const sepEnd = src.indexOf("\n", firstEnd + 1);
++			const sep = src.slice(firstEnd + 1, sepEnd < 0 ? void 0 : sepEnd);
+ 			if (!/^[ \t|:]*-[ \t|:-]*$/.test(sep) || !sep.includes("|")) return -1;
+-			return lines[0].includes("|") ? 0 : -1;
++			return src.slice(0, firstEnd).includes("|") ? 0 : -1;
+ 		},
+ 		tokenize(src, _tokens, helper) {
+ 			const blankLineIndex = src.indexOf("\n\n");
+@@ -663,7 +664,7 @@ const Table = Node$1.create({
+ 			const tableToken = helper.blockTokens(preprocessed)[0];
+ 			if ((tableToken === null || tableToken === void 0 ? void 0 : tableToken.type) !== "table" || !tableToken.raw) return void 0;
+ 			const lineCount = tableToken.raw.split("\n").length;
+-			const raw = src.split("\n").slice(0, lineCount).join("\n");
++			const raw = candidateLines.slice(0, lineCount).join("\n");
+ 			return {
+ 				...tableToken,
+ 				raw
+diff --git a/dist/kit/index.cjs b/dist/kit/index.cjs
+index e8032d8a684f190c468ce472ce99428b1ebcd0b4..e64a11bb2d1d45152ec1e7a5b52a4c3dfd14195c 100644
+--- a/dist/kit/index.cjs
++++ b/dist/kit/index.cjs
+@@ -643,11 +643,12 @@ const Table = _tiptap_core.Node.create({
+ 		name: "table",
+ 		level: "block",
+ 		start: (src) => {
+-			const lines = src.split("\n");
+-			if (lines.length < 2) return -1;
+-			const sep = lines[1];
++			const firstEnd = src.indexOf("\n");
++			if (firstEnd < 0) return -1;
++			const sepEnd = src.indexOf("\n", firstEnd + 1);
++			const sep = src.slice(firstEnd + 1, sepEnd < 0 ? void 0 : sepEnd);
+ 			if (!/^[ \t|:]*-[ \t|:-]*$/.test(sep) || !sep.includes("|")) return -1;
+-			return lines[0].includes("|") ? 0 : -1;
++			return src.slice(0, firstEnd).includes("|") ? 0 : -1;
+ 		},
+ 		tokenize(src, _tokens, helper) {
+ 			const blankLineIndex = src.indexOf("\n\n");
+@@ -661,7 +662,7 @@ const Table = _tiptap_core.Node.create({
+ 			const tableToken = helper.blockTokens(preprocessed)[0];
+ 			if ((tableToken === null || tableToken === void 0 ? void 0 : tableToken.type) !== "table" || !tableToken.raw) return void 0;
+ 			const lineCount = tableToken.raw.split("\n").length;
+-			const raw = src.split("\n").slice(0, lineCount).join("\n");
++			const raw = candidateLines.slice(0, lineCount).join("\n");
+ 			return {
+ 				...tableToken,
+ 				raw
+diff --git a/dist/kit/index.js b/dist/kit/index.js
+index 06f65bfa3fa24adc9009fccc4fd8d4f5e5691269..934ddfeb8b2576f3f9c3fab1273f3a48f54d2918 100644
+--- a/dist/kit/index.js
++++ b/dist/kit/index.js
+@@ -642,11 +642,12 @@ const Table = Node$1.create({
+ 		name: "table",
+ 		level: "block",
+ 		start: (src) => {
+-			const lines = src.split("\n");
+-			if (lines.length < 2) return -1;
+-			const sep = lines[1];
++			const firstEnd = src.indexOf("\n");
++			if (firstEnd < 0) return -1;
++			const sepEnd = src.indexOf("\n", firstEnd + 1);
++			const sep = src.slice(firstEnd + 1, sepEnd < 0 ? void 0 : sepEnd);
+ 			if (!/^[ \t|:]*-[ \t|:-]*$/.test(sep) || !sep.includes("|")) return -1;
+-			return lines[0].includes("|") ? 0 : -1;
++			return src.slice(0, firstEnd).includes("|") ? 0 : -1;
+ 		},
+ 		tokenize(src, _tokens, helper) {
+ 			const blankLineIndex = src.indexOf("\n\n");
+@@ -660,7 +661,7 @@ const Table = Node$1.create({
+ 			const tableToken = helper.blockTokens(preprocessed)[0];
+ 			if ((tableToken === null || tableToken === void 0 ? void 0 : tableToken.type) !== "table" || !tableToken.raw) return void 0;
+ 			const lineCount = tableToken.raw.split("\n").length;
+-			const raw = src.split("\n").slice(0, lineCount).join("\n");
++			const raw = candidateLines.slice(0, lineCount).join("\n");
+ 			return {
+ 				...tableToken,
+ 				raw
+diff --git a/dist/table/index.cjs b/dist/table/index.cjs
+index ca10c242e0bef647b819b345c447d0fc5ef147ae..bf3b837c47076b0e92c31032503d7d155b8fb739 100644
+--- a/dist/table/index.cjs
++++ b/dist/table/index.cjs
+@@ -454,11 +454,12 @@ const Table = _tiptap_core.Node.create({
+ 		name: "table",
+ 		level: "block",
+ 		start: (src) => {
+-			const lines = src.split("\n");
+-			if (lines.length < 2) return -1;
+-			const sep = lines[1];
++			const firstEnd = src.indexOf("\n");
++			if (firstEnd < 0) return -1;
++			const sepEnd = src.indexOf("\n", firstEnd + 1);
++			const sep = src.slice(firstEnd + 1, sepEnd < 0 ? void 0 : sepEnd);
+ 			if (!/^[ \t|:]*-[ \t|:-]*$/.test(sep) || !sep.includes("|")) return -1;
+-			return lines[0].includes("|") ? 0 : -1;
++			return src.slice(0, firstEnd).includes("|") ? 0 : -1;
+ 		},
+ 		tokenize(src, _tokens, helper) {
+ 			const blankLineIndex = src.indexOf("\n\n");
+@@ -472,7 +473,7 @@ const Table = _tiptap_core.Node.create({
+ 			const tableToken = helper.blockTokens(preprocessed)[0];
+ 			if ((tableToken === null || tableToken === void 0 ? void 0 : tableToken.type) !== "table" || !tableToken.raw) return void 0;
+ 			const lineCount = tableToken.raw.split("\n").length;
+-			const raw = src.split("\n").slice(0, lineCount).join("\n");
++			const raw = candidateLines.slice(0, lineCount).join("\n");
+ 			return {
+ 				...tableToken,
+ 				raw
+diff --git a/dist/table/index.js b/dist/table/index.js
+index 32100be49735646f0dde37deeee09f0daeeef476..f3ff07a44adbd9795731c74e66244074c4a6726c 100644
+--- a/dist/table/index.js
++++ b/dist/table/index.js
+@@ -453,11 +453,12 @@ const Table = Node$1.create({
+ 		name: "table",
+ 		level: "block",
+ 		start: (src) => {
+-			const lines = src.split("\n");
+-			if (lines.length < 2) return -1;
+-			const sep = lines[1];
++			const firstEnd = src.indexOf("\n");
++			if (firstEnd < 0) return -1;
++			const sepEnd = src.indexOf("\n", firstEnd + 1);
++			const sep = src.slice(firstEnd + 1, sepEnd < 0 ? void 0 : sepEnd);
+ 			if (!/^[ \t|:]*-[ \t|:-]*$/.test(sep) || !sep.includes("|")) return -1;
+-			return lines[0].includes("|") ? 0 : -1;
++			return src.slice(0, firstEnd).includes("|") ? 0 : -1;
+ 		},
+ 		tokenize(src, _tokens, helper) {
+ 			const blankLineIndex = src.indexOf("\n\n");
+@@ -471,7 +472,7 @@ const Table = Node$1.create({
+ 			const tableToken = helper.blockTokens(preprocessed)[0];
+ 			if ((tableToken === null || tableToken === void 0 ? void 0 : tableToken.type) !== "table" || !tableToken.raw) return void 0;
+ 			const lineCount = tableToken.raw.split("\n").length;
+-			const raw = src.split("\n").slice(0, lineCount).join("\n");
++			const raw = candidateLines.slice(0, lineCount).join("\n");
+ 			return {
+ 				...tableToken,
+ 				raw

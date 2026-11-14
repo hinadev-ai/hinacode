@@ -157,7 +157,7 @@ function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: 
     )
   }
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+    <div className="flex min-h-0 flex-1 scrollbar-gutter-both items-center justify-center overflow-auto p-4">
       {preview === "video" ? (
         // oxlint-disable-next-line jsx-a11y/media-has-caption
         <video src={src} controls aria-label={path} onError={fail} className="max-h-full max-w-full" />
@@ -197,7 +197,7 @@ function MarkdownPreview({ root, path }: { root: string; path: string }) {
     )
   }
   return (
-    <div className="min-h-0 flex-1 overflow-auto">
+    <div className="min-h-0 flex-1 scrollbar-gutter-stable overflow-auto">
       {content.value.truncated && <Note text={m.viewer_truncated()} />}
       <article className="mx-auto max-w-3xl px-6 py-4">
         <Markdown text={content.value.content} baseUrl={projectFileUrl(root, path)} className="prose-sm" />
@@ -448,7 +448,7 @@ function FileContent({
         </div>
       )}
       <div onPointerEnter={startEditing} onFocus={startEditing} className="flex min-h-0 flex-1 flex-col">
-        <Virtualizer className="min-h-0 flex-1 overflow-auto" contentClassName="text-xs">
+        <Virtualizer className="min-h-0 flex-1 scrollbar-gutter-stable overflow-auto" contentClassName="text-xs">
           <File
             file={{ name: path, contents: shown, lang: ansi ? "ansi" : plain ? "text" : undefined }}
             edit={editing}

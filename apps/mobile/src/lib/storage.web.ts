@@ -42,7 +42,6 @@ export async function saveAnswers(serverId: string, answers: RememberedAnswers) 
   try {
     localStorage.setItem(answersKey(serverId), JSON.stringify(answers))
   } catch {
-    // Over the browser's quota: the next launch waits for the server, as it did before anything was saved.
   }
 }
 

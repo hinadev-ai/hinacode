@@ -3,6 +3,7 @@ import type { Subagent } from "@shared/agent.ts"
 import type { RpcResponse } from "@shared/contract.ts"
 import { call } from "@/lib/connection"
 import { errorText } from "@/lib/error-text"
+import { loaderFamily } from "@/lib/remote"
 
 export type SubagentWork = RpcResponse<"subagents.transcript">
 
@@ -27,6 +28,7 @@ const workKey = (threadId: string, callId: string) => `${threadId}:${callId}`
 
 export const useSubagents = create<SubagentsState>()((set, get) => {
   const versions = new Map<string, number>()
+  const loads = new Map<string, Promise<void>>()
   const bump = (key: string) => {
     const version = (versions.get(key) ?? 0) + 1
     versions.set(key, version)
@@ -37,17 +39,26 @@ export const useSubagents = create<SubagentsState>()((set, get) => {
   return {
     byThread: {},
     work: {},
-    load: async (threadId) => {
+    load: (threadId) => {
+      const pending = loads.get(threadId)
+      if (pending !== undefined) return pending
       const version = bump(threadId)
-      const subagents = await call("subagents.list", { threadId })
-      if (versions.get(threadId) === version) get().replace(threadId, subagents)
+      const request = call("subagents.list", { threadId })
+        .then((subagents) => {
+          if (versions.get(threadId) === version) get().replace(threadId, subagents)
+        })
+        .finally(() => {
+          if (loads.get(threadId) === request) loads.delete(threadId)
+        })
+      loads.set(threadId, request)
+      return request
     },
     loadWork: async (threadId, callId) => {
       const key = workKey(threadId, callId)
       const version = bump(key)
       if (get().work[key] === undefined) setWork(key, { status: "loading" })
       try {
-        const work = await call("subagents.transcript", { threadId, callId })
+        const work = await call("subagents.transcript", { threadId, callId, compact: true })
         if (versions.get(key) === version) setWork(key, { status: "ready", work })
       } catch (cause) {
         if (versions.get(key) === version && get().work[key]?.status !== "ready")
@@ -63,10 +74,21 @@ export const useSubagents = create<SubagentsState>()((set, get) => {
     },
     reset: () => {
       versions.clear()
+      loads.clear()
       set({ byThread: {}, work: {} })
     },
   }
 })
+
+export const loadSubagentsAtom = loaderFamily((threadId: string) => useSubagents.getState().load(threadId))
+
+export const loadMissingSubagentsAtom = loaderFamily(async (threadId: string) => {
+  if (useSubagents.getState().byThread[threadId] === undefined) await useSubagents.getState().load(threadId)
+})
+
+export const loadSubagentWorkAtom = loaderFamily((threadId: string, callId: string, _progress: string | undefined) =>
+  useSubagents.getState().loadWork(threadId, callId),
+)
 
 export const useThreadSubagents = (threadId: string) =>
   useSubagents((state) => state.byThread[threadId] ?? NO_SUBAGENTS)

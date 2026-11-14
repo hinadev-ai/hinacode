@@ -82,7 +82,7 @@ export function DeviceList({ thread }: { thread: Thread }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <div className="flex min-h-0 flex-1 scrollbar-gutter-stable flex-col overflow-y-auto">
       <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         {iosReady && loaded.models.length > 0 && (
           <NewSimulatorMenu models={loaded.models} disabled={pending} onCreate={create} />

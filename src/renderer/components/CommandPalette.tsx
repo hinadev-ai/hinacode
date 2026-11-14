@@ -151,7 +151,7 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem, remember: boo
       <Autocomplete.Empty className="px-3.5 py-6 text-center text-sm text-muted-foreground empty:hidden">
         {m.palette_empty()}
       </Autocomplete.Empty>
-      <Autocomplete.List className="min-h-0 scroll-py-1 overflow-y-auto overscroll-contain p-1.5 data-empty:hidden">
+      <Autocomplete.List className="min-h-0 scroll-py-1 scrollbar-gutter-stable overflow-y-auto overscroll-contain p-1.5 data-empty:hidden">
         {(group: (typeof groups)[number]) => (
           <Autocomplete.Group key={group.group} items={group.items} className="not-last:mb-1.5">
             <Autocomplete.GroupLabel className="px-2.5 pt-1.5 pb-1 text-xs font-medium text-muted-foreground select-none">

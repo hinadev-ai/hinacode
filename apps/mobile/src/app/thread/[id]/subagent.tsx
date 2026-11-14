@@ -1,8 +1,9 @@
+import { useAtomMount } from "@effect/atom-react"
 import { outputText, type Subagent, type SubagentStatus } from "@shared/agent.ts"
 import type { Message, MessagePart, Thread } from "@shared/domain.ts"
 import { inputField, statusOfCall, subagentReport } from "@shared/subagents.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import { ActivityIndicator, Pressable, ScrollView, type ScrollViewInstance, StyleSheet, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { AssistantMessage } from "@/components/chat"
@@ -14,7 +15,13 @@ import { useTheme } from "@/hooks/use-theme"
 import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
-import { type SubagentWork, useSubagentByCallId, useSubagents, useSubagentWork } from "@/stores/subagents"
+import {
+  loadMissingSubagentsAtom,
+  loadSubagentWorkAtom,
+  type SubagentWork,
+  useSubagentByCallId,
+  useSubagentWork,
+} from "@/stores/subagents"
 import { useThreadRoot, useThreads } from "@/stores/threads"
 
 type Params = { id: string; callId: string }
@@ -40,13 +47,8 @@ export default function SubagentScreen() {
   const work = useSubagentWork(id, callId)
   const progress = subagent && [subagent.status, subagent.toolUses, subagent.lastTool, subagent.summary].join("|")
 
-  useEffect(() => {
-    if (connection === "connected") void useSubagents.getState().loadWork(id, callId)
-  }, [connection, id, callId, progress])
-  useEffect(() => {
-    if (connection === "connected" && useSubagents.getState().byThread[id] === undefined)
-      void useSubagents.getState().load(id).catch(() => {})
-  }, [connection, id])
+  useAtomMount(loadSubagentWorkAtom(id, callId, progress))
+  useAtomMount(loadMissingSubagentsAtom(id))
 
   return (
     <SafeAreaView edges={["bottom"]} style={[styles.flex, { backgroundColor: theme.background }]}>

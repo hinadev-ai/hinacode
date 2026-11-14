@@ -28,10 +28,7 @@ const homeActions = [
   },
 ] as const satisfies readonly { name: string; label: string; icon: IconName; symbol: string; href: string }[]
 
-/**
- * The filter pill and the list's actions as iOS toolbar items, so the system draws their glass capsules. The filter opens
- * a sheet rather than a menu: each pick re-renders the toolbar, which replaces a system menu and closes it mid-pick.
- */
+// FIXME: Each pick re-renders the iOS toolbar, which replaces a system menu and closes it mid-pick, so the filter opens a sheet.
 export function HomeToolbar() {
   const railed = useSideRail() > 0
   const connection = useConnection((state) => state.status)
@@ -66,7 +63,6 @@ export function HomeToolbar() {
   )
 }
 
-/** The same filter pill and actions as header buttons, each opening a sheet, where there is no glass toolbar. */
 export function HomeHeaderButtons() {
   const theme = useTheme()
   const connection = useConnection((state) => state.status)
@@ -87,7 +83,6 @@ export function HomeHeaderButtons() {
   )
 }
 
-/** Add a project or a server, the list's actions behind its `...` button. */
 export function HomeActionsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const theme = useTheme()
   const go = (href: (typeof homeActions)[number]["href"]) => {

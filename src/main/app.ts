@@ -9,6 +9,8 @@ import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
 import { MagpieProvider } from "./agents/magpie/index.ts"
 import { OpencodeProvider } from "./agents/opencode/index.ts"
+import * as AppConnections from "./apps/AppConnections.ts"
+import * as AppServer from "./apps/server.ts"
 import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
 import * as Mcp from "./mcp/index.ts"
@@ -30,11 +32,10 @@ import * as Attachments from "./services/Attachments.ts"
 import * as Boat from "./services/boat/Boat.ts"
 import * as Settle from "./services/Settle.ts"
 import * as Browser from "./services/Browser.ts"
-import * as Automations from "./services/automations/Automations.ts"
+import * as Routines from "./services/routines/Routines.ts"
+import * as Scheduler from "./services/Scheduler.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
-import * as Conductor from "./services/Conductor.ts"
 import * as Environments from "./services/Environments.ts"
-import * as EventBus from "./services/EventBus.ts"
 import { type Events, makeEventsLayer } from "./services/Events.ts"
 import * as Favicons from "./services/Favicons.ts"
 import * as Files from "./services/Files.ts"
@@ -46,7 +47,6 @@ import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
-import * as PullRequestLifecycle from "./services/PullRequestLifecycle.ts"
 import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
 import * as RelayAccount from "./services/RelayAccount.ts"
 import * as Scratch from "./services/Scratch.ts"
@@ -215,6 +215,7 @@ export const makeAppLayer = ({
     naming,
     remoteAccess,
     relay,
+    AppConnections.layer.pipe(Layer.provide(remoteAccess)),
     tinyVm,
     peers,
     devices,
@@ -222,25 +223,26 @@ export const makeAppLayer = ({
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   const services = Layer.mergeAll(
-    Automations.layer,
+    Routines.layer.pipe(Layer.provide(Scheduler.layer)),
     Settle.layer,
     ArtifactFeedback.layer,
     PullRequestWatcher.layer,
-    PullRequestLifecycle.layer,
     providers.simulated ? PullRequestGuides.idleLayer : PullRequestGuides.layer,
     updates,
     Mcp.serverLayer,
     AgentLogins.layer(join(userData, "cache")),
     SessionImports.layer,
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
+    AppConnections.followRelayLayer,
+    AppServer.layer.pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
-  return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer, Conductor.layer).pipe(
+  return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
     Layer.provide(providers.layer.pipe(Layer.provide(Layer.mergeAll(settings, Secrets.layer, binaries)))),
     Layer.provideMerge(binaries),
     Layer.provideMerge(SourceControl.layer),
-    Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer, EventBus.layer)),
+    Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provideMerge(makeEventsLayer(toWindows)),
     Layer.provide(Layer.mergeAll(Db.layer(join(userData, "hinacode.sqlite")), keyring)),
     Layer.provide(NodeServices.layer),

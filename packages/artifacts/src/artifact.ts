@@ -61,6 +61,14 @@ const textTypes: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".txt": "text/plain",
   ".md": "text/markdown",
+  ".csv": "text/plain",
+  ".tsv": "text/plain",
+  ".ts": "text/plain",
+  ".toml": "text/plain",
+  ".xml": "application/xml",
+  ".yaml": "text/yaml",
+  ".yml": "text/yaml",
+  ".map": "application/json",
 }
 
 const binaryTypes: Record<string, string> = {
@@ -71,6 +79,9 @@ const binaryTypes: Record<string, string> = {
   ".webp": "image/webp",
   ".woff2": "font/woff2",
   ".wasm": "application/wasm",
+  ".pdf": "application/pdf",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
 }
 
 export const contentType = (path: string) => {

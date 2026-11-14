@@ -2,12 +2,12 @@ import { appendFileSync, readFileSync, watch } from "node:fs"
 import { basename } from "node:path"
 import { createInterface } from "node:readline"
 
+let lastControl = {}
 const control = () => {
   try {
-    return JSON.parse(readFileSync(process.env.FAKE_CODEX_CONTROL, "utf8"))
-  } catch {
-    return {}
-  }
+    lastControl = JSON.parse(readFileSync(process.env.FAKE_CODEX_CONTROL, "utf8"))
+  } catch {}
+  return lastControl
 }
 const send = (message) => {
   if (control().noise) process.stdout.write('WARN codex_core: config.toml has an unknown key\n{"id": \n')
@@ -17,8 +17,13 @@ const crash = (code) => {
   process.stderr.write("thread 'main' panicked at codex-rs/app-server/src/lib.rs: boom\n")
   process.exit(code)
 }
-const completeTurn = (threadId, turnId, status) =>
-  send({ method: "turn/completed", params: { threadId, turn: { id: turnId, status, error: null } } })
+const turnCompleted = (threadId, turnId, status) => ({
+  method: "turn/completed",
+  params: { threadId, turn: { id: turnId, status, error: null } },
+})
+const completeTurn = (threadId, turnId, status) => send(turnCompleted(threadId, turnId, status))
+const sendInOneWrite = (messages) =>
+  process.stdout.write(messages.map((message) => `${JSON.stringify(message)}\n`).join(""))
 
 const sandboxPolicy = (mode) =>
   mode === "danger-full-access"
@@ -64,24 +69,27 @@ const spawnSubagent = (threadId, turnId) => {
   childItem("item/completed", { item: { ...command, status: "completed", aggregatedOutput: null, exitCode: 0 } })
 }
 
-const finishSubagent = () => {
+const subagentFinishMessages = () => {
   const child = "codex-child-thread"
   const message = { type: "agentMessage", id: "child-reply", text: "218 lines" }
-  send({ method: "item/completed", params: { threadId: child, turnId: "child-turn", item: message } })
-  completeTurn(child, "child-turn", "completed")
+  return [
+    { method: "item/completed", params: { threadId: child, turnId: "child-turn", item: message } },
+    turnCompleted(child, "child-turn", "completed"),
+  ]
 }
 
-let subagentFinished = false
+let subagentFinishSent = false
 const held = []
 const terminals = new Map()
+const loadedSandboxes = new Map()
 let turns = 0
-let activeQuestion = null
+let activeRequest = null
 
 const reply = ({ id, method, params }) => {
   if (method === undefined) {
-    if (id === activeQuestion?.id) {
-      completeTurn(activeQuestion.threadId, activeQuestion.turnId, "completed")
-      activeQuestion = null
+    if (id === activeRequest?.id) {
+      completeTurn(activeRequest.threadId, activeRequest.turnId, "completed")
+      activeRequest = null
     }
     return
   }
@@ -131,12 +139,21 @@ const reply = ({ id, method, params }) => {
       return send({ id, result: pages[index] ?? { data: [], nextCursor: null } })
     }
     case "thread/start":
+      loadedSandboxes.set("codex-thread", sandboxPolicy(params.sandbox))
+      return send({ id, result: { thread: { id: "codex-thread" }, sandbox: loadedSandboxes.get("codex-thread") } })
     case "thread/resume":
-      return send({ id, result: { thread: { id: "codex-thread" }, sandbox: sandboxPolicy(params.sandbox) } })
+      if (!loadedSandboxes.has("codex-thread")) loadedSandboxes.set("codex-thread", sandboxPolicy(params.sandbox))
+      return send({ id, result: { thread: { id: "codex-thread" }, sandbox: loadedSandboxes.get("codex-thread") } })
+    case "thread/inject_items":
+      return send({ id, result: {} })
+    case "thread/unsubscribe":
+      loadedSandboxes.delete(params.threadId)
+      return send({ id, result: {} })
     case "thread/fork":
       return send({ id, result: { thread: { id: "codex-fork" }, sandbox: sandboxPolicy(params.sandbox) } })
     case "turn/start": {
       const turnId = `turn-${++turns}`
+      if (params.sandboxPolicy) loadedSandboxes.set(params.threadId, params.sandboxPolicy)
       send({ id, result: { turn: { id: turnId } } })
       const { question, postedQuestions, unauthorized, crashMidTurn } = control()
       if (crashMidTurn) {
@@ -152,11 +169,25 @@ const reply = ({ id, method, params }) => {
         return completeTurn(params.threadId, turnId, "failed")
       }
       if (question) {
-        activeQuestion = { id: 900 + turns, threadId: params.threadId, turnId }
+        activeRequest = { id: 900 + turns, threadId: params.threadId, turnId }
         return send({
-          id: activeQuestion.id,
+          id: activeRequest.id,
           method: "item/tool/requestUserInput",
           params: { threadId: params.threadId, turnId, itemId: "question-tool", questions: question },
+        })
+      }
+      if (control().mcpToolApproval) {
+        activeRequest = { id: 950 + turns, threadId: params.threadId, turnId }
+        return send({
+          id: activeRequest.id,
+          method: "mcpServer/elicitation/request",
+          params: {
+            threadId: params.threadId,
+            turnId,
+            serverName: "linear",
+            message: "Allow linear to run create_issue?",
+            _meta: { codex_approval_kind: "mcp_tool_call" },
+          },
         })
       }
       if (postedQuestions) {
@@ -206,6 +237,10 @@ const reply = ({ id, method, params }) => {
         terminals.set(params.threadId, [{ itemId: item.id, processId: item.processId, command: item.command }])
         send({ method: "item/started", params: { threadId: params.threadId, turnId, item } })
       }
+      if (control().subagentEndsWithTurn) {
+        subagentFinishSent = true
+        return sendInOneWrite([turnCompleted(params.threadId, turnId, "completed"), ...subagentFinishMessages()])
+      }
       if (!control().holdTurn) {
         for (const tokenUsage of turnTokenUsage) {
           send({ method: "thread/tokenUsage/updated", params: { threadId: params.threadId, turnId, tokenUsage } })
@@ -246,6 +281,7 @@ const reply = ({ id, method, params }) => {
       return completeTurn(params.threadId, turnId, "completed")
     }
     case "turn/interrupt":
+      activeRequest = null
       send({ id, result: {} })
       return completeTurn(params.threadId, params.turnId, "interrupted")
     default:
@@ -264,17 +300,17 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 })
 
 watch(process.env.FAKE_CODEX_CONTROL, () => {
-  if (activeQuestion && control().cancelQuestion) {
+  if (activeRequest && control().cancelQuestion) {
     send({
       method: "serverRequest/resolved",
-      params: { threadId: activeQuestion.threadId, requestId: activeQuestion.id },
+      params: { threadId: activeRequest.threadId, requestId: activeRequest.id },
     })
-    completeTurn(activeQuestion.threadId, activeQuestion.turnId, "completed")
-    activeQuestion = null
+    completeTurn(activeRequest.threadId, activeRequest.turnId, "completed")
+    activeRequest = null
   }
   if (held.length > 0 && control().release) held.splice(0).forEach(reply)
-  if (control().finishSubagent && !subagentFinished) {
-    subagentFinished = true
-    finishSubagent()
+  if (control().finishSubagent && !subagentFinishSent) {
+    subagentFinishSent = true
+    subagentFinishMessages().forEach(send)
   }
 })

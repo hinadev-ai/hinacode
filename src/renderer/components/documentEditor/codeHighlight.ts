@@ -12,7 +12,7 @@ type HighlightState = { readonly theme: CodeTheme; readonly decorations: Decorat
 export const codeHighlightKey = new PluginKey<HighlightState>("documentCodeHighlight")
 
 const highlighters = new Map<string, Loaded | null>()
-const loading = new Set<string>()
+const redrawsWhenLoaded = new Map<string, Set<() => void>>()
 const tokenized = new WeakMap<Node, { readonly key: string; readonly runs: ReadonlyArray<Run> }>()
 
 const highlight = (doc: Node, theme: CodeTheme, redraw: () => void) => {
@@ -25,12 +25,15 @@ const highlight = (doc: Node, theme: CodeTheme, redraw: () => void) => {
     const key = `${theme.codeTheme ?? theme.scheme}\0${language}`
     const highlighter = highlighters.get(key)
     if (highlighter === undefined) {
-      if (!loading.has(key)) {
-        loading.add(key)
+      const waiting = redrawsWhenLoaded.get(key)
+      if (waiting !== undefined) waiting.add(redraw)
+      else {
+        redrawsWhenLoaded.set(key, new Set([redraw]))
         void highlighterFor(theme.codeTheme, theme.scheme, language).then((loaded) => {
           highlighters.set(key, loaded)
-          loading.delete(key)
-          redraw()
+          const redraws = redrawsWhenLoaded.get(key) ?? []
+          redrawsWhenLoaded.delete(key)
+          for (const redrawEditor of redraws) redrawEditor()
         })
       }
       return false

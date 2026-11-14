@@ -1,5 +1,8 @@
 import type { ThreadVm, VmControl } from "@shared/domain.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
+import { useAtomValue } from "@effect/atom-react"
+import { Effect } from "effect"
+import { Atom } from "effect/reactivity"
 import { type ReactNode, useEffect, useState } from "react"
 import { StyleSheet, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
@@ -8,10 +11,11 @@ import { Spinner } from "@/components/motion"
 import { Button, EmptyState, Notice } from "@/components/ui"
 import { useThreadConnection } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { call } from "@/lib/connection"
-import { confirmDestructive } from "@/lib/confirm"
+import { call, request } from "@/lib/connection"
+import { confirmAction } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
+import { asLoaded, beforeFirstHandshake, familyOf } from "@/lib/remote"
 import { useThreadVm, useVms } from "@/stores/vms"
 
 type RunningVm = Extract<ThreadVm, { status: "running" }>
@@ -82,9 +86,8 @@ function useVmAction() {
       await action()
     } catch (cause) {
       setError(errorText(cause))
-    } finally {
-      setBusy(false)
     }
+    setBusy(false)
   }
   return { busy, error, run }
 }
@@ -94,7 +97,6 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const action = useVmAction()
   const [attempt, setAttempt] = useState(0)
 
-  // Like the desktop panel, leaving the screen gives the VM back to the agent, which waits while the user drives.
   useEffect(
     () => () => {
       const latest = useVms.getState().byThread[threadId]
@@ -107,16 +109,23 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const setControl = (control: VmControl) =>
     action.run(async () => replaceVm(threadId, await call("vm.control", { threadId, control })))
   const stop = () =>
-    confirmDestructive(copy("mobile_vm_stop_title"), copy("mobile_vm_stop_body"), copy("mobile_vm_stop"), () =>
-      void action.run(() => call("vm.stop", { threadId })),
+    confirmAction(
+      copy("mobile_vm_stop_title"),
+      copy("mobile_vm_stop_body"),
+      copy("mobile_vm_stop"),
+      () => void action.run(() => call("vm.stop", { threadId })),
+      { destructive: true },
     )
+
+  const session = `${vm.sandboxId}:${attempt}`
 
   return (
     <>
       <View style={styles.flex}>
         <Desktop
-          key={`${vm.sandboxId}:${attempt}`}
+          key={session}
           threadId={threadId}
+          session={session}
           control={vm.control}
           onReconnect={() => setAttempt(attempt + 1)}
         />
@@ -170,37 +179,40 @@ type DesktopLink =
   | { readonly status: "ready"; readonly url: string; readonly shown: boolean }
   | { readonly status: "error"; readonly message: string | null }
 
-/** The boat desktop stream, behind a shield while the agent drives so a stray touch cannot type into its screen. */
+const desktopUrl = familyOf((threadId: string, _session: string) =>
+  Atom.make((get) => (beforeFirstHandshake(get) ? Effect.never : request("vm.desktop.url", { threadId }))),
+)
+
 function Desktop({
   threadId,
+  session,
   control,
   onReconnect,
 }: {
   threadId: string
+  session: string
   control: VmControl
   onReconnect: () => void
 }) {
   const theme = useTheme()
-  const [link, setLink] = useState<DesktopLink>({ status: "loading" })
-
-  useEffect(() => {
-    let mounted = true
-    call("vm.desktop.url", { threadId }).then(
-      ({ url }) => mounted && setLink({ status: "ready", url, shown: false }),
-      (cause: unknown) => mounted && setLink({ status: "error", message: errorText(cause) }),
-    )
-    return () => {
-      mounted = false
-    }
-  }, [threadId])
+  const loaded = asLoaded(useAtomValue(desktopUrl(threadId, session)))
+  const [shown, setShown] = useState(false)
+  const [streamFailed, setStreamFailed] = useState(false)
+  const link: DesktopLink = streamFailed
+    ? { status: "error", message: null }
+    : loaded === null
+      ? { status: "loading" }
+      : "error" in loaded
+        ? { status: "error", message: loaded.error }
+        : { status: "ready", url: loaded.value.url, shown }
 
   return (
     <View style={[styles.flex, { backgroundColor: theme.surface }]}>
       {link.status === "ready" && (
         <DesktopStream
           url={link.url}
-          onLoad={() => setLink((current) => (current.status === "ready" ? { ...current, shown: true } : current))}
-          onFail={() => setLink({ status: "error", message: null })}
+          onLoad={() => setShown(true)}
+          onFail={() => setStreamFailed(true)}
         />
       )}
       {control === "agent" && <View testID="vm-shield" style={StyleSheet.absoluteFill} />}

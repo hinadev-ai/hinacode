@@ -1,4 +1,4 @@
-import { Predicate, Schema } from "effect"
+import { type Effect, Predicate, Schema } from "effect"
 import type { ArtifactKind } from "./artifact.ts"
 import type { AccessMode, Attachment } from "./domain.ts"
 import { PlanLimits, UsageLimit } from "./limits.ts"
@@ -347,6 +347,7 @@ export interface RunTurnInput {
   readonly home: AccountHome | null
   readonly mcpServer: McpConnection
   readonly instructions: string
+  readonly onOpen?: Effect.Effect<void>
 }
 
 export interface McpConnection {

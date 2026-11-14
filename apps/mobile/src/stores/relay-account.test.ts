@@ -120,7 +120,7 @@ it("keeps the credential when the first sync fails, and says why", async () => {
 })
 
 it("discards the redirect when logout happens while the sign-in is open", async () => {
-  let redirect = (_: string | null) => {}
+  let redirect: (url: string | null) => void = () => {}
   const signingIn = signInWith(() => new Promise((resolve) => (redirect = resolve)))
 
   await useRelayAccount.getState().signOut()
@@ -133,7 +133,7 @@ it("discards the redirect when logout happens while the sign-in is open", async 
 })
 
 it("revokes the credential and stays signed out when logout beats the exchange", async () => {
-  let answer = (_: Response) => {}
+  let answer: (response: Response) => void = () => {}
   const revoked: string[] = []
   vi.stubGlobal("fetch", async (url: string) => {
     if (url.endsWith("/v1/sign-in-codes/exchange")) return new Promise<Response>((resolve) => (answer = resolve))

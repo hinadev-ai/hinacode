@@ -1,6 +1,6 @@
 # Pick a branch or pull request for the first turn
 
-Status: Building
+Status: Shipped
 Date: 2026-10-14
 
 ## Problem

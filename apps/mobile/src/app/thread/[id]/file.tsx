@@ -1,5 +1,11 @@
 import type { RpcResponse } from "@shared/contract.ts"
 import type { FsFileContent, Thread } from "@shared/domain.ts"
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { sha256 } from "@noble/hashes/sha2.js"
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js"
+import { Effect } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
+import { File, Paths } from "expo-file-system"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { FlatList, Image, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
@@ -9,15 +15,16 @@ import { SvgXml } from "react-native-svg"
 import { Failure, Loading } from "@/components/files"
 import { Markdown } from "@/components/markdown"
 import { EmptyState, Notice, type Segment, SegmentedControl } from "@/components/ui"
+import { VideoPlayer } from "@/components/video-player"
 import { cssEase } from "@/constants/motion"
 import { mono, READABLE_WIDTH, SyntaxColors } from "@/constants/theme"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { type CodeLine, codeLines } from "@/lib/code-lines"
-import { call } from "@/lib/connection"
+import type { RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
-import { errorText } from "@/lib/error-text"
-import { basename, dirname, fileKind, svgAspectRatio } from "@/lib/file-kinds"
+import { basename, dirname, extension, fileKind, svgAspectRatio } from "@/lib/file-kinds"
 import { useHighlight } from "@/lib/highlight"
+import { asLoaded, familyOf, rpcFamily } from "@/lib/remote"
 import { useThreadRoot, useThreads } from "@/stores/threads"
 
 type Params = { id: string; path: string; line?: string }
@@ -77,6 +84,8 @@ function FileBody({ thread, path, line }: { thread: Thread; path: string; line: 
       return <ImageFile root={root} path={path} />
     case "svg":
       return <SvgFile root={root} path={path} />
+    case "video":
+      return <VideoFile root={root} path={path} />
     case "markdown":
       return <MarkdownFile root={root} path={path} line={line} threadId={thread.id} />
     case "text":
@@ -84,33 +93,15 @@ function FileBody({ thread, path, line }: { thread: Thread; path: string; line: 
   }
 }
 
-type Loaded<T> = { readonly value: T } | { readonly error: string }
+const fileReads = { "fs.read": rpcFamily("fs.read"), "fs.preview": rpcFamily("fs.preview") }
 
-/** Reads `path` under `root` with `method`, again on `retry`. The result is null while loading. */
-function useFile<M extends "fs.read" | "fs.preview">(method: M, root: string, path: string) {
-  const key = `${method}\0${root}\0${path}`
-  const [result, setResult] = useState<(Loaded<RpcResponse<M>> & { key: string }) | null>(null)
-  const [revision, setRevision] = useState(0)
-  useEffect(() => {
-    let current = true
-    call(method, { root, path }).then(
-      (value) => current && setResult({ key, value }),
-      (cause) => current && setResult({ key, error: errorText(cause) }),
-    )
-    return () => {
-      current = false
-    }
-  }, [key, method, root, path, revision])
-  const retry = () => {
-    setResult(null)
-    setRevision(revision + 1)
-  }
-  return { result: result?.key === key ? result : null, retry }
+function useFile<M extends keyof typeof fileReads>(method: M, root: string, path: string) {
+  const file = fileReads[method]({ root, path }) as Atom.Atom<AsyncResult.AsyncResult<RpcResponse<M>, RpcError>>
+  return { result: asLoaded(useAtomValue(file)), retry: useAtomRefresh(file) }
 }
 
 const useFileText = (root: string, path: string) => useFile("fs.read", root, path)
 
-/** Loading, error and binary states around a file's text. */
 function WithText({
   root,
   path,
@@ -191,7 +182,6 @@ function MarkdownFile({
   )
 }
 
-/** Highlighting a whole megabyte would stall the phone, so only the start is colored. */
 const HIGHLIGHT_LIMIT = 300_000
 const PAGE_PADDING = 16
 const LINE_HEIGHT = 18
@@ -276,7 +266,6 @@ function CodeView({
 
 const fadeOut = { from: { opacity: 1 }, to: { opacity: 0 } }
 
-/** Tints the line a search hit opened at, then fades. Under reduce motion the tint stays briefly and goes. */
 function LineFlash() {
   const theme = useTheme()
   const reduced = useReducedMotion()
@@ -321,22 +310,22 @@ function ImageFile({ root, path }: { root: string; path: string }) {
   )
 }
 
-/** As wide as the screen, or its natural width when narrower, keeping its aspect ratio. */
+// FIXME: `onLoad` reports no size on react-native-web, so the image is measured on its own.
+const imageSize = familyOf((uri: string) =>
+  Atom.make(
+    Effect.callback<{ width: number; height: number } | null>((resume) =>
+      Image.getSize(
+        uri,
+        (width, height) => resume(Effect.succeed(width > 0 && height > 0 ? { width, height } : null)),
+        () => resume(Effect.succeed(null)),
+      ),
+    ),
+  ),
+)
+
 function FittedImage({ uri, label }: { uri: string; label: string }) {
   const theme = useTheme()
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null)
-  // `onLoad` reports no size on react-native-web, so the image is measured on its own.
-  useEffect(() => {
-    let current = true
-    Image.getSize(
-      uri,
-      (width, height) => current && width > 0 && height > 0 && setSize({ width, height }),
-      () => {},
-    )
-    return () => {
-      current = false
-    }
-  }, [uri])
+  const size = AsyncResult.getOrElse(useAtomValue(imageSize(uri)), () => null)
   return (
     <Image
       source={{ uri }}
@@ -350,6 +339,33 @@ function FittedImage({ uri, label }: { uri: string; label: string }) {
       ]}
     />
   )
+}
+
+// FIXME: AVPlayer and ExoPlayer cannot open a data URL, so the native apps play a copy in the cache.
+async function playableUri(root: string, path: string, dataUrl: string) {
+  if (Platform.OS === "web") return dataUrl
+  const name = bytesToHex(sha256(utf8ToBytes(`${root}\0${path}`)))
+  const file = new File(Paths.cache, `video-${name}.${extension(path)}`)
+  await file.write(dataUrl.slice(dataUrl.indexOf(",") + 1), { encoding: "base64" })
+  return file.uri
+}
+
+const videoFiles = familyOf((root: string, path: string) =>
+  Atom.make((get) =>
+    get
+      .result(fileReads["fs.preview"]({ root, path }))
+      .pipe(Effect.flatMap(({ dataUrl }) => Effect.promise(() => playableUri(root, path, dataUrl)))),
+  ),
+)
+
+function VideoFile({ root, path }: { root: string; path: string }) {
+  const video = videoFiles(root, path)
+  const result = asLoaded(useAtomValue(video))
+  const retry = useAtomRefresh(fileReads["fs.preview"]({ root, path }))
+  if (result === null) return <Loading label={copy("mobile_files_loading_file")} />
+  if ("error" in result) return <Failure message={result.error} onRetry={retry} />
+  const label = copy("mobile_files_video_label", { name: basename(path) })
+  return <VideoPlayer key={result.value} uri={result.value} label={label} />
 }
 
 function SvgFile({ root, path }: { root: string; path: string }) {
@@ -380,7 +396,6 @@ function SvgFile({ root, path }: { root: string; path: string }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  // iOS centers the title, Android puts it after the back button.
   title: { alignItems: Platform.OS === "ios" ? "center" : "flex-start" },
   titleName: { fontSize: 16, fontWeight: "600" },
   titleFolder: { fontSize: 12, fontFamily: mono },
@@ -398,7 +413,7 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     fontVariant: ["tabular-nums"],
   },
-  // A browser keeps a flex item as wide as its longest token unless it may shrink, so a long one ran off screen.
+  // FIXME: A browser keeps a flex item as wide as its longest token unless it may shrink, so a long one ran off screen.
   codeText: { flex: 1, minWidth: 0, fontFamily: mono, fontSize: 12, lineHeight: LINE_HEIGHT },
   comment: { fontStyle: "italic" },
   media: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 16 },

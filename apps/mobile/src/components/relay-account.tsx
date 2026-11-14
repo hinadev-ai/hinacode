@@ -8,13 +8,12 @@ import { Button, Notice } from "@/components/ui"
 import { mono, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useTheme } from "@/hooks/use-theme"
-import { confirmDestructive } from "@/lib/confirm"
+import { confirmAction } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
 import { DEFAULT_RELAY_URL } from "@/lib/relay-account"
 import { relativeTime } from "@/lib/relative-time"
 import { useRelayAccount } from "@/stores/relay-account"
 
-/** Signs in to the relay in the browser, so every machine shown on the account appears here. */
 export function RelayAccountSection() {
   const serviceUrl = useRelayAccount((state) => state.serviceUrl)
   const unauthorized = useRelayAccount((state) => state.unauthorized)
@@ -82,11 +81,12 @@ function RelayStatus({ serviceUrl }: { serviceUrl: string }) {
           icon="RiLogoutBoxRLine"
           label={copy("mobile_relay_sign_out")}
           onPress={() =>
-            confirmDestructive(
+            confirmAction(
               copy("mobile_relay_sign_out_title"),
               copy("mobile_relay_sign_out_message"),
               copy("mobile_relay_sign_out"),
               () => void signOut(),
+              { destructive: true },
             )
           }
         />
@@ -102,7 +102,6 @@ const authenticate = async (url: string, redirectUri: string) => {
   return result.type === "success" ? result.url : null
 }
 
-/** Signs in on the relay's page in the system auth sheet, which hands the code back to this phone. */
 function RelaySignIn({ initialUrl }: { initialUrl: string }) {
   const theme = useTheme()
   const signIn = useRelayAccount((state) => state.signIn)
@@ -116,11 +115,9 @@ function RelaySignIn({ initialUrl }: { initialUrl: string }) {
     }
     setBusy(true)
     setError(null)
-    try {
-      setError(await signIn({ serviceUrl: serviceUrl.trim(), deviceName, random: getRandomBytes(32), authenticate }))
-    } finally {
-      setBusy(false)
-    }
+    await signIn({ serviceUrl: serviceUrl.trim(), deviceName, random: getRandomBytes(32), authenticate })
+      .then(setError)
+      .finally(() => setBusy(false))
   }
   const inputStyle = [styles.input, { color: theme.text, backgroundColor: theme.background, borderColor: theme.border }]
   return (

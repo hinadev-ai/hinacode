@@ -1,5 +1,8 @@
 import type { Thread, ThreadSearchHit } from "@shared/domain.ts"
-import { type ReactNode, useEffect, useState } from "react"
+import { useAtomValue } from "@effect/atom-react"
+import { Cause, Effect } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
+import type { ReactNode } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { GroupedCard, SectionHeading } from "@/components/grouped-card"
 import { Icon } from "@/components/icon"
@@ -11,11 +14,12 @@ import { threadStatusLabel } from "@/constants/thread-status"
 import { useNow } from "@/hooks/use-now"
 import { useThreadFilter } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { call } from "@/lib/connection"
+import { request, type RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { matchParts } from "@/lib/match-parts"
 import { openThread } from "@/lib/navigation"
+import { familyOf, beforeFirstHandshake } from "@/lib/remote"
 import { relativeTime } from "@/lib/relative-time"
 import { hitsWithinFilter, withinFilter } from "@/lib/thread-filter"
 import { listedThreads, matchThreads, useThreads } from "@/stores/threads"
@@ -31,29 +35,23 @@ type MessageSearch =
   | { readonly state: "done"; readonly hits: readonly ThreadSearchHit[] }
   | { readonly state: "error"; readonly error: string }
 
-type Answer = { readonly query: string; readonly hits: readonly ThreadSearchHit[]; readonly error: string | null }
+const messageSearch = familyOf((query: string) =>
+  Atom.make((get) => {
+    if (beforeFirstHandshake(get)) return Effect.never
+    return Effect.sleep(DEBOUNCE_MS).pipe(Effect.andThen(request("search.threads", { query, limit: MESSAGE_LIMIT })))
+  }),
+)
 
-/** Messages that contain `query`, asked 150 ms after the last keystroke. An answer to an older query is dropped. */
+const idleSearch = Atom.make(AsyncResult.initial<readonly ThreadSearchHit[], RpcError>())
+
 function useMessageSearch(query: string): MessageSearch {
   const trimmed = query.trim()
-  const [answer, setAnswer] = useState<Answer | null>(null)
-  useEffect(() => {
-    if (trimmed.length < MIN_MESSAGE_QUERY) return
-    let current = true
-    const timer = setTimeout(() => {
-      call("search.threads", { query: trimmed, limit: MESSAGE_LIMIT }).then(
-        (hits) => current && setAnswer({ query: trimmed, hits, error: null }),
-        (cause: unknown) => current && setAnswer({ query: trimmed, hits: [], error: errorText(cause) }),
-      )
-    }, DEBOUNCE_MS)
-    return () => {
-      current = false
-      clearTimeout(timer)
-    }
-  }, [trimmed])
-  if (trimmed.length < MIN_MESSAGE_QUERY) return { state: "idle" }
-  if (answer === null || answer.query !== trimmed) return { state: "loading" }
-  return answer.error === null ? { state: "done", hits: answer.hits } : { state: "error", error: answer.error }
+  const searched = trimmed.length >= MIN_MESSAGE_QUERY
+  const result = useAtomValue(searched ? messageSearch(trimmed) : idleSearch)
+  if (!searched) return { state: "idle" }
+  if (AsyncResult.isSuccess(result)) return { state: "done", hits: result.value }
+  if (AsyncResult.isFailure(result)) return { state: "error", error: errorText(Cause.squash(result.cause)) }
+  return { state: "loading" }
 }
 
 export type SearchScope = "all" | "threads" | "messages"
@@ -64,7 +62,6 @@ const scopes: readonly { value: SearchScope; label: string }[] = [
   { value: "messages", label: copy("mobile_search_messages") },
 ]
 
-/** Chips that narrow the results to thread titles or to messages. */
 export function ScopeChips({ value, onChange }: { value: SearchScope; onChange: (scope: SearchScope) => void }) {
   const theme = useTheme()
   return (
@@ -95,10 +92,6 @@ export function ScopeChips({ value, onChange }: { value: SearchScope; onChange: 
   )
 }
 
-/**
- * Thread titles that match as the developer types, then messages from every thread. `scope` hides a section and
- * skips its search.
- */
 export function SearchResults({
   query,
   scope = "all",
@@ -189,7 +182,6 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 const dotColor = (theme: Palette, status: Thread["status"]) =>
   status === "awaiting_approval" ? theme.attention : status === "running" ? theme.running : theme.surfaceStrong
 
-/** A thread whose title or project matched: its status dot, the title, then the project and status or age. */
 function ThreadHitRow({ thread, query }: { thread: Thread; query: string }) {
   const theme = useTheme()
   const now = useNow()
@@ -228,7 +220,6 @@ function ThreadHitRow({ thread, query }: { thread: Thread; query: string }) {
   )
 }
 
-/** A message that matched: the thread it is in, then the snippet with the match drawn in the primary color. */
 function MessageHitRow({ hit, query }: { hit: ThreadSearchHit; query: string }) {
   const theme = useTheme()
   const now = useNow()

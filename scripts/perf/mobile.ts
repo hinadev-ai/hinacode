@@ -7,6 +7,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { loadavg } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { setTimeout as sleep } from "node:timers/promises"
+import { type DocumentSize, documentSizes, withFirstScreenParagraphChanged } from "./documents.ts"
 
 type Commit = { at: number; renderMs: number | null; rendered: Record<string, number> }
 type Recording = { commits: Commit[]; frames: number[]; longTasks: { start: number; duration: number }[] }
@@ -59,7 +61,110 @@ const env = (name: string, fallback?: string) => {
   return value
 }
 
-const simctl = (...args: string[]) => execFileSync("xcrun", ["simctl", ...args], { stdio: "ignore" })
+const run = (command: string, args: string[]) =>
+  execFileSync(command, args, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 })
+const sha = (data: Buffer | string) => createHash("sha256").update(data).digest("hex").slice(0, 12)
+
+type GfxInfo = Record<string, number>
+const numberAfter = (pattern: RegExp, text: string) => Number(pattern.exec(text)?.[1] ?? Number.NaN)
+type Device = {
+  platform: "ios" | "android"
+  id: string
+  app: string
+  bundle: string
+  connect(ports: number[]): void
+  launch(): number
+  terminate(): void
+  memoryBytes(pid: number): number
+  fling(count: number, intervalMs: number): Promise<void>
+  frameStats?: { reset(): void; read(): GfxInfo }
+}
+
+function iosDevice(): Device {
+  const udid = env("PERF_UDID")
+  const app = env("PERF_APP")
+  const bundleId = run("plutil", ["-extract", "CFBundleIdentifier", "raw", join(app, "Info.plist")]).trim()
+  const swipe = "swipe --start-x 200 --start-y 800 --end-x 200 --end-y 150 --duration 0.12"
+  return {
+    platform: "ios",
+    id: udid,
+    app,
+    bundle: sha(readFileSync(join(app, "main.jsbundle"))),
+    connect: () => run("xcrun", ["simctl", "install", udid, app]),
+    launch: () => Number(run("xcrun", ["simctl", "launch", udid, bundleId]).trim().split(": ").at(-1)),
+    terminate: () => {
+      try {
+        execFileSync("xcrun", ["simctl", "terminate", udid, bundleId], { stdio: "ignore" })
+      } catch {}
+    },
+    memoryBytes: (pid) => Number(/Footprint: (\d+) B/.exec(run("footprint", ["-f", "bytes", "-p", String(pid)]))![1]),
+    fling: async (count, intervalMs) => {
+      const pause = `sleep ${(intervalMs - 120) / 1000}`
+      const steps = Array.from({ length: count }, () => ["--step", swipe, "--step", pause]).flat()
+      run("axe", ["batch", "--udid", udid, ...steps])
+    },
+  }
+}
+
+function androidDevice(): Device {
+  const serial = env("PERF_SERIAL")
+  const apk = env("PERF_APK")
+  const pkg = env("PERF_PACKAGE", "com.hinadev.hinacode")
+  const adb = (...args: string[]) => run("adb", ["-s", serial, ...args])
+  return {
+    platform: "android",
+    id: serial,
+    app: apk,
+    bundle: sha(run("unzip", ["-p", apk, "assets/index.android.bundle"])),
+    connect: (ports) => {
+      adb("install", "-r", apk)
+      adb("shell", "pm", "clear", pkg)
+      adb("shell", "pm", "grant", pkg, "android.permission.POST_NOTIFICATIONS")
+      for (const port of ports) adb("reverse", `tcp:${port}`, `tcp:${port}`)
+    },
+    launch: () => {
+      adb("shell", "am", "start", "-W", "-n", `${pkg}/.MainActivity`)
+      return Number(adb("shell", "pidof", pkg).trim())
+    },
+    terminate: () => void adb("shell", "am", "force-stop", pkg),
+    memoryBytes: () => numberAfter(/TOTAL PSS:\s+(\d+)/, adb("shell", "dumpsys", "meminfo", pkg)) * 1024,
+    fling: async (count, intervalMs) => {
+      for (let swipe = 0; swipe < count; swipe++) {
+        const startedAt = Date.now()
+        adb("shell", "input", "swipe", "540", "1800", "540", "300", "80")
+        await sleep(Math.max(0, intervalMs - (Date.now() - startedAt)))
+      }
+    },
+    frameStats: {
+      reset: () => void adb("shell", "dumpsys", "gfxinfo", pkg, "reset"),
+      read: () => {
+        const text = adb("shell", "dumpsys", "gfxinfo", pkg)
+        return {
+          frames: numberAfter(/Total frames rendered: (\d+)/, text),
+          janky: numberAfter(/Janky frames: (\d+)/, text),
+          p50: numberAfter(/50th percentile: (\d+)ms/, text),
+          p90: numberAfter(/90th percentile: (\d+)ms/, text),
+          p95: numberAfter(/95th percentile: (\d+)ms/, text),
+          p99: numberAfter(/99th percentile: (\d+)ms/, text),
+        }
+      },
+    },
+  }
+}
+
+const VSYNC_MS = 1000 / 60
+function nativeFrames(timestamps: number[]) {
+  const gaps = timestamps.slice(1).map((at, index) => at - timestamps[index]!)
+  return {
+    count: timestamps.length,
+    p50: median(gaps),
+    p95: quantile(gaps, 0.95),
+    max: round1(Math.max(0, ...gaps)),
+    overOneAndHalfVsync: gaps.filter((gap) => gap > VSYNC_MS * 1.5).length,
+    over32: gaps.filter((gap) => gap > 32).length,
+  }
+}
+
 const read = (request: IncomingMessage) =>
   new Promise<Record<string, unknown>>((resolve) => {
     let body = ""
@@ -67,36 +172,34 @@ const read = (request: IncomingMessage) =>
     request.on("end", () => resolve(body === "" ? {} : JSON.parse(body)))
   })
 
-async function run(runLabel: string) {
-  const udid = env("PERF_UDID")
-  const app = env("PERF_APP")
+async function measure(runLabel: string) {
+  const device = env("PERF_PLATFORM", "ios") === "android" ? androidDevice() : iosDevice()
   const port = Number(env("PERF_PORT", "8199"))
   const cdp = env("PERF_CDP")
-  const longThread = env("PERF_LONG")
-  const replyThread = env("PERF_REPLY")
   const rounds = Number(env("PERF_ROUNDS", "3"))
+  const workloads = new Set(env("PERF_WORKLOADS", "cold,threads").split(","))
   const file = join(resultsDir, `${runLabel}-mobile.json`)
   assert(!existsSync(file), `${file} exists; pick a new label`)
   mkdirSync(resultsDir, { recursive: true })
 
   const rpc = (method: string, payload?: unknown) =>
     JSON.parse(
-      execFileSync(
-        "node",
-        [join(root, ".agents/skills/verify-hinacode/scripts/rpc.ts"), String(cdp), method, JSON.stringify(payload)],
-        { encoding: "utf8" },
-      ),
+      run("node", [
+        join(root, ".agents/skills/verify-hinacode/scripts/rpc.ts"),
+        String(cdp),
+        method,
+        JSON.stringify(payload),
+      ]),
     )
-  const bundleId = execFileSync("plutil", ["-extract", "CFBundleIdentifier", "raw", join(app, "Info.plist")], {
-    encoding: "utf8",
-  }).trim()
-  simctl("install", udid, app)
+  const pairing = rpc("remote.pairing") as { port: number }
+  const target = { ...pairing, port: Number(env("PERF_REMOTE_PORT", String(pairing.port))) }
+  device.connect([port, target.port])
 
   let nextId = 1
   const queue: Record<string, unknown>[] = []
   let waiting: ServerResponse | null = null
   const results = new Map<number, (body: { ok: boolean; result?: Result; error?: string }) => void>()
-  const readies = new Map<number, () => void>()
+  const readies = new Map<number, () => unknown>()
   let onHello: ((body: Record<string, unknown>) => void) | null = null
 
   const flush = () => {
@@ -116,14 +219,18 @@ async function run(runLabel: string) {
       return flush()
     }
     const body = await read(request)
+    if (request.url === "/ready") await Promise.resolve(readies.get(Number(body.id))?.()).catch(console.error)
     response.writeHead(204).end()
-    if (request.url === "/hello") onHello?.(body)
-    if (request.url === "/ready") readies.get(Number(body.id))?.()
+    if (request.url === "/hello") {
+      waiting?.writeHead(204).end()
+      waiting = null
+      onHello?.(body)
+    }
     if (request.url === "/result") results.get(Number(body.id))?.(body as never)
   })
   await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve))
 
-  const send = (type: string, args: Record<string, unknown> = {}, onReady?: () => void) => {
+  const send = (type: string, args: Record<string, unknown> = {}, onReady?: () => unknown) => {
     const id = nextId++
     if (onReady) readies.set(id, onReady)
     const done = new Promise<Result>((resolve, reject) => {
@@ -139,48 +246,55 @@ async function run(runLabel: string) {
     return done
   }
 
+  let pid = 0
   const launch = async () => {
-    const hello = new Promise<Record<string, unknown>>((resolve) => (onHello = resolve))
-    try {
-      simctl("terminate", udid, bundleId)
-    } catch {}
+    const hello = new Promise<number>((resolve) => (onHello = () => resolve(Date.now())))
+    device.terminate()
     const launchedAt = Date.now()
-    simctl("launch", udid, bundleId)
-    await hello
-    return launchedAt
+    pid = device.launch()
+    return { launchedAt, helloAt: await hello }
   }
 
   const loadStart = loadavg()
-  const record: { meta: Record<string, unknown>; cold: unknown[]; rounds: unknown[]; raw: unknown[] } = {
+  const record: {
+    meta: Record<string, unknown>
+    cold: unknown[]
+    rounds: unknown[]
+    documents: unknown[]
+    documentLarge: unknown[]
+    raw: unknown[]
+  } = {
     meta: {
       label: runLabel,
-      app,
-      bundle: createHash("sha256")
-        .update(readFileSync(join(app, "main.jsbundle")))
-        .digest("hex")
-        .slice(0, 12),
-      udid,
+      platform: device.platform,
+      device: device.id,
+      app: device.app,
+      bundle: device.bundle,
       rounds,
-      revision: execFileSync("git", ["-C", root, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim(),
+      workloads: [...workloads],
+      remotePort: target.port,
+      revision: run("git", ["-C", root, "rev-parse", "--short", "HEAD"]).trim(),
       date: new Date().toISOString(),
     },
     cold: [],
     rounds: [],
+    documents: [],
+    documentLarge: [],
     raw: [],
   }
 
   await launch()
   let hello = await send("hello")
   if (!hello.paired) {
-    await send("pair", { target: rpc("remote.pairing") })
+    await send("pair", { target })
     hello = await send("hello")
   }
   record.meta.longTasksObserved = hello.longTasksObserved
 
-  for (let round = 0; round < rounds; round++) {
-    const launchedAt = await launch()
+  for (let round = 0; workloads.has("cold") && round < rounds; round++) {
+    const { launchedAt, helloAt } = await launch()
     const result = await send("hello")
-    const sinceLaunch = (at: unknown) => round1(Number(result.epochOffset) + Number(at) - launchedAt)
+    const sinceLaunch = (at: unknown) => round1(helloAt - launchedAt + Number(at) - Number(result.firstCommit))
     const startup = result.startup as {
       startTime: number
       executeJavaScriptBundleEntryPointStart: number
@@ -195,7 +309,9 @@ async function run(runLabel: string) {
     console.log(`cold ${round + 1}/${rounds}`, JSON.stringify(record.cold.at(-1)))
   }
 
-  for (let round = 0; round < rounds; round++) {
+  for (let round = 0; workloads.has("threads") && round < rounds; round++) {
+    const longThread = env("PERF_LONG")
+    const replyThread = env("PERF_REPLY")
     const list = await send("scroll", { testID: "home-list", px: 30, frames: 120 })
     const opened = await send("open", { threadId: longThread })
     const transcript = await send("scroll", { testID: "transcript", px: 40, frames: 180 })
@@ -245,10 +361,136 @@ async function run(runLabel: string) {
     record.raw.push({ list, opened, transcript, typing, replied })
     console.log(`round ${round + 1}/${rounds}`, JSON.stringify(headline(entry)))
   }
+
+  if (workloads.has("documents")) {
+    const threadId = env("PERF_DOC_THREAD")
+    const docs = Object.fromEntries(
+      env("PERF_DOCS")
+        .split(",")
+        .map((pair) => pair.split(":")),
+    ) as Record<DocumentSize, string>
+    const flings = Number(env("PERF_FLINGS", "10"))
+    const openDocument = async (size: DocumentSize) => {
+      const opened = await send("openDocument", { threadId, artifactId: docs[size] })
+      record.raw.push({ size, opened })
+      return opened
+    }
+    for (let round = 0; round < rounds; round++)
+      for (const size of Object.keys(documentSizes) as DocumentSize[]) {
+        const entry = documentOpenEntry(size, await openDocument(size))
+        await send("back")
+        record.documents.push(entry)
+        console.log(`document ${round + 1}/${rounds}`, JSON.stringify(documentOpenHeadline(entry)))
+      }
+
+    await openDocument("large")
+    await sleep(1000)
+    const memoryBytes = device.memoryBytes(pid)
+    device.frameStats?.reset()
+    let flingMs = 0
+    const flung = await send("fling", {}, async () => {
+      const startedAt = Date.now()
+      await device.fling(flings, 600)
+      flingMs = Date.now() - startedAt
+      await sleep(1000)
+    })
+    const gfxinfo = device.frameStats?.read() ?? null
+    if (((flung.nativeFrames as number[] | undefined) ?? []).length < 2)
+      console.warn("the fling sampled no native frames; check that a dialog is not covering the document")
+    const updated = await send("updateDocument", { artifactId: docs.large }, () => {
+      const { revision, markdown } = rpc("artifacts.readDocument", { id: docs.large })
+      rpc("artifacts.saveDocument", {
+        id: docs.large,
+        baseRevision: revision,
+        markdown: withFirstScreenParagraphChanged(markdown, runLabel),
+      })
+    })
+    await send("back")
+    const large = {
+      memoryMB: round1(memoryBytes / 1048576),
+      fling: {
+        flings,
+        flingMs,
+        native: nativeFrames((flung.nativeFrames as number[]) ?? []),
+        gfxinfo,
+        ...summarize(flung),
+      },
+      update: {
+        eventToPaintMs: updated.paintedAt === null ? null : round1(Number(updated.paintedAt) - Number(updated.eventAt)),
+        eventToSettledMs: round1(Number(updated.settled) - Number(updated.eventAt)),
+        ...summarize(updated),
+      },
+    }
+    record.documentLarge.push(large)
+    record.raw.push({ flung, updated })
+    console.log("document large", JSON.stringify(documentLargeHeadline(large)))
+  }
+
   record.meta.load = { start: loadStart, end: loadavg() }
   writeFileSync(file, JSON.stringify(record, null, 2))
   console.log(`wrote ${file}`)
+  device.terminate()
   server.close()
+}
+
+function documentOpenEntry(size: DocumentSize, opened: Result) {
+  const start = Number(opened.start)
+  const heap = opened.heap as { heapSize: number; allocatedBytes: number } | null
+  return {
+    size,
+    bytes: Number(opened.bytes),
+    blocks: Number(opened.blocks ?? opened.segments),
+    firstContentMs: round1(Number(opened.firstContent) - start),
+    interactiveMs: round1(Number(opened.settled) - start),
+    loadedMs:
+      Array.isArray(opened.patches) && opened.patches.length > 0 ? round1(Number(opened.patches.at(-1)) - start) : null,
+    parseMs: round1(Number(opened.parseMs ?? opened.segmentMs)),
+    heapMB: heap === null ? null : round1(heap.heapSize / 1048576),
+    allocatedMB: heap === null ? null : round1(heap.allocatedBytes / 1048576),
+    ...summarize(opened),
+  }
+}
+type DocumentOpen = ReturnType<typeof documentOpenEntry>
+type DocumentLarge = {
+  memoryMB: number
+  fling: ReturnType<typeof summarize> & { native: ReturnType<typeof nativeFrames>; gfxinfo: GfxInfo | null }
+  update: ReturnType<typeof summarize> & { eventToPaintMs: number | null; eventToSettledMs: number }
+}
+
+function documentOpenHeadline(entry: DocumentOpen) {
+  const name = `document ${entry.size}`
+  return {
+    [`${name}: first content ms`]: entry.firstContentMs,
+    [`${name}: interactive ms`]: entry.interactiveMs,
+    ...(entry.loadedMs === null || entry.loadedMs === undefined
+      ? {}
+      : { [`${name}: last patch drawn ms`]: entry.loadedMs }),
+    [`${name}: JS parse ms`]: entry.parseMs ?? (entry as { segmentMs?: number }).segmentMs ?? 0,
+    [`${name}: Hermes heap MB`]: entry.heapMB,
+    [`${name}: render ms`]: entry.renderMs,
+    [`${name}: longest commit render ms`]: entry.renderMsMax,
+    [`${name}: component renders`]: entry.renders,
+    [`${name}: JS frames over 33 ms`]: entry.over33,
+  }
+}
+
+function documentLargeHeadline({ memoryMB, fling, update }: DocumentLarge) {
+  return {
+    "document large: memory MB": memoryMB,
+    "document fling: native frame p50 ms": fling.native.p50,
+    "document fling: native frame p95 ms": fling.native.p95,
+    "document fling: native frame max ms": fling.native.max,
+    "document fling: native frames over 25 ms": fling.native.overOneAndHalfVsync,
+    "document fling: native frames over 32 ms": fling.native.over32,
+    "document fling: JS frame p95 ms": fling.frames.p95,
+    "document fling: render ms": fling.renderMs,
+    "document fling: gfxinfo janky frames": fling.gfxinfo?.janky ?? null,
+    "document fling: gfxinfo p90 ms": fling.gfxinfo?.p90 ?? null,
+    "document fling: gfxinfo p99 ms": fling.gfxinfo?.p99 ?? null,
+    "document update: event to paint ms": update.eventToPaintMs,
+    "document update: render ms": update.renderMs,
+    "document update: longest commit render ms": update.renderMsMax,
+  }
 }
 
 type Entry = {
@@ -299,28 +541,40 @@ function metrics(prefix: string) {
   const files = readdirSync(resultsDir).filter((name) => pattern.test(name))
   assert(files.length > 0, `no runs for ${prefix} in ${resultsDir}`)
   const records = files.map((name) => JSON.parse(readFileSync(join(resultsDir, name), "utf8")))
-  const cold: Cold[] = records.flatMap((record) => record.cold)
-  const rows: Record<string, number[]> = {
-    "cold start: launch to JS runtime ms": cold.map((start) => start.launchToRuntimeMs),
-    "cold start: bundle evaluation ms": cold.map((start) => start.bundleMs),
-    "cold start: launch to first commit ms": cold.map((start) => start.launchToFirstCommitMs),
-    "cold start: launch to thread list ms": cold.map((start) => start.launchToThreadListMs),
+  const rows: Record<string, number[]> = {}
+  const add = (headlines: Record<string, number | null>) => {
+    for (const [name, value] of Object.entries(headlines)) if (value !== null) (rows[name] ??= []).push(value)
   }
-  for (const entry of records.flatMap((record) => record.rounds as Entry[]))
-    for (const [name, value] of Object.entries(headline(entry))) (rows[name] ??= []).push(value)
+  for (const start of records.flatMap((record) => record.cold as Cold[]))
+    add({
+      "cold start: launch to JS runtime ms": start.launchToRuntimeMs,
+      "cold start: bundle evaluation ms": start.bundleMs,
+      "cold start: launch to first commit ms": start.launchToFirstCommitMs,
+      "cold start: launch to thread list ms": start.launchToThreadListMs,
+    })
+  for (const entry of records.flatMap((record) => record.rounds as Entry[])) add(headline(entry))
+  for (const entry of records.flatMap((record) => (record.documents ?? []) as DocumentOpen[]))
+    add(documentOpenHeadline(entry))
+  for (const entry of records.flatMap((record) => (record.documentLarge ?? []) as DocumentLarge[]))
+    add(documentLargeHeadline(entry))
   return {
     runs: files.length,
+    load: records.map((record) => record.meta.load as { start: number[]; end: number[] }),
     values: Object.fromEntries(
       Object.entries(rows).map(([name, values]) => [name, { median: median(values), values }]),
     ),
   }
 }
 
-if (mode === "run" && label) await run(label)
+const loadText = (load: { start: number[]; end: number[] }[]) =>
+  load.map(({ start, end }) => `${round1(start[0]!)} to ${round1(end[0]!)}`).join(", ")
+
+if (mode === "run" && label) await measure(label)
 else if (mode === "compare" && label && other) {
   const before = metrics(label)
   const after = metrics(other)
   console.log(`${label}: ${before.runs} runs, ${other}: ${after.runs} runs`)
+  console.log(`one-minute load, start to end: ${label} ${loadText(before.load)}; ${other} ${loadText(after.load)}`)
   console.log(`| Measurement | ${label} | ${other} | Change | ${label} spread | ${other} spread |`)
   console.log("| --- | ---: | ---: | ---: | --- | --- |")
   for (const [name, { median: a, values: va }] of Object.entries(before.values)) {
@@ -330,8 +584,8 @@ else if (mode === "compare" && label && other) {
     console.log(`| ${name} | ${a} | ${b.median} | ${change} | ${spread(va)} | ${spread(b.values)} |`)
   }
 } else if (mode === "summary" && label) {
-  const { runs, values } = metrics(label)
-  console.log(`${label}: ${runs} runs`)
+  const { runs, load, values } = metrics(label)
+  console.log(`${label}: ${runs} runs, one-minute load from start to end: ${loadText(load)}`)
   for (const [name, { median: value, values: all }] of Object.entries(values))
     console.log(`${name}: ${value} (${all.join(", ")})`)
 } else {

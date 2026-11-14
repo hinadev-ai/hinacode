@@ -15,16 +15,12 @@ const NotificationPreferences = Schema.Struct({
   failed: Schema.Boolean,
 })
 
-/** The phone's own settings. The desktop's settings stay on the desktop. */
 export interface Preferences {
   readonly appearance: Appearance
   readonly notifications: typeof NotificationPreferences.Type
   readonly homeTab: HomeTab
-  /** Whether the thread list beside the open thread is hidden, in a landscape split. */
   readonly sidebarHidden: boolean
-  /** The servers the home list and search show, when several are paired. */
   readonly environmentFilter: EnvironmentFilter
-  /** The projects the home list and search narrow to, among those on the shown servers. Empty shows them all. */
   readonly projectIds: readonly string[]
 }
 
@@ -40,7 +36,6 @@ export const defaultPreferences: Preferences = {
 const withDefault = <S extends Schema.Top>(schema: S, value: S["Encoded"]) =>
   schema.pipe(Schema.withDecodingDefaultKey(Effect.succeed(value)))
 
-/** Keys an older app never wrote take their defaults. */
 const Stored = Schema.Struct({
   appearance: withDefault(AppearanceSchema, defaultPreferences.appearance),
   notifications: withDefault(NotificationPreferences, defaultPreferences.notifications),

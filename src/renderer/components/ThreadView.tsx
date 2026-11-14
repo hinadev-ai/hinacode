@@ -84,7 +84,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           agent === undefined ? "[container:thread/size]" : "@container-size",
         )}
       >
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+        <div className="flex min-h-0 flex-1 scrollbar-gutter-auto flex-col overflow-auto">
           <ThreadRepository value={repository}>
             <ThreadFolder value={folder}>
               <Transcript thread={thread} agent={agent} />
@@ -172,9 +172,10 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const load = useMessages((state) => state.load)
   const label = providerLabel[thread.provider]()
+  const agentCommands = useAtomValue(commandsAtom(completionKey(thread)))
   const commands = [
     ...artifactSkillCommands(),
-    ...AsyncResult.getOrElse(useAtomValue(commandsAtom(completionKey(thread))), (): ReadonlyArray<AgentCommand> => []),
+    ...AsyncResult.getOrElse(agentCommands, (): ReadonlyArray<AgentCommand> => []),
   ]
   const isChat = useIsChat(thread.projectId)
   const findOpen = useUi((state) => state.findThreadId === thread.id)
@@ -191,7 +192,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
 
   const retry = () => {
     useUi.getState().requestComposerFocus()
-    void load(thread.id)
+    return load(thread.id)
   }
 
   if (history === undefined || history.status === "loading") {
@@ -203,7 +204,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
         <p className="text-center text-sm wrap-break-word text-destructive">
           {m.thread_load_failed({ message: history.message })}
         </p>
-        <Button variant="outline" size="sm" onClick={retry}>
+        <Button variant="outline" size="sm" action={retry}>
           {m.common_retry()}
         </Button>
       </div>
@@ -265,7 +266,7 @@ export function PendingRequests({ thread }: { thread: Thread }) {
   const label = providerLabel[thread.provider]()
   if (history?.status !== "ready") return null
   return (
-    <div aria-live="polite" className="min-h-0 shrink overflow-auto empty:hidden">
+    <div aria-live="polite" className="min-h-0 shrink scrollbar-gutter-auto overflow-auto empty:hidden">
       {history.approvals.map((request) => (
         <ApprovalCard key={request.id} request={request} providerLabel={label} />
       ))}

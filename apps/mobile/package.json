@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@effect/atom-react": "4.0.3",
     "@noble/hashes": "2.4.0",
     "@react-native-community/netinfo": "12.0.1",
     "@xterm/addon-fit": "^0.11.0",
@@ -28,8 +29,10 @@
     "expo-status-bar": "~58.0.4",
     "expo-symbols": "~58.0.4",
     "expo-system-ui": "~58.0.7",
+    "expo-video": "~58.0.14",
     "expo-web-browser": "~58.0.7",
     "gpu-lexer": "^0.0.3",
+    "linkedom": "0.18.15",
     "marked": "^18.1.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -46,9 +49,8 @@
     "zustand": "5.0.15"
   },
   "devDependencies": {
+    "@types/node": "26.6.5",
     "@types/react": "~19.3.0",
-    "eslint": "^9.39.5",
-    "eslint-config-expo": "~58.0.4",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -56,7 +58,7 @@
     "android": "./scripts/android-env.sh expo run:android",
     "ios": "LANG=en_US.UTF-8 expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint",
+    "lint": "pnpm --dir ../.. exec oxlint apps/mobile",
     "build:terminal": "node ./scripts/build-terminal-html.mts",
     "build:icons": "./scripts/build-app-icons.sh",
     "build:tab-icons": "node ./scripts/build-tab-icons.mts",

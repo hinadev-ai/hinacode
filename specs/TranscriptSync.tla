@@ -8,14 +8,15 @@ CONSTANTS
   MaxEvents,  \* events main publishes for the thread
   MaxLoads,   \* times the user opens the thread
   MaxLosses,  \* pushes the channel loses
-  IpcOrdered  \* TRUE: pushes and rpc replies share one FIFO to the renderer
+  IpcOrdered  \* TRUE: pushes and rpc replies share one FIFO to the renderer. specs/probes/electron-ipc measures it:
+              \* with Electron 44.9.3, 42 of 3000 replies overtook an earlier push and no push overtook another
 
 \* An event is identified by its seq, so main's transcript is always 1..seq.
 VARIABLES
-  seq,        \* AgentRunner.ts:384, this thread's counter
+  seq,        \* AgentRunner.ts transcriptSeqs, this thread's counter
   requests,   \* load ids whose threads.transcript rpc main has not run yet
   toRenderer, \* oldest first
-  byThread,   \* messages.ts:27, the entry for the modeled thread
+  byThread,   \* stores/messages.ts byThread, the entry for the modeled thread
   loads,      \* how many times `fetchHistory` has started; also the latest load id
   losses,     \* pushes lost so far
   silent      \* seqs of pushes lost without a trace; a push that failed to decode is not here
@@ -52,17 +53,17 @@ Init ==
   /\ silent = {}
 
 -----------------------------------------------------------------------------
-(* Main runs each step under the per-thread `exclusive` lock (AgentRunner.ts:333-339), so publishing and
-   snapshotting are atomic with respect to each other. `webContents.send` (ipc.ts:80) enqueues synchronously. *)
+(* Main runs each step under the per-thread lock (AgentRunner.ts `exclusive`), so publishing and snapshotting
+   are atomic with respect to each other. `webContents.send` in ipc.ts sendToWindows enqueues synchronously. *)
 
-\* AgentRunner.ts:382 publishTranscript
+\* AgentRunner.ts publishTranscript
 Publish ==
   /\ seq < MaxEvents
   /\ seq' = seq + 1
   /\ toRenderer' = Append(toRenderer, Push(seq + 1))
   /\ UNCHANGED <<requests, byThread, loads, losses, silent>>
 
-\* AgentRunner.ts:1259 transcript, reply sent through ipcMain.handle, ipc.ts:72
+\* AgentRunner.ts transcript, reply sent through ipcMain.handle in ipc.ts registerIpc
 Transcript(l) ==
   /\ requests' = requests \ {l}
   /\ toRenderer' = Append(toRenderer, Reply(l, seq))
@@ -82,20 +83,20 @@ Lose(i) ==
 
 -----------------------------------------------------------------------------
 
-\* messages.ts `fetchHistory` up to the await, started by `load`, `reload` or a detected loss.
+\* stores/messages.ts `fetchHistory` up to the await, started by `load`, `reload` or a detected loss.
 StartLoad ==
   /\ loads' = loads + 1
   /\ byThread' = [Missing EXCEPT !.status = "loading", !.load = loads + 1]
   /\ requests' = requests \cup {loads + 1}
 
-\* messages.ts `load`. Errors are not modeled, so `load` only runs on "missing".
+\* stores/messages.ts `load`. Errors are not modeled, so `load` only runs on "missing".
 Load ==
   /\ loads < MaxLoads
   /\ byThread.status = "missing"
   /\ StartLoad
   /\ UNCHANGED <<seq, toRenderer, losses, silent>>
 
-\* messages.ts `forget`: the history fell out of the recently viewed limit or its thread was removed.
+\* stores/messages.ts `forget`: the history fell out of the recently viewed limit or its thread was removed.
 Unload ==
   /\ byThread.status /= "missing"
   /\ byThread' = Missing
@@ -103,7 +104,7 @@ Unload ==
 
 KeepLoad == UNCHANGED <<requests, loads>>
 
-\* messages.ts `fetchHistory` after the await. A gap among the buffered pushes starts another load.
+\* stores/messages.ts `fetchHistory` after the await. A gap among the buffered pushes starts another load.
 Settle(r) ==
   IF byThread.status = "loading" /\ byThread.load = r.load
   THEN LET replay == SelectSeq(byThread.pending, LAMBDA s : s > r.seq) IN
@@ -117,8 +118,8 @@ Settle(r) ==
        ELSE StartLoad
   ELSE UNCHANGED byThread /\ KeepLoad
 
-\* messages.ts `receive`. Folding is not idempotent (foldEvent.ts:11 text_delta appends). `lastSeq` counts
-\* deltas still waiting for the 100 ms flush, so the model folds on receipt.
+\* stores/messages.ts `receive`. Folding is not idempotent (foldEvent.ts foldEvent appends a text_delta).
+\* `lastSeq` counts deltas still waiting for the 100 ms flush, so the model folds on receipt.
 Receive(p) ==
   CASE byThread.status = "loading" ->
          byThread' = [byThread EXCEPT !.pending = Append(@, p.seq)] /\ KeepLoad
@@ -127,7 +128,8 @@ Receive(p) ==
     [] byThread.status = "ready" /\ p.seq > byThread.lastSeq + 1 -> StartLoad
     [] OTHER -> UNCHANGED byThread /\ KeepLoad
 
-\* rpc.ts decodeOrReportLoss reads the thread id and main.tsx calls `reload`.
+\* lib/rpc.ts decodeOrReportLoss reads the thread id, and the main.tsx onPushEvent handler calls `reload` on
+\* transcript.lost.
 ReceiveUndecodable ==
   IF byThread.status /= "missing" THEN StartLoad ELSE UNCHANGED byThread /\ KeepLoad
 

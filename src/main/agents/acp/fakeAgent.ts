@@ -13,7 +13,11 @@ type Message = {
 
 const logPath = process.env["FAKE_ACP_LOG"]
 const legacyModels = process.env["FAKE_ACP_MODELS"] === "legacy"
+const signedInAfterFirstSession = process.env["FAKE_ACP_MODELS"] === "after-first-session"
+const stallAfterFirstSession = process.env["FAKE_ACP_MODELS"] === "stall-after-first-session"
+const newModelAfterFirstSession = process.env["FAKE_ACP_MODELS"] === "new-after-first-session"
 const authRequired = process.env["FAKE_ACP_AUTH"] === "required"
+const signedOutAfterFirstSession = process.env["FAKE_ACP_AUTH"] === "after-first-session"
 const silentInitialize = process.env["FAKE_ACP_SILENT_INITIALIZE"] === "1"
 const lifeline = process.env["FAKE_ACP_LIFELINE"]
 if (lifeline !== undefined) connect(lifeline).on("error", () => {})
@@ -56,6 +60,7 @@ const configFor = (sessionId: string) => {
       options: [
         { value: "fake/other", name: "Fake Other" },
         { value: "fake/default", name: "Fake Default" },
+        ...(newModelAfterFirstSession && sessionId !== "ses_1" ? [{ value: "fake/new", name: "Fake New" }] : []),
       ],
     },
     ...(levels === undefined
@@ -74,17 +79,19 @@ const configFor = (sessionId: string) => {
 }
 
 const modelSetup = (sessionId: string) =>
-  legacyModels
-    ? {
-        models: {
-          currentModelId: "legacy-default",
-          availableModels: [
-            { modelId: "legacy-other", name: "Legacy Other" },
-            { modelId: "legacy-default", name: "Legacy Default" },
-          ],
-        },
-      }
-    : { configOptions: configFor(sessionId) }
+  signedInAfterFirstSession && sessionId === "ses_1"
+    ? {}
+    : legacyModels
+      ? {
+          models: {
+            currentModelId: "legacy-default",
+            availableModels: [
+              { modelId: "legacy-other", name: "Legacy Other" },
+              { modelId: "legacy-default", name: "Legacy Default" },
+            ],
+          },
+        }
+      : { configOptions: configFor(sessionId) }
 
 const writeTool = async (sessionId: string, cwd: string) => {
   const path = `${cwd}/hello.txt`
@@ -137,6 +144,36 @@ const writeTool = async (sessionId: string, cwd: string) => {
   })
 }
 
+const runTool = async (sessionId: string) => {
+  const toolCallId = "call_run"
+  const rawInput = { command: "rm -rf build" }
+  update(sessionId, {
+    sessionUpdate: "tool_call",
+    toolCallId,
+    title: "bash",
+    kind: "execute",
+    status: "pending",
+    rawInput,
+  })
+  const permission = await ask("session/request_permission", {
+    sessionId,
+    toolCall: { toolCallId, title: "rm -rf build", kind: "execute", status: "pending", rawInput },
+    options: [
+      { optionId: "once", kind: "allow_once", name: "Allow once" },
+      { optionId: "reject", kind: "reject_once", name: "Reject" },
+    ],
+  })
+  const outcome = (permission.result as { outcome: { outcome: string; optionId?: string } }).outcome
+  if (outcome.outcome === "cancelled") return
+  const allowed = outcome.outcome === "selected" && outcome.optionId !== "reject"
+  update(sessionId, {
+    sessionUpdate: "tool_call_update",
+    toolCallId,
+    status: allowed ? "completed" : "failed",
+    content: [{ type: "content", content: { type: "text", text: allowed ? "Removed build." : "Rejected" } }],
+  })
+}
+
 const prompt = async (message: Message) => {
   const params = message.params as { sessionId: string; prompt: Array<{ type: string; text?: string }> }
   const { sessionId } = params
@@ -170,10 +207,18 @@ const prompt = async (message: Message) => {
     send({ method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk" } } })
   }
   if (text === "malformed") return send({ id: message.id, result: { stopReason: 42 } })
-  if (text === "ask") {
+  if (text === "tmp") {
+    const { TMPDIR, TMP, TEMP } = process.env
+    update(sessionId, {
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: `${TMPDIR} ${TMP} ${TEMP}` },
+    })
+    return send({ id: message.id, result: { stopReason: "end_turn" } })
+  }
+  if (text === "ask" || text === "ask to run") {
     let cancelled = false
     cancels.set(sessionId, () => void (cancelled = true))
-    await writeTool(sessionId, "/fake")
+    await (text === "ask" ? writeTool(sessionId, "/fake") : runTool(sessionId))
     cancels.delete(sessionId)
     if (cancelled) return send({ id: message.id, result: { stopReason: "cancelled" } })
     update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "done" } })
@@ -210,7 +255,7 @@ const handle = (message: Message) => {
         },
       })
     case "session/new": {
-      if (authRequired) {
+      if (authRequired || (signedOutAfterFirstSession && createdSessions() > 1)) {
         return send({
           id: message.id,
           error: {
@@ -220,6 +265,7 @@ const handle = (message: Message) => {
           },
         })
       }
+      if (stallAfterFirstSession && createdSessions() > 1) return
       const sessionId = `ses_${createdSessions()}`
       send({ id: message.id, result: { sessionId, ...modelSetup(sessionId) } })
       return setImmediate(() =>
@@ -250,7 +296,6 @@ const handle = (message: Message) => {
       return send({ id: message.id, result: { configOptions: configFor(sessionId) } })
     }
     case "session/set_model":
-    case "session/close":
       return send({ id: message.id, result: {} })
     case "session/prompt":
       return void prompt(message)

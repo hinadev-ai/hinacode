@@ -20,25 +20,15 @@ import { usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
 interface RelayAccountState {
-  /** Null while signed out. */
   readonly serviceUrl: string | null
   readonly syncedAt: string | null
-  /** Who is signed in, once a sync has read it. */
   readonly name: string | null
   readonly avatarUrl: string | null
-  /** How many machines the last sync listed. */
   readonly machines: number | null
-  /** Why the last sync failed. */
   readonly error: string | null
-  /** The relay refused the credential, so this phone was signed out and has to sign in again. */
   readonly unauthorized: boolean
   readonly syncing: boolean
-  /** Reads the saved account once at launch and syncs with it. */
   readonly restore: () => Promise<void>
-  /**
-   * Opens the relay's sign-in page through `authenticate`, which resolves with the URL the browser redirected to, or
-   * null when the person closed it. Returns why it failed, or null when it signed in or was cancelled.
-   */
   readonly signIn: (input: {
     readonly serviceUrl: string
     readonly deviceName: string
@@ -46,7 +36,6 @@ interface RelayAccountState {
     readonly authenticate: (url: string, redirectUri: string) => Promise<string | null>
   }) => Promise<string | null>
   readonly sync: () => Promise<void>
-  /** Forgets the account and the servers it added. */
   readonly signOut: () => Promise<void>
 }
 
@@ -63,7 +52,6 @@ const signedOut = {
   unauthorized: false,
 }
 
-// Outside the store, so no screen ever renders the credential.
 let account: RelayAccount | null = null
 let inFlight: Promise<void> | null = null
 let signInAttempt = 0
@@ -74,7 +62,6 @@ function applyMachines(machines: readonly RelayMachine[]) {
   const after = applyRelayMachines(before, machines, newServerId)
   if (JSON.stringify(after) === JSON.stringify(before)) return
   setServers(after)
-  // The dropped servers' projects and threads leave the lists, as when one is forgotten.
   if (after.length < before.length && useConnection.getState().servers.length > 0) {
     void useThreads.getState().load()
     void usePullRequests.getState().load()
@@ -89,7 +76,6 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
         fetchRelayMachines(current, fetch),
         fetchRelayProfile(current, fetch),
       ])
-      // Signed out or in again while the list was on its way.
       if (account !== current) return
       if (profile !== null) set(profile)
       switch (result._tag) {
@@ -164,11 +150,8 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
   }
 })
 
-/**
- * A machine that rotates its token closes the phone's sockets with 4002 and publishes the new token to the relay a
- * moment later. So while a relay server refuses its token, sync now and every 15 seconds in the foreground; a
- * changed token makes `setServers` redial it.
- */
+// oxlint-disable-next-line hinacode/no-comments
+// A machine that rotates its token closes the phone's sockets with 4002 and publishes the new token to the relay a moment later, so a refused relay server is synced until the new token arrives.
 function syncWhileRefused() {
   const refused =
     account !== null &&

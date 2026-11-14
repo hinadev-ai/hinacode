@@ -13,9 +13,7 @@ import "./markdown.css"
 
 const HEADING_SIZES = [22, 20, 18, 16, 15, 15] as const
 const BLOCK_GAP = 10
-const CODE_BLOCK_RADIUS = 16
 
-/** A document is read rather than skimmed: larger text with more room, and space above each section. */
 const MEASURES = {
   reply: { text: 15, line: 22, gap: BLOCK_GAP, headings: HEADING_SIZES, headingGaps: [0, 0, 0, 0, 0, 0] },
   document: { text: 16, line: 25, gap: 14, headings: [26, 21, 18, 16, 16, 16], headingGaps: [0, 18, 14, 10, 10, 10] },
@@ -59,8 +57,9 @@ function markdownStyle(
       lineHeight: 19,
       color: syntax.plain,
       backgroundColor: theme.surface,
-      borderRadius: CODE_BLOCK_RADIUS,
-      padding: 14,
+      borderWidth: 0,
+      borderRadius: radius.sm,
+      padding: 12,
       marginBottom: gap,
       syntaxColors: {
         keyword: syntax.keyword,
@@ -111,12 +110,11 @@ function markdownStyle(
       checkedTextColor: theme.textMuted,
     },
     thematicBreak: { color: theme.border, height: StyleSheet.hairlineWidth, marginTop: 4, marginBottom: gap + 4 },
-    // A fixed box: on Android 1.1.1 a `maxHeight` box draws taller than the layout reserves, cutting off the reply's end.
+    // FIXME: On Android a `maxHeight` image box draws taller than the layout reserves and cuts off the reply's end, so the height is fixed.
     image: { borderRadius: radius.md, height: 240, resizeMode: "contain", marginBottom: gap },
   }
 }
 
-// One object per scheme, gutter and measure, so the native view does not receive a new style on every render.
 const STYLES = new Map<string, MarkdownStyle>()
 
 function stylesFor(scheme: Scheme, gutter: number, measure: MarkdownMeasure) {
@@ -128,17 +126,10 @@ function stylesFor(scheme: Scheme, gutter: number, measure: MarkdownMeasure) {
   return style
 }
 
-// The web renderer's root is a div that takes CSS as is. Native text views already break a word too long for a line.
 const CONTAINER = Platform.OS === "web" ? ({ overflowWrap: "break-word" } as ViewStyle) : undefined
 
-// Agents write shell variables in prose, and two `$` on one line would otherwise render as math.
 const FLAGS = { latexMath: false }
 
-/**
- * Renders an agent's Markdown. `root` is the thread's working folder, which relative image paths and file links
- * resolve against; null when it is not known, such as for a pull request body. File links open the file viewer
- * only when `threadId` is given.
- */
 export function Markdown({
   text,
   root,
@@ -149,13 +140,8 @@ export function Markdown({
 }: {
   text: string
   root: string | null
-  /** The folder a previewed file sits in, relative to `root`. Relative paths in a reply start at the root. */
   folder?: string
   threadId?: string
-  /**
-   * The parent's horizontal padding. A table too wide to fit scrolls out to the screen edge through it, so its cut
-   * column reads as scrollable. Leave it 0 inside a card.
-   */
   gutter?: number
   measure?: MarkdownMeasure
 }) {

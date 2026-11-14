@@ -19,10 +19,6 @@ const imageFormatOf = (head: Uint8Array): ImageFormat | null => {
   return null
 }
 
-/**
- * Decides from a picked file's first 12 bytes and its size whether the agent can take it unchanged. Anything else is
- * re-encoded smaller, as PNG when it was PNG so transparency survives, otherwise as JPEG.
- */
 export const fitImage = (head: Uint8Array, bytes: number): ImageFit => {
   const format = imageFormatOf(head)
   if (format !== null && bytes <= AGENT_IMAGE_MAX_BYTES) return { kind: "as-is", format }
@@ -33,7 +29,7 @@ const extensionOf = (format: ImageFormat) => (format === "jpeg" ? "jpg" : format
 
 const isMediaId = (stem: string) => /^\d+$/.test(stem)
 
-/** Android's photo picker reports a media ID such as `18` as the file name, which tells the agent nothing. */
+// FIXME: Android's photo picker reports a media ID such as `18` as the file name, which tells the agent nothing.
 export const attachmentStem = (fileName: string | null | undefined) => {
   const stem = fileName?.replace(/\.[^.]*$/, "")
   return stem && !isMediaId(stem) ? stem : "image"

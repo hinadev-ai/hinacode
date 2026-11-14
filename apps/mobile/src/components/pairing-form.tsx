@@ -4,17 +4,13 @@ import { type ReactNode, useState } from "react"
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { parsePairingUrl } from "@shared/remote.ts"
-import { pair } from "@/components/connection-provider"
+import { pair } from "@/lib/start-app"
 import { Icon } from "@/components/icon"
 import { Button, Notice } from "@/components/ui"
 import { mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 
-/**
- * Scan or paste a pairing URL. The first pairing needs no `onPaired`: the protected stack swaps this screen for
- * the thread list once a server is stored. `footer` goes below the form, inside its scroll view.
- */
 export function PairingForm({
   refused = null,
   onPaired,

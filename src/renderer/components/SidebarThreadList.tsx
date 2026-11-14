@@ -33,6 +33,7 @@ import { flushSync } from "react-dom"
 import { RiGitMergeLine } from "react-icons/ri"
 import { toast } from "sonner"
 import type { ProviderId } from "../../shared/agent.ts"
+import { pullRequestNumberLabelOfUrl } from "../../shared/codeHost.ts"
 import { isThreadBusy, type PullRequestLink, type Thread, type Worktree } from "../../shared/domain.ts"
 import { type RowState, rowEmphasis, rowState, rowStatusIndicator } from "../../shared/threadStatus.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -286,7 +287,7 @@ interface TurnSection {
   readonly flat?: boolean
   readonly showActivity?: boolean
   readonly empty?: ReactNode
-  readonly spaced?: boolean
+  readonly divided?: boolean
   readonly drafts?: ReadonlyArray<{ readonly thread: Thread; readonly title: string }>
   readonly projectNames?: ReadonlyMap<string, string>
 }
@@ -306,10 +307,10 @@ export function TurnList({ sections, className }: { sections: ReadonlyArray<Turn
           still={filtering}
         >
           {sections.flatMap((section) => [
-            ...(section.spaced
+            ...(section.divided
               ? [
-                  <SidebarRow key={`space-${section.key}`} aria-hidden>
-                    <div className="h-3" />
+                  <SidebarRow key={`divider-${section.key}`} aria-hidden>
+                    <div className="-mx-2 my-2 border-t border-sidebar-border" />
                   </SidebarRow>,
                 ]
               : []),
@@ -402,7 +403,7 @@ function DraftRow({ thread, title, project }: { thread: Thread; title: string; p
   }
 
   return (
-    <SidebarRow data-emphasis="resting" data-meta={false} data-show-project={project !== null} className={rowClassName}>
+    <SidebarRow data-emphasis="resting" data-show-project={project !== null} className={rowClassName}>
       {project !== null && (
         <ProjectLine
           project={project}
@@ -607,10 +608,8 @@ const ThreadRow = memo(function ThreadRow({
       data-emphasis={rowEmphasis[state]}
       data-dimmed={dimmed}
       data-show-project={meta.project !== null}
-      data-archived={archived}
       data-nested={nested}
       data-stale={isStale(cloud)}
-      data-meta={hasMeta}
       onPointerEnter={(event) => scrollTitle(event.currentTarget)}
       onPointerLeave={(event) => stopTitle(event.currentTarget)}
       className={rowClassName}
@@ -769,7 +768,7 @@ const ThreadRow = memo(function ThreadRow({
                       <DropdownMenuItem key={link.id} onClick={() => void unwatch(link.url)}>
                         <EyeOffIcon aria-hidden />
                         {watched.length > 1
-                          ? m.pr_watch_stop({ name: `#${pullRequestNumber(link.url)}` })
+                          ? m.pr_watch_stop({ name: pullRequestNumberLabelOfUrl(link.url) })
                           : m.sidebar_thread_unwatch()}
                       </DropdownMenuItem>
                     ))
@@ -1075,7 +1074,6 @@ function useSnoozedUntil(thread: Thread) {
 }
 
 const noLinks: ReadonlyArray<PullRequestLink> = []
-const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
 function ThreadMeta({
   links,

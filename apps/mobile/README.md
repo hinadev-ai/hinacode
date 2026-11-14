@@ -119,11 +119,11 @@ The servers are stored in the secure store (`localStorage` on web) under `hinaco
 - `pnpm build:icons` renders the app icons from the desktop's `assets/icon.svg` with `rsvg-convert`. Run it when the mark changes and commit the result.
 - `pnpm build:tab-icons` renders the tab bar's icons from `@hinacode/icons` into template PNGs with `rsvg-convert`. Run it after `pnpm install` at the repository root when a tab icon changes and commit the result.
 - `pnpm build:send-grain` renders the send button's grain to `assets/images/send-grain.png`. Run it when the grain changes and commit the result.
-- `npx tsc --noEmit`, `npx expo lint`, `npx expo export --platform web`.
+- `npx tsc --noEmit`, `pnpm lint`, `npx expo export --platform web`.
 
 ## Out of scope
 
 - Push notifications while the app is closed. Notifications come from the live socket, so they arrive while the app runs or recently went to the background. Remote push needs a development build, since Expo Go on Android dropped it in SDK 53.
 - `gpu-lexer` in the native app. Hermes has no WebGPU, so the native file viewer uses the small lexer in `src/lib/lexer.ts`; the web build's file viewer uses `gpu-lexer` when the browser offers WebGPU in a secure context. Code blocks in replies are highlighted by the Markdown library's tree-sitter grammars on iOS and Android, and not at all on the web.
-- Attaching files other than images, editing files, the git graph, automations and secret requests from the phone.
+- Attaching files other than images, editing files, the git graph, routines and secret requests from the phone.
 - TLS on the direct path. A direct connection is a plain WebSocket, so use Tailscale for an encrypted path. The relay path uses `wss`.

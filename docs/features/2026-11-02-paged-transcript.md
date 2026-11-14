@@ -1,54 +1,30 @@
-# Paged transcript
+# Paged transcript on the phone
 
-Status: Draft
+Status: Shipped
 Date: 2026-11-02
+
+This draft also proposed paging on the desktop and paging in SQL. Neither was built, because the measured gain was too small. See `2026-11-03-desktop-transcript-paging.md`. What follows is the phone part, which shipped.
 
 ## Problem
 
-Opening a thread on the desktop reads its whole transcript. `threads.transcript` selects every `message` row, parses each `parts` JSON, previews it, sends all of it over IPC, and the renderer decodes it again, while LegendList shows about a dozen rows. On a 200-turn thread the call takes 35 ms in main, of which 3 ms is SQL, and the cost grows with the thread. Startup pays it too, because the app restores the last thread.
-
-The phone already asks for one page (`page.before`), but `transcriptPage` slices that page only after reading and parsing every row.
+A long thread's whole transcript is too much to send to a phone and render at once. The phone only needs the newest messages when it opens a thread.
 
 ## User flow
 
-1. Opening a thread shows its newest messages, as it does now.
-2. Scrolling up to the top of what is loaded fetches the previous page. The viewport stays where it is while it arrives.
-3. Find in thread (`Ctrl+F`) counts matches across the whole thread. Moving to a match in an unloaded page loads pages back to it, then scrolls there.
+1. Opening a thread on the phone shows its newest messages.
+2. Scrolling up to the oldest loaded message fetches the page before it, and the page appears above it.
 
 ## Design
 
-**Main reads one page in SQL.** `Messages.page(threadId, before)` selects the newest rows whose running size stays under `TRANSCRIPT_PAGE_BYTES`, so the cost follows the screen, not the thread:
+**Main cuts one page.** The phone calls `threads.transcript` with `compact: true` and `page: {}`, or `page: { before }` with the id of its oldest message. Main reads the whole transcript, with the running turn overlaid, compacts each message and passes the result to `transcriptPage` (`src/shared/compactTranscript.ts`). That keeps the newest messages before `before` whose JSON fits in `TRANSCRIPT_PAGE_BYTES` (64 KiB), and always at least one. `hasEarlier` says whether older messages remain. The desktop omits `page` and gets every message.
 
-```sql
-SELECT * FROM (
-  SELECT *, SUM(length(parts)) OVER (ORDER BY created_at DESC, rowid DESC) AS tail_bytes
-  FROM message WHERE thread_id = ?1 AND (?2 IS NULL OR (created_at, rowid) < (?2, ?3))
-) WHERE tail_bytes - length(parts) < ?4
-ORDER BY created_at, rowid
-```
-
-`hasEarlier` comes from one `EXISTS` on the row before the first. `AgentRunner.transcript` appends the live turn's messages to the newest page only. `transcriptPage` goes away, and the phone gets the same SQL page.
-
-**The renderer keeps pages.** `stores/messages.ts` stores `hasEarlier` next to `messages`. `MessageList` asks for the previous page from LegendList's `onStartReached` and prepends it, keeping the visible row in place with `maintainVisibleContentPosition`.
-
-**Consumers that assume the whole thread:**
-
-| Consumer       | Today                              | With pages                                                                                                            |
-| -------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `ContextRing`  | Last usage                         | Always on the newest page, no change                                                                                  |
-| `TodoActivity` | Scans for the latest todo list     | `threads.transcript` returns the latest todo list, which main finds with one query                                    |
-| `SubagentView` | Finds the Task call by `callId`    | Loads pages back to the call, which is what the user scrolled to                                                      |
-| `FindBar`      | `findMatches` over loaded messages | `threads.find` runs `findMatches` in main over decoded rows and returns message ids, so only a search reads every row |
-
-`findMatches` moves to `src/shared` so main and renderer match the same text, including skill labels.
+**The phone keeps pages.** `apps/mobile/src/stores/messages.ts` stores `hasEarlier` with each thread's history. The chat list calls `loadEarlier` when it reaches its end, and `loadEarlier` prepends the returned page. Pushes that arrive while the page loads are replayed onto it, so a tool result that lands meanwhile is not lost. A reload reads the newest page again and drops the earlier ones.
 
 ## Out of scope
 
-- A full-text index. `threads.find` reads the thread only when the user searches, and the paged open is what needs to be fast.
-- Evicting old pages while scrolling. LegendList already virtualizes the DOM, and the store's per-thread limit stays as it is.
+- Paging on the desktop and paging in SQL. See `2026-11-03-desktop-transcript-paging.md`.
 
 ## Verification
 
-- `scripts/perf/budget.ts` opens a 40-turn thread and restores a 200-turn one. Add a 2,000-turn thread to `seed.ts`: its open time should match the 40-turn one.
-- Unit tests for `Messages.page` against a real SQLite DB: page boundaries, a single row larger than the budget, the `before` cursor with equal `created_at`.
-- An e2e scenario: scroll to the top of a long thread and see the first message, and find a word that only the first message contains.
+- `src/shared/compactTranscript.test.ts` covers `transcriptPage`: the newest messages that fit, the brackets and commas in the byte count, the `before` cursor and a single message larger than the budget.
+- `apps/mobile/src/stores/messages.test.ts` covers `loadEarlier`: the first page, prepending, a server that sends every message, replaying pushes that arrive during a load, a reload, a reset, and a failed load.

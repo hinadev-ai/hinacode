@@ -41,7 +41,7 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
         {m.approval_title({ provider: providerLabel })}
       </h2>
       <p className="text-sm">{request.title}</p>
-      <pre className="max-h-40 overflow-auto rounded-sm border border-border bg-muted/50 p-2 font-mono text-xs whitespace-pre-wrap">
+      <pre className="max-h-40 scrollbar-gutter-stable overflow-auto rounded-sm border border-border bg-muted/50 p-2 font-mono text-xs whitespace-pre-wrap">
         {request.detail}
       </pre>
       {request.sessionScope && <SessionScopeNote scope={request.sessionScope} />}

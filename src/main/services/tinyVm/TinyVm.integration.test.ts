@@ -1,5 +1,5 @@
 import { existsSync, mkdtempSync } from "node:fs"
-import { readFile } from "node:fs/promises"
+import { readFile, truncate, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, it } from "@effect/vitest"
@@ -12,7 +12,7 @@ import { Events, makeEventsLayer } from "../Events.ts"
 import * as Settings from "../Settings.ts"
 import { encodeTar } from "./tar.ts"
 import { type FakeSbx, startFakeSbx } from "./testing.ts"
-import { TinyVm, layer } from "./TinyVm.ts"
+import { MAX_TRANSFER_BYTES, TinyVm, layer } from "./TinyVm.ts"
 
 const makeRuntime = (fake: FakeSbx, profileDir: string, experimental: Partial<ExperimentalSettings> = {}) =>
   ManagedRuntime.make(
@@ -68,6 +68,70 @@ it.effect("shutdown saves the owner's latest browser profile before destroying e
 
       expect(yield* Effect.promise(() => readFile(join(dir, "chromium-profile.tgz"), "utf8"))).toBe("owner-session")
       expect(fake.sandboxes.size).toBe(0)
+    }),
+  ),
+)
+
+it.effect("quitting destroys the profile owner's VM even while its profile save stalls", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fake = yield* startFakeSbx
+      const dir = mkdtempSync(join(tmpdir(), "hinacode-vm-profile-"))
+      const runtime = makeRuntime(fake, dir)
+      const owner = yield* Effect.promise(() => runtime.runPromise(TinyVm.use((vm) => vm.start("owner"))))
+      expect(owner).toMatchObject({ status: "running", profile: "owner" })
+      fake.stallExecs("tar -czf")
+
+      yield* Effect.promise(() => runtime.dispose())
+
+      expect(fake.sandboxes.size).toBe(0)
+    }),
+  ),
+)
+
+it.effect("saving the profile of a VM the host destroyed forgets the VM", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fake = yield* startFakeSbx
+      const dir = mkdtempSync(join(tmpdir(), "hinacode-vm-profile-"))
+      const runtime = yield* Effect.acquireRelease(
+        Effect.sync(() => makeRuntime(fake, dir)),
+        (value) => Effect.promise(() => value.dispose()),
+      )
+      const run = <A, E>(effect: Effect.Effect<A, E, TinyVm>) => Effect.promise(() => runtime.runPromise(effect))
+      const owner = yield* run(TinyVm.use((vm) => vm.start("owner")))
+      if (owner.status !== "running") throw new Error("VM did not start")
+      fake.expire(owner.sandboxId)
+
+      const error = yield* run(Effect.flip(TinyVm.use((vm) => vm.saveProfile("owner"))))
+
+      expect(error._tag).toBe("VmError")
+      expect(yield* run(TinyVm.use((vm) => vm.get("owner")))).toEqual({ status: "none" })
+    }),
+  ),
+)
+
+it.effect("dropping files past the transfer limit names the limit, not what is left of it", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fake = yield* startFakeSbx
+      const dir = mkdtempSync(join(tmpdir(), "hinacode-vm-profile-"))
+      const runtime = yield* Effect.acquireRelease(
+        Effect.sync(() => makeRuntime(fake, dir, { tinyVmProfile: false })),
+        (value) => Effect.promise(() => value.dispose()),
+      )
+      const host = mkdtempSync(join(tmpdir(), "hinacode-vm-drop-"))
+      yield* Effect.promise(() => writeFile(join(host, "small.bin"), Buffer.alloc(1024 * 1024)))
+      yield* Effect.promise(() => writeFile(join(host, "huge.bin"), ""))
+      yield* Effect.promise(() => truncate(join(host, "huge.bin"), MAX_TRANSFER_BYTES))
+
+      const error = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.flip(TinyVm.use((vm) => vm.dropFiles("thread", [join(host, "small.bin"), join(host, "huge.bin")]))),
+        ),
+      )
+
+      expect(error.message).toContain(`${MAX_TRANSFER_BYTES / 1024 / 1024} MB`)
     }),
   ),
 )

@@ -36,6 +36,20 @@ describe("handleArtifactRequest", () => {
     expect(await response.text()).toBe('<script src="assets/app.js"></script>')
   })
 
+  test("serves a CSV as plain text so the preview shows it instead of downloading it", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hinacode-artifacts-"))
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }))
+    const store = openArtifactStore(root)
+    const { id } = await store.publish({
+      title: "Data",
+      entry: "data.csv",
+      files: [{ path: "data.csv", content: "a,b\n" }],
+    })
+    const response = await handleArtifactRequest(store, new Request(`http://localhost/${id}/data.csv`))
+
+    expect(response.headers.get("content-type")).toBe("text/plain; charset=utf-8")
+  })
+
   test("serves nested files with their type", async () => {
     const { id, get } = await publishedStore()
     const response = await get(`/${id}/assets/app.js`)

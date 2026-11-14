@@ -192,6 +192,11 @@ export const signOutRelayAtom = Atom.fn(() => relayAccountAction(call("relayAcco
 
 export const syncRelayAtom = Atom.fn(() => relayAccountAction(call("relayAccount.sync", undefined)))
 
+export const appConnectionsAtom = Atom.make((get) => {
+  get.addFinalizer(onPushEvent((event) => event.type === "appConnections.changed" && get.refreshSelf()))
+  return call("appConnections.status", undefined)
+})
+
 export const relayMachinesAtom = Atom.make(call("relayAccount.machines", undefined))
 
 const relayMachinesAction = <A>(effect: Effect.Effect<A, RpcError>) =>
@@ -445,6 +450,10 @@ export const pullRequestStatusAtom = gitHubLookup((environment: EnvironmentId, u
   return call("github.pullRequest", { url }, { environment })
 })
 
+export const issueAtom = gitHubLookup(
+  (environment: EnvironmentId, url: string) => () => call("github.issue", { url }, { environment }),
+)
+
 export const pullRequestStatusesAtom = familyOf((environment: EnvironmentId, urls: ReadonlyArray<string>) =>
   Atom.make((get) =>
     urls.map((url) => {
@@ -604,8 +613,8 @@ export const accountLimitsAtom = Atom.make((get) => {
   )
 }).pipe(Atom.swr({ staleTime: "5 minutes", revalidateOnFocus: true, focusSignal: windowReturnSignal }))
 
-export const remoteStatusAtom = Atom.make(call("remote.status", undefined)).pipe(
-  refreshInStepWhileVisible(Duration.seconds(2)),
+export const remoteStatusAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(call("remote.status", undefined, { environment })).pipe(refreshInStepWhileVisible(Duration.seconds(2))),
 )
 
 export const machineResourcesAtom = Atom.family((environment: EnvironmentId) =>
@@ -655,15 +664,22 @@ export const installUpdatesAtom = Atom.fn((environments: ReadonlyArray<Environme
   }),
 )
 
-const onAutomationRun = (listener: (automationId: string) => void) =>
-  onPushEvent((event) => event.type === "automation.run" && listener(event.run.automationId))
+const onRoutineRun = (listener: (routineId: string) => void) =>
+  onPushEvent((event) => event.type === "routine.run" && listener(event.run.routineId))
 
-export const automationsAtom = Atom.family((environment: EnvironmentId) =>
-  Atom.make((get) => {
-    get.addFinalizer(onAutomationRun(() => get.refreshSelf()))
-    return call("automations.list", undefined, { environment })
-  }).pipe(refreshInStepWhileVisible(Duration.seconds(15))),
-)
+export const routinesAtom = Atom.make((get) => {
+  get.addFinalizer(
+    onPushEvent(
+      (event) =>
+        (event.type === "routine.run" ||
+          event.type === "routines.changed" ||
+          event.type === "environment.status" ||
+          event.type === "environments.changed") &&
+        get.refreshSelf(),
+    ),
+  )
+  return call("routines.list", undefined)
+})
 
 export const artifactsAtom = Atom.make((get) => {
   get.addFinalizer(
@@ -685,16 +701,23 @@ export const documentAtom = familyOf((environment: EnvironmentId, id: string) =>
   Atom.make(call("artifacts.readDocument", { id }, { environment })),
 )
 
-export const automationRunsAtom = Atom.family((automationId: string) =>
+export const ROUTINE_RUN_HISTORY = 200
+
+export const routineRunsAtom = Atom.family((routineId: string) =>
   Atom.make((get) => {
-    get.addFinalizer(onAutomationRun((id) => id === automationId && get.refreshSelf()))
-    return call("automations.runs", { id: automationId, limit: 20 })
+    get.addFinalizer(onRoutineRun((id) => id === routineId && get.refreshSelf()))
+    return call("routines.runs", { id: routineId, limit: ROUTINE_RUN_HISTORY })
   }),
 )
 
-export const webhookUrlAtom = familyOf((environment: EnvironmentId, automationId: string) =>
+export const routineWebhookAtom = familyOf((environment: EnvironmentId, routineId: string) =>
   Atom.make((get) => {
     get(settingsAtom(environment))
-    return call("automations.webhookUrl", { id: automationId })
+    get.addFinalizer(onPushEvent((event) => event.type === "routines.changed" && get.refreshSelf()))
+    return call("routines.webhook", { id: routineId })
   }),
+)
+
+export const projectCommandsAtom = familyOf((projectId: string, provider: ProviderId) =>
+  Atom.make(call("commands.forProject", { projectId, provider })),
 )

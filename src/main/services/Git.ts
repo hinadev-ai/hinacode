@@ -1,4 +1,5 @@
 import { Context, Duration, Effect, Layer, Schema, Stream } from "effect"
+import type { PlatformError } from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import type { ChangedFileStatus, CommitDiff, GitCommit } from "../../shared/domain.ts"
 
@@ -18,10 +19,13 @@ export interface RunOptions {
   readonly okExitCodes?: ReadonlyArray<number>
   readonly env?: Record<string, string>
   readonly timeout?: Duration.Input
+  readonly forceKillAfter?: Duration.Input
   readonly onStderr?: (chunk: string) => Effect.Effect<void>
 }
 
 const TIMED_OUT_EXIT_CODE = 124
+export const COMMAND_NOT_FOUND_EXIT_CODE = 127
+const DID_NOT_RUN_EXIT_CODE = -1
 const DEFAULT_TIMEOUT = "5 minutes"
 export const LONG_TIMEOUT = "1 hour"
 
@@ -44,6 +48,16 @@ const failAfter = (timeout: Duration.Input, command: string, args: ReadonlyArray
       ),
   })
 
+const notRun = (command: string, args: ReadonlyArray<string>, cwd: string, { reason }: PlatformError) => {
+  if (reason._tag === "NotFound" && reason.module === "ChildProcess") {
+    return new CommandError({ command, args, exitCode: COMMAND_NOT_FOUND_EXIT_CODE, stderr: `${command} not found` })
+  }
+  if (reason._tag === "NotFound" && reason.pathOrDescriptor === cwd) {
+    return new CommandError({ command, args, exitCode: DID_NOT_RUN_EXIT_CODE, stderr: `folder ${cwd} does not exist` })
+  }
+  return new CommandError({ command, args, exitCode: DID_NOT_RUN_EXIT_CODE, stderr: reason.message })
+}
+
 export const makeExec =
   (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) =>
   (command: string, args: ReadonlyArray<string>, cwd: string, options?: RunOptions) =>
@@ -54,7 +68,7 @@ export const makeExec =
           stdin: "ignore",
           env: options?.env,
           extendEnv: true,
-          forceKillAfter: "3 seconds",
+          forceKillAfter: options?.forceKillAfter ?? "3 seconds",
         }),
       )
       const [stdout, stderr, exitCode] = yield* Effect.all(
@@ -74,9 +88,7 @@ export const makeExec =
     }).pipe(
       Effect.scoped,
       failAfter(options?.timeout ?? DEFAULT_TIMEOUT, command, args),
-      Effect.catchTag("PlatformError", (cause) =>
-        Effect.fail(new CommandError({ command, args, exitCode: -1, stderr: cause.message })),
-      ),
+      Effect.catchTag("PlatformError", (cause) => Effect.fail(notRun(command, args, cwd, cause))),
       Effect.withSpan(`exec ${command}`, { attributes: { command: [command, ...args].join(" ") } }),
     )
 

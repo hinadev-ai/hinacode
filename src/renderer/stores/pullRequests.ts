@@ -7,25 +7,45 @@ import { call } from "../lib/rpc.ts"
 interface PullRequestsState {
   readonly byThreadId: Readonly<Record<string, ReadonlyArray<PullRequestLink>>>
   readonly replace: (threadId: string, links: ReadonlyArray<PullRequestLink>) => void
-  readonly addAll: (links: ReadonlyArray<PullRequestLink>) => void
+  readonly startReload: () => (links: ReadonlyArray<PullRequestLink>) => void
 }
 
-export const usePullRequests = create<PullRequestsState>()((set) => ({
-  byThreadId: {},
-  replace: (threadId, links) => set((state) => ({ byThreadId: { ...state.byThreadId, [threadId]: links } })),
-  addAll: (links) =>
-    set((state) => {
-      const loaded: Record<string, Array<PullRequestLink>> = {}
-      for (const link of links) (loaded[link.threadId] ??= []).push(link)
-      return { byThreadId: { ...state.byThreadId, ...loaded } }
-    }),
-}))
+export const usePullRequests = create<PullRequestsState>()((set) => {
+  let pushedDuringReload: Set<string> | null = null
+  return {
+    byThreadId: {},
+    replace: (threadId, links) => {
+      pushedDuringReload?.add(threadId)
+      set((state) => ({ byThreadId: { ...state.byThreadId, [threadId]: links } }))
+    },
+    startReload: () => {
+      const pushed = new Set<string>()
+      pushedDuringReload = pushed
+      return (links) => {
+        if (pushedDuringReload !== pushed) return
+        pushedDuringReload = null
+        set((state) => {
+          const byThreadId: Record<string, ReadonlyArray<PullRequestLink>> = {}
+          for (const link of links) byThreadId[link.threadId] = [...(byThreadId[link.threadId] ?? []), link]
+          for (const threadId of pushed) {
+            const current = state.byThreadId[threadId]
+            if (current !== undefined) byThreadId[threadId] = current
+          }
+          return { byThreadId }
+        })
+      }
+    },
+  }
+})
 
 export const loadAllPullRequestsAtom = Atom.make(
-  call("pullRequests.all", undefined).pipe(
-    Effect.tap((links) => Effect.sync(() => usePullRequests.getState().addAll(links))),
-    Effect.asVoid,
-  ),
+  Effect.suspend(() => {
+    const finishReload = usePullRequests.getState().startReload()
+    return call("pullRequests.all", undefined).pipe(
+      Effect.tap((links) => Effect.sync(() => finishReload(links))),
+      Effect.asVoid,
+    )
+  }),
 ).pipe(Atom.keepAlive)
 
 export const loadPullRequestsAtom = Atom.family((threadId: string) =>

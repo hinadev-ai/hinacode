@@ -29,9 +29,10 @@ import type {
 import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { installedBinary } from "../binary.ts"
+import { instructionsUpdate } from "../instructions.ts"
 import { attachmentContext } from "../elementContext.ts"
 import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
-import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
+import { AgentError, type AgentProvider, type BackgroundTasksChange, interruptedTurn, type Wake } from "../provider.ts"
 import { choiceFor, sessionScope, takesNote, toApprovalRequest } from "./approvals.ts"
 import { backgroundTasksAfter, isBackgrounded } from "./backgroundTasks.ts"
 import { toAccount, toModelInfo } from "./catalog.ts"
@@ -83,8 +84,6 @@ const permissionProfiles: Record<AccessMode, string> = {
 
 const museError = (message: string) => new AgentError({ provider: "muse", message })
 
-const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
-
 const SUMMARY_BREAK = "\n\n"
 
 interface LoadedSession {
@@ -93,6 +92,7 @@ interface LoadedSession {
   cwd: string
   usedTokens: number | null
   compacting: boolean
+  readInstructions: string | null
 }
 
 interface HostEntry {
@@ -459,6 +459,7 @@ const make = Effect.gen(function* () {
               cwd,
               usedTokens: null,
               compacting: false,
+              readInstructions: null,
             })
             return known
           }
@@ -472,6 +473,7 @@ const make = Effect.gen(function* () {
           cwd,
           usedTokens: null,
           compacting: false,
+          readInstructions: null,
         })
         probeSessions.set(cwd, session.sessionId)
         return session.sessionId
@@ -519,6 +521,7 @@ const make = Effect.gen(function* () {
           cwd: input.cwd,
           usedTokens: null,
           compacting: false,
+          readInstructions: null,
         })
         threadSessions.set(input.threadId, session.sessionId)
         return session.sessionId
@@ -539,6 +542,7 @@ const make = Effect.gen(function* () {
           // FIXME: an `excludeItems` resume carries no context usage
           usedTokens: input.autoCompactTokens === null ? null : yield* latestUsedTokens(host, sessionId),
           compacting: false,
+          readInstructions: null,
         }
         sessions.set(sessionId, loaded)
       }
@@ -831,7 +835,7 @@ const make = Effect.gen(function* () {
               },
             })
           }
-          if (params.terminal === "cancelled") return yield* emit(interruptedEvent)
+          if (params.terminal === "cancelled") return yield* emit(interruptedTurn)
           const quota = params.error?.quota
           if (quota !== undefined || rateLimited) {
             return yield* emit({
@@ -942,7 +946,7 @@ const make = Effect.gen(function* () {
               Effect.forkIn(providerScope),
             )
           }
-          yield* emit(interruptedEvent)
+          yield* emit(interruptedTurn)
         }
         yield* Queue.end(out)
       }),
@@ -997,7 +1001,9 @@ const make = Effect.gen(function* () {
         if (compacting) return yield* emit({ type: "turn_completed" })
 
         // FIXME: MSP has no developer instructions
-        const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, input.instructions)
+        const seen = loaded?.readInstructions ?? null
+        const instructions = seen === null ? input.instructions : instructionsUpdate(seen, input.instructions)
+        const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, instructions)
         run.turnStart = yield* host
           .command<TurnStartResult>("turn/start", {
             sessionId,
@@ -1011,7 +1017,10 @@ const make = Effect.gen(function* () {
             Effect.forkIn(providerScope),
           )
         run.turnId = yield* Fiber.join(run.turnStart)
+        if (loaded !== undefined && !prompt.some((part) => part.type === "skill"))
+          loaded.readInstructions = input.instructions
         wakeTurns.delete(sessionId)
+        yield* input.onOpen ?? Effect.void
 
         while (!(yield* Queue.take(inbox).pipe(Effect.flatMap(handle)))) {}
       }),
@@ -1044,13 +1053,15 @@ const make = Effect.gen(function* () {
   const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
     Effect.gen(function* () {
       const run = runs.get(threadId)
-      const { entry, sessionId, turnId } = run ?? {}
-      if (!entry?.host.isAlive() || !sessionId || !turnId) return yield* museError("No turn is running on this thread")
+      if (run === undefined || run.turnId === undefined || run.ended) return false
+      const { entry, sessionId, turnId } = run
+      if (!entry?.host.isAlive() || !sessionId) return yield* museError("No turn is running on this thread")
       // FIXME: Muse 1.4.7 rejects skill parts on turn/steer
       const input = yield* userInput(text, attachments)
       yield* entry.host
         .command("turn/steer", { sessionId, expectedTurnId: turnId, input })
         .pipe(Effect.mapError(toAgentError))
+      return true
     })
 
   const setAccessMode = (threadId: string, accessMode: AccessMode) =>

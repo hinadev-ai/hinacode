@@ -50,6 +50,7 @@ const documentAt = (version: number, revision = version): Artifact => ({
 
 let stored = { version: 1, revision: 1, markdown: AGENT_MARKDOWN }
 let nextSave: DocumentSaveResult | undefined
+let saveError: string | undefined
 let saveReleased: Promise<void> = Promise.resolve()
 let saves: Array<{ baseRevision: number; markdown: string }> = []
 let storedImages: Array<string> = []
@@ -76,6 +77,7 @@ const bridge: HinacodeBridge = {
       const save = payload as { baseRevision: number; markdown: string }
       await saveReleased
       saves.push(save)
+      if (saveError !== undefined) return { error: { tag: "SaveFailed", message: saveError } }
       if (nextSave !== undefined) return { result: nextSave }
       stored = { version: 2, revision: stored.revision + 1, markdown: save.markdown }
       return { result: { type: "saved", version: stored.version, revision: stored.revision } }
@@ -152,6 +154,7 @@ beforeEach(({ task }) => {
   renames = []
   stored = { version: 1, revision: 1, markdown: AGENT_MARKDOWN }
   nextSave = undefined
+  saveError = undefined
   saveReleased = Promise.resolve()
   saves = []
   storedImages = []
@@ -461,6 +464,29 @@ test("asks the agent to read the edited document from the thread's draft", async
   expect(useDrafts.getState().byThreadId[thread.id]?.text).toContain(`"Release plan" (${documentId}, revision 1)`)
 })
 
+test("does not ask the agent to read a document whose edits did not save", async () => {
+  useDrafts.getState().setText(thread.id, "")
+  await openDocument()
+  nextSave = { type: "conflict", version: 2, revision: 2, markdown: "# Release plan\n\nThe agent's version.\n" }
+  await typeAtEnd(" Mine.")
+  await page.getByRole("button", { name: "Ask agent" }).click()
+
+  await expect.element(page.getByRole("button", { name: "Keep mine" })).toBeVisible()
+  expect(saves).toHaveLength(1)
+  expect(useDrafts.getState().byThreadId[thread.id]?.text ?? "").toBe("")
+})
+
+test("does not ask the agent to read a document whose save failed", async () => {
+  useDrafts.getState().setText(thread.id, "")
+  await openDocument()
+  saveError = "Disk full"
+  await typeAtEnd(" Mine.")
+  await page.getByRole("button", { name: "Ask agent" }).click()
+
+  await expect.element(page.getByRole("alert").filter({ hasText: "Disk full" })).toBeVisible()
+  expect(useDrafts.getState().byThreadId[thread.id]?.text ?? "").toBe("")
+})
+
 test("colors a code block in the language the Markdown names", async () => {
   const editor = await openDocument()
   const block = editor.element().querySelector("pre")!
@@ -712,6 +738,24 @@ test("shows the error and the source of a diagram that cannot be drawn", async (
   await expect.element(editor.getByRole("code")).toBeVisible()
   expect(editor.getByRole("code").element().textContent).toBe("flowchart TD\n  A -->")
   await expect.element(editor.getByRole("button", { name: "Source" })).toHaveAttribute("aria-pressed", "true")
+  await expect.element(editor.getByRole("button", { name: "Source" })).toBeDisabled()
+})
+
+test("keeps a diagram's source open while the developer fixes it", async () => {
+  stored = { ...stored, markdown: "# Release plan\n\n```mermaid\nflowchart TD\n  A -->\n```\n" }
+  const editor = await openDocument()
+  await expect.element(editor.getByRole("code")).toBeVisible()
+
+  await editor.getByRole("code").click()
+  await userEvent.keyboard("{End} B")
+
+  await expect
+    .poll(() => editor.element().querySelector("[data-diagram-svg] > svg"), { timeout: 10_000 })
+    .not.toBeNull()
+  const source = editor.element().querySelector("[data-diagram] pre")
+  expect(source?.textContent).toBe("flowchart TD\n  A --> B")
+  expect(shown(source)).toBe(true)
+  await expect.element(editor.getByRole("button", { name: "Source" })).toHaveAttribute("aria-pressed", "true")
 })
 
 const printed = async (html: string) => {
@@ -890,6 +934,25 @@ test("shows the error and the source of a chart that cannot be drawn", async () 
     .not.toBe("")
   await expect.element(editor.getByRole("code")).toBeVisible()
   expect(saves).toEqual([])
+})
+
+test("keeps a chart's source open while the developer fixes it", async () => {
+  stored = { ...stored, markdown: `# Release plan\n\n${CHART.replace(/\n}\n```$/, "\n```")}\n` }
+  const editor = await openDocument()
+  await expect.element(editor.getByRole("code")).toBeVisible()
+
+  await editor.getByRole("code").click()
+  const code = editor.getByRole("code").element()
+  getSelection()?.collapse(code, code.childNodes.length)
+  await userEvent.keyboard("{Enter}}")
+
+  await expect
+    .poll(() => editor.element().querySelector("[data-chart-title]")?.textContent, { timeout: 10_000 })
+    .toBe("Saves peaked on Wednesday")
+  const source = editor.element().querySelector("[data-chart] pre")
+  expect(source?.textContent).toMatch(/\n}$/)
+  expect(shown(source)).toBe(true)
+  await expect.element(editor.getByRole("button", { name: "Source" })).toHaveAttribute("aria-pressed", "true")
 })
 test("lays out a right-to-left paragraph from the right", async () => {
   stored = { ...stored, markdown: "# Release plan\n\nהעורך נשלח קודם.\n\n- المحرر أولاً.\n\nShip the editor first.\n" }

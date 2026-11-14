@@ -1,13 +1,3 @@
-/**
- * The phone side of `scripts/perf/mobile.ts`. Only a release bundle built with `EXPO_PUBLIC_PERF_URL` contains it:
- * metro.config.js loads it through `perf-renderer.js`, just before React's profiling renderer. It long-polls the
- * driver for a workload, runs it and posts back what it saw: commits with the components each rendered and their
- * render time, JS frame gaps, and long tasks.
- *
- * The stores and the router load lazily, after the first commit, so this module does not change the app's
- * startup order.
- */
-
 type Fiber = {
   tag: number
   type: unknown
@@ -42,7 +32,6 @@ const nameOf = (fiber: Fiber) => {
   return type?.displayName || inner?.displayName || inner?.name || "Anonymous"
 }
 
-/** Components that rendered in this commit: every new fiber, and every old one that did work. */
 function walk(next: Fiber, prev: Fiber | null, rendered: Record<string, number>) {
   if (composite.has(next.tag) && (prev === null || (next.flags & PERFORMED_WORK) !== 0)) {
     const name = prev === null ? `${nameOf(next)} (mount)` : nameOf(next)
@@ -62,7 +51,6 @@ function onCommit(root: FiberRoot) {
   if (recording) {
     const rendered: Record<string, number> = {}
     walk(root.current, root.current.alternate, rendered)
-    // Only the profiling renderer, which metro.config.js picks for perf bundles, times renders.
     const renderMs = root.current.actualDuration ?? null
     commits.push({ at: performance.now(), renderMs, rendered })
   }
@@ -91,7 +79,6 @@ const nextCommit = () => new Promise<void>((resolve) => commitWaiters.push(resol
 const nextFrame = () => new Promise<number>((resolve) => requestAnimationFrame(() => resolve(performance.now())))
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Resolves once no commit has landed for `quietMs`, with the time of the last one. */
 async function settle(quietMs: number, timeoutMs = 15000) {
   const start = performance.now()
   for (;;) {
@@ -106,7 +93,6 @@ let frames: number[] = []
 let longTasks: { start: number; duration: number }[] = []
 let frameLoopId = 0
 
-/** One frame callback chain per recording, so a recording that starts before the last chain ends is not counted twice. */
 function frameLoop(id: number) {
   if (!recording || id !== frameLoopId) return
   frames.push(performance.now())
@@ -151,10 +137,6 @@ const withTestID = (testID: string) => (fiber: Fiber) => fiber.memoizedProps?.te
 
 type Store<S> = { getState: () => S; subscribe: (listener: (state: S) => void) => () => void }
 
-/**
- * When `store` first satisfies `ready`, and when the commit that follows it reaches the next frame. The check runs
- * inside the store's update, before React renders it, so that commit cannot slip past.
- */
 function paintedWhen<S>(store: Store<S>, ready: (state: S) => boolean, timeoutMs = 60000) {
   return new Promise<{ readyAt: number; paintedAt: number }>((resolve, reject) => {
     const timer = setTimeout(() => (unsubscribe(), reject(new Error("timed out"))), timeoutMs)
@@ -177,11 +159,15 @@ const stores = () => ({
   messages: (require("@/stores/messages") as typeof import("@/stores/messages")).useMessages,
 })
 const router = () => (require("expo-router") as typeof import("expo-router")).router
+const connection = () => require("@/lib/connection") as typeof import("@/lib/connection")
+const parseDocument = () =>
+  (require("@shared/document/parse.ts") as typeof import("@shared/document/parse.ts")).parseDocument
+const perfFrames = () => (require("@hinacode/perf-frames") as typeof import("@hinacode/perf-frames")).loadPerfFrames()
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 let firstCommit: number | null = null
 
-/** React Native's startup marks, read one by one because the object's fields are getters JSON does not see. */
+// FIXME: rnStartupTiming's fields are getters JSON.stringify skips, so they are read one by one.
 function startupTiming() {
   const timing = (performance as { rnStartupTiming?: Record<string, number | undefined> }).rnStartupTiming
   if (timing === undefined) return null
@@ -191,7 +177,6 @@ function startupTiming() {
 let longTasksObserved = false
 let threadList: Promise<{ readyAt: number; paintedAt: number }> | null = null
 
-/** Startup timings, and the thread list's first paint once the desktop has answered. */
 async function hello() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { loadServers } = require("@/lib/storage") as typeof import("@/lib/storage")
@@ -200,23 +185,19 @@ async function hello() {
   return {
     paired,
     longTasksObserved,
-    // `performance.now()` counts from boot without the time the Mac slept, so convert with the wall clock instead.
-    epochOffset: Date.now() - performance.now(),
     startup: startupTiming(),
     firstCommit,
     threadListPainted,
   }
 }
 
-/** Pairs with the target the driver read from the desktop, as scanning its QR code would. */
 async function pair(command: Command) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { pair } = require("@/components/connection-provider") as typeof import("@/components/connection-provider")
+  const { pair } = require("@/lib/start-app") as typeof import("@/lib/start-app")
   await pair(command.target as Parameters<typeof pair>[0])
   return {}
 }
 
-/** Opens a thread from the list with its transcript not loaded yet, as the first visit does. */
 async function open(command: Command) {
   const threadId = String(command.threadId)
   const { messages } = stores()
@@ -236,7 +217,6 @@ async function back() {
   return {}
 }
 
-/** Scrolls a list by `px` every frame, as `scroll` does on the desktop. JS drives it, so it measures JS cost only. */
 async function scroll(command: Command) {
   const list = findFiber((fiber) => withTestID(String(command.testID))(fiber) && hasScrollTo(fiber.stateNode))
   if (list === undefined) throw new Error(`no list with testID ${command.testID}`)
@@ -262,12 +242,7 @@ async function scroll(command: Command) {
 const hasScrollTo = (node: unknown) =>
   typeof node === "object" && node !== null && typeof (node as { scrollToOffset?: unknown }).scrollToOffset === "function"
 
-/**
- * Calls the composer's `onChangeText` one character at a time. Native text input is not part of it, and the update
- * runs at React's default priority instead of a key press's discrete one.
- */
 async function type(command: Command) {
-  // Read the handler again for each key: the composer makes a new one every render.
   const change = (next: string) => {
     const input = findFiber(
       (fiber) => withTestID("composer-input")(fiber) && typeof fiber.memoizedProps?.onChangeText === "function",
@@ -278,7 +253,6 @@ async function type(command: Command) {
   const text = String(command.text)
   const intervalMs = Number(command.intervalMs ?? 50)
   const keys: { at: number; commit: number | null; paint: number }[] = []
-  // The transcript may still be mounting batches after a scroll; let it finish so only keys are measured.
   await settle(1000)
   startRecording()
   for (let length = 1; length <= text.length; length++) {
@@ -296,7 +270,6 @@ async function type(command: Command) {
   return result
 }
 
-/** Records while the driver sends a prompt to the desktop's paced mock reply, until that reply completes. */
 async function reply(command: Command) {
   const threadId = String(command.threadId)
   const { messages } = stores()
@@ -317,7 +290,137 @@ async function reply(command: Command) {
   return { start, done, painted, settled, ...stopRecording() }
 }
 
-const workloads: Record<string, (command: Command) => Promise<unknown>> = { hello, pair, open, back, scroll, type, reply }
+function hermesHeap() {
+  const stats = (
+    globalThis as { HermesInternal?: { getInstrumentedStats?: () => Record<string, number> } }
+  ).HermesInternal?.getInstrumentedStats?.()
+  return stats === undefined ? null : { heapSize: stats.js_heapSize, allocatedBytes: stats.js_allocatedBytes }
+}
+
+type NativeDocument = {
+  applyPatch: (patch: string) => Promise<void>
+  scrollToBlock: (index: number) => Promise<void>
+}
+
+const isNativeDocument = (node: unknown): node is NativeDocument =>
+  typeof node === "object" && node !== null && typeof (node as { applyPatch?: unknown }).applyPatch === "function"
+
+const appliedPatches: number[] = []
+const patchWaiters: (() => void)[] = []
+const probed = new WeakSet<object>()
+
+function probeNativeDocument() {
+  const fiber = findFiber((candidate) => isNativeDocument(candidate.stateNode))
+  const view = fiber?.stateNode
+  if (!isNativeDocument(view)) return null
+  if (probed.has(view)) return view
+  probed.add(view)
+  const apply = view.applyPatch.bind(view)
+  view.applyPatch = async (patch) => {
+    await apply(patch)
+    appliedPatches.push(await nextFrame())
+    for (const resolve of patchWaiters.splice(0)) resolve()
+  }
+  return view
+}
+
+const nextPatch = () => new Promise<void>((resolve) => patchWaiters.push(resolve))
+
+const lastCommitThatRendered = () => commits.findLast((commit) => Object.keys(commit.rendered).length > 0)?.at
+
+async function settleWithPatches(quietMs: number, timeoutMs = 15000) {
+  const start = performance.now()
+  for (;;) {
+    const last = Math.max(lastCommitThatRendered() ?? start, appliedPatches.at(-1) ?? start)
+    const now = performance.now()
+    if (now - last >= quietMs || now - start > timeoutMs) return last
+    await sleep(50)
+  }
+}
+
+async function openDocument(command: Command) {
+  const threadId = String(command.threadId)
+  const artifactId = String(command.artifactId)
+  await settle(300)
+  appliedPatches.length = 0
+  startRecording()
+  const start = performance.now()
+  const mounted = (async () => {
+    for (;;) {
+      await nextCommit()
+      if (findFiber(withTestID("document")) === undefined) continue
+      const native = probeNativeDocument()
+      if (native === null) return nextFrame()
+      if (appliedPatches.length === 0) await nextPatch()
+      return appliedPatches[0]!
+    }
+  })()
+  router().push({ pathname: "/thread/[id]/document", params: { id: threadId, artifactId, title: "perf" } })
+  const firstContent = await mounted
+  const settled = await settleWithPatches(1000)
+  const heap = hermesHeap()
+  const recorded = stopRecording()
+  const { markdown } = await connection().call("artifacts.readDocument", { id: artifactId })
+  const parse = parseDocument()
+  const parseStart = performance.now()
+  const blocks = parse(markdown).doc.childCount
+  const parseMs = performance.now() - parseStart
+  const patches = appliedPatches.slice()
+  return { start, firstContent, settled, patches, heap, parseMs, blocks, bytes: markdown.length, ...recorded }
+}
+
+async function fling(command: Command) {
+  const sampler = perfFrames()
+  await settle(500)
+  startRecording()
+  await sampler.start()
+  const start = performance.now()
+  await post("/ready", { id: command.id })
+  const nativeFrames = await sampler.stop()
+  const end = performance.now()
+  await settle(500)
+  return { start, end, nativeFrames, ...stopRecording() }
+}
+
+async function updateDocument(command: Command) {
+  const artifactId = String(command.artifactId)
+  const native = probeNativeDocument()
+  if (native === null) throw new Error("no open document")
+  await native.scrollToBlock(0)
+  await settle(1000)
+  let unsubscribe = () => {}
+  const arrived = new Promise<number>((resolve) => {
+    unsubscribe = connection().onEvent((event) => {
+      if (event.type === "artifact.updated" && event.artifact.id === artifactId) resolve(performance.now())
+    })
+  })
+  appliedPatches.length = 0
+  startRecording()
+  const start = performance.now()
+  const patched = nextPatch()
+  await post("/ready", { id: command.id })
+  const eventAt = await Promise.race([arrived, sleep(20000).then(() => null)])
+  unsubscribe()
+  if (eventAt === null) throw new Error("no artifact.updated within 20 s")
+  await Promise.race([patched, sleep(10000)])
+  const paintedAt = appliedPatches.find((at) => at > eventAt) ?? null
+  const settled = await settleWithPatches(1000)
+  const recorded = stopRecording()
+  return { start, eventAt, settled, paintedAt, ...recorded }
+}
+
+const workloads: Record<string, (command: Command) => Promise<unknown>> = {
+  hello,
+  pair,
+  open,
+  back,
+  scroll,
+  type,
+  reply,
+  openDocument,
+  fling,
+  updateDocument,
+}
 
 async function post(path: string, body: unknown) {
   await fetch(`${url}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })

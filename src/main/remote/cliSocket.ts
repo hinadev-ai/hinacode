@@ -3,6 +3,7 @@ import { createConnection } from "node:net"
 import { dirname } from "node:path"
 import { Cause, Effect, Layer } from "effect"
 import type { WebSocket } from "ws"
+import { RemoteFeature } from "../../shared/remote.ts"
 import { route } from "../environments/route.ts"
 import { WindowBroadcast } from "../services/Events.ts"
 import { CLOSE_MALFORMED_FRAME, RemoteAccess } from "./access.ts"
@@ -37,7 +38,7 @@ const make = (dataDir: string) =>
       call: (raw) => route(raw, null),
       subscribe: windows.subscribe,
       environment: access.identity,
-      features: ["heartbeat", "call-keys", "terminal-attach", "watch"],
+      features: RemoteFeature.filter((feature) => feature !== "asks"),
     })
 
     const accept = (socket: WebSocket) => {

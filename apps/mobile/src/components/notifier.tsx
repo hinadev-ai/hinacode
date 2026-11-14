@@ -23,7 +23,6 @@ const isViewing = (pathname: string, threadId: string) =>
 
 let noticeCount = 0
 
-/** Raises a banner or a system notification when a thread the developer is not looking at needs them. */
 export function Notifier() {
   const pathname = usePathname()
   const paired = useConnection((state) => state.paired)
@@ -32,7 +31,6 @@ export function Notifier() {
   const receive = useEffectEvent((threadId: string, alert: NonNullable<ReturnType<typeof threadAlert>>) => {
     if (!usePreferences.getState().notifications[alert.kind]) return
     const thread = useThreads.getState().byId[threadId]
-    // A finished turn with messages queued behind it is not the end of the thread's work.
     if (alert.kind === "completed" && (thread?.queue.length ?? 0) > 0) return
     const title = thread === undefined || thread.title === "" ? copy("mobile_notify_untitled") : thread.title
     if (AppState.currentState !== "active") {
@@ -43,7 +41,6 @@ export function Notifier() {
     }
   })
 
-  // Marks a thread whose turn ended out of sight, for the row's dot; opening the thread clears it.
   const recordOutcome = useEffectEvent((threadId: string, event: AgentEvent) => {
     const outcome = outcomeOf(event)
     if (outcome === undefined) return
@@ -70,7 +67,7 @@ export function Notifier() {
   useEffect(() => onNotificationOpened((threadId) => opened(threadId)), [])
 
   useEffect(() => {
-    // Browsers only show the prompt after a tap, so the web asks from Settings instead.
+    // FIXME: Browsers only show the notification prompt after a tap, so the web asks from Settings instead.
     if (!paired || Platform.OS === "web") return
     void getNotificationPermission().then((permission) => {
       if (permission === "undetermined") void requestNotificationPermission()

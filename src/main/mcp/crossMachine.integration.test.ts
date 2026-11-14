@@ -61,7 +61,7 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   usage: () => Effect.succeed(null),
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.empty,
-  steer: () => Effect.void,
+  steer: () => Effect.succeed(true),
   interrupt: () => Effect.void,
   respondApproval: () => Effect.succeed(false),
   respondQuestion: () => Effect.void,
@@ -375,7 +375,8 @@ describe("thread tools across machines", () => {
     expect(machines).toHaveLength(2)
   })
 
-  test("a desktop thread creates a thread on the cloud and starts it", async () => {
+  test("a desktop thread creates a thread on the cloud in its own access mode and starts it", async () => {
+    await desktop.runPromise(Threads.use((threads) => threads.update({ id: desktopThread, accessMode: "auto" })))
     const created = await callAs(desktop, desktopThread, "create_thread", {
       title: "on the cloud",
       prompt: "run this on the cloud",
@@ -391,6 +392,7 @@ describe("thread tools across machines", () => {
       title: "on the cloud",
       provider: "claude",
       model: "claude-cloud",
+      accessMode: "auto",
       createdBy: `thread:${desktopThread}`,
     })
     await vi.waitFor(async () => {

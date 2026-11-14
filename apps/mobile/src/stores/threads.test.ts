@@ -5,7 +5,7 @@ import { flush, type PendingCall, thread } from "./testing"
 const calls = vi.hoisted((): PendingCall[] => [])
 vi.mock("@/lib/connection", async () => ({ call: (await import("./testing")).fakeCall(calls) }))
 
-const { archivedThreads, inboxThreads, matchThreads, pinnedThreads, threadBranch, threadRoot, useThreads } =
+const { archivedThreads, draftThread, inboxThreads, matchThreads, pinnedThreads, threadBranch, threadRoot, useThreads } =
   await import("./threads")
 
 const EARLY = "2026-10-16T00:00:00.000Z"
@@ -218,4 +218,14 @@ it("keeps when a turn began across later updates, and forgets it once the turn e
   const waiting = trackRunningSince(switchedModel, [running("2026-11-08T10:06:00Z", "awaiting_approval")])
   expect(waiting).toEqual({ t: "2026-11-08T10:00:00Z" })
   expect(trackRunningSince(waiting, [running("2026-11-08T10:09:00Z", "idle")])).toEqual({})
+})
+
+describe("draftThread", () => {
+  const draft = { ...thread("d", EARLY), status: "draft" } as Thread
+
+  it("is the cached draft until its first message promotes it, so New thread asks for a new one", () => {
+    expect(draftThread({ d: draft }, "d")).toBe(draft)
+    expect(draftThread({ d: { ...draft, status: "idle" } }, "d")).toBeUndefined()
+    expect(draftThread({ d: draft }, undefined)).toBeUndefined()
+  })
 })

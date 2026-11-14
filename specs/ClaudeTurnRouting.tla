@@ -27,7 +27,7 @@ VARIABLES
   reportDue,         \* a sub-agent finished and Claude has not replied to its report yet
   idleSent,          \* the CLI announced idle and has not started anything since
   bgLeft,
-  \* provider session (index.ts:75-108)
+  \* provider session (index.ts Session)
   turn, turnPrompts, unanswered,
   shown,             \* ghost: the turn the session last had open
   \* AgentRunner
@@ -38,19 +38,30 @@ VARIABLES
   queue,             \* queue[k]: events pump emitted into turn k's queue, not yet handled
   started,           \* turns started so far, by a send or by the session itself; the next one gets started + 1
   pendingWakes,      \* turns the session opened by itself that the runner has not followed yet
+  opened,            \* the provider ran the active turn's onOpen
+  waiting,           \* steers the provider refused: the turn each waits on, whether for its open or its end, and
+                     \* how that turn ended
+  completed,         \* the active turn handled a result: makeTurn's `completed`
+  stopped,           \* Stop reached the active turn: makeTurn's `stop`
   \* ghost
   sent, promptsSent, turnOf, steersLeft, interruptsLeft, abandonsLeft,
   delivered,         \* an event answering the prompts of turns `from` was offered to turn `to`
   droppedContent,    \* the turns answered by each content message pump discarded
-  abandoned, finished, rejectedSteerWhileRunning
-
+  abandoned, finished,
+  held,              \* steers put in thread.queue after their turn was stopped or failed
+  startedAfterStop   \* a refused steer started a turn after its own turn was stopped or failed
 bgVars == <<background, reportDue, idleSent, bgLeft>>
 cliVars == <<stdin, backlog, cliPhase, answering, contentSent, stdout, bgVars>>
 sessionVars == <<turn, turnPrompts, unanswered, shown>>
 runnerVars == <<busy, activeTurn, status, consumer, queue, started, pendingWakes>>
+steerVars == <<opened, waiting, completed, stopped, held, startedAfterStop>>
 ghostVars == <<sent, promptsSent, turnOf, steersLeft, interruptsLeft, abandonsLeft, delivered, droppedContent,
-               abandoned, finished, rejectedSteerWhileRunning>>
-vars == <<cliVars, sessionVars, runnerVars, ghostVars>>
+               abandoned, finished>>
+vars == <<cliVars, sessionVars, runnerVars, steerVars, ghostVars>>
+
+Steers == 1..MaxSteers
+\* ending: "running" until finish; then "carries" if the turn completed and nobody stopped it, else "holds"
+Waiting == [steer : Steers, turn : Turns, awaits : {"open", "end"}, ending : {"running", "carries", "holds"}]
 
 StdinEntry == [kind : {"prompt", "interrupt"}, prompt : Prompts \cup {None}, steer : BOOLEAN]
 
@@ -75,7 +86,9 @@ TypeOK ==
   /\ delivered \subseteq [to : Turns, from : SUBSET Turns]
   /\ droppedContent \subseteq SUBSET Turns
   /\ abandoned \subseteq Turns /\ finished \subseteq Turns
-  /\ rejectedSteerWhileRunning \in BOOLEAN
+  /\ opened \in BOOLEAN /\ waiting \subseteq Waiting
+  /\ completed \in BOOLEAN /\ stopped \in BOOLEAN
+  /\ held \in 0..MaxSteers /\ startedAfterStop \in BOOLEAN
 
 Init ==
   /\ stdin = <<>> /\ backlog = <<>> /\ cliPhase = "idle" /\ answering = {} /\ contentSent = 0
@@ -87,7 +100,7 @@ Init ==
   /\ sent = 0 /\ promptsSent = 0 /\ turnOf = [p \in Prompts |-> None]
   /\ steersLeft = MaxSteers /\ interruptsLeft = MaxInterrupts /\ abandonsLeft = MaxAbandons
   /\ delivered = {} /\ droppedContent = {} /\ abandoned = {} /\ finished = {}
-  /\ rejectedSteerWhileRunning = FALSE
+  /\ opened = FALSE /\ waiting = {} /\ completed = FALSE /\ stopped = FALSE /\ held = 0 /\ startedAfterStop = FALSE
 
 -----------------------------------------------------------------------------
 
@@ -103,54 +116,93 @@ SendPrompt(k, steer) ==
   /\ unanswered' = unanswered \cup {p}
   /\ stdin' = Append(stdin, Prompt(p, steer))
 
-\* AgentRunner.ts:518-541 sendWhen + 449-516 startTurn (the forked turn.run starts in RunTurn)
+\* AgentRunner.ts sendWhen, startClaimed and startTurn (the forked turn.run starts in RunTurn)
 Send ==
   /\ ~busy /\ sent < MaxSends
   /\ sent' = sent + 1 /\ started' = started + 1
   /\ busy' = TRUE /\ activeTurn' = started + 1 /\ status' = "running" /\ consumer' = "starting"
   /\ UNCHANGED <<cliVars, sessionVars, queue, pendingWakes, promptsSent, turnOf, steersLeft, interruptsLeft,
-                 abandonsLeft, delivered, droppedContent, abandoned, finished, rejectedSteerWhileRunning>>
+                 abandonsLeft, delivered, droppedContent, abandoned, finished, steerVars>>
 
-\* index.ts:586-644 runTurn, everything after acquireSession; AgentRunner.ts:407-431 turns its error into turn_failed
+\* index.ts runTurn and startTurn, everything after acquireSession; AgentRunner.ts makeTurn follow turns its error
+\* into turn_failed. startTurn runs onOpen once the turn's prompt is queued.
 RunTurn ==
   /\ consumer = "starting"
   /\ consumer' = "reading"
   /\ IF turn # None
      THEN /\ queue' = [queue EXCEPT ![activeTurn] = <<[type |-> "failed", from |-> {activeTurn}]>>]
-          /\ UNCHANGED <<stdin, sessionVars, promptsSent, turnOf>>
+          /\ UNCHANGED <<stdin, sessionVars, promptsSent, turnOf, opened>>
      ELSE /\ turn' = activeTurn /\ shown' = activeTurn
           /\ SendPrompt(activeTurn, FALSE)
           /\ turnPrompts' = {promptsSent + 1}
+          /\ opened' = TRUE
           /\ UNCHANGED queue
   /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, busy, activeTurn, status, started,
                  pendingWakes, sent, steersLeft, interruptsLeft, abandonsLeft, delivered, droppedContent, abandoned,
-                 finished, rejectedSteerWhileRunning>>
+                 finished, waiting, completed, stopped, held, startedAfterStop>>
 
-\* AgentRunner.ts:543-546 routes to makeTurn's steer (358-378), which calls index.ts:646-656 steer.
-\* With no activeTurns entry it falls back to send, which the Send action already covers.
+\* AgentRunner.ts makeTurn steerOrHold and steerTurn call index.ts steer, which refuses when the session has no turn:
+\* before onOpen, or after the turn ended. makeTurn steer then waits for onOpen or for the turn to end, whichever
+\* it can still get, and tries again (SteerRetry). `others` are the other waiting steers.
+TrySteer(s, k, others) ==
+  IF turn # None
+  THEN /\ SendPrompt(turn, TRUE)
+       /\ waiting' = others
+       /\ UNCHANGED <<turn, shown>>
+  ELSE /\ waiting' = others \cup {[steer |-> s, turn |-> k, awaits |-> IF opened THEN "end" ELSE "open",
+                                    ending |-> "running"]}
+       /\ UNCHANGED <<stdin, sessionVars, promptsSent, turnOf>>
+
+\* AgentRunner.ts steerWhen routes to makeTurn steer. With no activeTurns entry it falls back to send, which the Send
+\* action already covers. Steers from the composer, send_to_thread and sub-agent reports can wait side by side.
 Steer ==
   /\ activeTurn # None /\ steersLeft > 0
   /\ steersLeft' = steersLeft - 1
-  /\ IF turn = None
-     THEN /\ rejectedSteerWhileRunning' = (rejectedSteerWhileRunning \/ status = "running")
-          /\ UNCHANGED <<stdin, sessionVars, promptsSent, turnOf>>
-     ELSE /\ SendPrompt(turn, TRUE)
-          /\ UNCHANGED <<turn, shown, rejectedSteerWhileRunning>>
-  /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, runnerVars, sent, interruptsLeft,
-                 abandonsLeft, delivered, droppedContent, abandoned, finished>>
+  /\ TrySteer(MaxSteers - steersLeft + 1, activeTurn, waiting)
+  /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, runnerVars, opened, completed, stopped,
+                 held, startedAfterStop, sent, interruptsLeft, abandonsLeft, delivered, droppedContent, abandoned,
+                 finished>>
 
-\* AgentRunner.ts:642-648 -> makeTurn's interrupt -> index.ts:570-574 interruptQuery. `interrupted` only
+\* makeTurn steer tries a refused steer again once its turn opens. Once the turn has ended, afterRefusedTurn routes it
+\* like a steer that arrives after a turn, to the turn running now or as a send, only if the turn completed and
+\* nobody stopped it, as finish does with queued messages. Otherwise it joins thread.queue, which such a turn leaves
+\* alone.
+RetrySteer(w) ==
+  LET others == waiting \ {w} IN
+  /\ \/ w.ending # "running"
+     \/ w.awaits = "open" /\ activeTurn = w.turn /\ opened
+  /\ CASE w.ending = "running" ->
+            /\ TrySteer(w.steer, w.turn, others)
+            /\ UNCHANGED <<runnerVars, held, startedAfterStop>>
+       [] w.ending = "holds" ->
+            /\ waiting' = others /\ held' = held + 1
+            /\ UNCHANGED <<stdin, sessionVars, promptsSent, turnOf, runnerVars, startedAfterStop>>
+       [] activeTurn # None ->
+            /\ TrySteer(w.steer, activeTurn, others)
+            /\ UNCHANGED <<runnerVars, held, startedAfterStop>>
+       [] OTHER ->
+            /\ waiting' = others /\ started' = started + 1
+            /\ busy' = TRUE /\ activeTurn' = started + 1 /\ status' = "running" /\ consumer' = "starting"
+            /\ startedAfterStop' = (startedAfterStop \/ w.ending # "carries")
+            /\ UNCHANGED <<stdin, sessionVars, queue, pendingWakes, promptsSent, turnOf, held>>
+  /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, opened, completed, stopped, sent,
+                 steersLeft, interruptsLeft, abandonsLeft, delivered, droppedContent, abandoned, finished>>
+
+SteerRetry == \E w \in waiting : RetrySteer(w)
+
+\* AgentRunner.ts interrupt -> makeTurn interrupt -> index.ts interruptQuery. `interrupted` only
 \* relabels the turn's failure, so it is not modeled.
 Interrupt ==
   /\ activeTurn # None /\ interruptsLeft > 0
   /\ interruptsLeft' = interruptsLeft - 1
   /\ stdin' = Append(stdin, InterruptRequest)
+  /\ stopped' = TRUE
   /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, sessionVars, runnerVars, sent, promptsSent,
-                 turnOf, steersLeft, abandonsLeft, delivered, droppedContent, abandoned, finished,
-                 rejectedSteerWhileRunning>>
+                 turnOf, steersLeft, abandonsLeft, delivered, droppedContent, abandoned, finished, opened, waiting,
+                 completed, held, startedAfterStop>>
 
-\* index.ts:623-632 finalizer. The consumer stops early when `handle` fails or the FiberMap is torn down;
-\* `finish` still runs through Effect.ensuring (AgentRunner.ts:428).
+\* index.ts abandon, the finalizer startTurn adds. The consumer stops early when `handle` fails or the FiberMap is
+\* torn down; `finish` still runs through Effect.ensuring (AgentRunner.ts makeTurn follow).
 Abandon ==
   /\ consumer = "reading" /\ abandonsLeft > 0
   /\ abandonsLeft' = abandonsLeft - 1
@@ -160,27 +212,33 @@ Abandon ==
      ELSE UNCHANGED <<turn, turnPrompts, stdin>>
   /\ UNCHANGED <<backlog, cliPhase, answering, contentSent, stdout, bgVars, unanswered, shown, busy, activeTurn, status,
                  queue, started, pendingWakes, sent, promptsSent, turnOf, steersLeft, interruptsLeft, delivered,
-                 droppedContent, finished, rejectedSteerWhileRunning>>
+                 droppedContent, finished, steerVars>>
 
-\* AgentRunner.ts:331-356 handle, one exclusive section per event; a terminal event ends the stream
+\* AgentRunner.ts makeTurn handle, one exclusive section per event; a terminal event ends the stream
 Handle ==
   /\ consumer = "reading" /\ queue[activeTurn] # <<>>
   /\ queue' = [queue EXCEPT ![activeTurn] = Tail(@)]
   /\ IF Head(queue[activeTurn]).type \in {"result", "failed"}
      THEN status' = "idle" /\ consumer' = "ended"
      ELSE UNCHANGED <<status, consumer>>
-  /\ UNCHANGED <<cliVars, sessionVars, busy, activeTurn, started, pendingWakes, ghostVars>>
+  /\ completed' = (completed \/ Head(queue[activeTurn]).type = "result")
+  /\ UNCHANGED <<cliVars, sessionVars, busy, activeTurn, started, pendingWakes, opened, waiting, stopped, held,
+                 startedAfterStop, ghostVars>>
 
-\* AgentRunner.ts:380-405 finish, the only place activeTurns is cleared
+\* AgentRunner.ts makeTurn finish, the only place activeTurns is cleared. Resolving `ended` wakes the steers waiting
+\* on the turn, and afterRefusedTurn reads the turn's `completed` and `stop`.
 Finish ==
   /\ consumer = "ended"
   /\ finished' = finished \cup {activeTurn}
-  /\ busy' = FALSE /\ activeTurn' = None /\ status' = "idle" /\ consumer' = "none"
+  /\ busy' = FALSE /\ activeTurn' = None /\ status' = "idle" /\ consumer' = "none" /\ opened' = FALSE
+  /\ waiting' = {IF w.turn = activeTurn
+                  THEN [w EXCEPT !.ending = IF completed /\ ~stopped THEN "carries" ELSE "holds"]
+                  ELSE w : w \in waiting}
+  /\ completed' = FALSE /\ stopped' = FALSE
   /\ UNCHANGED <<cliVars, sessionVars, queue, started, pendingWakes, sent, promptsSent, turnOf, steersLeft,
-                 interruptsLeft, abandonsLeft, delivered, droppedContent, abandoned,
-                 rejectedSteerWhileRunning>>
+                 interruptsLeft, abandonsLeft, delivered, droppedContent, abandoned, held, startedAfterStop>>
 
-\* AgentRunner wake: once the thread is not busy, the runner follows a turn the session opened by itself
+\* AgentRunner.ts startWake: once the thread is not busy, the runner follows a turn the session opened by itself
 \* with the same handle and finish as any turn. A send that raced it failed in RunTurn, since the session
 \* already had a turn.
 RunnerWake ==
@@ -188,7 +246,7 @@ RunnerWake ==
   /\ \E k \in pendingWakes :
        /\ pendingWakes' = pendingWakes \ {k}
        /\ busy' = TRUE /\ activeTurn' = k /\ status' = "running" /\ consumer' = "reading"
-  /\ UNCHANGED <<cliVars, sessionVars, queue, started, ghostVars>>
+  /\ UNCHANGED <<cliVars, sessionVars, queue, started, steerVars, ghostVars>>
 
 -----------------------------------------------------------------------------
 
@@ -201,7 +259,7 @@ Discard(m) ==
 
 Swallow == UNCHANGED <<turn, turnPrompts, shown, queue, delivered, droppedContent, started, pendingWakes>>
 
-\* index.ts emit; mapMessage.ts makes every result terminal. When the CLI reports its state, route keeps that
+\* index.ts emit; mapMessage.ts mapResult makes every result terminal. When the CLI reports its state, route keeps that
 \* terminal event in session.heldEnd and ends the turn with it at idle. The model does not tell a completed
 \* turn from a failed one, so it keeps no heldEnd.
 Emit(m) ==
@@ -218,14 +276,15 @@ EndTurn ==
   /\ turn' = None /\ turnPrompts' = {}
   /\ UNCHANGED <<shown, delivered, droppedContent, started, pendingWakes>>
 
-\* index.ts route on running with no turn: the CLI started work by itself, e.g. a background shell resumed a
-\* sub-agent. The session opens a turn at once, so nothing that follows is dropped, and hands it to the runner.
+\* index.ts pump hands running with no turn (startsByItself) to wake: the CLI started work by itself, e.g. a
+\* background shell resumed a sub-agent. The session opens a turn at once, so nothing that follows is dropped, and
+\* hands it to the runner.
 Wake ==
   /\ turn' = started + 1 /\ shown' = started + 1 /\ turnPrompts' = {}
   /\ started' = started + 1 /\ pendingWakes' = pendingWakes \cup {started + 1}
   /\ UNCHANGED <<queue, delivered, droppedContent>>
 
-\* index.ts:423-470 route, one Effect.sync per SDK message. A message's `from` stands for the uuids the CLI
+\* index.ts pump and route, one Effect.sync per SDK message. A message's `from` stands for the uuids the CLI
 \* stamped on its response's first message, which route keeps in session.answering. A reply to a finished
 \* sub-agent answers no prompt, so it goes to whichever turn is running.
 Pump ==
@@ -240,8 +299,7 @@ Pump ==
              [] m.type = "result" /\ turnPrompts \cap left # {} -> Swallow
              [] OTHER -> Emit(m)
   /\ UNCHANGED <<stdin, backlog, cliPhase, answering, contentSent, bgVars, busy, activeTurn, status, consumer, sent,
-                 promptsSent, turnOf, steersLeft, interruptsLeft, abandonsLeft, abandoned, finished,
-                 rejectedSteerWhileRunning>>
+                 promptsSent, turnOf, steersLeft, interruptsLeft, abandonsLeft, abandoned, finished, steerVars>>
 
 -----------------------------------------------------------------------------
 (* The Claude Code CLI, as observed with 2.1.299 by specs/probes/claude-cli.mjs:
@@ -267,7 +325,7 @@ Pump ==
 
 Out(type) == stdout' = Append(stdout, [type |-> type, from |-> answering])
 
-unchangedOutsideCli == <<sessionVars, runnerVars, ghostVars>>
+unchangedOutsideCli == <<sessionVars, runnerVars, steerVars, ghostVars>>
 
 \* What the CLI sends when it starts work: running, if it had announced idle.
 Started == IF CliReportsState /\ idleSent
@@ -348,14 +406,14 @@ CliRead ==
 -----------------------------------------------------------------------------
 
 Next ==
-  \/ Send \/ RunTurn \/ Steer \/ Interrupt \/ Abandon \/ Handle \/ Finish \/ RunnerWake \/ Pump
+  \/ Send \/ RunTurn \/ Steer \/ SteerRetry \/ Interrupt \/ Abandon \/ Handle \/ Finish \/ RunnerWake \/ Pump
   \/ CliStart \/ CliContent \/ CliFinishGenerating \/ CliResult \/ CliSteerAbort \/ CliRead
   \/ CliStartFollowup \/ CliLaunch \/ CliBackgroundDone \/ CliIdle
 
 \* Send, Steer and Interrupt are user actions and Abandon comes from a `handle` failure or FiberMap
 \* teardown, so none of them is forced.
 Fairness ==
-  /\ WF_vars(RunTurn) /\ WF_vars(Handle) /\ WF_vars(Finish) /\ WF_vars(RunnerWake) /\ WF_vars(Pump)
+  /\ WF_vars(RunTurn) /\ WF_vars(SteerRetry) /\ WF_vars(Handle) /\ WF_vars(Finish) /\ WF_vars(RunnerWake) /\ WF_vars(Pump)
   /\ WF_vars(CliStart) /\ WF_vars(CliFinishGenerating) /\ WF_vars(CliResult) /\ WF_vars(CliRead)
   /\ WF_vars(CliStartFollowup) /\ WF_vars(CliBackgroundDone) /\ WF_vars(CliIdle)
 
@@ -375,6 +433,12 @@ TurnsEnd ==
   /\ \A k \in Turns : (k \in 1..started) ~> (k \in finished)
   /\ <>[](status = "idle" /\ activeTurn = None)
 
-SteerNeverRejectedWhileRunning == ~rejectedSteerWhileRunning
+\* A steer the provider refuses while the thread runs is not handed back to the developer. It waits for its turn to
+\* open or end, then reaches a turn.
+SteerNeverRejectedWhileRunning == (waiting # {}) ~> (waiting = {})
+
+\* Stop or a failed start ends the turn and the developer decides what runs next: a steer that waited on it never
+\* starts a turn.
+SteerStartsOnlyAfterCompletedTurn == ~startedAfterStop
 
 =============================================================================

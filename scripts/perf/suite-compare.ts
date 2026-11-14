@@ -40,13 +40,18 @@ const metrics = (label: string): Record<string, unknown> => {
   const switches = runs(label, "switch")
   const replies = runs(label, "reply")
   const typingReplies = runs(label, "typing-reply")
-  const throttles = new Set([...typing, ...switches, ...replies].map((run) => run.cpuThrottle))
+  const throttles = new Set([...typing, ...switches, ...replies, ...typingReplies].map((run) => run.cpuThrottle))
   assert.equal(throttles.size, 1, `${label} mixes CPU throttle rates`)
   const warm = switches.flatMap((run) => run.rounds.filter((round) => round.round > 0))
   const cold = switches.flatMap((run) => run.rounds.filter((round) => round.round === 0))
   return {
     cpuThrottle: [...throttles][0],
-    runs: { typing: typing.length, switch: switches.length, reply: replies.length },
+    runs: {
+      typing: typing.length,
+      switch: switches.length,
+      reply: replies.length,
+      "typing-reply": typingReplies.length,
+    },
     "typing: key to paint p50 ms": median(typing.map((run) => run.keyToPaint.p50)),
     "typing: key to paint p95 ms": median(typing.map((run) => run.keyToPaint.p95)),
     "typing: key to paint max ms": median(typing.map((run) => run.keyToPaint.max)),

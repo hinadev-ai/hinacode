@@ -39,5 +39,4 @@ export const useVms = create<VmsState>()((set, get) => {
   }
 })
 
-/** The thread's VM, or `undefined` until its first `vm.get` answers. */
 export const useThreadVm = (threadId: string): ThreadVm | undefined => useVms((state) => state.byThread[threadId])

@@ -39,7 +39,7 @@ import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { TurnChanges } from "./TurnChanges.tsx"
 import { ArrowDownIcon } from "@hinacode/icons"
 import { Button } from "./ui/button.tsx"
-import { FaviconOrigins, WebLink } from "./WebLink.tsx"
+import { FaviconOrigins, PullRequestReference, WebLink } from "./WebLink.tsx"
 import { EarlierActivity, WorkedFor } from "./WorkedFor.tsx"
 
 const keyExtractor = (message: Message) => message.id
@@ -108,7 +108,7 @@ export function MessageList({
               {...listProps}
               ListHeaderComponent={header ?? edgeSpacer}
               ListFooterComponent={endSpacer}
-              className="min-h-0 flex-1 scroll-fade"
+              className="min-h-0 flex-1 scroll-fade scrollbar-gutter-stable"
             />
             <Button
               variant="outline"
@@ -165,7 +165,7 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
           </code>
         </pre>
       )
-    if (segment.kind === "bullet")
+    if (segment.kind === "bullet" || segment.kind === "quote")
       return (
         <span key={index} className="text-muted-foreground">
           {isUnorderedBullet(segment.text) ? "•" : segment.text}
@@ -199,6 +199,10 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
         <WebLink key={`${index}:${linkIndex}`} href={link.href}>
           <Highlighted text={link.text} />
         </WebLink>
+      ) : link.type === "reference" ? (
+        <PullRequestReference key={`${index}:${linkIndex}`} href={link.href}>
+          <Highlighted text={link.text} />
+        </PullRequestReference>
       ) : (
         <WithMentions key={`${index}:${linkIndex}`} text={link.text} />
       ),

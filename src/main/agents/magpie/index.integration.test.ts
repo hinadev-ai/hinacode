@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import { Effect, Layer, Stream } from "effect"
-import type { QuestionRequest, RunTurnInput } from "../../../shared/agent.ts"
+import type { AccountHome, QuestionRequest, RunTurnInput } from "../../../shared/agent.ts"
 import { Secrets } from "../../services/Secrets.ts"
 import { Settings } from "../../services/Settings.ts"
 import { MAGPIE_KEY_SECRET } from "../../../shared/providers.ts"
@@ -230,6 +230,46 @@ const speedsOf = (input: RunTurnInput, { gateway = "local", key = MAGPIE_KEY } =
 
 const onMagpie = (secrets: Record<string, string> = {}) =>
   MagpieProvider.layer.pipe(Layer.provideMerge(magpieDependencies(secrets)))
+
+const fakeClaudeHome = (control: { readonly bypassDisabled?: boolean }): AccountHome => {
+  const dir = mkdtempSync(join(root, "fake-claude-"))
+  const binary = join(dir, "claude")
+  const fakeCli = join(import.meta.dirname, "../claude/fakeCli.mjs")
+  writeFileSync(binary, `#!/bin/sh\nexec "${process.execPath}" "${fakeCli}" "$@"\n`)
+  chmodSync(binary, 0o755)
+  writeFileSync(join(dir, "control.json"), JSON.stringify(control))
+  return { dir, binary }
+}
+
+describe("magpie full access", () => {
+  it.effect("runs a full access turn with Claude Code in bypassPermissions and no approvals", () =>
+    Effect.gen(function* () {
+      const provider = yield* MagpieProvider
+      const home = fakeClaudeHome({})
+      const events = yield* provider
+        .runTurn(turn({ threadId: "full-1", accessMode: "full", home }))
+        .pipe(Stream.runCollect)
+      expect(JSON.parse(readFileSync(join(home.dir, "argv.json"), "utf8"))).toContain(
+        "--permission-mode=bypassPermissions",
+      )
+      expect(events.filter((event) => event.type === "approval_requested")).toStrictEqual([])
+      expect(events.at(-1)?.type).toBe("turn_completed")
+    }).pipe(Effect.provide(onMagpie())),
+  )
+
+  it.effect("fails a full access turn when Claude Code's settings disable bypassPermissions", () =>
+    Effect.gen(function* () {
+      const provider = yield* MagpieProvider
+      const events = yield* provider
+        .runTurn(turn({ threadId: "full-2", accessMode: "full", home: fakeClaudeHome({ bypassDisabled: true }) }))
+        .pipe(Stream.runCollect)
+      expect(events.at(-1)).toStrictEqual({
+        type: "turn_failed",
+        message: expect.stringContaining("disableBypassPermissionsMode"),
+      })
+    }).pipe(Effect.provide(onMagpie())),
+  )
+})
 
 describe("magpie provider against a gateway", () => {
   it.effect("offers fast mode only on a model the gateway serves in its priority tier", () =>

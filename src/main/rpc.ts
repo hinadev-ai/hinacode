@@ -1,14 +1,12 @@
 import { homedir } from "node:os"
 import { Cause, Effect, Option, Schema } from "effect"
-import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
-import { binaryStatuses, installedProviders } from "./agents/binary.ts"
+import { binaryStatuses } from "./agents/binary.ts"
 import { bindKey, keyFor, probe } from "./agents/magpie/gateway.ts"
 import { MAGPIE_KEY_SECRET } from "../shared/providers.ts"
 import { AgentError } from "./agents/provider.ts"
-import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
-import { compactSubagentWork } from "../shared/subagents.ts"
-import { startingProvider } from "../shared/domain.ts"
+import { compactMessage, previewTranscriptMessage, transcriptPage } from "../shared/compactTranscript.ts"
+import { compactSubagentWork, previewSubagentWork } from "../shared/subagents.ts"
 import type {
   NotificationPermission,
   Opener,
@@ -39,9 +37,11 @@ import { Favicons } from "./services/Favicons.ts"
 import { GitHub, pullRequestFiles } from "./services/GitHub.ts"
 import { SourceControl } from "./services/SourceControl.ts"
 import { codeHostOfUrl } from "../shared/codeHost.ts"
-import { Automations } from "./services/automations/Automations.ts"
+import { Routines } from "./services/routines/Routines.ts"
 import { Linear } from "./services/Linear.ts"
+import { AppConnections } from "./apps/AppConnections.ts"
 import { McpCredentials } from "./mcp/index.ts"
+import { newThreadOptions, newThreadProvider } from "./services/newThread.ts"
 import { Ports } from "./services/Ports.ts"
 import { networkAddresses } from "./network.ts"
 import { RemoteAccess } from "./remote/access.ts"
@@ -66,6 +66,7 @@ import { Worktrees } from "./services/Worktrees.ts"
 
 export type AppServices =
   | AgentAccounts
+  | AppConnections
   | AgentLogins
   | SessionImports
   | Projects
@@ -90,7 +91,7 @@ export type AppServices =
   | Artifacts
   | ArtifactInspector
   | Browser
-  | Automations
+  | Routines
   | Git
   | GitHub
   | SourceControl
@@ -134,14 +135,6 @@ type Handlers = {
     desktop: DesktopCalls | null,
   ) => Effect.Effect<RpcResponse<M>, HandlerError, AppServices>
 }
-
-const newThreadOptions = (provider: ProviderId) =>
-  Effect.gen(function* () {
-    const settings = yield* Settings.use((service) => service.get)
-    const model =
-      settings.defaultModel[provider] ?? (yield* AgentRunner.use((runner) => runner.listModels(provider)))[0]?.id ?? ""
-    return { model, effort: settings.defaultEffort[provider], fastMode: settings.defaultFastMode[provider] }
-  })
 
 const rememberNewThreadOptions = (thread: Thread) =>
   Effect.gen(function* () {
@@ -217,10 +210,9 @@ const handlers: Handlers = {
     }),
 
   "threads.list": () => Threads.use((threads) => threads.list),
-  "threads.create": ({ projectId, title, provider: chosenProvider, model, effort, worktree, createdBy }) =>
+  "threads.create": ({ projectId, title, provider: chosenProvider, model, effort, accessMode, worktree, createdBy }) =>
     Effect.gen(function* () {
-      const settings = yield* Settings.use((service) => service.get)
-      const provider = chosenProvider ?? startingProvider(settings, yield* installedProviders)
+      const provider = chosenProvider ?? (yield* newThreadProvider)
       const defaults =
         model === undefined ? yield* newThreadOptions(provider) : { model, effort: undefined, fastMode: undefined }
       const thread = yield* Threads.use((threads) =>
@@ -230,6 +222,7 @@ const handlers: Handlers = {
           provider,
           ...defaults,
           effort: effort ?? defaults.effort,
+          accessMode,
           worktree,
           createdBy,
         }),
@@ -239,7 +232,7 @@ const handlers: Handlers = {
     }),
   "threads.draft": ({ projectId }) =>
     Effect.gen(function* () {
-      const provider = startingProvider(yield* Settings.use((service) => service.get), yield* installedProviders)
+      const provider = yield* newThreadProvider
       const options = yield* newThreadOptions(provider)
       const thread = yield* Threads.use((threads) =>
         threads.draft({ projectId, title: randomName(), provider, ...options }),
@@ -293,7 +286,6 @@ const handlers: Handlers = {
   "worktrees.remove": ({ id, deleteBranch }) => Worktrees.use((worktrees) => worktrees.remove(id, deleteBranch)),
   "worktrees.checkouts": () => Worktrees.use((worktrees) => worktrees.checkouts),
   "worktrees.checkoutState": ({ id }) => Worktrees.use((worktrees) => worktrees.checkoutState(id)),
-  "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.stopSetup": ({ id }) => Worktrees.use((worktrees) => worktrees.stopSetup(id)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
@@ -375,6 +367,10 @@ const handlers: Handlers = {
   "relayAccount.machines": () => RelayAccount.use((account) => account.machines),
   "relayAccount.setShown": (input) => RelayAccount.use((account) => account.setShown(input)),
   "relayAccount.removeMachine": (input) => RelayAccount.use((account) => account.removeMachine(input)),
+  "appConnections.status": () => AppConnections.use((connections) => connections.status),
+  "appConnections.start": () => AppConnections.use((connections) => connections.start),
+  "appConnections.answer": (input) => AppConnections.use((connections) => connections.answer(input)),
+  "appConnections.remove": ({ id }) => AppConnections.use((connections) => connections.remove(id)),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),
@@ -401,10 +397,7 @@ const handlers: Handlers = {
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),
-  "accounts.rename": ({ id, name }) =>
-    AgentAccounts.use((accounts) => accounts.rename(id, name)).pipe(
-      Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
-    ),
+  "accounts.rename": ({ id, name }) => AgentAccounts.use((accounts) => accounts.rename(id, name)),
   "accounts.delete": ({ id }) =>
     AgentRunner.use((runner) => runner.removeAccount(id)).pipe(
       Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
@@ -431,7 +424,7 @@ const handlers: Handlers = {
   "threads.transcript": ({ threadId, compact = false, page }) =>
     AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
       Effect.map((transcript) => {
-        const messages = transcript.messages.map(compact ? compactMessage : previewMessage)
+        const messages = transcript.messages.map(compact ? compactMessage : previewTranscriptMessage)
         return page === undefined
           ? { ...transcript, messages }
           : { ...transcript, ...transcriptPage(messages, page.before) }
@@ -473,9 +466,9 @@ const handlers: Handlers = {
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
   "subagents.stop": ({ threadId, subagentId }) =>
     AgentRunner.use((runner) => runner.stopSubagent(threadId, subagentId)),
-  "subagents.transcript": ({ threadId, callId }) =>
+  "subagents.transcript": ({ threadId, callId, compact = true }) =>
     AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
-      Effect.map(({ messages }) => compactSubagentWork(messages, callId)),
+      Effect.map(({ messages }) => (compact ? compactSubagentWork : previewSubagentWork)(messages, callId)),
     ),
   "backgroundTasks.list": ({ threadId }) => AgentRunner.use((runner) => runner.backgroundTasks(threadId)),
   "backgroundTasks.stop": ({ threadId, taskId }) =>
@@ -493,6 +486,7 @@ const handlers: Handlers = {
     PullRequests.use((pullRequests) => pullRequests.unwatch(threadId, url)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => SourceControl.use((sourceControl) => sourceControl.pullRequest(url)),
+  "github.issue": ({ url }) => GitHub.use((github) => github.issue(url)),
   "github.pullRequestDetail": ({ url, fresh }) =>
     SourceControl.use((sourceControl) => sourceControl.pullRequestDetail(url, { fresh })).pipe(
       Effect.tap(startGuideForHead),
@@ -570,7 +564,7 @@ const handlers: Handlers = {
   "attachments.read": ({ path }) => Attachments.use((attachments) => attachments.read(path)),
   "dialog.pickFiles": (_, desktop) => desktop?.pickFiles ?? Effect.succeed([]),
 
-  "automations.list": () => Automations.use((automations) => automations.list),
+  "routines.list": () => Routines.use((routines) => routines.list),
   "artifacts.list": () => Artifacts.use((artifacts) => artifacts.list),
   "artifacts.file": ({ id, path }) => Artifacts.use((artifacts) => artifacts.preview(id, path)),
   "artifacts.delete": ({ id }) => Artifacts.use((artifacts) => artifacts.remove(id)),
@@ -587,12 +581,15 @@ const handlers: Handlers = {
   "artifacts.rename": ({ id, title }) => Artifacts.use((artifacts) => artifacts.rename(id, title)),
   "artifacts.setTheme": (theme) => ArtifactInspector.use((inspector) => inspector.setTheme(theme)),
   "artifacts.export": (request, desktop) => desktop?.exportArtifact(request) ?? Effect.succeed(null),
-  "automations.create": (input) => Automations.use((automations) => automations.create(input)),
-  "automations.update": (input) => Automations.use((automations) => automations.update(input)),
-  "automations.delete": ({ id }) => Automations.use((automations) => automations.remove(id)),
-  "automations.runNow": ({ id, payload }) => Automations.use((automations) => automations.runNow(id, payload)),
-  "automations.runs": ({ id, limit }) => Automations.use((automations) => automations.runs(id, limit)),
-  "automations.webhookUrl": ({ id }) => Automations.use((automations) => automations.webhookUrl(id)),
+  "routines.create": (input) => Routines.use((routines) => routines.create(input)),
+  "routines.update": (input) => Routines.use((routines) => routines.update(input)),
+  "routines.delete": ({ id }) => Routines.use((routines) => routines.remove(id)),
+  "routines.run": ({ id }) => Routines.use((routines) => routines.run(id, "manual", null)),
+  "routines.runs": ({ id, limit }) => Routines.use((routines) => routines.runs(id, limit)),
+  "routines.webhook": ({ id }) => Routines.use((routines) => routines.webhook(id)),
+  "routines.rotateWebhookSecret": () => Routines.use((routines) => routines.rotateWebhookSecret),
+  "commands.forProject": ({ projectId, provider }) =>
+    AgentRunner.use((runner) => runner.listProjectCommands(projectId, provider)),
 
   "network.addresses": () => Effect.sync(() => networkAddresses()),
   "system.resources": () =>

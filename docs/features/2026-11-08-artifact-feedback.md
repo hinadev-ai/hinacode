@@ -1,6 +1,6 @@
 # Artifact feedback: comments and whiteboards
 
-Status: Building
+Status: Shipped
 Date: 2026-11-08
 
 ## Problem
@@ -77,6 +77,8 @@ A comment body is Markdown and may hold `@thread:<id>` tokens, the composer's me
 Delivery runs on the machine that holds the artifact, so a mention reaches only threads on that machine in the owning thread's project, the rule `send_to_thread` follows for the project. The picker offers only those threads. Mentions that reach nobody fall back to the owner, so a comment is never saved without a reader. A comment to an archived thread unarchives it first, as a message from the composer does.
 
 An artifact from another harness has no owning thread. Its comments are saved, and only mentions deliver.
+
+A comment is saved and delivered in two steps, so quitting between them must not lose it. The message is saved with `undelivered: true` in the same `feedback.json` write, and `markDelivered` clears it after every recipient has it, or when the developer archived the thread. A failed delivery keeps the mark. At the next start, ArtifactFeedback hands over every message still marked, reading each artifact on its own so one unreadable `feedback.json` does not stop the rest. Each delivery records its message in the thread under an id made from the comment message and the thread. Delivery passes `AgentRunner.steerWhen` and `AgentRunner.queue` a `when` that is false once the thread's transcript or queue has that id, and the runner checks it under the thread's lock, in a steer, in a turn's start and before queueing, so a quit after delivery does not send it twice. One window stays: a quit after the agent CLI accepts a steer and before the transcript row is written delivers the comment again at the next start. A turn's end skips a queued message whose id the transcript already has. A recovered whiteboard comment loses its selection image, because `feedback.json` does not keep attachments. The element descriptions in the prompt still name the selection.
 
 ### What the agent receives
 

@@ -1,5 +1,8 @@
 # A private tmp folder per thread
 
+Status: Shipped
+Date: 2026-11-04
+
 ## Problem
 
 Agents and the tools they run (test suites, copied databases, isolated app instances, TLC, Chromium profiles) write into the shared `/tmp`. On a Linux box where `/tmp` is a small tmpfs, a few busy threads fill it, and every other thread then fails with `disk I/O error` or `EDQUOT`. Archiving a thread removes its scratch folder but leaves everything it put in `/tmp`, and nothing records which `/tmp` entry came from which thread, so cleaning up by guessing would delete other threads' work.
@@ -22,7 +25,7 @@ Borrow systemd's `PrivateTmp`. Each thread gets its own temp folder before its a
 | Claude Code    | Yes     | One CLI process per thread, spawned with the variables.                                                                                                                             |
 | Codex          | Yes     | One app-server is shared across threads, so the variables go into the thread's `shell_environment_policy.set` config, which Codex applies to every command it runs for that thread. |
 | Muse Code      | No      | One host serves every thread, and MSP has no per-session environment.                                                                                                               |
-| opencode (ACP) | No      | One agent process serves every thread, and ACP's `session/new` has no environment.                                                                                                  |
+| opencode (ACP) | Yes     | Each turn starts its own `opencode acp` process, spawned with the variables.                                                                                                        |
 
 Terminals keep the shared `/tmp`. They are the user's shells, not the agent's.
 

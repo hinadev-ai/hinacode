@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { serverProof } from "@shared/proof.ts"
 import { RELAY_DELAY_MS } from "@shared/remote.ts"
+import type { RememberedAnswers } from "./connection"
 import type { StoredServer } from "./stored-target"
 
-/** A server's socket, answered by hand. */
 class FakeSocket {
   static all: FakeSocket[] = []
   onopen: (() => void) | null = null
@@ -19,7 +19,6 @@ class FakeSocket {
   }
   close() {}
 
-  /** Opens, challenges, and proves the token `server()` pairs with back to the client's answer. */
   ready(environment?: { id: string; name: string }, relay?: string, hosts?: readonly string[]) {
     this.onopen?.()
     this.receive({ type: "challenge", nonce: "server-nonce" })
@@ -98,10 +97,33 @@ const thread = (id: string, projectId: string) => ({
   updatedAt: "2026-10-24T00:00:00.000Z",
 })
 
-/** A call the test never answers, which fails when the servers are closed after it. */
+const artifact = (id: string) => ({
+  id,
+  title: id,
+  entry: "index.html",
+  version: 1,
+  files: [],
+  createdAt: "2026-10-24T00:00:00.000Z",
+  updatedAt: "2026-10-24T00:00:00.000Z",
+})
+
+const issue = (identifier: string) => ({
+  id: identifier,
+  identifier,
+  title: identifier,
+  url: `https://linear.app/team/issue/${identifier}`,
+  state: { name: "Todo", type: "unstarted" },
+  priority: 0,
+  updatedAt: "2026-10-24T00:00:00.000Z",
+})
+
 const unanswered = (promise: Promise<unknown>) => void promise.catch(() => {})
 
-const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+const PROMISE_HOPS_PER_CALL = 10
+
+const flush = async () => {
+  for (let hop = 0; hop < PROMISE_HOPS_PER_CALL; hop++) await Promise.resolve()
+}
 
 beforeEach(() => {
   FakeSocket.all = []
@@ -256,6 +278,75 @@ describe("call", () => {
     ])
   })
 
+  it("saves only the lists a relaunch reads back, so a search query never rewrites them", async () => {
+    const saves: [string, RememberedAnswers][] = []
+    const stop = onRemembered((serverId, answers) => saves.push([serverId, answers]))
+    const launchLists = { "projects.list": [], "worktrees.list": [], "threads.list": [thread("t-web", "web")] }
+    for (const [method, result] of Object.entries(launchLists)) {
+      const listing = call(method as keyof typeof launchLists, undefined)
+      socketOf(1001).answer(method, result)
+      socketOf(1002).answer(method, [])
+      await listing
+    }
+    const pullRequests = call("pullRequests.all", undefined)
+    socketOf(1001).answer("pullRequests.all", [])
+    socketOf(1002).answer("pullRequests.all", [])
+    await pullRequests
+    const savedAtLaunch = saves.length
+
+    for (const query of ["he", "hel", "hello"]) {
+      const searching = call("search.threads", { query, limit: 30 })
+      socketOf(1001).answer("search.threads", [])
+      socketOf(1002).answer("search.threads", [])
+      await searching
+    }
+    stop()
+
+    expect(saves.length).toBe(savedAtLaunch)
+    const [, lastSaved] = saves.findLast(([serverId]) => serverId === "a")!
+    expect(new Set(Object.keys(lastSaved))).toEqual(
+      new Set(["projects.list", "threads.list", "worktrees.list", "pullRequests.all"]),
+    )
+
+    setServers([])
+    setServers([server("a", 1001)])
+    restoreAnswers("a", lastSaved)
+    expect((await call("threads.list", undefined)).map((entry) => entry.id)).toEqual(["t-web"])
+
+    socketOf(1001).ready({ id: "env-a", name: "studio" })
+    const offline = call("threads.list", undefined)
+    socketOf(1001).fail("threads.list", { tag: "SqlError", message: "locked" })
+    expect((await offline).map((entry) => entry.id)).toEqual(["t-web"])
+  })
+
+  it("lists an unreachable server's saved artifacts and Linear issues after a relaunch", async () => {
+    const saved = new Map<string, RememberedAnswers>()
+    const stop = onRemembered((serverId, answers) => saved.set(serverId, answers))
+    const artifacts = call("artifacts.list", undefined)
+    socketOf(1001).answer("artifacts.list", [artifact("art-web")])
+    socketOf(1002).answer("artifacts.list", [artifact("art-api")])
+    await artifacts
+    const issues = call("linear.issues", undefined)
+    socketOf(1001).answer("linear.issues", [])
+    socketOf(1002).answer("linear.issues", [issue("ENG-1")])
+    await issues
+    stop()
+
+    setServers([])
+    setServers([server("a", 1001), server("b", 1002)])
+    restoreAnswers("a", saved.get("a") ?? {})
+    restoreAnswers("b", saved.get("b") ?? {})
+    socketOf(1001).ready({ id: "env-a", name: "studio" })
+    socketOf(1002).onclose?.({ code: 1006 })
+
+    const relaunchedArtifacts = call("artifacts.list", undefined)
+    socketOf(1001).answer("artifacts.list", [artifact("art-web")])
+    expect((await relaunchedArtifacts).map((entry) => entry.id)).toEqual(["art-web", "art-api"])
+    const relaunchedIssues = call("linear.issues", undefined)
+    socketOf(1001).answer("linear.issues", [])
+    expect((await relaunchedIssues).map((entry) => entry.identifier)).toEqual(["ENG-1"])
+  })
+
   it("reads an artifact on the thread's server before any server has claimed it", async () => {
     unanswered(call("artifacts.readDocument", { id: "doc-1" }, { server: "b" }))
     await flush()
@@ -344,7 +435,6 @@ describe("servers", () => {
     direct.answer("projects.create", project("api"))
     expect((await creating).name).toBe("api")
 
-    // The next round races the host against the learned relay.
     vi.useFakeTimers()
     try {
       direct.onclose?.({ code: 1006 })

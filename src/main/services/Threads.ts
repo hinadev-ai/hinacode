@@ -45,7 +45,7 @@ import {
 } from "./errors.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import { Events } from "./Events.ts"
-import { slugifyBranch } from "./automations/template.ts"
+import { slugifyBranch } from "./branchName.ts"
 import { type CommandError, Git } from "./Git.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
@@ -76,12 +76,13 @@ interface CreateThread {
   readonly model: string
   readonly effort?: string | null | undefined
   readonly fastMode?: boolean | undefined
+  readonly accessMode?: AccessMode | undefined
   readonly worktree?: { readonly branch: string; readonly baseRef: string } | undefined
   readonly createdBy?: string | undefined
   readonly parentId?: string | undefined
 }
 
-type DraftThread = Omit<CreateThread, "worktree" | "createdBy" | "parentId">
+type DraftThread = Omit<CreateThread, "accessMode" | "worktree" | "createdBy" | "parentId">
 
 export interface UpdateThread {
   readonly id: string
@@ -187,10 +188,10 @@ export class Threads extends Context.Service<
       id: string,
       stillDue: (thread: Thread) => boolean,
     ) => Effect.Effect<Option.Option<Thread>, PersistenceError | NotFoundError>
-    readonly settleMerged: (
+    readonly settleMerged: <E>(
       id: string,
-      stillDue: (thread: Thread, workStartedAt: string | null) => boolean,
-    ) => Effect.Effect<Option.Option<Thread>, PersistenceError | NotFoundError | CommandError | WorktreeBusyError>
+      stillDue: (thread: Thread, workStartedAt: string | null) => Effect.Effect<boolean, E>,
+    ) => Effect.Effect<Option.Option<Thread>, E | PersistenceError | NotFoundError | CommandError | WorktreeBusyError>
     readonly unsettle: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly workStartedAt: (id: string) => Effect.Effect<string | null, PersistenceError>
     readonly remove: (
@@ -330,7 +331,15 @@ const make = Effect.gen(function* () {
     )
 
   const insertThread = (
-    { worktree: worktreeInput, createdBy = "user", effort = null, fastMode = false, parentId, ...input }: CreateThread,
+    {
+      worktree: worktreeInput,
+      createdBy = "user",
+      effort = null,
+      fastMode = false,
+      accessMode,
+      parentId,
+      ...input
+    }: CreateThread,
     status: "draft" | "idle",
   ) =>
     Effect.gen(function* () {
@@ -348,7 +357,7 @@ const make = Effect.gen(function* () {
         worktreeId: worktree?.id ?? null,
         effort,
         fastMode,
-        accessMode: defaultAccessMode,
+        accessMode: accessMode ?? defaultAccessMode,
         accountId: defaultAccount[input.provider],
         providerSessionId: null,
         forkedFrom: null,
@@ -847,12 +856,15 @@ const make = Effect.gen(function* () {
       }),
     )
 
-  const settleMerged = (id: string, stillDue: (thread: Thread, workStartedAt: string | null) => boolean) =>
+  const settleMerged = <E>(
+    id: string,
+    stillDue: (thread: Thread, workStartedAt: string | null) => Effect.Effect<boolean, E>,
+  ) =>
     worktrees.exclusive(
       Effect.gen(function* () {
         const isDue = Effect.gen(function* () {
           const thread = yield* get(id)
-          return stillDue(thread, yield* workStartedAt(id)) ? Option.some(thread) : Option.none()
+          return (yield* stillDue(thread, yield* workStartedAt(id))) ? Option.some(thread) : Option.none()
         })
         const before = yield* isDue
         if (Option.isNone(before)) return Option.none<Thread>()

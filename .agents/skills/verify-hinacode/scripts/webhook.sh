@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
-# Usage: webhook.sh <webhook-url> <secret> '<json body>' [delivery-id]
-# POSTs the body signed the way hinacode checks it (X-HINACODE-Signature: sha256=<hmac of raw body>).
-# The delivery id becomes the dedup key; without one hinacode dedups on the body hash.
+# Usage: webhook.sh <webhook-url> <secret> '<json body>' [idempotency-key] [--hmac]
+# POSTs the body with `Authorization: Bearer <secret>`, or with --hmac signed as X-Hub-Signature-256: sha256=<hmac of raw body>.
+# The idempotency key makes a retry start nothing; without one every call starts a thread.
 # Prints the response body, then the HTTP status on its own line.
 set -euo pipefail
-url=${1:?webhook url from automations.webhookUrl}
-secret=${2:?secret from automations.create}
+url=${1:?webhook url from routines.webhook}
+secret=${2:?secret from routines.rotateWebhookSecret}
 body=${3:?json body}
-delivery=${4:-}
-sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$secret" -r | cut -d' ' -f1)
-args=(-sS -X POST -H 'content-type: application/json' -H "x-hinacode-signature: sha256=$sig" --data-binary "$body" -w '\n%{http_code}\n')
-[[ -n "$delivery" ]] && args+=(-H "x-github-delivery: $delivery")
+key=${4:-}
+args=(-sS -X POST -H 'content-type: application/json' --data-binary "$body" -w '\n%{http_code}\n')
+if [[ "${5:-}" == "--hmac" ]]; then
+  sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$secret" -r | cut -d' ' -f1)
+  args+=(-H "x-hub-signature-256: sha256=$sig")
+else
+  args+=(-H "authorization: Bearer $secret")
+fi
+[[ -n "$key" ]] && args+=(-H "idempotency-key: $key")
 curl "${args[@]}" "$url"

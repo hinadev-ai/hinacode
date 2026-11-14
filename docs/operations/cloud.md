@@ -10,7 +10,13 @@ Node 24.22.1 or newer (26.12.1 or newer on Node 26):
 npx hinacode serve
 ```
 
-From a checkout, `pnpm serve` builds and runs the same daemon.
+Without Node, download `hinacode-<platform>-<arch>.tar.gz` for `linux-x64`, `linux-arm64` or `darwin-arm64` from the [latest release](https://github.com/hinadev-ai/hinacode/releases/latest), unpack it anywhere and run the executable inside. Keep `node_modules/` next to it. On Linux it needs glibc 2.28 and `libatomic.so.1` (`apt install libatomic1` in a minimal image), the same as Node. It does not update itself; unpack the next release over it and restart.
+
+```sh
+tar -xzf hinacode-linux-x64.tar.gz && ./hinacode/hinacode serve
+```
+
+From a checkout, `pnpm serve` builds and runs the same daemon, and `pnpm build:exe` builds the archive for this machine into `dist-exe/`.
 
 The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, and prints the pairing block: a phone URL for its address and a QR code to scan in the mobile app, then the URL to add under Settings > Connections on the desktop. It listens on `--host`, else the address it used last, else `private`. `private` answers on the LAN and Tailscale and closes any connection with a public address on either end, so a phone at home connects with no flags. Anyone on the same network can reach the port, and only the pairing token keeps them out. Pass one address, such as a Tailscale address, to keep other networks out entirely, or `--host 127.0.0.1 --relay` to be reached only through the relay. A machine that already stored an address keeps it until you pass `--host private`. `0.0.0.0` and `::` are refused. `hinacode pair` prints the same block again, whether the daemon runs or not. The data directory holds `hinacode.sqlite`, attachments, and the pairing token inside the database. A desktop app and a cloud refuse to share one directory, and so do two clouds. The daemon spots a desktop by the `SingletonLock` in the directory's `chromium/`.
 
@@ -71,7 +77,7 @@ The cloud then prints the pairing block with its relay hostname in every URL, an
 - `hinacode serve: another hinacode serve (pid N) uses ...` or `the HinaCode app (pid N) uses ...`: give this cloud its own `HINACODE_USER_DATA`.
 - `hinacode serve: port 48081 is in use ...`: another cloud, or the desktop app's Settings > Connections, holds the port. Pick another with `--port`.
 - `remote address is not up yet, retrying ... EADDRNOTAVAIL`: the `--host` address is not on any interface yet, as when the cloud starts at boot before Tailscale. The cloud keeps running and binds once the address comes up, retrying every 30 seconds at most.
-- `automation webhook listener failed ... 48080`: the desktop app on the same machine holds the webhook port. The cloud keeps running; only its webhooks are off.
+- `routine webhook listener failed ... 48080`: the desktop app on the same machine holds the webhook port. The cloud keeps running; only its webhooks are off.
 - Phone cannot connect: use the Tailscale URL the daemon printed, and confirm both devices are on the same tailnet and the firewall allows the port. The transport is plain WebSocket, encrypted by Tailscale or your LAN only.
 - Lost the pairing URL: run `hinacode pair` with the same `HINACODE_USER_DATA`. It prints the same token without a restart. Restart with `--rotate-token` only when a token may have leaked, since every client must pair again.
 - Secrets on a cloud are stored as plaintext in its database, since a headless machine has no keyring to unlock without a password. The data directory is created `0700`; its permissions are the protection. A cloud that an older release ran on macOS sealed its secrets with Chromium's mock key, logs `secret remote.token was sealed under another key`, and prints a new pairing URL. Pair its clients again.

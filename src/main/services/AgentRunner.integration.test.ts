@@ -18,6 +18,7 @@ import type {
   Subagent,
 } from "../../shared/agent.ts"
 import { RpcMethods, type TranscriptPush } from "../../shared/contract.ts"
+import { persistence } from "./errors.ts"
 import { defaultSettings, type Message, type Settings as SettingsValue, type Thread } from "../../shared/domain.ts"
 import { ClaudeProvider, makeClaudeHarness } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -68,10 +69,13 @@ interface Probe {
   readonly setSettings: (patch: Partial<SettingsValue>) => Promise<void>
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision; readonly note?: string }>
   readonly steers: Array<{ readonly text: string; readonly priority: SteerPriority }>
+  readonly refusals: Array<string>
+  readonly failStart: () => void
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
   readonly stops: Array<string>
   readonly setBackgroundTasks: (tasks: ReadonlyArray<BackgroundTask>) => void
   readonly reportSubagent: (subagent: Subagent) => void
+  readonly hitLimit: () => void
   readonly transcript: Array<TranscriptPush>
   readonly wake: (agent: ProviderId, sessionId: string, events?: ReadonlyArray<AgentEvent>) => Promise<void>
   readonly failClose: () => void
@@ -82,6 +86,7 @@ interface Probe {
   readonly pauseNextUpdate: () => { readonly reached: Promise<void>; readonly resume: () => void }
   readonly turnBase: () => Promise<string | null>
   readonly storedMessages: (threadId: string) => Promise<ReadonlyArray<Message>>
+  readonly failNextInsert: (matches: (message: Message) => boolean) => void
 }
 
 const streamedWords = Array.from({ length: 400 }, (_, index) => `word${index} `)
@@ -146,6 +151,7 @@ const withPreparingThread = async (
   const deliver = () => inserted.resolve()
   const snapshot = () => snapshotReady.resolve()
   let holdInsertion = options.pauseInsertion ?? false
+  let failingInsert: ((message: Message) => boolean) | undefined
   let holdSnapshot = options.pauseSnapshot ?? false
   let updateHold:
     | { readonly reached: PromiseWithResolvers<void>; readonly resumed: PromiseWithResolvers<void> }
@@ -156,8 +162,12 @@ const withPreparingThread = async (
   const modelLists: Probe["modelLists"] = []
   const decisions: Probe["decisions"] = []
   const steers: Probe["steers"] = []
+  const refusals: Probe["refusals"] = []
+  const opening = new Set<string>()
+  const startFailures = Effect.runSync(Queue.unbounded<void>())
   const resolutions = Effect.runSync(Queue.unbounded<AgentEvent>())
   const interruptions = Effect.runSync(Queue.unbounded<AgentEvent>())
+  const limits = Effect.runSync(Queue.unbounded<AgentEvent>())
   const calls: Probe["calls"] = []
   const stops: Probe["stops"] = []
   const subagentChanges = Effect.runSync(Queue.unbounded<{ readonly threadId: string; readonly subagent: Subagent }>())
@@ -237,6 +247,18 @@ const withPreparingThread = async (
           Stream.takeUntil(({ type }) => type === "turn_failed"),
         )
         if (input.prompt === "waits for Stop") return untilStopped
+        if (input.prompt === "holds its start" || input.prompt === "holds its start, then fails") {
+          opening.add(input.threadId)
+          const failsStart = Stream.fromQueue(startFailures).pipe(
+            Stream.take(1),
+            Stream.flatMap(() =>
+              Stream.fail(new AgentError({ provider: id, message: "Claude Code is not signed in" })),
+            ),
+          )
+          return (input.prompt === "holds its start" ? untilStopped : failsStart).pipe(
+            Stream.ensuring(Effect.sync(() => opening.delete(input.threadId))),
+          )
+        }
         if (input.prompt === "spawns a sub-agent, then waits for Stop") {
           return Stream.concat(Stream.make(nativeSubagent("running")), untilStopped)
         }
@@ -297,7 +319,8 @@ const withPreparingThread = async (
         if (
           input.prompt !== "needs approval" &&
           input.prompt !== "needs two approvals" &&
-          input.prompt !== "needs approval, then ends silently"
+          input.prompt !== "needs approval, then ends silently" &&
+          input.prompt !== "needs approval, then hits its limit"
         )
           return Stream.never
         const approval = (requestId: string): AgentEvent => ({
@@ -318,6 +341,8 @@ const withPreparingThread = async (
             Stream.make(approval("approval-1"), approval("approval-2")),
             Stream.fromQueue(resolutions),
           )
+        if (input.prompt === "needs approval, then hits its limit")
+          return Stream.concat(Stream.make(approval("approval-1")), Stream.take(Stream.fromQueue(limits), 1))
         return input.prompt === "needs approval"
           ? Stream.concat(Stream.make(approval("approval-1")), Stream.fromQueue(resolutions))
           : Stream.make(approval("approval-1"))
@@ -337,8 +362,15 @@ const withPreparingThread = async (
         ? Effect.fail(new AgentError({ provider: id, message: "The session did not leave" }))
         : Effect.sync(() => calls.push({ provider: id, call: "closeSession" })),
     ...(id !== "opencode" && {
-      steer: (_threadId: string, text: string, _attachments: unknown, priority: SteerPriority) =>
-        Effect.sync(() => void steers.push({ text, priority })),
+      steer: (threadId: string, text: string, _attachments: unknown, priority: SteerPriority) =>
+        Effect.sync(() => {
+          if (opening.has(threadId)) {
+            refusals.push(text)
+            return false
+          }
+          steers.push({ text, priority })
+          return true
+        }),
     }),
     interrupt: () =>
       Effect.sync(() => calls.push({ provider: id, call: "interrupt" })).pipe(
@@ -372,6 +404,7 @@ const withPreparingThread = async (
           title: "Pending",
           provider: "claude",
           model: "initial-model",
+          accessMode: "supervised",
           createdBy: "automation",
           worktree: { branch: "fix/pending", baseRef: "main" },
         }),
@@ -463,6 +496,10 @@ const withPreparingThread = async (
                     inserting.resolve()
                     yield* Effect.promise(() => inserted.promise)
                   }
+                  if (failingInsert?.(message)) {
+                    failingInsert = undefined
+                    return yield* persistence("messages.insert")(new Error("disk full"))
+                  }
                   yield* messages.insert(message)
                 }),
               update: (message, previous) =>
@@ -514,10 +551,17 @@ const withPreparingThread = async (
           domainRuntime.runPromise(Settings.Settings.use((settings) => settings.set(patch)).pipe(Effect.asVoid)),
         decisions,
         steers,
+        refusals,
+        failStart: () => Queue.offerUnsafe(startFailures, undefined),
         calls,
         stops,
         setBackgroundTasks: (tasks) => Queue.offerUnsafe(backgroundTaskChanges, { threadId: thread.id, tasks }),
         reportSubagent: (subagent) => Queue.offerUnsafe(subagentChanges, { threadId: thread.id, subagent }),
+        hitLimit: () =>
+          Queue.offerUnsafe(limits, {
+            type: "turn_limited",
+            limit: { kind: "org_spend", message: "Usage exhausted", reset: null },
+          }),
         transcript,
         wake: (agent, sessionId, events) => {
           const discarded = Promise.withResolvers<void>()
@@ -544,6 +588,9 @@ const withPreparingThread = async (
           return { reached: hold.reached.promise, resume: () => hold.resumed.resolve() }
         },
         storedMessages: (threadId) => domainRuntime.runPromise(messages.list(threadId)),
+        failNextInsert: (matches) => {
+          failingInsert = matches
+        },
         turnBase: () =>
           domainRuntime.runPromise(
             sql<{
@@ -850,7 +897,7 @@ it("warms the session with the same input the next send runs its turn with", asy
     await vi.waitFor(() => Effect.runPromise(runner.send(thread.id, "accepted input", [])))
     await vi.waitFor(() => expect(turns).toHaveLength(2))
 
-    const { prompt: _prompt, attachments: _attachments, ...sent } = turns[1]!.input
+    const { prompt: _prompt, attachments: _attachments, onOpen: _onOpen, ...sent } = turns[1]!.input
     expect(warms).toStrictEqual([sent])
   })
 })
@@ -919,6 +966,48 @@ it("allows the approval a turn is waiting on when the thread switches to full ac
     )
     await Effect.runPromise(runner.setAccessMode(thread.id, "full"))
     expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow" }])
+  })
+})
+
+it("allows an approval a full access thread receives without showing it", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, decisions, transcript }) => {
+    release()
+    await Effect.runPromise(threads.update({ id: thread.id, accessMode: "full" }))
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    await vi.waitFor(() => expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow" }]))
+
+    const shown = transcript.filter((push) => push.type === "thread.event" && push.event.type === "approval_requested")
+    expect(shown).toStrictEqual([])
+    expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toStrictEqual([])
+    expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running")
+  })
+})
+
+it("allows an approval a full access thread receives in a turn its agent starts by itself", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, idle, wake, decisions, transcript }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+    await Effect.runPromise(threads.update({ id: thread.id, accessMode: "full" }))
+    const { providerSessionId } = await Effect.runPromise(threads.get(thread.id))
+    void wake("claude", providerSessionId!, [
+      {
+        type: "approval_requested",
+        request: {
+          id: "wake-approval",
+          threadId: thread.id,
+          provider: "claude",
+          kind: "command",
+          title: "Run command",
+          detail: "pnpm build",
+        },
+      },
+    ])
+    await vi.waitFor(() => expect(decisions).toStrictEqual([{ requestId: "wake-approval", decision: "allow" }]))
+
+    const shown = transcript.filter((push) => push.type === "thread.event" && push.event.type === "approval_requested")
+    expect(shown).toStrictEqual([])
+    await Effect.runPromise(runner.interrupt(thread.id))
   })
 })
 
@@ -1280,6 +1369,36 @@ it("starts a turn with a steer that waited for the previous turn to finish", asy
   })
 })
 
+const steerDuringStartThenEnd = (prompt: string, end: (probe: Probe) => Promise<void>) =>
+  withPreparingThread(async (probe) => {
+    const { runner, threads, thread, release, turns, steers, refusals, storedMessages } = probe
+    release()
+    await Effect.runPromise(runner.send(thread.id, prompt, []))
+    await vi.waitFor(() => expect(turns).toHaveLength(1))
+    const steering = Effect.runPromise(runner.steer(thread.id, "steered", []))
+    await vi.waitFor(() => expect(refusals).toStrictEqual(["steered"]))
+
+    await end(probe)
+    await steering
+
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).not.toBe("running"))
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([
+      { id: expect.any(String), text: "steered", attachments: [] },
+    ])
+    expect(turns).toHaveLength(1)
+    expect(steers).toStrictEqual([])
+    const users = (await storedMessages(thread.id)).filter((message) => message.role === "user")
+    expect(
+      users.map((message) => JSON.stringify(message.parts)).filter((parts) => parts.includes("steered")),
+    ).toStrictEqual([])
+  })
+
+it("queues a steer sent while the turn starts when Stop ends that turn", () =>
+  steerDuringStartThenEnd("holds its start", ({ runner, thread }) => Effect.runPromise(runner.interrupt(thread.id))))
+
+it("queues a steer sent while the turn starts when the start fails", () =>
+  steerDuringStartThenEnd("holds its start, then fails", async ({ failStart }) => failStart()))
+
 it("releases an idle thread by stopping its sub-agents and every task, shells too, and closing its session", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, calls, stops, setBackgroundTasks }) => {
     release()
@@ -1473,6 +1592,30 @@ it("withdraws the requests a turn leaves unanswered when its stream ends without
         event: { type: "approval_resolved", requestId: "approval-1" },
       }),
     )
+  })
+})
+
+it("withdraws the approval and secret requests a usage-limited turn leaves unanswered", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, transcript, hitLimit }) => {
+    const pushed = (event: AgentEvent["type"]) =>
+      transcript.some((push) => push.type === "thread.event" && push.event.type === event)
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs approval, then hits its limit", []))
+    await vi.waitFor(() => expect(pushed("approval_requested")).toBe(true))
+    const secret = Effect.runPromise(Effect.flip(runner.requestSecret(thread.id, "demo.token", "Demo token")))
+    await vi.waitFor(() => expect(pushed("secret_requested")).toBe(true))
+
+    hitLimit()
+
+    expect((await secret).message).toBe("The turn ended before the user answered.")
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("limited"))
+    const snapshot = await Effect.runPromise(runner.transcript(thread.id))
+    expect(snapshot.approvals).toEqual([])
+    expect(snapshot.secretRequests).toEqual([])
+    expect(transcript).toContainEqual(
+      expect.objectContaining({ event: { type: "approval_resolved", requestId: "approval-1" } }),
+    )
+    expect(pushed("secret_resolved")).toBe(true)
   })
 })
 
@@ -1679,6 +1822,78 @@ it("resumes a limited thread on its own once its reset passes", async () => {
   })
 })
 
+const queuedAfter = async ({ runner, threads, thread }: Probe, queue: Thread["queue"]) => {
+  await Effect.runPromise(threads.update({ id: thread.id, queue }))
+  await Effect.runPromise(runner.send(thread.id, "first accepted input", []))
+}
+
+it("does not start a queued message the user takes back as the turn ends, and starts the next one", async () => {
+  await withPreparingThread(async (probe) => {
+    const { runner, threads, thread, release, turns, storedMessages, pauseNextUpdate } = probe
+    release()
+    const finishing = pauseNextUpdate()
+    await queuedAfter(probe, [
+      { id: "taken", text: "taken accepted input", attachments: [] },
+      { id: "waiting", text: "waiting accepted input", attachments: [] },
+    ])
+    await finishing.reached
+
+    const taking = Effect.runPromise(runner.unqueue(thread.id, "taken"))
+    finishing.resume()
+
+    expect(await taking).toMatchObject({ id: "taken" })
+    await vi.waitFor(() => expect(turns.map(({ input }) => input.prompt)).toContain("waiting accepted input"))
+    expect(turns.map(({ input }) => input.prompt)).not.toContain("taken accepted input")
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([])
+    expect((await storedMessages(thread.id)).some((message) => message.id === "taken")).toBe(false)
+  })
+})
+
+it("keeps a queued message stored until its turn starts it, so a quit before then cannot lose it", async () => {
+  await withPreparingThread(async (probe) => {
+    const { runner, threads, thread, release, turns, storedMessages } = probe
+    release()
+    const finishing = probe.pauseNextUpdate()
+    await queuedAfter(probe, [{ id: "waiting", text: "keeps running", attachments: [] }])
+    await finishing.reached
+    probe.pauseSnapshot()
+    finishing.resume()
+    await probe.snapshotting
+
+    const beforeStart = {
+      queued: (await Effect.runPromise(threads.get(thread.id))).queue.map((message) => message.id),
+      recorded: (await storedMessages(thread.id)).filter((message) => message.id === "waiting").length,
+    }
+    expect(beforeStart).toStrictEqual({ queued: ["waiting"], recorded: 0 })
+
+    probe.snapshot()
+    await vi.waitFor(() => expect(turns).toHaveLength(2))
+    const whileRunning = {
+      queued: (await Effect.runPromise(threads.get(thread.id))).queue.map((message) => message.id),
+      recorded: (await storedMessages(thread.id)).filter((message) => message.id === "waiting").length,
+    }
+    expect(whileRunning).toStrictEqual({ queued: [], recorded: 1 })
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("writes nothing for a queued message whose turn failed to start, and keeps it queued", async () => {
+  await withPreparingThread(async (probe) => {
+    const { threads, thread, release, storedMessages, failNextInsert } = probe
+    release()
+    let assistants = 0
+    failNextInsert((message) => message.role === "assistant" && ++assistants === 2)
+
+    await queuedAfter(probe, [{ id: "retry-me", text: "retry me accepted input", attachments: [] }])
+
+    await vi.waitFor(async () => {
+      expect(assistants).toBe(2)
+      expect((await Effect.runPromise(threads.get(thread.id))).queue.map((message) => message.id)).toEqual(["retry-me"])
+    })
+    expect((await storedMessages(thread.id)).some((message) => message.id === "retry-me")).toBe(false)
+  })
+})
+
 it("queues a scheduled message that comes due during a turn", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, streamed }) => {
     release()
@@ -1820,18 +2035,22 @@ it("cancels a scheduled message that is waiting on its worktree", async () => {
   })
 })
 
-const fakeClaudeCli = Layer.effect(
-  ClaudeProvider,
-  Effect.map(
-    makeClaudeHarness({ id: "claude", listModels: Effect.succeed([]), launchEnv: () => Effect.succeed({}) }),
-    (harness) =>
-      ClaudeProvider.of({
-        ...harness,
-        account: () => Effect.succeed({ type: "apiKey" }),
-        planLimits: () => Effect.succeed(null),
-      }),
-  ),
-)
+const claudeCli = (onSteerAnswered: () => void = () => {}) =>
+  Layer.effect(
+    ClaudeProvider,
+    Effect.map(
+      makeClaudeHarness({ id: "claude", listModels: Effect.succeed([]), launchEnv: () => Effect.succeed({}) }),
+      (harness) =>
+        ClaudeProvider.of({
+          ...harness,
+          steer: (...args) => harness.steer!(...args).pipe(Effect.ensuring(Effect.sync(onSteerAnswered))),
+          account: () => Effect.succeed({ type: "apiKey" }),
+          planLimits: () => Effect.succeed(null),
+        }),
+    ),
+  )
+
+const fakeClaudeCli = claudeCli()
 
 const fakeClaudeHome = () => {
   const dir = mkdtempSync(join(tmpdir(), "kk-runner-claude-home-"))
@@ -1942,5 +2161,57 @@ it("clears the stored session when Stop is followed by a lost session", async ()
       await replyMatching(/^echo: <conversation_handoff>[\s\S]*after stop$/)
     },
     { claude: fakeClaudeCli },
+  )
+}, 30_000)
+
+it("steers a Claude turn that has not opened yet into that turn", async () => {
+  const home = fakeClaudeHome()
+  const steerAnswered = Promise.withResolvers<void>()
+  await withPreparingThread(
+    async ({ runner, threads, accounts, thread, release, storedMessages }) => {
+      release()
+      const account = await Effect.runPromise(
+        accounts.create({ provider: "claude", name: "Fake", configDir: home.dir, binary: home.binary }),
+      )
+      await Effect.runPromise(threads.update({ id: thread.id, accountId: account.id }))
+      const prompts = () =>
+        readFileSync(join(home.dir, "received.jsonl"), "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map(
+            (line) =>
+              JSON.parse(line) as { type: string; message?: { content: unknown }; request?: { subtype: string } },
+          )
+      const promptTexts = () =>
+        prompts().flatMap((line) => (line.type === "user" ? [JSON.stringify(line.message?.content)] : []))
+
+      await Effect.runPromise(runner.send(thread.id, "hello", []))
+      await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"), {
+        timeout: 15_000,
+      })
+      writeFileSync(join(home.dir, "control.json"), JSON.stringify({ holdSetModel: true }))
+      await Effect.runPromise(threads.update({ id: thread.id, model: "switched-model" }))
+
+      await Effect.runPromise(runner.send(thread.id, "first", []))
+      await vi.waitFor(() => expect(prompts().some((line) => line.request?.subtype === "set_model")).toBe(true), {
+        timeout: 15_000,
+      })
+      expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running")
+      const steered = Effect.runPromiseExit(runner.steer(thread.id, "steered", []))
+      await steerAnswered.promise
+      writeFileSync(join(home.dir, "release-set-model"), "")
+      expect(await steered).toStrictEqual(Exit.void)
+
+      await vi.waitFor(() => expect(promptTexts().filter((text) => /first|steered/.test(text))).toHaveLength(2), {
+        timeout: 15_000,
+      })
+      expect(promptTexts().at(-2)).toContain("first")
+      expect(promptTexts().at(-1)).toContain("steered")
+      const users = (await storedMessages(thread.id)).filter((message) => message.role === "user")
+      expect(
+        users.map((message) => JSON.stringify(message.parts)).filter((parts) => parts.includes("steered")),
+      ).toHaveLength(1)
+    },
+    { claude: claudeCli(() => steerAnswered.resolve()) },
   )
 }, 30_000)

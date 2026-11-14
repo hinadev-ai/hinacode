@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, onTestFinished, test } from "vitest"
@@ -36,6 +36,44 @@ test("publishes, lists and reads back an artifact through the tool handlers", as
   expect(await read_artifact.handle(store, { id, path: "index.html" }, {})).toBe("<p>notes</p>")
   await expect(read_artifact.handle(store, { id, path: "dot.png" }, {})).rejects.toThrow(/binary \(image\/png\)/)
   await expect(read_artifact.handle(store, { id: "gone" }, {})).rejects.toThrow(/No artifact has the id "gone"/)
+})
+
+test("reads common text formats back as text", async () => {
+  const store = openTemporaryStore()
+  const files = {
+    "data.csv": "a,b\n1,2\n",
+    "data.tsv": "a\tb\n",
+    "feed.xml": "<feed/>",
+    "config.yaml": "a: 1\n",
+    "config.yml": "b: 2\n",
+    "app.ts": "export const a: number = 1\n",
+    "app.js.map": '{"version":3}',
+    "Cargo.toml": "[package]\n",
+  }
+  const { id } = await store.publish({
+    title: "Data",
+    entry: "data.csv",
+    files: Object.entries(files).map(([path, content]) => ({ path, content })),
+  })
+
+  for (const [path, content] of Object.entries(files))
+    expect(await artifactTools.read_artifact.handle(store, { id, path }, {})).toBe(content)
+})
+
+test("reads a CSV published while its manifest recorded it as binary", async () => {
+  const root = mkdtempSync(join(tmpdir(), "hinacode-artifacts-"))
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }))
+  const { id } = await openArtifactStore(root).publish({
+    title: "Data",
+    entry: "data.csv",
+    files: [{ path: "data.csv", content: "a,b\n" }],
+  })
+  const manifestPath = join(root, id, "artifact.json")
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"))
+  manifest.files[0].type = "application/octet-stream"
+  writeFileSync(manifestPath, JSON.stringify(manifest))
+
+  expect(await artifactTools.read_artifact.handle(openArtifactStore(root), { id, path: "data.csv" }, {})).toBe("a,b\n")
 })
 
 test("lists nothing in an empty store", async () => {

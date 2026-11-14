@@ -50,12 +50,13 @@ import {
   Attachment,
   QueuedMessage,
   ScheduledMessage,
-  Automation,
+  Routine,
   Changes,
   ChangesScope,
-  AutomationRun,
+  RoutineRun,
   FileSearchHit,
-  AutomationTrigger,
+  RoutineSchedule,
+  RoutineWorkspace,
   FsEntry,
   DirectorySuggestion,
   FsFileContent,
@@ -75,6 +76,7 @@ import {
   ProjectAction,
   GitHubAuth,
   GitHubRateLimit,
+  Issue,
   PullRequest,
   PullRequestCandidates,
   PullRequestDetail,
@@ -87,6 +89,7 @@ import {
   NetworkAddress,
   RemotePairing,
   RemoteStatus,
+  AppConnectionsStatus,
   Settings,
   TerminalAttachment,
   TerminalOffset,
@@ -125,18 +128,18 @@ import {
   ThreadDevices,
 } from "./device.ts"
 
-const AutomationInput = Schema.Struct({
+const RoutineInput = Schema.Struct({
   projectId: Schema.String,
   name: Schema.String,
   enabled: Schema.Boolean,
-  trigger: AutomationTrigger,
-  promptTemplate: Schema.String,
+  prompt: Schema.String,
   provider: ProviderId,
   model: Schema.String,
-  runInWorktree: Schema.Boolean,
-  branchTemplate: Schema.NullOr(Schema.String),
+  effort: Schema.NullOr(Schema.String),
+  workspace: RoutineWorkspace,
+  schedule: Schema.NullOr(RoutineSchedule),
 })
-export type AutomationInput = typeof AutomationInput.Type
+export type RoutineInput = typeof RoutineInput.Type
 
 const TerminalSize = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 1000 }))
 
@@ -268,6 +271,7 @@ export const RpcMethods = {
       provider: Schema.optional(ProviderId),
       model: Schema.optional(Schema.String),
       effort: Schema.optional(Schema.String),
+      accessMode: Schema.optional(AccessMode),
       worktree: Schema.optional(Schema.Struct({ branch: Schema.String, baseRef: Schema.String })),
       createdBy: Schema.optional(Schema.String),
     }),
@@ -315,7 +319,6 @@ export const RpcMethods = {
   ),
   "worktrees.checkouts": rpc(Schema.Void, Schema.Array(WorktreeCheckout)),
   "worktrees.checkoutState": rpc(Schema.Struct({ id: Schema.String }), CheckoutState),
-  "worktrees.setupLog": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
   "worktrees.stopSetup": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "worktrees.pullRequest": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequest)),
   "threads.changes": rpc(Schema.Struct({ threadId: Schema.String, scope: ChangesScope }), Schema.NullOr(Changes)),
@@ -392,6 +395,10 @@ export const RpcMethods = {
   "relayAccount.machines": rpc(Schema.Void, Schema.Array(RelayHost)),
   "relayAccount.setShown": rpc(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }), Schema.Array(RelayHost)),
   "relayAccount.removeMachine": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(RelayHost)),
+  "appConnections.status": rpc(Schema.Void, AppConnectionsStatus),
+  "appConnections.start": rpc(Schema.Void, AppConnectionsStatus),
+  "appConnections.answer": rpc(Schema.Struct({ id: Schema.String, approve: Schema.Boolean }), AppConnectionsStatus),
+  "appConnections.remove": rpc(Schema.Struct({ id: Schema.String }), AppConnectionsStatus),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   "agents.account": rpc(
@@ -514,7 +521,7 @@ export const RpcMethods = {
   "subagents.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Subagent)),
   "subagents.stop": rpc(Schema.Struct({ threadId: Schema.String, subagentId: Schema.String }), Schema.Void),
   "subagents.transcript": rpc(
-    Schema.Struct({ threadId: Schema.String, callId: Schema.String }),
+    Schema.Struct({ threadId: Schema.String, callId: Schema.String, compact: Schema.optional(Schema.Boolean) }),
     Schema.Struct({
       spawn: Schema.NullOr(MessagePart),
       calls: Schema.Array(MessagePart),
@@ -536,6 +543,7 @@ export const RpcMethods = {
 
   "github.auth": rpc(Schema.Void, GitHubAuth),
   "github.pullRequest": rpc(Schema.Struct({ url: Schema.String }), PullRequest),
+  "github.issue": rpc(Schema.Struct({ url: Schema.String }), Issue),
   "github.pullRequestDetail": rpc(
     Schema.Struct({ url: Schema.String, fresh: Schema.optionalKey(Schema.Boolean) }),
     PullRequestDetail,
@@ -648,7 +656,7 @@ export const RpcMethods = {
   "attachments.read": rpc(Schema.Struct({ path: Schema.String }), Schema.Struct({ dataUrl: Schema.String })),
   "dialog.pickFiles": rpc(Schema.Void, Schema.Array(Schema.String)),
 
-  "automations.list": rpc(Schema.Void, Schema.Array(Automation)),
+  "routines.list": rpc(Schema.Void, Schema.Array(Routine)),
   "artifacts.list": rpc(Schema.Void, Schema.Array(Artifact)),
   "artifacts.file": rpc(
     Schema.Struct({ id: Schema.String, path: Schema.String }),
@@ -689,39 +697,41 @@ export const RpcMethods = {
   ),
   "artifacts.rename": rpc(Schema.Struct({ id: Schema.String, title: Schema.String }), Artifact),
   "artifacts.setTheme": rpc(ArtifactTheme, Schema.Void),
-  "automations.create": rpc(
-    AutomationInput,
-    Schema.Struct({ automation: Automation, secret: Schema.NullOr(Schema.String) }),
-  ),
-  "automations.update": rpc(
+  "routines.create": rpc(RoutineInput, Routine),
+  "routines.update": rpc(
     Schema.Struct({
       id: Schema.String,
       name: Schema.optional(Schema.String),
       enabled: Schema.optional(Schema.Boolean),
-      trigger: Schema.optional(AutomationTrigger),
-      promptTemplate: Schema.optional(Schema.String),
+      prompt: Schema.optional(Schema.String),
       provider: Schema.optional(ProviderId),
       model: Schema.optional(Schema.String),
-      runInWorktree: Schema.optional(Schema.Boolean),
-      branchTemplate: Schema.optional(Schema.NullOr(Schema.String)),
+      effort: Schema.optional(Schema.NullOr(Schema.String)),
+      workspace: Schema.optional(RoutineWorkspace),
+      schedule: Schema.optional(Schema.NullOr(RoutineSchedule)),
     }),
-    Automation,
+    Routine,
   ),
-  "automations.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
-  "automations.runNow": rpc(Schema.Struct({ id: Schema.String, payload: Schema.Unknown }), AutomationRun),
-  "automations.runs": rpc(
+  "routines.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "routines.run": rpc(Schema.Struct({ id: Schema.String }), RoutineRun),
+  "routines.runs": rpc(
     Schema.Struct({ id: Schema.String, limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 })) }),
-    Schema.Array(AutomationRun),
+    Schema.Array(RoutineRun),
+  ),
+  "routines.webhook": rpc(
+    Schema.Struct({ id: Schema.String }),
+    Schema.Struct({ url: Schema.String, hasSecret: Schema.Boolean, listenError: Schema.NullOr(Schema.String) }),
+  ),
+  "routines.rotateWebhookSecret": rpc(Schema.Struct({ id: Schema.String }), Schema.Struct({ secret: Schema.String })),
+  "commands.forProject": rpc(
+    Schema.Struct({ projectId: Schema.String, provider: ProviderId }),
+    Schema.Array(AgentCommand),
   ),
   "network.addresses": rpc(Schema.Void, Schema.Array(NetworkAddress)),
   "system.resources": rpc(Schema.Void, MachineResources),
   "remote.status": rpc(Schema.Void, RemoteStatus),
   "remote.pairing": rpc(Schema.Void, RemotePairing),
   "remote.rotateToken": rpc(Schema.Void, RemotePairing),
-  "automations.webhookUrl": rpc(
-    Schema.Struct({ id: Schema.String }),
-    Schema.Struct({ url: Schema.String, listenError: Schema.NullOr(Schema.String) }),
-  ),
 }
 
 export type RpcMethod = keyof typeof RpcMethods
@@ -767,7 +777,6 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "worktrees.remove": "mutation",
   "worktrees.checkouts": "read",
   "worktrees.checkoutState": "read",
-  "worktrees.setupLog": "read",
   "worktrees.stopSetup": "mutation",
   "worktrees.pullRequest": "read",
   "threads.changes": "read",
@@ -811,6 +820,10 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "relayAccount.machines": "read",
   "relayAccount.setShown": "mutation",
   "relayAccount.removeMachine": "mutation",
+  "appConnections.status": "read",
+  "appConnections.start": "mutation",
+  "appConnections.answer": "mutation",
+  "appConnections.remove": "mutation",
   "models.list": "read",
   "agents.account": "read",
   "agents.updates": "read",
@@ -873,6 +886,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "pullRequests.unwatch": "mutation",
   "github.auth": "read",
   "github.pullRequest": "read",
+  "github.issue": "read",
   "github.pullRequestDetail": "read",
   "github.pullRequestFiles": "read",
   "github.merge": "mutation",
@@ -912,7 +926,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "attachments.stage": "mutation",
   "attachments.read": "read",
   "dialog.pickFiles": "mutation",
-  "automations.list": "read",
+  "routines.list": "read",
   "artifacts.list": "read",
   "artifacts.file": "read",
   "artifacts.export": "mutation",
@@ -929,17 +943,19 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "artifacts.resolveComment": "mutation",
   "artifacts.rename": "mutation",
   "artifacts.setTheme": "mutation",
-  "automations.create": "mutation",
-  "automations.update": "mutation",
-  "automations.delete": "mutation",
-  "automations.runNow": "mutation",
-  "automations.runs": "read",
+  "routines.create": "mutation",
+  "routines.update": "mutation",
+  "routines.delete": "mutation",
+  "routines.run": "mutation",
+  "routines.runs": "read",
+  "routines.webhook": "read",
+  "routines.rotateWebhookSecret": "mutation",
+  "commands.forProject": "read",
   "network.addresses": "read",
   "system.resources": "read",
   "remote.status": "read",
   "remote.pairing": "read",
   "remote.rotateToken": "mutation",
-  "automations.webhookUrl": "read",
 }
 
 export const mutations: ReadonlySet<string> = new Set(
@@ -983,6 +999,10 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "relayAccount.machines",
   "relayAccount.setShown",
   "relayAccount.removeMachine",
+  "appConnections.status",
+  "appConnections.start",
+  "appConnections.answer",
+  "appConnections.remove",
   "agents.update",
 ])
 export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEvent["type"]>([
@@ -990,6 +1010,7 @@ export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEve
   "vm.screen.closed",
   "fs.changed",
   "environments.changed",
+  "appConnections.changed",
 ])
 export type RpcRequest<M extends RpcMethod> = (typeof RpcMethods)[M]["request"]["Type"]
 export type RpcResponse<M extends RpcMethod> = (typeof RpcMethods)[M]["response"]["Type"]
@@ -1067,7 +1088,8 @@ export const PushEvent = Schema.Union([
     tasks: Schema.Array(BackgroundTask),
   }),
   Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
-  Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
+  Schema.Struct({ type: Schema.Literal("routine.run"), run: RoutineRun }),
+  Schema.Struct({ type: Schema.Literal("routines.changed") }),
   Schema.Struct({ type: Schema.Literal("artifact.updated"), artifact: Artifact }),
   Schema.Struct({ type: Schema.Literal("artifact.removed"), id: Schema.String }),
   Schema.Struct({ type: Schema.Literal("artifact.feedback"), id: Schema.String }),
@@ -1083,6 +1105,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("update.changed") }),
   Schema.Struct({ type: Schema.Literal("environment.status"), id: Schema.String, status: EnvironmentStatus }),
   Schema.Struct({ type: Schema.Literal("environments.changed") }),
+  Schema.Struct({ type: Schema.Literal("appConnections.changed"), status: AppConnectionsStatus }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   Schema.Struct({ type: Schema.Literal("device.updated"), threadId: Schema.String, devices: ThreadDevices }),
   Schema.Struct({

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { errorSummary } from "./errorMessage.ts"
+import { errorMessage, errorSummary } from "./errorMessage.ts"
 import { RpcError } from "./rpc.ts"
 
 describe("errorSummary", () => {
@@ -17,5 +17,13 @@ describe("errorSummary", () => {
       message: "Could not read this folder. It may have been moved or deleted.",
       detail: null,
     })
+  })
+})
+
+describe("errorMessage", () => {
+  test("says a folder is missing without repeating its path", () => {
+    const message =
+      "The folder /tmp/repo/.hinacode-worktrees/repo/kk-fix-login-form-b21a5dbc is missing. It was moved or deleted."
+    expect(errorMessage(new RpcError({ tag: "FolderMissingError", message }))).toBe("The folder was moved or deleted.")
   })
 })

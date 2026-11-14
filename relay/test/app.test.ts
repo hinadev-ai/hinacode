@@ -171,6 +171,32 @@ describe("linking", () => {
     await linkMachine("env-3")
   })
 
+  it("refuses a sixth machine whose link was approved before the fifth was claimed", async () => {
+    for (const environmentId of ["env-1", "env-2", "env-3", "env-4"]) await linkMachine(environmentId)
+    const fifth = await startLink("env-5")
+    const sixth = await startLink("env-6")
+    expect((await approve(fifth.userCode)).status).toBe(204)
+    expect((await approve(sixth.userCode)).status).toBe(204)
+    expect((await claim(fifth.deviceCode)).status).toBe(200)
+
+    const refused = await claim(sixth.deviceCode)
+    expect(refused.status).toBe(409)
+    expect(((await refused.json()) as { error: string }).error).toContain("5 machines")
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM host").first("count")).toBe(5)
+  })
+
+  it("refuses one of two machines that claim at once past the limit", async () => {
+    for (const environmentId of ["env-1", "env-2", "env-3", "env-4"]) await linkMachine(environmentId)
+    const fifth = await startLink("env-5")
+    const sixth = await startLink("env-6")
+    expect((await approve(fifth.userCode)).status).toBe(204)
+    expect((await approve(sixth.userCode)).status).toBe(204)
+
+    const claims = await Promise.all([claim(fifth.deviceCode), claim(sixth.deviceCode)])
+    expect(claims.map((response) => response.status).toSorted()).toEqual([200, 409])
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM host").first("count")).toBe(5)
+  })
+
   it("keeps the host id on a re-link and revokes the old credential", async () => {
     const first = await linkMachine()
     expect((await putTunnel(first)).status).toBe(200)
@@ -800,5 +826,52 @@ describe("signing in by redirect", () => {
     }
     expect(await (await call("GET", "/sign-in")).text()).toContain("clerk.browser.js")
     expect(await (await call("GET", "/signed-in")).text()).not.toContain("clerk")
+  })
+})
+
+const verifyOnMachine = (credential: string, code: string, codeVerifier: string) =>
+  call("POST", "/v1/host/sign-in-codes/verify", { bearer: credential, body: { code, codeVerifier } })
+
+describe("signing in to approve an app on one of your machines", () => {
+  const approvalUri = async (environmentId = "env-1") =>
+    `https://${(await hostRow(environmentId))?.id}.tunnels.test/oauth/signed-in`
+
+  it("returns only to the signed-in account's own machines, on the approval path", async () => {
+    await linkMachine("env-1")
+    await linkMachine("env-bob", "bob-session")
+    const own = await approvalUri()
+    expect((await requestCode("alice-session", own)).status).toBe(200)
+    for (const redirectUri of [
+      await approvalUri("env-bob"),
+      own.replace("https:", "http:"),
+      own.replace("/oauth/signed-in", "/elsewhere"),
+      `${own}?request=1`,
+      own.replace(".tunnels.test", ".tunnels.test:8443"),
+      "https://unknown.tunnels.test/oauth/signed-in",
+    ]) {
+      expect((await requestCode("alice-session", redirectUri)).status, redirectUri).toBe(400)
+    }
+  })
+
+  it("lets only that machine redeem the code, once, and never as a device", async () => {
+    const credential = await linkMachine("env-1")
+    const other = await linkMachine("env-2")
+    const { code, verifier } = await issueCode(await approvalUri())
+    expect((await verifyOnMachine(other, code, verifier)).status).toBe(410)
+
+    const second = await issueCode(await approvalUri())
+    expect((await exchange(second.code, second.verifier)).status).toBe(410)
+
+    const third = await issueCode(await approvalUri())
+    expect((await verifyOnMachine(credential, third.code, (await pkce()).verifier)).status).toBe(410)
+
+    const fourth = await issueCode(await approvalUri())
+    const verified = await verifyOnMachine(credential, fourth.code, fourth.verifier)
+    expect(verified.status).toBe(200)
+    expect(await verified.json()).toEqual({ name: "user_alice", email: "user_alice@example.com" })
+    expect((await verifyOnMachine(credential, fourth.code, fourth.verifier)).status).toBe(410)
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM device").first("count")).toBe(0)
+
+    expect((await verifyOnMachine("not-a-machine", code, verifier)).status).toBe(401)
   })
 })

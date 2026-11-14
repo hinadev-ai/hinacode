@@ -113,11 +113,11 @@ When("I expand the {word} threads", async ({ app }, shelf: string) => {
 })
 
 When("I scroll to the end of the sidebar", async ({ app }) => {
-  await sidebar(app.page).getByRole("link").last().scrollIntoViewIfNeeded()
+  await sidebarThreadLinks(app.page).last().scrollIntoViewIfNeeded()
 })
 
 Then("the sidebar lists {int} thread(s)", async ({ app }, count: number) => {
-  await expect(sidebar(app.page).getByRole("link")).toHaveCount(count)
+  await expect(sidebarThreadLinks(app.page)).toHaveCount(count)
 })
 
 When("I undo from the toast", async ({ app }) => {
@@ -127,6 +127,8 @@ When("I undo from the toast", async ({ app }) => {
 When("I unarchive the thread {string}", async ({ app, names }, title: string) => {
   await clickRowButton(sidebar(app.page), `Reopen ${names.of(title)}`)
 })
+
+const sidebarThreadLinks = (page: Page) => sidebar(page).locator('a[href*="/thread/"]')
 
 const sidebarFilter = (page: Page) => sidebar(page).getByRole("searchbox", { name: "Filter threads and projects" })
 

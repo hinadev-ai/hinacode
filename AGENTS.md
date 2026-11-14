@@ -2,7 +2,7 @@
 
 HinaCode is a desktop UI for coding agents. It runs Claude Code (Agent SDK), Codex (app-server protocol), Muse Code (MSP), opencode (Agent Client Protocol) and magpie (Claude Code through its gateway) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
 
-We are building a harness, not a chat app. Our features help a developer manage the agent loop: a worktree per thread, inline approvals, steering a running turn, a built-in MCP server (`review_changes`, `link_pull_request`, Linear tools), PR links with merge state, a ports panel, and automations triggered by webhooks or by GitHub, Linear and Slack pollers. Read `README.md` for the full feature list.
+We are building a harness, not a chat app. Our features help a developer manage the agent loop: a worktree per thread, inline approvals, steering a running turn, a built-in MCP server (`review_changes`, `link_pull_request`, Linear tools), PR links with merge state, a ports panel, and routines that start threads on a cron schedule or from a webhook. Read `README.md` for the full feature list.
 
 ## How we build
 
@@ -31,8 +31,9 @@ Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI run
 ```
 src/main      Main process. One Effect layer graph (app.ts), run by Electron (index.ts) or as the Node cloud daemon (daemon.ts).
   agents/     AgentProvider implementations: claude/, which magpie/ reuses, codex/, muse/, and acp/, which opencode/ configures. Registered in services/AgentRunner.ts.
-  services/   Effect services (Threads, Worktrees, Projects, Git, PullRequests, Secrets, automations/, ...)
+  services/   Effect services (Threads, Worktrees, Projects, Git, PullRequests, Secrets, Scheduler, routines/, ...)
   mcp/        HTTP MCP server on 127.0.0.1, one bearer credential per thread
+  apps/       OAuth and a second MCP server for apps the developer connects, reached through the relay
   db/         SQLite client, migrations/NNNN_name, testing.ts seed helpers
   rpc.ts      rpc handlers; ipc.ts registers the channel, checks the sender and supplies the desktop-only calls; security.ts for navigation, external links and sender checks
 src/preload   contextBridge exposing window.hinacode { rpc, onEvent, pathForFile }
@@ -62,7 +63,7 @@ messages/     Paraglide catalogs: en.json, zh-TW.json, zh-CN.json and ja.json
 - Renderer component tests are `*.component.test.tsx`. Vitest runs them in headless Chromium with the app stylesheet, so they can check computed styles and drive input over `cdp()`. Stub `window.hinacode` for the rpc calls the component makes.
 - For a bug, commit a failing `test(scope): reproduce ...` first, then the fix.
 - Icons are HinaCode's own, one component per file in `packages/icons/src/` (`@hinacode/icons`), drawn with the `Svg`, `Path`, `Circle`, `Rect`, `G` and `Mask` primitives from `./primitives` so the desktop (DOM: 24 grid, `1em`, `currentColor`) and the mobile app (react-native-svg) render the same file. Export a new icon from `index.ts`. An icon that needs DOM-only features, such as `SendGlyph`'s CSS transitions, stays in `src/renderer/components/icons/` on the shared `Icon` base. Brand marks, GitHub's pull request states (open, merged, draft, closed) and any icon we have not drawn yet come from `react-icons/ri` (Remix). `shadcn add` writes `@remixicon/react` imports, because `components.json` says `remixicon`; swap them for ours or `react-icons/ri`. Lucide is banned, including `react-icons/lu`.
-- A new icon follows the set's rules: stroke 2.4 with round caps and joins, every curve a circle arc, radius-3 corners on containers, a gap where shapes cross, and at most one dot filled with `sun` from the primitives (`var(--sun, currentColor)` on the desktop, the `sun` prop on mobile). Masks take their ids from `useId`. Never use a sparkle icon.
+- A new icon follows the set's rules: stroke 2.4 with round caps and joins, every curve a circle arc, radius-3 corners on containers, and a gap where shapes cross. `sun` from the primitives (`var(--sun, currentColor)` on the desktop, the `sun` prop on mobile) fills small solid marks and never a stroke. An icon that uses `sun` usually fills one mark, a dot. An icon drawn from repeated dots, such as `MoreIcon`, `BranchIcon` or `ServerIcon`, fills each of them. Masks take their ids from `useId`. Never use a sparkle icon.
 - Add shadcn components into `src/renderer/components/ui/` with the `base-nova` style. They are built on `@base-ui/react`, not Radix.
 - The product's display name is HinaCode, in UI copy, agent-facing prose and docs. Names, IDs, labels and schemes stay `hinacode`: the MCP server, `hinacode://`, `hinacode serve`. Only `app.setName` keeps the old `kkcode`, so installs keep their Keychain item. The profile lives in `~/.hinacode` (`~/.hinacode-dev` when unpackaged), and the first start moves an old `kkcode` profile there (see `src/main/index.ts`)
 - Branches are `feat/*` or `fix/*`, merged into `main` by PR. Commits follow Conventional Commits with a scope, e.g. `fix(mcp): bind credentials to one thread`.
@@ -82,7 +83,8 @@ HinaCode runs agents that execute code on the user's machine. Hold a few boundar
 - **Boundaries we hold:**
   - The renderer is sandboxed and only the top-level app frame may call `rpc`.
   - `shell.openExternal` only opens http(s) URLs.
-  - The MCP server listens on loopback only, and its credential scopes each call to one thread.
+  - The thread MCP server (`src/main/mcp/`) listens on loopback only, and its credential scopes each call to one thread.
+  - The app MCP server (`src/main/apps/`) is the only MCP surface the relay reaches. Its tools are project and thread tools: nothing that returns a secret, runs a shell, or drives a VM or device goes on it. It answers 404 until the developer copies the URL from Settings or an app is connected, and only the developer grants a connection: Approve in HinaCode, or Approve on the page after signing in to the relay as the machine's owner, and it builds URLs from the relay hostname, never from request headers.
   - Webhooks require an HMAC signature, checked with `timingSafeEqual`.
   - The attachment protocol refuses paths outside its root.
 - **Secrets** go through `services/Secrets.ts`, sealed by the `Keyring` the entry point provides. Never log them, put them in a URL, or send them to the renderer. Only the packaged desktop app uses the real login Keychain. Unpackaged runs switch themselves to Chromium's mock keychain (`src/main/index.ts`), and `hinacode serve` has no keyring, so never add a launch path that asks the user for their password.

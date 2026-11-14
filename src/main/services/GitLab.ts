@@ -21,8 +21,8 @@ import {
 } from "../../shared/codeHost.ts"
 import { findBinary } from "../agents/binary.ts"
 import { Events } from "./Events.ts"
-import { CommandError, LONG_TIMEOUT, makeExec, type RunOptions } from "./Git.ts"
-import { parseApiResponse, PullRequestUrlInvalidError } from "./GitHub.ts"
+import { CommandError, COMMAND_NOT_FOUND_EXIT_CODE, LONG_TIMEOUT, makeExec, type RunOptions } from "./Git.ts"
+import { CHECK_RUN_ORDER, parseApiResponse, PullRequestUrlInvalidError } from "./GitHub.ts"
 
 export class GitLabCliMissingError extends Schema.TaggedError<GitLabCliMissingError>()("GitLabCliMissingError", {}) {
   override get message(): string {
@@ -60,9 +60,6 @@ export class GitLab extends Context.Service<
     readonly pullRequest: (
       url: string,
     ) => Effect.Effect<PullRequest, GitLabError | PullRequestUrlInvalidError | Schema.SchemaError>
-    readonly pullRequestOpenedAt: (
-      url: string,
-    ) => Effect.Effect<string, GitLabError | PullRequestUrlInvalidError | Schema.SchemaError>
     readonly pullRequestDetail: (
       url: string,
     ) => Effect.Effect<PullRequestDetail, GitLabError | PullRequestUrlInvalidError | Schema.SchemaError>
@@ -228,8 +225,6 @@ const jobStatus = ({ status, allow_failure }: JobsJson[number]): CheckRunStatus 
   return pipelineChecks(status) ?? "skipped"
 }
 
-const CHECK_RUN_ORDER: Record<CheckRunStatus, number> = { failing: 0, pending: 1, passing: 2, skipped: 3 }
-
 export const toCheckRuns = (jobs: JobsJson): ReadonlyArray<CheckRun> =>
   jobs
     .map((job) => ({ name: job.name, status: jobStatus(job), url: job.web_url }))
@@ -273,7 +268,7 @@ export const toPullRequestDetail = (reads: MergeRequestDetailReads): PullRequest
 const GLAB_ERROR = /^glab: (?:(.*\S)\s+\()?HTTP (\d+)\)?/m
 
 export const gitLabErrorOf = (hostname: string, error: CommandError): GitLabError => {
-  if (error.exitCode === -1) return new GitLabCliMissingError()
+  if (error.exitCode === COMMAND_NOT_FOUND_EXIT_CODE) return new GitLabCliMissingError()
   const http = GLAB_ERROR.exec(error.stderr)
   if (!http) return error
   const [, detail, status] = http
@@ -416,11 +411,6 @@ const make = Effect.gen(function* () {
     installed: Effect.promise(() => findBinary("glab")).pipe(Effect.map((path) => path !== undefined)),
     isGitLabHost,
     pullRequest: (url) => Effect.flatMap(requireMergeRequest(url), pullRequestOf),
-    pullRequestOpenedAt: (url) =>
-      requireMergeRequest(url).pipe(
-        Effect.flatMap(readMergeRequest),
-        Effect.map((mergeRequest) => mergeRequest.created_at),
-      ),
     pullRequestDetail,
     merge: (url, method) =>
       method === "rebase"

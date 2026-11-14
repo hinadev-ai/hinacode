@@ -1,8 +1,8 @@
 import type { NonEmptyReadonlyArray } from "effect/Array"
-import { createServer, type Server } from "node:http"
+import { createServer, type RequestListener, type Server } from "node:http"
 import { Clock, Duration, Effect, Fiber, Option, Schedule, Schema, type Scope } from "effect"
 import { WebSocket, WebSocketServer } from "ws"
-import { compactPush } from "../../shared/compactTranscript.ts"
+import { compactPushes } from "../../shared/compactTranscript.ts"
 import {
   desktopOnlyMethods,
   desktopOnlyPushes,
@@ -103,11 +103,13 @@ export const makeSessions = <R>({ call, subscribe, environment, features }: Sess
       socket.on("pong", () => {
         peer.awaitingPong = false
       })
+      const compactPush = compactPushes()
       const subscription = runFork(
         Effect.scoped(
           subscribe((event) => {
             if (desktopOnlyPushes.has(event.type) || !reachesPhone(event, peer.watching)) return
-            send(socket, { type: "event", event: compactEvents ? compactPush(event) : event })
+            const outgoing = compactEvents ? compactPush(event) : event
+            if (outgoing !== null) send(socket, { type: "event", event: outgoing })
           }).pipe(Effect.andThen(Effect.never)),
         ),
       )
@@ -199,18 +201,22 @@ export const makeSessions = <R>({ call, subscribe, environment, features }: Sess
     }
   })
 
+const answerNotFound: RequestListener = (_, response) => response.writeHead(404).end()
+
 export const listenWebSockets = ({
   listen,
   accept,
   perMessageDeflate,
+  request = answerNotFound,
 }: {
   readonly listen: (server: Server, listening: () => void) => void
   readonly accept: (socket: WebSocket) => void
   readonly perMessageDeflate: boolean
+  readonly request?: RequestListener
 }) =>
   Effect.acquireRelease(
     Effect.callback<{ server: Server; wss: WebSocketServer }, Error>((resume) => {
-      const server = createServer((_, response) => response.writeHead(404).end())
+      const server = createServer(request)
       const wss = new WebSocketServer({
         server,
         path: REMOTE_PATH,

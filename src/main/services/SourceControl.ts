@@ -20,7 +20,6 @@ export class SourceControl extends Context.Service<
   {
     readonly installedFor: (url: string) => Effect.Effect<boolean>
     readonly pullRequest: (url: string) => Effect.Effect<PullRequest, SourceControlError | Schema.SchemaError>
-    readonly pullRequestOpenedAt: (url: string) => Effect.Effect<string, SourceControlError | Schema.SchemaError>
     readonly pullRequestDetail: (
       url: string,
       options?: { readonly fresh?: boolean | undefined },
@@ -82,12 +81,6 @@ const make = Effect.gen(function* () {
         url,
         () => github.pullRequest(url),
         () => gitlab.pullRequest(url),
-      ),
-    pullRequestOpenedAt: (url) =>
-      byUrl(
-        url,
-        () => github.pullRequestOpenedAt(url),
-        () => gitlab.pullRequestOpenedAt(url),
       ),
     pullRequestDetail: (url, options) =>
       byUrl(

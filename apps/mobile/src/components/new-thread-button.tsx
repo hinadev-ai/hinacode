@@ -9,7 +9,6 @@ import { listedThreads, useThreads } from "@/stores/threads"
 
 const SIZE = 56
 
-/** Start a new thread: a round plus floating over the list's trailing corner, above the tab bar. */
 export function NewThreadButton({ onPress }: { onPress: () => void }) {
   const theme = useTheme()
   const projects = useThreads((state) => state.projects)

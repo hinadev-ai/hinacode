@@ -3,7 +3,6 @@ import { defaultPreferences, type Preferences } from "@/lib/preferences"
 import { loadPreferences, savePreferences } from "@/lib/storage"
 
 interface PreferencesState extends Preferences {
-  /** Reads the stored choices once at launch. Until then the defaults apply. */
   readonly restore: () => Promise<void>
   readonly set: (patch: Partial<Preferences>) => void
 }

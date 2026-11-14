@@ -5,7 +5,7 @@ public class ComposerEditorModule: Module {
     Name("ComposerEditor")
 
     View(ComposerEditorView.self) {
-      Events("onEditorChange", "onEditorSelection", "onEditorFocus", "onEditorBlur", "onEditorContentSize", "onEditorFormat")
+      Events("onEditorChange", "onEditorSelection", "onEditorFocus", "onEditorBlur", "onEditorContentSize", "onEditorFormat", "onEditorPasteImages")
 
       Prop("document") { (view: ComposerEditorView, json: String) in view.setDocument(json) }
       Prop("icons") { (view: ComposerEditorView, json: String) in view.setIcons(json) }

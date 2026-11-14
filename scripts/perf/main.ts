@@ -88,7 +88,7 @@ const workBetween = (spans: ReadonlyArray<Span>, from: number, to: number): Work
 
 const stopBackgroundDeliveries = (data: string) => {
   const db = new DatabaseSync(join(data, "hinacode.sqlite"))
-  db.exec("UPDATE pull_request_link SET watch = NULL; UPDATE automation SET enabled = 0")
+  db.exec("UPDATE pull_request_link SET watch = NULL; UPDATE routine SET enabled = 0, next_run_at = NULL")
   db.close()
 }
 
@@ -144,7 +144,7 @@ const measure = async (label: string, data: string, requested: ReadonlyArray<str
 
       if (run === runs) {
         await page.evaluate(
-          `window.hinacode.rpc("settings.set", { automations: { bindHost: "127.0.0.1", port: ${40000 + port} } })`,
+          `window.hinacode.rpc("settings.set", { routines: { bindHost: "127.0.0.1", port: ${40000 + port} } })`,
         )
         for (let switchRound = 0; switchRound < switchRounds; switchRound++) {
           for (const thread of threads) {
@@ -193,7 +193,7 @@ const summary = (report: Report) => {
     ["startup: gh processes", startup("gh")],
   ]
   for (const thread of report.threads) {
-    const label = `${thread.title.slice(0, 24)} (${thread.messages} msgs, ${thread.kb} KB)`
+    const label = `${thread.title.slice(0, 24)} [${thread.id.slice(0, 8)}] (${thread.messages} msgs, ${thread.kb} KB)`
     const cold = (open: Open) => open.id === thread.id && open.round === 0
     const warm = (open: Open) => open.id === thread.id && open.round > 0
     rows.push(
@@ -210,16 +210,19 @@ const summary = (report: Report) => {
     ["idle: git processes per hour", perHour(report.idle.git)],
     ["idle: gh processes per hour", perHour(report.idle.gh)],
   )
+  const duplicate = rows.find(([name], index) => rows.findIndex(([other]) => other === name) !== index)
+  if (duplicate) throw new Error(`${report.label} has two rows named "${duplicate[0]}"; pass each thread id once`)
   return rows
 }
 
 const print = (reports: ReadonlyArray<Report>) => {
-  const tables = reports.map(summary)
-  const width = Math.max(...tables[0]!.map(([name]) => name.length))
+  const tables = reports.map((report) => new Map(summary(report)))
+  const names = [...new Set(tables.flatMap((table) => [...table.keys()]))]
+  const width = Math.max(...names.map((name) => name.length))
   console.log(["measurement".padEnd(width), ...reports.map((report) => report.label.padStart(12))].join("  "))
-  tables[0]!.forEach(([name], row) => {
-    console.log([name.padEnd(width), ...tables.map((table) => String(table[row]?.[1] ?? "").padStart(12))].join("  "))
-  })
+  for (const name of names) {
+    console.log([name.padEnd(width), ...tables.map((table) => String(table.get(name) ?? "").padStart(12))].join("  "))
+  }
   const last = reports.at(-1)!
   const slow = last.startups.at(-1)?.slowestQuery
   if (slow) console.log(`\nslowest startup query in ${last.label}: ${slow.ms} ms ${slow.query}`)

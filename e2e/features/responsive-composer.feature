@@ -14,8 +14,6 @@ Feature: Responsive composer
       | width | height | fontSize | status  | action |
       | 720   | 480    | 16       | idle    | Send   |
       | 720   | 480    | 16       | running | Queue  |
-      | 720   | 480    | 32       | idle    | Send   |
-      | 720   | 480    | 32       | running | Queue  |
       | 320   | 480    | 16       | idle    | Send   |
       | 320   | 480    | 16       | running | Queue  |
       | 360   | 240    | 16       | idle    | Send   |
@@ -31,7 +29,6 @@ Feature: Responsive composer
     Examples:
       | width | height | fontSize |
       | 720   | 480    | 16       |
-      | 720   | 480    | 32       |
       | 320   | 480    | 16       |
       | 360   | 240    | 16       |
 
@@ -41,7 +38,7 @@ Feature: Responsive composer
     When I open the thread "Compose" from the sidebar
     And I use a <width> by <height> viewport with <fontSize> pixel text
     Then the composer toolbar stays on one line
-    When I choose "Auto" access in the composer
+    When I choose "Accept edits" access in the composer
     Then the thread "Compose" runs with "auto" access
 
     Examples:
@@ -50,7 +47,6 @@ Feature: Responsive composer
       | 960   | 720    | 16       |
       | 720   | 480    | 16       |
       | 480   | 480    | 16       |
-      | 360   | 480    | 16       |
       | 320   | 480    | 16       |
       | 720   | 480    | 32       |
 

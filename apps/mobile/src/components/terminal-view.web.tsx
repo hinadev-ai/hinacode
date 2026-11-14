@@ -19,7 +19,6 @@ export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: Term
   useImperativeHandle(ref, () => ({ write: (data) => terminal.current?.write(data) }))
 
   useEffect(() => {
-    // On web a View renders a div.
     const element = container.current as unknown as HTMLElement
     const term = new Terminal({
       fontSize: 13,
@@ -31,7 +30,7 @@ export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: Term
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(element)
-    // Chromium maps this to Android's NO_SUGGESTIONS; xterm only sets autocorrect and autocapitalize.
+    // FIXME: Chromium maps autocomplete=off to Android's NO_SUGGESTIONS, and xterm only sets autocorrect and autocapitalize.
     term.textarea?.setAttribute("autocomplete", "off")
     terminal.current = term
     let size = ""

@@ -30,10 +30,9 @@ export const saveRelayAccount = (account: RelayAccount) =>
 
 export const clearRelayAccount = () => SecureStore.deleteItemAsync(RELAY_ACCOUNT_KEY)
 
-/** A server's last lists, which run to hundreds of kilobytes, too big for SecureStore. The OS may clear them. */
+// FIXME: a server's last lists run to hundreds of kilobytes, too big for SecureStore, so they live in the OS cache.
 const answersFile = (serverId: string) => new File(Paths.cache, `answers-${encodeURIComponent(serverId)}.json`)
 
-/** Null when nothing was saved or the file does not read back, so a launch just waits for the server. */
 export async function loadAnswers(serverId: string): Promise<RememberedAnswers | null> {
   try {
     const file = answersFile(serverId)
@@ -44,11 +43,19 @@ export async function loadAnswers(serverId: string): Promise<RememberedAnswers |
 }
 
 const answerWrites = new Map<string, Promise<void>>()
+const unwrittenAnswers = new Map<string, RememberedAnswers>()
 
-/** Queues writes per server, because two writes that both find no file race to create it and one is rejected. */
+// FIXME: expo-file-system rejects one of two writes that both find no file, so writes queue per server.
 export function saveAnswers(serverId: string, answers: RememberedAnswers) {
+  const queued = unwrittenAnswers.has(serverId)
+  unwrittenAnswers.set(serverId, answers)
+  if (queued) return answerWrites.get(serverId)!
   const write = (answerWrites.get(serverId) ?? Promise.resolve())
-    .then(() => answersFile(serverId).write(JSON.stringify(answers)))
+    .then(() => {
+      const newest = unwrittenAnswers.get(serverId)
+      unwrittenAnswers.delete(serverId)
+      answersFile(serverId).write(JSON.stringify(newest))
+    })
     .catch(() => {})
   answerWrites.set(serverId, write)
   return write

@@ -41,17 +41,19 @@ const heads = new Map<string, string>()
 const headOids = new Map<string, string>()
 
 const mergedAts = new Map<string, string>()
-const held = new Map<string, { readonly asked: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> }>()
+
+type Hold = { readonly asked: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> }
+const waitIfHeld = (hold: Hold | undefined) =>
+  hold === undefined
+    ? Effect.void
+    : Deferred.succeed(hold.asked, undefined).pipe(Effect.andThen(Deferred.await(hold.release)))
+const held = new Map<string, Hold>()
 
 const gitHub = Layer.mock(GitHub, {
   installed: Effect.succeed(true),
   pullRequest: (url) =>
     Effect.gen(function* () {
-      const hold = held.get(url)
-      if (hold) {
-        yield* Deferred.succeed(hold.asked, undefined)
-        yield* Deferred.await(hold.release)
-      }
+      yield* waitIfHeld(held.get(url))
       const number = Number(url.split("/").at(-1))
       return {
         url,
@@ -73,10 +75,7 @@ const subagents = new Map<string, ReadonlyArray<Subagent>>()
 const released: Array<string> = []
 const turnStarted = new Set<string>()
 const claimedBySend = new Set<string>()
-const heldReleases = new Map<
-  string,
-  { readonly asked: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> }
->()
+const heldReleases = new Map<string, Hold>()
 
 const agentRunner = Layer.mock(AgentRunner, {
   backgroundTasks: (threadId) => Effect.succeed(backgroundTasks.get(threadId) ?? []),
@@ -85,17 +84,14 @@ const agentRunner = Layer.mock(AgentRunner, {
   release: (threadId, whileIdle) =>
     Effect.gen(function* () {
       released.push(threadId)
-      const hold = heldReleases.get(threadId)
-      if (hold) {
-        yield* Deferred.succeed(hold.asked, undefined)
-        yield* Deferred.await(hold.release)
-      }
+      yield* waitIfHeld(heldReleases.get(threadId))
       return turnStarted.has(threadId) ? Option.none() : Option.some(yield* whileIdle)
     }),
 })
 
 const portsClosedFor: Array<string> = []
 const failingScans = new Set<string>()
+const heldScans = new Map<string, Hold>()
 
 const recordingPorts = Layer.effect(
   Ports.Ports,
@@ -106,7 +102,7 @@ const recordingPorts = Layer.effect(
         listForThread: (threadId, options) =>
           failingScans.has(threadId)
             ? Effect.fail(new Ports.PortsError({ message: "ss is not installed" }))
-            : ports.listForThread(threadId, options),
+            : ports.listForThread(threadId, options).pipe(Effect.tap(() => waitIfHeld(heldScans.get(threadId)))),
         closeThread: (threadId) =>
           Effect.sync(() => void portsClosedFor.push(threadId)).pipe(Effect.andThen(ports.closeThread(threadId))),
       }),
@@ -215,6 +211,20 @@ const threadWithPullRequests = (name: string, prStatuses: ReadonlyArray<PullRequ
 const statusOf = (id: string) => Threads.use((threads) => threads.get(id)).pipe(Effect.map((thread) => thread.status))
 const isSettled = (id: string) =>
   Threads.use((threads) => threads.get(id)).pipe(Effect.map((thread) => thread.settledAt !== null))
+
+const makeHold = Effect.all({ asked: Deferred.make<void>(), release: Deferred.make<void>() })
+
+const turnThatMerges = <A>(threadId: string, url: string, leaveRunning: Effect.Effect<A>) =>
+  Effect.gen(function* () {
+    yield* TestClock.adjust("1 second")
+    yield* Threads.use((threads) => threads.update({ id: threadId, status: "running" }))
+    const left = yield* leaveRunning
+    const startedAt = yield* Threads.use((threads) => threads.workStartedAt(threadId))
+    mergedAts.set(url, new Date(Date.parse(startedAt ?? "") + 500).toISOString())
+    yield* TestClock.adjust("1 second")
+    yield* Threads.use((threads) => threads.update({ id: threadId, status: "idle" }))
+    return left
+  })
 
 describe("Settle", () => {
   layer(testLayer)((it) => {
@@ -350,6 +360,69 @@ describe("Settle", () => {
         }),
       )
     }
+
+    it.effect("leaves the background task of a turn that merged while GitHub was answering", () =>
+      Effect.gen(function* () {
+        yield* Settings.use((settings) => settings.set({ archive: archiveSettings({ whenMerged: true }) }))
+        const name = "raced-background"
+        const threadId = yield* threadWithPullRequests(name, ["merged"])
+        const hold = yield* makeHold
+        held.set(pullRequestUrl(name), hold)
+
+        const sweep = yield* Settle.use((settle) => settle.sweep).pipe(Effect.forkChild)
+        yield* Deferred.await(hold.asked)
+        yield* turnThatMerges(
+          threadId,
+          pullRequestUrl(name),
+          Effect.sync(() =>
+            backgroundTasks.set(threadId, [{ id: "watch", kind: "shell", label: "pnpm test --watch", startedAt: "" }]),
+          ),
+        )
+        yield* Deferred.succeed(hold.release, undefined)
+        yield* Fiber.join(sweep)
+
+        expect(yield* isSettled(threadId)).toBe(false)
+        backgroundTasks.delete(threadId)
+      }),
+    )
+
+    it.effect("leaves a background task that was reported while GitHub was answering", () =>
+      Effect.gen(function* () {
+        yield* Settings.use((settings) => settings.set({ archive: archiveSettings({ whenMerged: true }) }))
+        const name = "raced-late-task"
+        const threadId = yield* threadWithPullRequests(name, ["merged"])
+        const hold = yield* makeHold
+        held.set(pullRequestUrl(name), hold)
+
+        const sweep = yield* Settle.use((settle) => settle.sweep).pipe(Effect.forkChild)
+        yield* Deferred.await(hold.asked)
+        backgroundTasks.set(threadId, [{ id: "build", kind: "shell", label: "pnpm build", startedAt: "" }])
+        yield* Deferred.succeed(hold.release, undefined)
+        yield* Fiber.join(sweep)
+
+        expect(yield* isSettled(threadId)).toBe(false)
+        backgroundTasks.delete(threadId)
+      }),
+    )
+
+    it.effect("leaves the dev server of a turn that merged while the ports were scanned", () =>
+      Effect.gen(function* () {
+        yield* Settings.use((settings) => settings.set({ archive: archiveSettings({ whenMerged: true }) }))
+        const name = "raced-listener"
+        const threadId = yield* threadWithPullRequests(name, ["merged"])
+        const hold = yield* makeHold
+        heldScans.set(threadId, hold)
+
+        const sweep = yield* Settle.use((settle) => settle.sweep).pipe(Effect.forkChild)
+        yield* Deferred.await(hold.asked)
+        const listener = yield* turnThatMerges(threadId, pullRequestUrl(name), listenIn(join(base, name)))
+        yield* Deferred.succeed(hold.release, undefined)
+        yield* Fiber.join(sweep)
+
+        expect(yield* isSettled(threadId)).toBe(false)
+        expect(yield* listener.answers).toBe(true)
+      }),
+    )
 
     it.effect("stops the listener, terminals and agent work of a thread the developer settles", () =>
       Effect.gen(function* () {

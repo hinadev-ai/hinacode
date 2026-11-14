@@ -1,11 +1,7 @@
 import { useAtomValue } from "@effect/atom-react"
 import { FeedbackIcon, WarningIcon } from "@hinacode/icons"
-import { TaskItem, TaskList } from "@tiptap/extension-list"
-import { TableKit } from "@tiptap/extension-table"
 import { Placeholder } from "@tiptap/extensions"
-import { Markdown } from "@tiptap/markdown"
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react"
-import { StarterKit } from "@tiptap/starter-kit"
 import { AsyncResult } from "effect/reactivity"
 import { toast } from "sonner"
 import { type ReactNode, useEffect, useRef, useState, useTransition } from "react"
@@ -24,7 +20,8 @@ import { m } from "../../paraglide/messages.js"
 import { useDrafts } from "../../stores/drafts.ts"
 import { Button } from "../ui/button.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
-import { DocumentBlockquote, DocumentCallout } from "./DocumentCallout.tsx"
+import { DocumentCallout } from "./DocumentCallout.tsx"
+import { documentExtensions, documentMarkdown } from "../../../shared/document/schema.ts"
 import { DocumentCodeBlock } from "./DocumentCodeBlock.tsx"
 import { DocumentImage } from "./documentImage.ts"
 import { DocumentPaste } from "./documentPaste.ts"
@@ -81,19 +78,11 @@ const extensions = (
   target: DocumentTarget,
   openComment: (commentId: string) => void,
 ) => [
-  StarterKit.configure({
-    underline: false,
-    link: { openOnClick: false },
-    codeBlock: false,
-    blockquote: false,
+  ...documentExtensions({
+    callout: DocumentCallout,
+    codeBlock: DocumentCodeBlock,
+    image: DocumentImage.configure({ artifactId: target.id }),
   }),
-  DocumentBlockquote,
-  DocumentCodeBlock,
-  DocumentCallout,
-  TaskList,
-  TaskItem.configure({ nested: true }),
-  TableKit.configure({ table: { resizable: false } }),
-  DocumentImage.configure({ artifactId: target.id }),
   DocumentPaste.configure({
     artifactId: target.id,
     storeImage: storeImage(target),
@@ -101,7 +90,7 @@ const extensions = (
       storeDataUrl(target, await imageDataUrl({ id: sourceArtifact, environment: target.environment })(path)),
     imageFailed: (cause) => toast.error(m.documents_image_failed({ message: errorMessage(cause) })),
   }),
-  Markdown,
+  documentMarkdown(),
   Placeholder.configure({ placeholder }),
   LinkEditing,
   CodeHighlight.configure({ theme }),
@@ -199,7 +188,7 @@ function DocumentEditor({
     startTransition(() => setDraft(null))
   }
   const sendComment = async (sent: CommentDraft, body: string) => {
-    if (!(await sync.saveEdits())) throw new Error(m.documents_not_saved())
+    if ((await sync.saveEdits()) === null) throw new Error(m.documents_not_saved())
     await actions.comment({ body, anchor: sent.anchor })
     closeDraft()
     editor.commands.setTextSelection(sent.range.to)
@@ -321,7 +310,8 @@ function DocumentFooter({
   const draft = useDrafts((state) => state.byThreadId[threadId]?.text ?? "")
   const setText = useDrafts((state) => state.setText)
   const askAgent = async () => {
-    const revision = await sync.savedRevision()
+    const revision = await sync.saveEdits()
+    if (revision === null) return
     const prompt = m.documents_ask_prompt({ title: artifact.title, id: artifact.id, revision })
     setText(threadId, draft.trim() === "" ? prompt : `${draft.trimEnd()}\n\n${prompt}`)
   }

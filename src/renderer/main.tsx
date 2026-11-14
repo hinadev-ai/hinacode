@@ -7,6 +7,7 @@ import { StrictMode, useEffect, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
 import { toast } from "sonner"
 import { DockBadge } from "./components/DockBadge.tsx"
+import { ImageEditorHost } from "./components/imageEditor/ImageEditorHost.tsx"
 import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, themes, useTheme } from "./lib/appearance.ts"
@@ -57,6 +58,7 @@ function App() {
     <TooltipProvider key={locale}>
       <RouterProvider router={activeRouter} />
       {windowEntry === null && <DockBadge />}
+      {windowEntry === null && <ImageEditorHost />}
       <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
     </TooltipProvider>
   )

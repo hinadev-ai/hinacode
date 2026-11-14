@@ -1,0 +1,10 @@
+{
+  "name": "@hinacode/perf-frames",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Main thread frame timestamps for the phone perf harness. Inert until start() is called.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": "./src/index.ts"
+}

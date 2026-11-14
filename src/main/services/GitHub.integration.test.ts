@@ -52,6 +52,19 @@ describe("GitHub.repository", () => {
   })
 })
 
+describe("a gh command in a folder that is gone", () => {
+  test("names the missing folder instead of asking to install gh", async () => {
+    const gone = join(tempDir(), "deleted-worktree")
+    const error = await Effect.runPromise(
+      GitHub.use((github) => Effect.flip(github.branchPullRequest(gone, "main"))).pipe(
+        Effect.provide(layer.pipe(Layer.provide(NodeServices.layer), Layer.provide(noEvents))),
+      ),
+    )
+    expect(error._tag).not.toBe("GitHubCliMissingError")
+    expect(error.message).toContain(gone)
+  })
+})
+
 const ghToken = (() => {
   try {
     return process.env["GH_TOKEN"] ?? execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).trim()

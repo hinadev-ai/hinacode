@@ -17,6 +17,7 @@ A developer leaves the desk with agents still running. From the sofa or the trai
 6. The thread's **Terminal** tab opens a shell in the thread's worktree, through the same `terminal.*` methods the desktop drawer uses. Output streams from the moment the phone opens the session; there is no scrollback handoff between devices.
 7. **New thread** on a project creates one with the user's defaults and opens it.
 8. Settings > Remote has **Rotate token**, which disconnects every phone, and the switch turns the listener off.
+9. Once a cloud is paired, the Remote section carries the **Editing settings for** picker of the machine-scoped pages. Pick a cloud to see its listener and relay status and to change its **Remote listener** from here, instead of running `hinacode serve --host` on it. The switch, the port, pairing and Apps show for this machine only: turning a cloud's listener off or moving its port would cut the link the change travels on, and `remote.pairing` is desktop-only. A cloud with no connected relay asks for a confirmation that names the address this desktop dials, unless the new listener is that address.
 
 ## Prior art
 

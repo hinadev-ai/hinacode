@@ -5,8 +5,8 @@ import {
   codeHostOfUrl,
   mergeMethodsFor,
   offeredMergeMethod,
-  parseGitLabMergeRequestUrl,
   pullRequestNumberLabel,
+  pullRequestNumberLabelOfUrl,
 } from "../../shared/codeHost.ts"
 import type { MergeMethod, PullRequest, PullRequestLink } from "../../shared/domain.ts"
 import { usePullRequestHref } from "../lib/environments.ts"
@@ -32,10 +32,6 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.t
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { StackIcon } from "@hinacode/icons"
 
-const numberLabelOfUrl = (url: string) => {
-  const mergeRequest = parseGitLabMergeRequestUrl(url)
-  return mergeRequest ? pullRequestNumberLabel("gitlab", mergeRequest.iid) : `#${/\/pull\/(\d+)/.exec(url)?.[1] ?? ""}`
-}
 const numberLabel = (pullRequest: PullRequest) =>
   pullRequestNumberLabel(codeHostOfUrl(pullRequest.url), pullRequest.number)
 const canMerge = (pullRequest: PullRequest | undefined): pullRequest is PullRequest =>
@@ -99,7 +95,13 @@ export function SidebarPullRequests({
           </HoverCardContent>
         </HoverCard>
       )}
-      <MergeDialog oldestFirst={merging} environment={environment} open={mergeOpen} onOpenChange={setMergeOpen} />
+      <MergeDialog
+        oldestFirst={merging}
+        environment={environment}
+        open={mergeOpen}
+        onOpenChange={setMergeOpen}
+        onStopped={(unmerged) => startTransition(() => setMerging(unmerged))}
+      />
     </>
   )
 }
@@ -117,7 +119,7 @@ function SinglePullRequest({
   environment: EnvironmentId
   merge: (pullRequests: ReadonlyArray<PullRequest>) => void
 }) {
-  const number = numberLabelOfUrl(url)
+  const number = pullRequestNumberLabelOfUrl(url)
   const pullRequestRef = parsePullRequestUrl(url)
   const href = usePullRequestHref(threadId, url)
   const status = pullRequest?.status
@@ -167,7 +169,7 @@ function StackRow({
   merge: (pullRequests: ReadonlyArray<PullRequest>) => void
 }) {
   const href = usePullRequestHref(threadId, url)
-  const number = numberLabelOfUrl(url)
+  const number = pullRequestNumberLabelOfUrl(url)
   return (
     <li className="flex min-w-0 items-center gap-2 text-xs">
       <StatusIcon status={pullRequest?.status} colored />
@@ -202,11 +204,13 @@ function MergeDialog({
   environment,
   open,
   onOpenChange,
+  onStopped,
 }: {
   oldestFirst: ReadonlyArray<PullRequest>
   environment: EnvironmentId
   open: boolean
   onOpenChange: (open: boolean) => void
+  onStopped: (unmerged: ReadonlyArray<PullRequest>) => void
 }) {
   const mergeMethods = mergeMethodsFor(
     oldestFirst.some((pullRequest) => codeHostOfUrl(pullRequest.url) === "gitlab") ? "gitlab" : "github",
@@ -221,11 +225,12 @@ function MergeDialog({
   const confirm = () =>
     startMerge(async () => {
       setError(null)
-      for (const pullRequest of oldestFirst) {
+      for (const [index, pullRequest] of oldestFirst.entries()) {
         try {
           await callPromise("github.merge", { url: pullRequest.url, method }, { environment })
         } catch (cause) {
           setError(m.sidebar_pr_merge_failed({ number: numberLabel(pullRequest), message: errorMessage(cause) }))
+          onStopped(oldestFirst.slice(index))
           return
         }
       }

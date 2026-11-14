@@ -1,5 +1,8 @@
 # Mobile redesign for Liquid Glass
 
+Status: Shipped
+Date: 2026-11-08
+
 ## Problem
 
 The phone app is one stack. Home carries Overview, New thread and Settings as header buttons, search sits under the title, and a thread opens on a four-way segmented control. On iOS 26 the system already draws a Liquid Glass tab bar, a search tab and a bottom accessory, and the app uses none of them. Home also treats every thread the same, so the one that waits on an approval looks like the one that finished yesterday.

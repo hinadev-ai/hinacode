@@ -22,8 +22,6 @@ A delightful workstation for running Claude Code, Codex, Muse Code, opencode, an
 
 </div>
 
-<!-- Replace with a product screenshot or short demo GIF -->
-<!-- <p align="center"><img src="assets/screenshot.png" alt="HinaCode" width="90%" /></p> -->
 <p align="center">
   <img src="site/public/og.png" alt="HinaCode: run coding agents in parallel" width="90%" />
 </p>
@@ -40,7 +38,7 @@ Running one agent in a terminal works. Running five stops working: you lose trac
 HinaCode is a **delightful workstation for coding agents**. It handles the work around each agent: where it runs, when it needs you, what it changed, and how it ships. That way you can run agents in parallel and stay in control.
 
 - **Free and open source** under the MIT license. No markup, no proxy.
-- **Uses the agents you already pay for.** HinaCode runs the `claude`, `codex`, `muse`, and `opencode` CLIs you are signed in to. Usage goes to those plans or API keys, exactly as it does in a terminal.
+- **Uses the agents you already pay for.** HinaCode runs the `claude`, `codex`, `muse`, and `opencode` CLIs you are signed in to, and runs `claude` through your magpie gateway for magpie threads. Usage goes to those plans, API keys, or gateway, exactly as it does in a terminal.
 - **Local by default.** Your code only goes where those CLIs already send it. HinaCode keeps its data in a single SQLite file on your machine.
 - **Built with HinaCode, every day.** If the workflow hurts, we feel it first.
 
@@ -57,9 +55,10 @@ HinaCode is a **delightful workstation for coding agents**. It handles the work 
 - **Browser, terminal, and ports.** Open the dev server, a shell, and the ports an agent left open beside the thread. Mention a terminal with `@` or send its selected output to the thread, and the agent reads it.
 - **Linked pull requests.** See checks and review state next to the thread. HinaCode tells the agent when checks fail or a review lands.
 - **Merge and clean up.** Squash and merge from the thread, and HinaCode removes the worktree.
-- **Automations.** Start a thread from a webhook, a GitHub issue, a Linear ticket, or a Slack mention.
+- **Routines.** Run a prompt on a schedule, from a webhook, or from the CLI, in the project folder or a new worktree.
 - **Built-in MCP server.** Agents can ask you for secrets, hand work to other threads, drive a disposable VM or mobile simulators, and use Linear.
 - **Remote machines and your phone.** Run `npx hinacode serve` on another machine, then approve, steer, and merge from the phone app.
+- **Other apps.** Add your machine's URL to a chat app or agent harness that speaks remote MCP, approve it with a one-time code, then start, read, and steer threads from there.
 
 ---
 
@@ -122,7 +121,7 @@ The daemon prints pairing URLs on startup. Add the machine in **Settings** on th
 ### Prerequisites
 
 - **Node** 24.22.1 or later (26.12.1 or later on Node 26) and **pnpm**
-- The agent CLIs you want to run (`claude`, `codex`, `muse`, and/or `opencode`), signed in and on your `PATH`
+- The agent CLIs you want to run (`claude`, `codex`, `muse`, and/or `opencode`), signed in and on your `PATH`. magpie threads need `claude` and a running magpie gateway.
 - **ripgrep** (`rg`) on your `PATH`, for global file search and its integration tests
 - Chrome or Chromium, only for Remote Browser tabs and their integration tests (`pnpm exec playwright install --with-deps chromium`)
 
@@ -167,7 +166,7 @@ Unpackaged runs (`pnpm dev`, e2e, and the command above) never touch the login K
 | `pnpm test`             | Both Vitest projects.                                                                                                                                          |
 | `pnpm test:e2e`         | Playwright drives the built Electron app through Gherkin scenarios in `e2e/features`. Needs a display: `DISPLAY` or an `Xvfb :99`, or run under `xvfb-run -a`. |
 
-Effect code is tested with `@effect/vitest`: `it.effect` runs under the test clock, `it.live` on the real one, and `layer(...)` shares a built layer across a block. Every e2e worker starts its own HinaCode on a throwaway `HINACODE_USER_DATA`, seeds preconditions through `window.hinacode.rpc` or straight into SQLite, and drives the behavior under test through the UI.
+Effect code is tested with `@effect/vitest`: `it.effect` runs under the test clock, `it.live` on the real one, and `layer(...)` shares a built layer across a block. Every e2e worker starts its own HinaCode on a throwaway `HINACODE_USER_DATA`, seeds preconditions through `window.hinacode.rpc` or straight into SQLite, and drives the behavior under test through the UI. It also sets `HINACODE_SKIP_AGENT_UPDATES=1`, so the app never asks npm for new agent CLI releases.
 
 Remote Browser tabs and their integration tests need Chrome or Chromium on the host. To install Playwright's Chromium and its Linux dependencies, run `pnpm exec playwright install --with-deps chromium`. A cloud installed from npm can use `npx playwright install --with-deps chromium`. Set `HINACODE_BROWSER_EXECUTABLE_PATH` when the browser lives elsewhere. The browser runs on the thread's machine, so its `localhost` reaches that machine's services.
 
@@ -223,7 +222,7 @@ Contributions are welcome. Read [AGENTS.md](AGENTS.md) first, then:
 Nothing. Every feature is free, and the code is open source under the MIT license.
 
 **Which agents does it run?**
-Claude Code, Codex, Muse Code, and opencode. Install each CLI you want to use and sign in to it.
+Claude Code, Codex, Muse Code, opencode, and magpie. Install each CLI you want to use and sign in to it. magpie runs Claude Code through its gateway.
 
 **Does my code leave my machine?**
 Only where the agent CLIs already send it. HinaCode runs locally and keeps its data in a SQLite file on your machine.
@@ -242,7 +241,8 @@ HinaCode runs agents that execute code on your machine, so a few boundaries are 
 
 - The renderer is sandboxed, and only the top-level app frame may call `rpc`.
 - `shell.openExternal` only opens `http(s)` URLs.
-- The MCP server listens on loopback only, and its credential scopes each call to one thread.
+- The MCP server for agents listens on loopback only, and its credential scopes each call to one thread.
+- The MCP server for apps you connect is reachable only through your relay hostname, only after you approve the app with a one-time code, and only offers project and thread tools.
 - Webhooks require an HMAC signature, checked with `timingSafeEqual`.
 - The attachment protocol refuses paths outside its root.
 - Secrets go through `services/Secrets.ts`, sealed by the OS keyring. They are never logged, put in a URL, or sent to the renderer.
@@ -258,7 +258,7 @@ Several designs in HinaCode follow [T3 Code](https://github.com/pingdotgg/t3code
 - Effect services as `Context.Service` classes with a `make` effect and a `layer` export, and migrations registered through `Migrator.fromRecord`.
 - The MCP server design: Effect's `McpServer.layerHttp` behind a bearer credential, one random credential per thread, injected into the agent's MCP config. The pull request tools (`link_pull_request`, `unlink_pull_request`, `list_thread_pull_requests`) and `request_secret` share T3 Code's names.
 - The pull request checks rollup: `null` when a PR has no checks, failing before pending before passing, and `workflow / name` as the check label.
-- Webhook automations verified with a `sha256=` HMAC in `x-hub-signature-256`, with `{{path}}` placeholders filled into the prompt.
+- Routine webhooks verified with a `sha256=` HMAC in `x-hub-signature-256`.
 - Remote browser tabs run headless Chromium on the thread's host and send screencasts to the client. We compared Orca's local network proxy and server streaming before choosing this design for the Node daemon. See [the remote browser design](docs/features/2026-10-26-remote-browser.md).
 
 ---

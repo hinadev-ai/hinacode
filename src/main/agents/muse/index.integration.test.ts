@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import { Effect, Fiber, PubSub, Queue, Stream } from "effect"
+import { Deferred, Effect, Fiber, PubSub, Queue, Stream } from "effect"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode } from "../../../shared/domain.ts"
 import { findBinary } from "../binary.ts"
@@ -115,6 +115,11 @@ const eventsOf = <T extends AgentEvent["type"]>(turn: Turn, type: T) => turn.eve
 
 const followUp = (turn: Turn, autoCompactTokens: number | null) =>
   forkTurn({ ...turn.input, resumeSessionId: eventsOf(turn, "session_bound")[0]!.providerSessionId, autoCompactTokens })
+
+const scratchInstructions = (directory: string) =>
+  `<environment>\n  scratch directory: \`${directory}\`\n</environment>`
+
+const occurrences = (text: string, body: string) => body.split(text).length - 1
 
 const replyOf = (turn: Turn) =>
   eventsOf(turn, "text_delta")
@@ -673,6 +678,37 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   )
 
   it.live(
+    "sends the instructions with a session's first prompt and only what changed after that",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const base = input("supervised", "instructions-once")
+          const turn = (prompt: string, directory: string, resumeSessionId: string | null) =>
+            forkTurn({
+              ...base,
+              prompt,
+              resumeSessionId,
+              instructions: scratchInstructions(directory),
+            })
+
+          const first = yield* turn("first-prompt", "/tmp/scratch-before", null)
+          yield* Fiber.join(first.fiber)
+          const sessionId = eventsOf(first, "session_bound")[0]!.providerSessionId
+
+          yield* Fiber.join((yield* turn("second-prompt", "/tmp/scratch-before", sessionId)).fiber)
+          expect(occurrences("/tmp/scratch-before", endpoint.lastRequest("second-prompt"))).toBe(1)
+
+          yield* Fiber.join((yield* turn("third-prompt", "/tmp/scratch-after", sessionId)).fiber)
+          const third = endpoint.lastRequest("third-prompt")
+          expect(occurrences("/tmp/scratch-before", third)).toBe(1)
+          expect(occurrences("/tmp/scratch-after", third)).toBe(1)
+          expect(occurrences("HinaCode changed your instructions", third)).toBe(1)
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
     "compacts the session when the prompt is /compact",
     () =>
       withProvider(
@@ -764,6 +800,45 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           expect(compactionsOf(next)).toStrictEqual([{ status: "running" }, compactedAuto])
           expect(replyOf(next)).toBe(REPLY)
           expect(next.events.at(-1)?.type).toBe("turn_completed")
+        }),
+      ).pipe(Effect.ensuring(Effect.sync(release)))
+    },
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "declines a steer while a compaction holds the turn start, then opens the turn and takes the next one",
+    () => {
+      const release = endpoint.holdSummaries()
+      return withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          let marker = ""
+          const first = yield* startTurn("supervised", (held) => {
+            marker = held
+          })
+          yield* Fiber.join(first.fiber)
+          endpoint.hold(marker)
+
+          const opened = yield* Deferred.make<void>()
+          const next = yield* forkTurn({
+            ...first.input,
+            resumeSessionId: eventsOf(first, "session_bound")[0]!.providerSessionId,
+            autoCompactTokens: 5,
+            onOpen: Deferred.succeed(opened, undefined),
+          })
+          yield* untilEvent(next, isCompacting)
+
+          expect(yield* provider.steer!(next.threadId, "too early", [], "now")).toBe(false)
+          expect(yield* Deferred.isDone(opened)).toBe(false)
+
+          release()
+          yield* Deferred.await(opened)
+          expect(yield* provider.steer!(next.threadId, "in time", [], "now")).toBe(true)
+
+          yield* provider.interrupt(next.threadId)
+          yield* Fiber.join(next.fiber)
+          expect(next.events.at(-1)).toStrictEqual({ type: "turn_failed", message: "Turn interrupted" })
         }),
       ).pipe(Effect.ensuring(Effect.sync(release)))
     },

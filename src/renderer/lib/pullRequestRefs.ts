@@ -7,12 +7,20 @@ export interface PullRequestRef extends GitHubRepository {
 }
 
 const PULL_REQUEST_URL = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#].*)?$/i
+const ISSUE_URL = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)(?:[/?#].*)?$/i
 
-export const parsePullRequestUrl = (href: string): PullRequestRef | null => {
-  const match = PULL_REQUEST_URL.exec(href)
+const parseNumberedUrl = (pattern: RegExp, href: string): PullRequestRef | null => {
+  const match = pattern.exec(href)
   const repository = match && parseGitHubRepository(`${match[1]}/${match[2]}`)
   return repository && { ...repository, number: Number(match[3]) }
 }
+
+export const parsePullRequestUrl = (href: string) => parseNumberedUrl(PULL_REQUEST_URL, href)
+
+export const parseIssueUrl = (href: string) => parseNumberedUrl(ISSUE_URL, href)
+
+export const issueUrl = ({ owner, name, number }: PullRequestRef) =>
+  `https://github.com/${owner}/${name}/issues/${number}`
 
 const sameRepository = (a: GitHubRepository, b: GitHubRepository) =>
   a.owner.toLowerCase() === b.owner.toLowerCase() && a.name.toLowerCase() === b.name.toLowerCase()
@@ -37,7 +45,7 @@ export const linkPullRequestNumbers = (text: string, repository: GitHubRepositor
   let last = 0
   for (const match of text.matchAll(NUMBER_REFERENCE)) {
     if (match.index > last) segments.push({ type: "text", text: text.slice(last, match.index) })
-    segments.push({ type: "link", text: match[0], href: pullRequestUrl(repository, match[1] ?? "") })
+    segments.push({ type: "reference", text: match[0], href: pullRequestUrl(repository, match[1] ?? "") })
     last = match.index + match[0].length
   }
   if (last < text.length) segments.push({ type: "text", text: text.slice(last) })

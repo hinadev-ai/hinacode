@@ -7,10 +7,6 @@ export interface ComposerSpan {
   readonly text: string
 }
 
-/**
- * The desktop composer's highlighting as flat spans, for a TextInput that can only nest `Text`: the skill that starts
- * the message, then `highlight` of the rest with each fenced block as one code span. Joining the spans gives back `text`.
- */
 export function composerSpans(
   text: string,
   commands: readonly AgentCommand[],
@@ -21,14 +17,9 @@ export function composerSpans(
   const rest = highlight(text.slice(token.length), known).map((segment) =>
     segment.kind === "fence" ? { kind: "code" as const, text: segmentText(segment) } : segment,
   )
-  // The space that ends the skill's name stays text, so the tint covers only the name.
   return skill ? [{ kind: "skill", text: token.slice(0, -1) }, { kind: "text", text: " " }, ...rest] : rest
 }
 
-/**
- * The text after an edit, with the skill that started `before` removed whole when the edit deleted part of it, as
- * Backspace after the desktop's skill chip does. Other edits come back as they are.
- */
 export function keepSkillWhole(before: string, after: string, commands: readonly AgentCommand[]) {
   const skill = leadingSkill(before, commands)
   if (skill === null || after.startsWith(skill.token) || after.length >= before.length) return after
@@ -39,10 +30,6 @@ export function keepSkillWhole(before: string, after: string, commands: readonly
   return isDeletion ? before.slice(Math.max(end, skill.token.length)) : after
 }
 
-/**
- * `composerSpans` as ranges for the native editor: commands and skills become chips, mentions are tinted, code gets
- * a background, and list markers and rules are muted.
- */
 export function composerDecorations(
   text: string,
   commands: readonly AgentCommand[],
@@ -65,6 +52,7 @@ export function composerDecorations(
         decorations.push({ kind: "code", start, end })
         break
       case "bullet":
+      case "quote":
       case "rule":
         decorations.push({ kind: "muted", start, end })
         break
@@ -88,10 +76,6 @@ const MARKDOWN_LINK = /\[([^\]\n]+)\]\(([^)\s]*)\)/g
 const BARE_URL = /https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"]/g
 const EMPHASIS = /(?<![\w*])\*(?=[^\s*])[^*\n]*?[^\s*]?\*(?![\w*])/g
 
-/**
- * Links and `*emphasis*` in plain prose, which the shared syntax leaves as text: a Markdown link tints its label
- * and mutes its brackets and URL, a bare URL is tinted whole, and emphasis is italic between muted asterisks.
- */
 function inlineDecorations(text: string, offset: number): Decoration[] {
   const decorations: Decoration[] = []
   const taken: [number, number][] = []
@@ -129,11 +113,6 @@ export type TextFormat = "strong" | "emphasis" | "link"
 
 const MARKERS: Record<Exclude<TextFormat, "link">, string> = { strong: "**", emphasis: "*" }
 
-/**
- * The text after applying a format to the selection, with the selection to put back. Bold and italic wrap the
- * selection in their markers, or unwrap it when it already has them. Link makes the selection the label of
- * `[label]()` and puts the caret where the URL goes.
- */
 export function formatSelection(
   text: string,
   selection: { readonly start: number; readonly end: number },

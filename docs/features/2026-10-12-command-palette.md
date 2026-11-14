@@ -1,6 +1,6 @@
 # Command palette
 
-Status: Implemented
+Status: Shipped
 Date: 2026-10-12
 
 ## Problem

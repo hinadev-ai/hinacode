@@ -1,15 +1,16 @@
-/** How the file viewer shows a file. */
-export type FileKind = "image" | "svg" | "markdown" | "text"
+export type FileKind = "image" | "svg" | "video" | "markdown" | "text"
 
 export type FileIcon =
   | "Folder"
   | "FileCode"
   | "Image"
+  | "FileVideo"
   | "Markdown"
   | "FileText"
   | "File"
 
 const images = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"])
+const videos = new Set(["mp4", "m4v", "mov", "webm"])
 const markdown = new Set(["md", "mdx", "markdown"])
 const code = new Set(
   (
@@ -21,13 +22,10 @@ const code = new Set(
 const text = new Set(["txt", "log", "csv", "tsv", "rst", "adoc", "org", "env", "lock", "gitignore", "gitattributes"])
 const textNames = new Set(["license", "licence", "readme", "changelog", "authors", "notice", "copying", "makefile"])
 
-/** The last segment of a `/`-separated path. */
 export const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1)
 
-/** The folder part of a `/`-separated path, "" at the top level. */
 export const dirname = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")))
 
-/** The lowercased extension of `path` without its dot, or "" when it has none. A dotfile's name is its extension. */
 export function extension(path: string): string {
   const name = basename(path)
   const dot = name.lastIndexOf(".")
@@ -38,15 +36,16 @@ export function fileKind(path: string): FileKind {
   const ext = extension(path)
   if (images.has(ext)) return "image"
   if (ext === "svg") return "svg"
+  if (videos.has(ext)) return "video"
   if (markdown.has(ext)) return "markdown"
   return "text"
 }
 
-/** The listing's icon for an entry. Symlinks get the file icons, since they are never followed. */
 export function entryIcon(path: string, kind: "file" | "dir" | "symlink"): FileIcon {
   if (kind === "dir") return "Folder"
   const ext = extension(path)
   if (images.has(ext) || ext === "svg") return "Image"
+  if (videos.has(ext)) return "FileVideo"
   if (markdown.has(ext)) return "Markdown"
   if (code.has(ext)) return "FileCode"
   if (text.has(ext) || textNames.has(basename(path).toLowerCase())) return "FileText"
@@ -55,10 +54,6 @@ export function entryIcon(path: string, kind: "file" | "dir" | "symlink"): FileI
 
 const viewBoxPattern = /viewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/i
 
-/**
- * Width over height of an SVG, from its `viewBox`, else its `width` and `height` attributes. Null when neither
- * gives a usable size, such as percentages.
- */
 export function svgAspectRatio(xml: string): number | null {
   const tag = /<svg\b[^>]*>/i.exec(xml)?.[0]
   if (tag === undefined) return null

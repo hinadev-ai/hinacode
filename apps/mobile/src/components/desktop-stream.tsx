@@ -3,7 +3,6 @@ import { WebView } from "react-native-webview"
 import { copy } from "@/lib/copy"
 import type { DesktopStreamProps } from "./desktop-stream.types"
 
-/** A boat VM's desktop page, which scales the 1920x1080 stream to fit and takes touch input itself. */
 export function DesktopStream({ url, onLoad, onFail }: DesktopStreamProps) {
   return (
     <WebView

@@ -16,21 +16,13 @@ import Animated, {
 } from "react-native-reanimated"
 import { duration, ease, listLayout } from "@/constants/motion"
 
-/**
- * A small take on Motion's `motion` components (`motion/react`) for React Native, run by Reanimated on the UI thread.
- * Times are in milliseconds, like the rest of the app, where Motion uses seconds.
- */
-
 export interface Tween {
   type?: "tween"
-  /** Defaults to `duration.base`. */
   duration?: number
-  /** Defaults to `ease.out`. */
   ease?: EasingFunction | EasingFunctionFactory
   delay?: number
 }
 
-/** A critically damped spring that visually arrives in `visualDuration`, with Motion's stiffness and damping. */
 export interface Spring {
   type: "spring"
   visualDuration: number
@@ -41,10 +33,8 @@ type ValueTransition = Tween | Spring
 
 type Key = "opacity" | "y" | "scale" | "rotate" | "backgroundColor"
 
-/** One transition for every value, which a value can override with its own, as in Motion. */
 export type Transition = ValueTransition & { [K in Key]?: ValueTransition }
 
-/** `y` is a translation in points and `rotate` is in degrees. A target's own `transition` wins over the prop's. */
 export interface Target {
   opacity?: number
   y?: number
@@ -55,13 +45,10 @@ export interface Target {
 }
 
 export interface MotionProps {
-  /** Where values start on mount. `false` starts them at `animate`. */
   initial?: Target | false
   animate?: Target
-  /** Played when the component unmounts, through Reanimated's `exiting`. */
   exit?: Pick<Target, "opacity" | "y" | "transition">
   transition?: Transition
-  /** Slides the component to its new place when its layout changes. */
   layout?: boolean
 }
 
@@ -72,7 +59,6 @@ const moves = (key: Key) => {
   return key === "y" || key === "scale" || key === "rotate"
 }
 
-/** Motion's `visualDuration` spring with no bounce, from `motion-dom`'s `spring`. */
 const springConfig = (visualDuration: number) => {
   "worklet"
   const root = (2 * Math.PI) / ((visualDuration / 1000) * 1.2)
@@ -80,10 +66,6 @@ const springConfig = (visualDuration: number) => {
   return { stiffness, damping: 2 * Math.sqrt(stiffness), mass: 1, reduceMotion: ReduceMotion.Never }
 }
 
-/**
- * The value's own transition, else the whole object, as Motion's `getValueTransition` picks it.
- * Animations never reduce themselves: `useMotion` decides what moves under reduce motion.
- */
 function animation<T extends number | string>(key: Key, target: T, transition: Transition | undefined): T {
   "worklet"
   const picked = transition?.[key] ?? transition
@@ -98,11 +80,6 @@ function animation<T extends number | string>(key: Key, target: T, transition: T
   return picked?.delay ? withDelay(picked.delay, run, ReduceMotion.Never) : run
 }
 
-
-/**
- * Under reduce motion, `y`, `scale` and `rotate` jump to their `animate` value, so `initial`, `exit` and `whileTap`
- * never move anything. Opacity and color still animate, as with Motion's `reducedMotion="user"`.
- */
 function useMotion({ initial, animate, exit, transition, layout, whileTap }: MotionProps & { whileTap?: Target }) {
   const reduced = useReducedMotion()
   const resting = (key: Key) => animate?.[key] ?? rest[key]
@@ -116,29 +93,29 @@ function useMotion({ initial, animate, exit, transition, layout, whileTap }: Mot
     backgroundColor: useSharedValue(start("backgroundColor")),
   }
 
-  /** Animates every value the target names, or jumps the ones that would move under reduce motion. */
-  const animateTo = (target: Target | undefined, resolve: (key: Key) => number | string | undefined) => {
+  const animateTo = (
+    target: Target | undefined,
+    resolve: (key: Key) => number | string | undefined,
+    reduce: boolean,
+  ) => {
     for (const key of Object.keys(values) as Key[]) {
       const to = resolve(key)
       if (to === undefined) continue
-      if (reduced && moves(key)) values[key].set(resting(key))
+      if (reduce && moves(key)) values[key].set(resting(key))
       else values[key].set(animation(key, to, target?.transition ?? transition))
     }
   }
 
-  const syncAnimate = useEffectEvent(() => animateTo(animate, (key) => animate?.[key]))
-  useEffect(() => syncAnimate(), [
-    animate?.opacity,
-    animate?.y,
-    animate?.scale,
-    animate?.rotate,
-    animate?.backgroundColor,
-    reduced,
-  ])
+  const syncAnimate = useEffectEvent((destination: Pick<Target, Key>, reduce: boolean) =>
+    animateTo(animate, (key) => destination[key], reduce),
+  )
+  const { opacity: toOpacity, y: toY, scale: toScale, rotate: toRotate, backgroundColor: toBackground } = animate ?? {}
+  useEffect(() => {
+    syncAnimate({ opacity: toOpacity, y: toY, scale: toScale, rotate: toRotate, backgroundColor: toBackground }, reduced)
+  }, [toOpacity, toY, toScale, toRotate, toBackground, reduced])
 
   const named = (key: Key) =>
     animate?.[key] !== undefined || whileTap?.[key] !== undefined || (initial || undefined)?.[key] !== undefined
-  // Only the values a caller names reach the style, so the rest keep what the `style` prop says.
   const styleOpacity = named("opacity")
   const styleY = named("y")
   const styleScale = named("scale")
@@ -174,8 +151,8 @@ function useMotion({ initial, animate, exit, transition, layout, whileTap }: Mot
     })
 
   const tap = {
-    onPressIn: () => animateTo(whileTap, (key) => whileTap?.[key]),
-    onPressOut: () => animateTo(animate, (key) => (whileTap?.[key] === undefined ? undefined : resting(key))),
+    onPressIn: () => animateTo(whileTap, (key) => whileTap?.[key], reduced),
+    onPressOut: () => animateTo(animate, (key) => (whileTap?.[key] === undefined ? undefined : resting(key)), reduced),
   }
 
   return { style, exiting, layout: layout && !reduced ? listLayout : undefined, tap }
@@ -210,7 +187,6 @@ function MotionPressable({
 }: MotionProps &
   Omit<PressableProps, "style"> & {
     style?: StyleProp<ViewStyle>
-    /** Values to animate to while a finger is down, and back from when it lifts. */
     whileTap?: Target
   }) {
   const motion = useMotion({ initial, animate, exit, transition, layout, whileTap })

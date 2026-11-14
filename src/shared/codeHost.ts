@@ -71,6 +71,11 @@ export const parseRemote = (remote: string): RemoteProject | undefined => {
 export const pullRequestNumberLabel = (host: CodeHost | undefined, number: number) =>
   `${host === "gitlab" ? "!" : "#"}${number}`
 
+export const pullRequestNumberLabelOfUrl = (url: string) => {
+  const mergeRequest = parseGitLabMergeRequestUrl(url)
+  return mergeRequest ? pullRequestNumberLabel("gitlab", mergeRequest.iid) : `#${/\/pull\/(\d+)/.exec(url)?.[1] ?? ""}`
+}
+
 export const codeHostName = (host: CodeHost | undefined) => (host === "gitlab" ? "GitLab" : "GitHub")
 
 export const mergeMethodsFor = (host: CodeHost | undefined): ReadonlyArray<MergeMethod> =>

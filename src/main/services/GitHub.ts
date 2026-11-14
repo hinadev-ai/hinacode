@@ -25,6 +25,7 @@ import type {
   CloneProgress,
   GitHubAuth,
   GitHubRateLimit,
+  Issue,
   Mergeable,
   MergeMethod,
   PullRequest,
@@ -44,13 +45,22 @@ import type {
 import { DiffSide, PullRequestComment, PullRequestLabel, PullRequestReviewer as Reviewer } from "../../shared/domain.ts"
 import {
   type GitHubRepository,
+  parseGitHubIssueUrl,
   parseGitHubPullRequestUrl,
   parseGitHubRepository,
   PULL_REQUEST_REFRESH,
   type RepositoryVisibility,
 } from "../../shared/github.ts"
 import { Events } from "./Events.ts"
-import { CommandError, LONG_TIMEOUT, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV, type RunOptions } from "./Git.ts"
+import {
+  CommandError,
+  COMMAND_NOT_FOUND_EXIT_CODE,
+  LONG_TIMEOUT,
+  makeExec,
+  REMOTE_GIT_ARGS,
+  REMOTE_GIT_ENV,
+  type RunOptions,
+} from "./Git.ts"
 import { findBinary } from "../agents/binary.ts"
 
 export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingError>()("GitHubCliMissingError", {}) {
@@ -89,6 +99,14 @@ export class PullRequestUrlInvalidError extends Schema.TaggedError<PullRequestUr
 ) {
   override get message(): string {
     return `${this.url} is not a GitHub pull request URL (https://github.com/<owner>/<repo>/pull/<number>) or a GitLab merge request URL (https://<host>/<project>/-/merge_requests/<iid>)`
+  }
+}
+
+export class IssueUrlInvalidError extends Schema.TaggedError<IssueUrlInvalidError>()("IssueUrlInvalidError", {
+  url: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.url} is not a GitHub issue URL (https://github.com/<owner>/<repo>/issues/<number>)`
   }
 }
 
@@ -354,6 +372,41 @@ const decodePullRequestsResponse = Schema.decodeUnknownEffect(
 )
 const decodeGraphQLPullRequest = Schema.decodeUnknownEffect(GraphQLPullRequest)
 
+const ISSUE_QUERY = `query Issue($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { issue(number: $number) { url number title state stateReason author { login } } }
+}`
+
+const GraphQLIssue = Schema.Struct({
+  url: Schema.String,
+  number: Schema.Number,
+  title: Schema.String,
+  state: Schema.Literals(["OPEN", "CLOSED"]),
+  stateReason: Schema.NullOr(Schema.String),
+  author: GraphQLAuthor,
+})
+
+const decodeIssueResponse = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      data: Schema.NullOr(
+        Schema.Struct({ repository: Schema.NullOr(Schema.Struct({ issue: Schema.NullOr(GraphQLIssue) })) }),
+      ),
+    }),
+  ),
+)
+
+const NOT_PLANNED_REASONS = new Set(["NOT_PLANNED", "DUPLICATE"])
+
+const toIssue = ({ url, number, title, state, stateReason, author }: typeof GraphQLIssue.Type): Issue => ({
+  url,
+  number,
+  title,
+  status: state === "OPEN" ? "open" : NOT_PLANNED_REASONS.has(stateReason ?? "") ? "notPlanned" : "completed",
+  author: author?.login ?? "ghost",
+})
+
+const ISSUE_TTL = "5 minutes"
+
 class PullRequestRead extends Request.Class<
   { readonly url: string },
   PullRequestDetailFields,
@@ -513,7 +566,7 @@ export const toPullRequest = (json: typeof PullRequestJson.Type): PullRequest =>
   }
 }
 
-const CHECK_RUN_ORDER: Record<CheckRunStatus, number> = { failing: 0, pending: 1, passing: 2, skipped: 3 }
+export const CHECK_RUN_ORDER: Record<CheckRunStatus, number> = { failing: 0, pending: 1, passing: 2, skipped: 3 }
 
 const toCheckRun = (entry: RollupEntry): CheckRun => {
   const { name, workflowName } = entry
@@ -721,9 +774,7 @@ export class GitHub extends Context.Service<
     readonly pullRequest: (
       url: string,
     ) => Effect.Effect<PullRequest, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
-    readonly pullRequestOpenedAt: (
-      url: string,
-    ) => Effect.Effect<string, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
+    readonly issue: (url: string) => Effect.Effect<Issue, GitHubError | IssueUrlInvalidError | Schema.SchemaError>
     readonly pullRequestDetail: (
       url: string,
       options?: { readonly fresh?: boolean | undefined },
@@ -805,7 +856,7 @@ const make = Effect.gen(function* () {
   ) =>
     exec("gh", args, cwd, { timeout: GH_TIMEOUT, ...options, env: { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" } }).pipe(
       Effect.mapError((error): GhError => {
-        if (error.exitCode === -1) return new GitHubCliMissingError()
+        if (error.exitCode === COMMAND_NOT_FOUND_EXIT_CODE) return new GitHubCliMissingError()
         if (error.exitCode === SIGNED_OUT_EXIT_CODE) return new GitHubSignedOutError()
         return error
       }),
@@ -887,10 +938,16 @@ const make = Effect.gen(function* () {
   ): Effect.Effect<{ readonly body: string; readonly errors: NonNullable<ApiErrorBody["errors"]> }, GitHubError> =>
     Effect.gen(function* () {
       yield* failIfPaused
+      let stderr = ""
       // FIXME: gh exits 1 for any error response; the status line and body say which
-      const response = parseApiResponse(
-        yield* ghUnpaused(homedir(), ["api", ...args, "--include"], { okExitCodes: [1] }),
-      )
+      const stdout = yield* ghUnpaused(homedir(), ["api", ...args, "--include"], {
+        okExitCodes: [1],
+        onStderr: (chunk) => Effect.sync(() => void (stderr += chunk)),
+      })
+      const response = parseApiResponse(stdout)
+      if (!Number.isFinite(response.status)) {
+        return yield* new GitHubApiError({ detail: stderr.trim() || "gh api printed no response" })
+      }
       const rateLimit = rateLimitOf(response.headers)
       if (rateLimit !== null) yield* observe(rateLimit)
       const error = decodeApiErrorBody(response.body)
@@ -1085,6 +1142,32 @@ const make = Effect.gen(function* () {
       fresh ? Effect.andThen(Cache.get(freshReads, url), Cache.get(reads, url)) : Cache.get(reads, url),
     )
 
+  const issueReads = yield* Cache.makeWith(
+    (url: string) =>
+      Effect.gen(function* () {
+        const [owner = "", name = "", , number = ""] = new URL(url).pathname.slice(1).split("/")
+        const { body, errors } = yield* ghApi([
+          "graphql",
+          "-f",
+          `query=${ISSUE_QUERY}`,
+          "-f",
+          `owner=${owner}`,
+          "-f",
+          `name=${name}`,
+          "-F",
+          `number=${number}`,
+        ])
+        const { data } = yield* decodeIssueResponse(body)
+        const issue = data?.repository?.issue
+        if (!issue) {
+          const detail = errors.map((error) => error.message).join("\n")
+          return yield* new GitHubApiError({ detail: detail || "GitHub did not return this issue" })
+        }
+        return toIssue(issue)
+      }),
+    { capacity: 1000, timeToLive: (exit) => (Exit.isFailure(exit) ? 0 : ISSUE_TTL) },
+  )
+
   const openInRepository = (url: string) =>
     Effect.map(Cache.keys(reads), (keys) => {
       const repository = url.slice(0, url.lastIndexOf("/") + 1)
@@ -1122,7 +1205,10 @@ const make = Effect.gen(function* () {
     ),
     run: gh,
     pullRequest: (raw) => Effect.map(read(raw), toPullRequest),
-    pullRequestOpenedAt: (raw) => Effect.map(read(raw), (json) => json.createdAt),
+    issue: (raw) => {
+      const url = parseGitHubIssueUrl(raw.trim())
+      return url === undefined ? Effect.fail(new IssueUrlInvalidError({ url: raw })) : Cache.get(issueReads, url)
+    },
     pullRequestDetail: (raw, options) => Effect.map(read(raw, options?.fresh), toPullRequestDetail),
     pullRequestDiff: (raw) =>
       ghByUrl(raw, (url) => ["pr", "diff", url, "--color=never"]).pipe(

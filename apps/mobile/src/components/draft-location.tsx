@@ -17,10 +17,6 @@ import { listedThreads, useThreads } from "@/stores/threads"
 
 const CHIP_HEIGHT = 32
 
-/**
- * Where an empty thread will run: its environment and project. Picking another project opens that project's draft
- * in place of this one and carries the typed prompt over, since a thread cannot move between projects.
- */
 export function LocationChip({ thread, onError }: { thread: Thread; onError: (message: string) => void }) {
   const theme = useTheme()
   const [open, setOpen] = useState(false)
@@ -56,6 +52,17 @@ export function LocationChip({ thread, onError }: { thread: Thread; onError: (me
   )
 }
 
+const moveDraftTo = async (project: Project, thread: Thread) => {
+  const next = await createThread(project)
+  const drafts = useDrafts.getState()
+  const text = drafts.byThreadId[thread.id] ?? ""
+  if (text !== "") {
+    drafts.setText(next.id, text)
+    drafts.setText(thread.id, "")
+  }
+  return next
+}
+
 function LocationSheet({
   thread,
   serverId,
@@ -78,13 +85,7 @@ function LocationSheet({
     if (project.id === thread.projectId) return onClose()
     setMoving(true)
     try {
-      const next = await createThread(project)
-      const drafts = useDrafts.getState()
-      const text = drafts.byThreadId[thread.id] ?? ""
-      if (text !== "") {
-        drafts.setText(next.id, text)
-        drafts.setText(thread.id, "")
-      }
+      const next = await moveDraftTo(project, thread)
       onClose()
       router.replace({ pathname: "/thread/[id]", params: { id: next.id } })
     } catch (cause) {

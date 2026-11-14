@@ -1,17 +1,9 @@
-import { type JSONContent, type MarkdownParseHelpers, type MarkdownToken, mergeAttributes, Node } from "@tiptap/core"
-import { Blockquote } from "@tiptap/extension-blockquote"
 import { AlertIcon, ChevronDownIcon, InfoIcon } from "@hinacode/icons"
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from "@tiptap/react"
 import type { ComponentType, CSSProperties } from "react"
 import { RiDoubleQuotesL, RiFeedbackLine, RiLightbulbLine, RiSpam2Line } from "react-icons/ri"
-import {
-  CALLOUT_TONES,
-  calloutMarker,
-  calloutTone,
-  type CalloutTone,
-  isCalloutTone,
-  splitCalloutMarker,
-} from "../../../shared/documentCallout.ts"
+import { CALLOUT_TONES, calloutTone, type CalloutTone, isCalloutTone } from "../../../shared/documentCallout.ts"
+import { DocumentCallout as SharedCallout } from "../../../shared/document/schema.ts"
 import { m } from "../../paraglide/messages.js"
 import {
   DropdownMenu,
@@ -38,78 +30,10 @@ const TONES: Record<
   caution: { color: "--destructive", label: m.documents_callout_caution, icon: RiSpam2Line },
 }
 
-const quoted = (markdown: string) =>
-  markdown
-    .split("\n")
-    .map((line) => (line.trim() === "" ? ">" : `> ${line}`))
-    .join("\n")
-
-const withoutFirstLine = (text: string) => text.slice(text.indexOf("\n") + 1)
-
-const withoutLeadingSpace = (tokens: ReadonlyArray<MarkdownToken>) => {
-  const start = tokens.findIndex((token) => token.type !== "space")
-  return start === -1 ? [] : tokens.slice(start)
-}
-
-const calloutFromQuote = (quote: MarkdownToken, helpers: MarkdownParseHelpers) => {
-  const [first, ...others] = quote.tokens ?? []
-  const split = first?.type === "paragraph" ? splitCalloutMarker(first.text ?? "") : null
-  if (first === undefined || split === null) return null
-  const tokens =
-    split.rest.trim() === ""
-      ? withoutLeadingSpace(others)
-      : [
-          {
-            ...first,
-            raw: withoutFirstLine(first.raw ?? ""),
-            text: split.rest,
-            tokens: helpers.tokenizeInline?.(split.rest) ?? [],
-          },
-          ...others,
-        ]
-  const body = (helpers.parseBlockChildren ?? helpers.parseChildren)(tokens)
-  return helpers.createNode(
-    "callout",
-    { tone: split.tone },
-    body.length === 0 ? [helpers.createNode("paragraph")] : body,
-  )
-}
-
-export const DocumentBlockquote = Blockquote.extend({
-  parseMarkdown(token, helpers) {
-    return calloutFromQuote(token, helpers) ?? this.parent?.(token, helpers) ?? []
-  },
-})
-
 const insideControl = (event: Event) =>
   event.target instanceof Element && event.target.closest("[data-node-control]") !== null
 
-export const DocumentCallout = Node.create({
-  name: "callout",
-  group: "block",
-  content: "block+",
-  defining: true,
-
-  addAttributes: () => ({
-    tone: {
-      default: "note",
-      parseHTML: (element) => calloutTone(element.getAttribute("data-tone")),
-      renderHTML: (attributes) => ({ "data-tone": calloutTone(attributes["tone"]) }),
-    },
-  }),
-
-  parseHTML: () => [{ tag: "div[data-callout]" }],
-
-  renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes({ "data-callout": "" }, HTMLAttributes), 0],
-
-  renderMarkdown: (node, helpers) => {
-    const children: ReadonlyArray<JSONContent> = node.content ?? []
-    const body = children.map((child, index) =>
-      quoted(helpers.renderChild?.(child, index) ?? helpers.renderChildren([child])),
-    )
-    return `> ${calloutMarker(calloutTone(node.attrs?.tone))}\n${body.join("\n>\n")}`
-  },
-
+export const DocumentCallout = SharedCallout.extend({
   addNodeView() {
     return ReactNodeViewRenderer(CalloutView, { stopEvent: ({ event }) => insideControl(event) })
   },

@@ -1,6 +1,6 @@
 # Contrast setting
 
-Status: Building
+Status: Shipped
 Date: 2026-10-15
 
 ## Problem

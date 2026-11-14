@@ -1,5 +1,8 @@
 # Agent tasks above the composer
 
+Status: Shipped
+Date: 2026-10-13
+
 ## Problem
 
 Agents keep a task list while they work (Claude `TaskCreate`/`TaskUpdate` and legacy `TodoWrite`,
@@ -11,7 +14,7 @@ the transcript. Codex's plan never arrived at all: the app-server sends it as a
 
 The list already flows through the transcript as tool calls, and each call's result only
 acknowledges it (Muse answers `{"ok":true,"revision":2,"items":6}`), so the renderer folds the
-current list from the main agent's todo tool calls (`src/renderer/lib/todos.ts`):
+current list from the main agent's todo tool calls (`src/shared/todos.ts`):
 
 - Replace-all tools (`write_todos`, `TodoWrite`, `update_plan`) carry the whole list in their
   input; the newest call wins.
@@ -39,7 +42,7 @@ icon. It hides once every task is finished and the thread is idle.
 
 ## Verification
 
-- `src/renderer/lib/todos.test.ts` folds real captured inputs from all three agents.
+- `src/shared/todos.test.ts` folds real captured inputs from all three agents.
 - `HINACODE_MOCK_CLAUDE=todos` makes the simulated Claude emit a transcript-shaped
   `TaskCreate`/`TaskUpdate` sequence; `e2e/features/agent-todos.feature` drives it end to end
   without a real agent turn.

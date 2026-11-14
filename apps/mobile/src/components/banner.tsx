@@ -11,7 +11,6 @@ import { motion } from "@/lib/motion"
 import type { AlertKind } from "@/lib/thread-alerts"
 
 export interface BannerNotice {
-  /** Changes with every alert, so a newer one replaces the shown banner even for the same thread. */
   readonly id: number
   readonly threadId: string
   readonly kind: AlertKind
@@ -19,7 +18,6 @@ export interface BannerNotice {
   readonly body: string
 }
 
-/** A request or a failure waits for the developer, so it outlasts a plain "finished". */
 const visibleMs: Record<AlertKind, number> = { completed: 4_000, needsInput: 10_000, failed: 10_000 }
 
 const icons: Record<AlertKind, { name: IconName; color: keyof Palette }> = {
@@ -30,7 +28,6 @@ const icons: Record<AlertKind, { name: IconName; color: keyof Palette }> = {
 
 const RISE = 16
 
-/** One alert at a time, floating at the top of every screen until it times out, is opened or is dismissed. */
 export function Banner({
   notice,
   onOpen,

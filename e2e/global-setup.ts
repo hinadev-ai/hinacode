@@ -3,7 +3,7 @@ import { existsSync, readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { projectRoot } from "./support/app.ts"
 
-const SKIPPED_DIRS = new Set(["paraglide"])
+const SKIPPED_DIRS = new Set(["paraglide", "node_modules"])
 const isTest = (name: string) => name.endsWith(".test.ts")
 
 const newestMtime = (dir: string): number =>
@@ -15,7 +15,7 @@ const newestMtime = (dir: string): number =>
 
 const ensureFreshBuild = () => {
   const entry = join(projectRoot, "out/main/index.js")
-  const sources = ["src", "messages"].map((dir) => newestMtime(join(projectRoot, dir)))
+  const sources = ["src", "messages", "packages"].map((dir) => newestMtime(join(projectRoot, dir)))
   const stale = !existsSync(entry) || Math.max(...sources) > statSync(entry).mtimeMs
   if (!stale) return
   console.log("e2e: building hinacode")

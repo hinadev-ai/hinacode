@@ -19,7 +19,6 @@ const codeSpan = (text: string) => (text.includes("`") ? `\`\` ${text} \`\`` : `
 
 const keysAsCode = (prose: string) => prose.replace(KBD, (_, key: string) => codeSpan(key))
 
-/** Applies `rewrite` to the parts of `text` that `protect` does not match, leaving those matches as written. */
 function outside(protect: RegExp, text: string, rewrite: (rest: string) => string) {
   let result = ""
   let last = 0
@@ -42,10 +41,6 @@ const rewriteBareUrls = (prose: string) =>
       .replace(URL_BEFORE_PUNCTUATION, "<$1>$2"),
   )
 
-/**
- * Calls `visit` with each line outside fenced code blocks and whatever it returns replaces the line. `open`, when
- * given, rewrites each opening fence line.
- */
 function mapProseLines(
   markdown: string,
   visit: (line: string) => string | null,
@@ -71,16 +66,45 @@ function mapProseLines(
 
 const labelBareFence = (line: string) => (BARE_FENCE.test(line) ? `${line.trimEnd()}text` : line)
 
-/**
- * Rewrites what the phone's Markdown renderer has no syntax for into what it has, as the desktop renders it:
- * a bare GitHub pull request URL becomes a link named `owner/repo#n`, a bare URL ending a sentence leaves its
- * punctuation outside the link, `<kbd>` becomes a code span, which the
- * renderer draws as a key cap, a footnote reference `[^id]` becomes a superscript number, and the definitions
- * move to a numbered list at the end, in the order they are first cited. A fence with no language is labelled
- * `text`, so the code block header names it instead of standing empty. Code blocks, code spans and existing
- * links stay as written, and other HTML stays text.
- */
-export function rewriteMarkdownExtras(markdown: string) {
+const INDENTED_FENCE = /^ +(`{3,}|~{3,})/m
+const OPENING_FENCE = /^( *)(`{3,}|~{3,})/
+const CLOSING_FENCE = /^ *(`{3,}|~{3,})[ \t]*$/
+const LIST_ITEM = /^ *(?:[-*+]|\d{1,9}[.)])(?: |$)/
+
+function stripIndent(line: string, indent: number) {
+  let start = 0
+  while (start < indent && line[start] === " ") start++
+  return line.slice(start)
+}
+
+function liftFencesOutOfLists(markdown: string) {
+  if (!INDENTED_FENCE.test(markdown)) return markdown
+  let inList = false
+  let fence: { marker: string; indent: number } | null = null
+  const lines: string[] = []
+  for (const line of markdown.split("\n")) {
+    if (fence !== null) {
+      const closing = CLOSING_FENCE.exec(line)?.[1]
+      lines.push(stripIndent(line, fence.indent))
+      if (closing !== undefined && closing[0] === fence.marker[0] && closing.length >= fence.marker.length) fence = null
+      continue
+    }
+    const opening = OPENING_FENCE.exec(line)
+    if (opening !== null && (inList || opening[1].length <= 3)) {
+      const indent = inList ? opening[1].length : 0
+      fence = { marker: opening[2], indent }
+      lines.push(line.slice(indent))
+      continue
+    }
+    if (LIST_ITEM.test(line)) inList = true
+    else if (/^\S/.test(line)) inList = false
+    lines.push(line)
+  }
+  return lines.join("\n")
+}
+
+export function rewriteMarkdownExtras(text: string) {
+  const markdown = liftFencesOutOfLists(text)
   const hasBareUrls = /https?:\/\//i.test(markdown)
   const labelsFences = BARE_FENCE.test(markdown)
   const rewritten =

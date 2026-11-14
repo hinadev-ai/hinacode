@@ -55,7 +55,6 @@ function TodoRow({ todo }: { todo: Todo }) {
   )
 }
 
-/** The agent's task list as one line of the activity tray: progress and the current task, expanding to the full list. */
 export function TodoActivity({
   todos,
   expanded,
