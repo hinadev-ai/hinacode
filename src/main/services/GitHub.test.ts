@@ -958,6 +958,32 @@ describe("pull request reads", () => {
     }).pipe(Effect.provide(gh.layer))
   })
 
+  it.effect("a refresh rereads a pull request merged elsewhere, even right after a fresh read", () => {
+    let state = "OPEN"
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Merged by an agent", state)))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL, { fresh: true })
+      state = "MERGED"
+      yield* github.refresh(PR_URL)
+      expect(gh.pushed.filter(isPullRequestPush)).toStrictEqual([{ type: "github.pullRequest", url: PR_URL }])
+      expect((yield* github.pullRequest(PR_URL)).status).toBe("merged")
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a refresh leaves alone a pull request nobody has read and one that is merged", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Done", "MERGED")))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.refresh(PR_URL)
+      expect(gh.runs.filter(isRead)).toHaveLength(0)
+      yield* github.pullRequest(PR_URL)
+      yield* github.refresh(PR_URL)
+      expect(gh.runs.filter(isRead)).toHaveLength(1)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
   it.effect("a fresh read skips the cache, and fresh reads close together share one gh run", () => {
     let title = "Cached"
     const gh = fakeGh(() => apiReply(graphqlPullRequest(title)))

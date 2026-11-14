@@ -779,6 +779,7 @@ export class GitHub extends Context.Service<
       url: string,
       options?: { readonly fresh?: boolean | undefined },
     ) => Effect.Effect<PullRequestDetail, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
+    readonly refresh: (url: string) => Effect.Effect<void>
     readonly pullRequestDiff: (
       url: string,
     ) => Effect.Effect<string, GitHubError | PullRequestUrlInvalidError | PullRequestDiffTooLargeError>
@@ -1210,6 +1211,10 @@ const make = Effect.gen(function* () {
       return url === undefined ? Effect.fail(new IssueUrlInvalidError({ url: raw })) : Cache.get(issueReads, url)
     },
     pullRequestDetail: (raw, options) => Effect.map(read(raw, options?.fresh), toPullRequestDetail),
+    refresh: (url) => {
+      const state = lastRead.get(url)?.state
+      return state === undefined || state === "MERGED" ? Effect.void : Effect.ignore(reread(url))
+    },
     pullRequestDiff: (raw) =>
       ghByUrl(raw, (url) => ["pr", "diff", url, "--color=never"]).pipe(
         Effect.catchIf(

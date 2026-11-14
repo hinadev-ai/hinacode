@@ -63,6 +63,7 @@ export class GitLab extends Context.Service<
     readonly pullRequestDetail: (
       url: string,
     ) => Effect.Effect<PullRequestDetail, GitLabError | PullRequestUrlInvalidError | Schema.SchemaError>
+    readonly refresh: (url: string) => Effect.Effect<void>
     readonly merge: (
       url: string,
       method: MergeMethod,
@@ -412,6 +413,7 @@ const make = Effect.gen(function* () {
     isGitLabHost,
     pullRequest: (url) => Effect.flatMap(requireMergeRequest(url), pullRequestOf),
     pullRequestDetail,
+    refresh: (url) => events.publish({ type: "github.pullRequest", url }),
     merge: (url, method) =>
       method === "rebase"
         ? Effect.fail(new GitLabMergeMethodError())
