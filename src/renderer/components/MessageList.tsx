@@ -165,7 +165,7 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
           </code>
         </pre>
       )
-    if (segment.kind === "bullet")
+    if (segment.kind === "bullet" || segment.kind === "quote")
       return (
         <span key={index} className="text-muted-foreground">
           {isUnorderedBullet(segment.text) ? "•" : segment.text}

@@ -11,9 +11,11 @@ import {
   completionAt,
   type CompletionQuery,
   continueList,
+  continueQuote,
   endsWithClosedFence,
   indentList,
   listBackspace,
+  quoteBackspace,
   type MentionableTerminal,
   type Suggestion,
   suggestionsFor,
@@ -127,9 +129,9 @@ export function ComposerInput({
     const text = view.state.doc.toString()
     const listEdit =
       event.key === "Backspace" && main.empty
-        ? listBackspace(text, main.head)
+        ? (listBackspace(text, main.head) ?? quoteBackspace(text, main.head))
         : event.key === "Enter" && event.shiftKey
-          ? continueList(text, main.from, main.to)
+          ? (continueList(text, main.from, main.to) ?? continueQuote(text, main.from, main.to))
           : event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey
             ? indentList(text, main.head, event.shiftKey ? -1 : 1)
             : null

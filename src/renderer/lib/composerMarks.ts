@@ -4,12 +4,22 @@ import { fenceCode, highlight, isUnorderedBullet, type KnownTokens, segmentText 
 export type Mark =
   | { readonly kind: "chip"; readonly from: number; readonly to: number; readonly command: AgentCommand }
   | {
-      readonly kind: "bullet" | "dot" | "code" | "strong" | "rule" | "command" | "mention" | "marker"
+      readonly kind: "dot" | "hidden" | "code" | "strong" | "rule" | "command" | "mention" | "marker"
       readonly from: number
       readonly to: number
     }
+  | {
+      readonly kind: "listItem"
+      readonly from: number
+      readonly markerFrom: number
+      readonly to: number
+      readonly indentColumns: number
+    }
+  | { readonly kind: "quoteLine"; readonly from: number }
   | { readonly kind: "fenceLine"; readonly from: number; readonly first: boolean; readonly last: boolean }
   | { readonly kind: "fenceCode"; readonly from: number; readonly code: string; readonly language: string }
+
+const TAB = "    "
 
 export function composerMarks(
   text: string,
@@ -35,8 +45,17 @@ export function composerMarks(
       marks.push({ kind: caretOnLine ? "marker" : "rule", from, to: offset })
       continue
     }
-    if (segment.kind === "bullet" && isUnorderedBullet(piece)) {
-      marks.push({ kind: "dot", from, to: offset })
+    if (segment.kind === "bullet") {
+      const lineStart = text.lastIndexOf("\n", from) + 1
+      let to = offset
+      while (text[to] === " " || text[to] === "\t") to++
+      const indentColumns = text.slice(lineStart, from).replaceAll("\t", TAB).length
+      marks.push({ kind: "listItem", from: lineStart, markerFrom: from, to, indentColumns })
+      if (isUnorderedBullet(piece)) marks.push({ kind: "dot", from, to: offset })
+      continue
+    }
+    if (segment.kind === "quote") {
+      marks.push({ kind: "quoteLine", from }, { kind: "hidden", from, to: offset })
       continue
     }
     if (segment.kind !== "fence") {

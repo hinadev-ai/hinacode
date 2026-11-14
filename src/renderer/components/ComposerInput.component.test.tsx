@@ -82,8 +82,8 @@ const renderComposer = () =>
 
 const type = (text: string) => cdp().send("Input.insertText", { text })
 
-const press = async (key: "Enter" | "Backspace" | "Tab", modifiers = 0) => {
-  const code = { Enter: 13, Backspace: 8, Tab: 9 }[key]
+const press = async (key: "Enter" | "Backspace" | "Tab" | "Home" | "ArrowLeft", modifiers = 0) => {
+  const code = { Enter: 13, Backspace: 8, Tab: 9, Home: 36, ArrowLeft: 37 }[key]
   const event = { key, code: key, windowsVirtualKeyCode: code, modifiers }
   await cdp().send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...event })
   await cdp().send("Input.dispatchKeyEvent", { type: "keyUp", ...event })
@@ -136,6 +136,92 @@ test("indents a list item on tab and keeps the focus in the composer", async () 
 
   await press("Tab", shift)
   await expect.poll(() => value).toBe("1. first\n2. second")
+})
+
+const dot = (line: Element) => line.querySelector(".cm-list-marker span")!.getBoundingClientRect()
+
+const textStarts = (line: Element) => {
+  const range = document.createRange()
+  range.setStartAfter(line.querySelector(".cm-list-marker")!)
+  range.setEndAfter(line.lastChild!)
+  const starts = new Map<number, number>()
+  for (const box of range.getClientRects()) {
+    const top = Math.round(box.top)
+    starts.set(top, Math.min(starts.get(top) ?? Infinity, Math.round(box.left)))
+  }
+  return [...new Set(starts.values())]
+}
+
+test("indents a list item and keeps its wrapped text under its first word", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  const long = "wrapped words ".repeat(40)
+  await type("plain")
+  await press("Enter", shift)
+  await type(`- ${long}`)
+  await press("Enter", shift)
+  await press("Tab")
+  await type(long)
+  await expect.poll(() => value).toBe(`plain\n- ${long}\n  - ${long}`)
+
+  const [plain, item, nested] = [...document.querySelectorAll(".cm-line")]
+  expect(item!.getBoundingClientRect().height).toBeGreaterThan(plain!.getBoundingClientRect().height)
+  expect(dot(item!).left).toBeGreaterThan(plain!.getBoundingClientRect().left + 4)
+  expect(textStarts(item!)).toHaveLength(1)
+  expect(textStarts(nested!)).toHaveLength(1)
+  expect(dot(nested!).left).toBeGreaterThan(textStarts(item!)[0]!)
+})
+
+test("draws a line that starts with > as a quote and continues it on shift+enter", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  await type("> quoted")
+  await expect.poll(() => value).toBe("> quoted")
+  const line = document.querySelector(".cm-line")!
+  expect(line.textContent).toBe("quoted")
+  expect(Number.parseFloat(getComputedStyle(line).borderInlineStartWidth)).toBeGreaterThan(0)
+
+  await press("Enter", shift)
+  await type("more")
+  await press("Enter", shift)
+  await expect.poll(() => value).toBe("> quoted\n> more\n> ")
+
+  await press("Enter", shift)
+  await expect.poll(() => value).toBe("> quoted\n> more\n")
+
+  await type("> ")
+  await press("Backspace")
+  await expect.poll(() => value).toBe("> quoted\n> more\n")
+})
+
+test("removes only the marker of a quote on backspace", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  await type(">  indented")
+  await press("Home")
+  await press("Backspace")
+  await expect.poll(() => value).toBe(" indented")
+})
+
+test("never rests the caret before a quote's hidden marker", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  await type("plain")
+  await press("Enter", shift)
+  await type("> quoted")
+  await press("Home")
+  await press("Home")
+  await type("still ")
+  await expect.poll(() => value).toBe("plain\n> still quoted")
+
+  await press("Home")
+  await press("ArrowLeft")
+  await type("!")
+  await expect.poll(() => value).toBe("plain!\n> still quoted")
 })
 
 test("ignores the separate char event a DevTools screencast sends after Enter", async () => {
