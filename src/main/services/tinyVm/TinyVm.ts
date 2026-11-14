@@ -72,7 +72,7 @@ export class TinyVm extends Context.Service<
     readonly stop: (threadId: string) => Effect.Effect<void>
     readonly setControl: (threadId: string, control: VmControl) => Effect.Effect<ThreadVm>
     readonly host: Effect.Effect<VmHostStatus>
-    readonly desktopUrl: (threadId: string) => Effect.Effect<string, VmError>
+    readonly desktopUrl: (threadId: string, viewer: { readonly sameMachine: boolean }) => Effect.Effect<string, VmError>
     readonly screenshot: (threadId: string) => Effect.Effect<Uint8Array, VmError>
     readonly act: (threadId: string, actions: ReadonlyArray<VmAction>) => Effect.Effect<"done" | "handedBack", VmError>
     readonly exec: (threadId: string, input: VmExec) => Effect.Effect<ExecResult, VmError>
@@ -198,7 +198,7 @@ const writeStoredProfile = (dataDir: string, bytes: Uint8Array, template: string
     ),
   )
 
-const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
+const make = (source: LoginSource, dataDir: string) =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
     const events = yield* Events
@@ -870,11 +870,11 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
       return desktopStarting
     }
 
-    const desktopUrl = (threadId: string) =>
+    const desktopUrl = (threadId: string, viewer: { readonly sameMachine: boolean }) =>
       Effect.gen(function* () {
         const vm = yield* ensureRunning(threadId)
         if (vm.provider !== "boat") return yield* new VmError({ message: "Only a boat VM has a desktop stream url." })
-        if (!desktopRedirect) return yield* fetchDesktopUrl(threadId)
+        if (!viewer.sameMachine) return yield* fetchDesktopUrl(threadId)
         const port = yield* Effect.tryPromise({
           try: () => startDesktopServer(),
           catch: (cause) => new VmError({ message: `Cannot open the desktop stream: ${String(cause)}` }),
@@ -1126,5 +1126,4 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
     })
   })
 
-export const layer = (source: LoginSource, dataDir: string, options?: { readonly desktopRedirect?: boolean }) =>
-  Layer.effect(TinyVm, make(source, dataDir, options?.desktopRedirect ?? true))
+export const layer = (source: LoginSource, dataDir: string) => Layer.effect(TinyVm, make(source, dataDir))

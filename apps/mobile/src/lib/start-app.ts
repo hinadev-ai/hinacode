@@ -21,6 +21,7 @@ import { usePullRequests } from "@/stores/pull-requests"
 import { useRelayAccount } from "@/stores/relay-account"
 import { useSubagents } from "@/stores/subagents"
 import { useThreads } from "@/stores/threads"
+import { useVms } from "@/stores/vms"
 
 export function pair(target: PairingTarget) {
   const { servers, id } = addPairing(storedServers(), target, newServerId)
@@ -94,6 +95,7 @@ function routePushes() {
     else if (event.type === "worktree.updated") useThreads.getState().upsertWorktree(event.worktree)
     else if (event.type === "thread.pullRequests") usePullRequests.getState().replace(event.threadId, event.links)
     else if (event.type === "thread.subagents") useSubagents.getState().replace(event.threadId, event.subagents)
+    else if (event.type === "vm.updated") useVms.getState().replace(event.threadId, event.vm)
   })
 }
 
@@ -104,10 +106,12 @@ function followConnection() {
       void usePullRequests.getState().load()
       useMessages.getState().reload()
       useSubagents.getState().reload()
+      useVms.getState().reload()
     }
     if (state.paired !== previous.paired) {
       useMessages.getState().reset()
       useSubagents.getState().reset()
+      useVms.getState().reset()
     }
   })
 }
