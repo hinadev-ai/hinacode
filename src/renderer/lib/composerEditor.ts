@@ -125,7 +125,7 @@ const dot = new TextWidget("text-muted-foreground", "•")
 const rule = new TextWidget("inline-block w-full border-t border-border align-middle")
 
 const markClass = {
-  code: "rounded-sm bg-muted",
+  code: "rounded-sm bg-muted font-mono",
   strong: "font-semibold",
   command: "text-syntax-token",
   mention: "text-syntax-token",
@@ -181,7 +181,7 @@ function build(view: EditorView) {
       decorations.push(Decoration.replace({ widget: rule }).range(mark.from, mark.to))
     } else if (mark.kind === "fenceLine") {
       const edges = [mark.first && "rounded-t-md", mark.last && "rounded-b-md"].filter(Boolean).join(" ")
-      decorations.push(Decoration.line({ class: `cm-fence-line bg-muted ${edges}` }).range(mark.from))
+      decorations.push(Decoration.line({ class: `cm-fence-line bg-muted font-mono ${edges}` }).range(mark.from))
     } else if (mark.kind === "fenceCode") {
       const key = `${config.codeTheme ?? config.scheme}\0${mark.language}`
       const highlighter = highlighters.get(key)
