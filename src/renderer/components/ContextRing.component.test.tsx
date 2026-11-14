@@ -34,6 +34,8 @@ test("a magpie thread asks its Claude harness for the breakdown", async () => {
         approvals: [],
         questions: [],
         secretRequests: [],
+        snapshotId: 1,
+        missedFinishes: 0,
       },
     },
   })

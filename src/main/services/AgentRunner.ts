@@ -44,7 +44,6 @@ import type {
   QueuedMessage,
   ScheduledMessage,
   Thread,
-  ThreadStatus,
   WorkspaceChoice,
 } from "../../shared/domain.ts"
 import { enabledProviders, isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
@@ -104,6 +103,7 @@ import { SourceControl } from "./SourceControl.ts"
 import { Worktrees } from "./Worktrees.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import { type ActiveWorkspace, makeActiveWorkspace } from "./workspace.ts"
+import { initialTurnState, step, type TurnEffect } from "./turnState.ts"
 
 const PERSIST_INTERVAL_MS = 500
 const RUN_AGENT_WAIT = Duration.minutes(4)
@@ -116,6 +116,7 @@ interface AgentRequest {
   readonly prompt: string
   readonly model?: string | undefined
   readonly effort?: string | undefined
+  readonly background?: boolean | undefined
 }
 
 interface QueueOptions {
@@ -284,26 +285,6 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError>
   }
 >()("hinacode/AgentRunner") {}
-
-const statusAfter = (event: AgentEvent): ThreadStatus | undefined => {
-  switch (event.type) {
-    case "approval_requested":
-    case "question_requested":
-    case "secret_requested":
-      return "awaiting_approval"
-    case "approval_resolved":
-    case "question_resolved":
-    case "secret_resolved":
-      return "running"
-    case "turn_completed":
-    case "turn_failed":
-      return "idle"
-    case "turn_limited":
-      return "limited"
-    default:
-      return undefined
-  }
-}
 
 const userMessage = (
   threadId: string,
@@ -657,8 +638,7 @@ const make = Effect.gen(function* () {
     stop: Deferred.Deferred<void>,
   ) => {
     let turnMessages: ReadonlyArray<Message> = [initial]
-    let status: ThreadStatus = "running"
-    let completed = false
+    let state = initialTurnState(thread.providerSessionId)
     let persistedAt = Date.now()
     let persistedBytes = 0
     const dirty = new Map<string, Message>()
@@ -706,35 +686,32 @@ const make = Effect.gen(function* () {
         if (event.type === "approval_resolved") approvals.delete(event.requestId)
         if (event.type === "question_requested") questions.set(event.request.id, event.request)
         if (event.type === "question_resolved") questions.delete(event.requestId)
-        if (event.type === "session_bound" && event.providerSessionId !== thread.providerSessionId) {
-          yield* updateThread({ id: thread.id, providerSessionId: event.providerSessionId })
-        }
-        if (event.type === "turn_failed" && event.sessionLost)
-          yield* updateThread({ id: thread.id, providerSessionId: null })
+        const [after, effects] = step(state, event, { waitsOnUser: waitsOnUser(thread.id) })
+        yield* Effect.forEach(effects, perform, { discard: true })
+        state = after
         if (event.type === "turn_completed" || event.type === "turn_failed") {
-          completed = event.type === "turn_completed"
           yield* refreshPullRequests(thread, { branch: false })
-        }
-        const resolvedStatus = statusAfter(event)
-        const nextStatus = resolvedStatus === "running" && waitsOnUser(thread.id) ? "awaiting_approval" : resolvedStatus
-        if (nextStatus !== undefined && nextStatus !== status) {
-          status = nextStatus
-          yield* updateThread({
-            id: thread.id,
-            status,
-            ...(event.type === "turn_limited" ? { usageLimit: event.limit } : {}),
-          })
-        }
-        if (
-          event.type === "approval_resolved" ||
-          event.type === "question_resolved" ||
-          event.type === "secret_resolved"
-        ) {
-          yield* steerHeld
         }
         const interval = Math.max(PERSIST_INTERVAL_MS, (persistedBytes / PERSIST_BYTES_PER_SECOND) * 1000)
         if (dirty.size > 0 && Date.now() - persistedAt >= interval) yield* persist
       })
+
+    const perform = (effect: TurnEffect) => {
+      switch (effect.type) {
+        case "bind_session":
+          return updateThread({ id: thread.id, providerSessionId: effect.providerSessionId })
+        case "drop_session":
+          return updateThread({ id: thread.id, providerSessionId: null })
+        case "set_status":
+          return updateThread({
+            id: thread.id,
+            status: effect.status,
+            ...(effect.usageLimit !== undefined && { usageLimit: effect.usageLimit }),
+          })
+        case "steer_held":
+          return steerHeld
+      }
+    }
 
     const deltas = makeDeltaCoalescer({ apply, exclusive: exclusive(thread.id), scope })
 
@@ -814,7 +791,7 @@ const make = Effect.gen(function* () {
       messageId: string,
     ) =>
       Effect.suspend((): Effect.Effect<boolean | "finished", PersistenceError | NotFoundError> =>
-        completed && !Deferred.isDoneUnsafe(stop)
+        state.outcome === "completed" && !Deferred.isDoneUnsafe(stop)
           ? Effect.succeed("finished" as const)
           : Effect.gen(function* () {
               if (!(yield* when)) return false
@@ -891,8 +868,8 @@ const make = Effect.gen(function* () {
       setTurnMessages(replaceLast(turnMessages, closed))
       yield* persist
       if (closed !== last) yield* publishTranscript({ type: "message.updated", message: closed })
-      if (isThreadBusy(status)) yield* updateThread({ id: thread.id, status: "idle" })
-      if (!completed || (yield* Deferred.isDone(stop))) return
+      if (isThreadBusy(state.status)) yield* updateThread({ id: thread.id, status: "idle" })
+      if (state.outcome !== "completed" || (yield* Deferred.isDone(stop))) return
       next = yield* nextQueued(thread.id)
     }).pipe(
       Effect.catch((error) => Effect.logError("failed to finish turn", error)),
@@ -1128,6 +1105,9 @@ const make = Effect.gen(function* () {
         Effect.flatMap(Effect.exit(execution), (exit) => Deferred.done(finalReply, exit)),
         scope,
       )
+      if (request.background === true) {
+        return `The agent runs in the background. Call ${WAIT_AGENT_TOOL} with agentId "${id}" for its reply before you end your turn, because it stops when the turn ends.`
+      }
       return yield* waitForAgent(threadId, id)
     })
 
