@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
@@ -402,6 +411,97 @@ describe("Projects.ensureChats", () => {
         { kind: "chats", rootPath: second },
       ])
       expect(statSync(second).isDirectory()).toBe(true)
+    }),
+  )
+})
+
+describe("Projects.ensureGroups", () => {
+  const groupRows = (projects: ReadonlyArray<{ kind: string; id: string; name: string; rootPath: string }>) =>
+    projects.filter(({ kind }) => kind === "group").map(({ id, name, rootPath }) => ({ id, name, rootPath }))
+
+  it.live("creates one group project with its folder, AGENTS.md and skills", () =>
+    Effect.gen(function* () {
+      const groupsDir = join(emptyDir(), "groups")
+      const listed = yield* provided(
+        Projects.use((projects) =>
+          projects.ensureGroups([{ id: "g1", name: "Shop" }], groupsDir).pipe(Effect.andThen(projects.list)),
+        ),
+      )
+      const rootPath = join(groupsDir, "g1")
+      expect(groupRows(listed)).toStrictEqual([{ id: "g1", name: "Shop", rootPath }])
+      expect(readFileSync(join(rootPath, "AGENTS.md"), "utf8")).toBe("")
+      expect(statSync(join(rootPath, "skills")).isDirectory()).toBe(true)
+    }),
+  )
+
+  it.live("keeps an existing AGENTS.md, stays one row on a second call and follows a rename", () =>
+    Effect.gen(function* () {
+      const groupsDir = join(emptyDir(), "groups")
+      const rootPath = join(groupsDir, "g1")
+      mkdirSync(rootPath, { recursive: true })
+      writeFileSync(join(rootPath, "AGENTS.md"), "Use pnpm.\n")
+      const listed = yield* provided(
+        Projects.use((projects) =>
+          projects
+            .ensureGroups([{ id: "g1", name: "Shop" }], groupsDir)
+            .pipe(
+              Effect.andThen(projects.ensureGroups([{ id: "g1", name: "Shop" }], groupsDir)),
+              Effect.andThen(projects.ensureGroups([{ id: "g1", name: "Store" }], groupsDir)),
+              Effect.andThen(projects.list),
+            ),
+        ),
+      )
+      expect(groupRows(listed)).toStrictEqual([{ id: "g1", name: "Store", rootPath }])
+      expect(readFileSync(join(rootPath, "AGENTS.md"), "utf8")).toBe("Use pnpm.\n")
+    }),
+  )
+
+  it.live("announces a group project only when it is new or renamed", () =>
+    Effect.gen(function* () {
+      const groupsDir = join(emptyDir(), "groups")
+      const published: Array<PushEvent> = []
+      const recording = Layer.succeed(Events, { publish: (event) => Effect.sync(() => void published.push(event)) })
+      yield* Projects.use((projects) =>
+        Effect.forEach(["Shop", "Shop", "Store"], (name) => projects.ensureGroups([{ id: "g1", name }], groupsDir)),
+      ).pipe(Effect.provide(withGitHubMock({}, recording)))
+      expect(published).toStrictEqual([{ type: "projects.changed" }, { type: "projects.changed" }])
+    }),
+  )
+
+  it.live("creates the other groups when one group's folder cannot be made", () =>
+    Effect.gen(function* () {
+      const groupsDir = join(emptyDir(), "groups")
+      mkdirSync(join(groupsDir, "g1"), { recursive: true })
+      writeFileSync(join(groupsDir, "g1", "skills"), "not a folder")
+      const published: Array<PushEvent> = []
+      const recording = Layer.succeed(Events, { publish: (event) => Effect.sync(() => void published.push(event)) })
+      const listed = yield* Projects.use((projects) =>
+        projects
+          .ensureGroups(
+            [
+              { id: "g1", name: "Broken" },
+              { id: "g2", name: "Shop" },
+            ],
+            groupsDir,
+          )
+          .pipe(Effect.andThen(projects.list)),
+      ).pipe(Effect.provide(withGitHubMock({}, recording)))
+      expect(groupRows(listed)).toStrictEqual([{ id: "g2", name: "Shop", rootPath: join(groupsDir, "g2") }])
+      expect(published).toStrictEqual([{ type: "projects.changed" }])
+    }),
+  )
+
+  it.live("skips a group id that is not a single folder name", () =>
+    Effect.gen(function* () {
+      const base = emptyDir()
+      const groupsDir = join(base, "groups")
+      const listed = yield* provided(
+        Projects.use((projects) =>
+          projects.ensureGroups([{ id: "../escape", name: "Bad" }], groupsDir).pipe(Effect.andThen(projects.list)),
+        ),
+      )
+      expect(groupRows(listed)).toStrictEqual([])
+      expect(existsSync(join(base, "escape"))).toBe(false)
     }),
   )
 })

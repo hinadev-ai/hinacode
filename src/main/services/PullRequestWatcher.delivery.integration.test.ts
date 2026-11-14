@@ -26,6 +26,7 @@ import * as Projects from "./Projects.ts"
 import { PullRequests, layer as pullRequestsLayer } from "./PullRequests.ts"
 import { PullRequestWatcher, layer as watcherLayer } from "./PullRequestWatcher.ts"
 import { Secrets } from "./Secrets.ts"
+import * as ClientSettings from "./ClientSettings.ts"
 import { layer as settingsLayer } from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
@@ -140,6 +141,7 @@ const domain = threadsLayer.pipe(
   Layer.provideMerge(Projects.layer),
   Layer.provideMerge(AgentAccounts.layer),
   Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-delivery-settings-")))),
+  Layer.provideMerge(ClientSettings.layer(mkdtempSync(join(tmpdir(), "kk-delivery-settings-")))),
 )
 const core = Layer.mergeAll(
   observedMessages,

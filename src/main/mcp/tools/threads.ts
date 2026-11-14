@@ -5,7 +5,9 @@ import { isThreadBusy, type Thread } from "../../../shared/domain.ts"
 import { RemoteAccess } from "../../remote/access.ts"
 import { Peers } from "../../remote/peers.ts"
 import { AgentRunner } from "../../services/AgentRunner.ts"
+import { ClientSettings } from "../../services/ClientSettings.ts"
 import { Events } from "../../services/Events.ts"
+import { reachableProjects } from "../../services/groupContext.ts"
 import { Projects } from "../../services/Projects.ts"
 import { PullRequests } from "../../services/PullRequests.ts"
 import { Search } from "../../services/Search.ts"
@@ -26,7 +28,8 @@ import {
 import * as McpTool from "./tool.ts"
 
 const TargetThreadId = Schema.String.annotate({
-  description: "Id of a thread in this project, on this machine or on another of the user's machines.",
+  description:
+    "Id of a thread in this project, on this machine or on another of the user's machines. A conductor thread can also pass a thread of its group's projects.",
 })
 const AnyThreadId = Schema.String.annotate({
   description: "Id of a thread in any project on this machine, or in this project on another of the user's machines.",
@@ -35,7 +38,7 @@ const AnyThreadId = Schema.String.annotate({
 export const ThreadTools = Toolkit.make(
   McpTool.make("create_thread", {
     description:
-      "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model, and the model's default effort. It shows nested under this thread in the sidebar unless `nested` is false. Pass `worktree` to run it in a new git worktree, and `machine` to run it on another of the user's machines. Follow up with read_thread to check on it, send_to_thread to steer it, and stop_thread to interrupt it.",
+      "Start another thread in this project, or a conductor thread's group project, and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model, and the model's default effort. It shows nested under this thread in the sidebar unless `nested` is false. Pass `worktree` to run it in a new git worktree, and `machine` to run it on another of the user's machines. Follow up with read_thread to check on it, send_to_thread to steer it, and stop_thread to interrupt it.",
     parameters: Schema.Struct({
       title: Schema.String.annotate({ description: "Shown in the sidebar." }),
       prompt: Schema.String.annotate({ description: "The new thread's first user message." }),
@@ -47,6 +50,12 @@ export const ThreadTools = Toolkit.make(
         Schema.String.annotate({
           description:
             "Id of the machine to run it on, from list_machines. That machine needs a project for this GitHub repository. Defaults to this machine.",
+        }),
+      ),
+      project: Schema.optionalKey(
+        Schema.String.annotate({
+          description:
+            "Id of a project from the `<group>` block to start the thread in. Only conductor threads may pass it. Defaults to this project.",
         }),
       ),
       nested: Schema.optionalKey(
@@ -63,7 +72,7 @@ export const ThreadTools = Toolkit.make(
   }),
   McpTool.make("list_threads", {
     description:
-      "List the threads in this project that are not archived: id, title, status, provider, model, who created it, and its worktree branch. `self` marks this thread. Threads of the same GitHub repository on the user's other machines are included, with the `machine` they run on.",
+      "List the threads in this project that are not archived: id, title, status, provider, model, who created it, and its worktree branch. `self` marks this thread. Threads of the same GitHub repository on the user's other machines are included, with the `machine` they run on. A conductor thread also gets the threads of its group's projects, each with its `project`.",
   }),
   McpTool.make("search_threads", {
     description:
@@ -109,6 +118,13 @@ export const threadToolsLayer = ThreadTools.toLayer(
     const search = yield* Search
     const peers = yield* Peers
     const { identity } = yield* RemoteAccess
+    const groupServices = yield* Effect.context<Projects | ClientSettings>()
+
+    const reachable = (projectId: string) =>
+      reachableProjects(projectId).pipe(
+        Effect.provide(groupServices),
+        Effect.mapError((error) => ({ message: `Could not read this thread's project: ${error.message}` })),
+      )
 
     const projectThread = (targetId: string) =>
       Effect.gen(function* () {
@@ -118,7 +134,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
           .pipe(
             Effect.catchTag("NotFoundError", () => Effect.fail({ message: `Thread ${targetId} no longer exists.` })),
           )
-        if (target.projectId !== caller.projectId) {
+        if (!(yield* reachable(caller.projectId)).includes(target.projectId)) {
           return yield* Effect.fail({ message: `Thread ${targetId} is not in this project.` })
         }
         return target
@@ -207,7 +223,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
       )
 
     return ThreadTools.of({
-      create_thread: ({ title, prompt, provider, model, effort, worktree, machine, nested = true }) =>
+      create_thread: ({ title, prompt, provider, model, effort, worktree, machine, project, nested = true }) =>
         Effect.gen(function* () {
           const threadId = yield* McpTool.CallingThread
           const caller = yield* threads.get(threadId)
@@ -224,7 +240,24 @@ export const threadToolsLayer = ThreadTools.toLayer(
             worktree,
             createdBy: `thread:${threadId}`,
           }
-          if (machine !== undefined && machine !== identity.id) {
+          const onAnotherMachine = machine !== undefined && machine !== identity.id
+          if (project !== undefined && project !== caller.projectId) {
+            if (onAnotherMachine) {
+              return yield* Effect.fail({ message: "Pass either `project` or `machine`, not both." })
+            }
+            const own = yield* projects
+              .get(caller.projectId)
+              .pipe(Effect.mapError((error) => ({ message: `Could not read this thread's project: ${error.message}` })))
+            if (own.kind !== "group") {
+              return yield* Effect.fail({ message: "Only a group's conductor thread can pass `project`." })
+            }
+            if (!(yield* reachable(caller.projectId)).includes(project)) {
+              return yield* Effect.fail({
+                message: `Project ${project} is not in this group. Pass an id from the \`<group>\` block.`,
+              })
+            }
+          }
+          if (onAnotherMachine) {
             const repository = yield* repositoryOf(caller.projectId)
             if (repository === undefined) {
               return yield* Effect.fail({
@@ -257,7 +290,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
             return `Created thread ${thread.id} "${thread.title}" on ${target.name} and sent it the prompt.`
           }
           const thread = yield* threads.create({
-            projectId: caller.projectId,
+            projectId: project ?? caller.projectId,
             ...options,
             parentId: nested ? threadId : undefined,
           })
@@ -289,7 +322,12 @@ export const threadToolsLayer = ThreadTools.toLayer(
               .filter((worktree) => worktree.status !== "removed")
               .map((worktree) => [worktree.id, worktree.branch]),
           )
-          const local = all.filter((thread) => thread.projectId === caller.projectId)
+          const allowed = yield* reachable(caller.projectId)
+          const projectNames =
+            allowed.length === 1
+              ? new Map<string, string>()
+              : new Map((yield* projects.list.pipe(Effect.orElseSucceed(() => []))).map(({ id, name }) => [id, name]))
+          const local = all.filter((thread) => allowed.includes(thread.projectId))
           const repository = yield* repositoryOf(caller.projectId)
           const others =
             repository === undefined ? [] : yield* elsewhere(repository).pipe(Effect.catch(() => Effect.succeed([])))
@@ -317,6 +355,9 @@ export const threadToolsLayer = ThreadTools.toLayer(
                 thread.worktreeId && (place.here ? branches : otherBranches).get(thread.worktreeId),
               ),
               ...(thread.id === threadId ? { self: true } : {}),
+              ...(place.here && projectNames.has(thread.projectId)
+                ? { project: projectNames.get(thread.projectId) }
+                : {}),
               ...(place.here ? {} : { machine: place.machine ?? "another machine" }),
             }))
           return JSON.stringify(listed)

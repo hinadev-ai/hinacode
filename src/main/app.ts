@@ -1,7 +1,7 @@
 import { join } from "node:path"
 import { ProviderId } from "../shared/agent.ts"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Stream } from "effect"
 import { AgentBinaries } from "./agents/binary.ts"
 import * as ClaudeProvider from "./agents/claude/index.ts"
 import { mockScenarios, usageLimitLayer } from "./agents/claude/mock.ts"
@@ -160,9 +160,27 @@ export const makeAppLayer = ({
   ).pipe(Layer.provide(settings))
   const spans = new SpanLedger(STALL_MS)
   const chats = Layer.effectDiscard(Projects.Projects.use((projects) => projects.ensureChats(join(userData, "chats"))))
+  const groups = Layer.effectDiscard(
+    Effect.gen(function* () {
+      const projects = yield* Projects.Projects
+      const clientSettings = yield* ClientSettings.ClientSettings
+      const ensureGroups = clientSettings.get.pipe(
+        Effect.flatMap(({ sidebarGroups }) => projects.ensureGroups(sidebarGroups.groups, join(userData, "groups"))),
+        Effect.catch((error) => Effect.logWarning("could not read the sidebar groups", error)),
+      )
+      const changes = yield* clientSettings.changes
+      yield* ensureGroups
+      yield* changes.pipe(
+        Stream.runForEach(() => ensureGroups),
+        Effect.forkScoped,
+      )
+    }),
+  )
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(chats),
+      Layer.provideMerge(groups),
+      Layer.provideMerge(ClientSettings.layer(userData)),
       Layer.provideMerge(Scratch.layer(join(userData, "scratch"))),
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
@@ -170,7 +188,6 @@ export const makeAppLayer = ({
       Layer.provideMerge(AgentAccounts.layer),
       Layer.provideMerge(settings),
     ),
-    ClientSettings.layer(userData),
     Messages.layer,
     Attachments.layer(join(userData, "attachments")),
     Artifacts.layer(join(userData, "artifacts")),

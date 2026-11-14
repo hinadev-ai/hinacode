@@ -41,7 +41,7 @@ import {
 } from "../lib/rpc.ts"
 import { artifactSkillCommands } from "../lib/artifactSkills.ts"
 import { askSidechat, sidechatCommand, sidechatQuestion } from "../lib/sidechat.ts"
-import { useIsChat } from "../lib/useIsChat.ts"
+import { useHasNoWorkspace } from "../lib/useHasNoWorkspace.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, emptyDraft, hasContent, useDrafts } from "../stores/drafts.ts"
 import { trackSend } from "../stores/sending.ts"
@@ -126,7 +126,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     const history = state.byThread[thread.id]
     return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null && !isSidechat
   })
-  const isChat = useIsChat(thread.projectId)
+  const hasNoWorkspace = useHasNoWorkspace(thread.projectId)
   const environment = useThreadEnvironment(thread.id)
   const [error, setError] = useState<string | null>(null)
   const [isSending, startSending] = useTransition()
@@ -366,7 +366,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
           commandsError !== null && <CommandsError message={commandsError} />
         )}
         {unstarted ? (
-          !isChat && <WorkspacePicker thread={thread} workspace={workspace} />
+          !hasNoWorkspace && <WorkspacePicker thread={thread} workspace={workspace} />
         ) : (
           <ComposerStatusLine thread={thread} folderMissing={folderMissing} />
         )}

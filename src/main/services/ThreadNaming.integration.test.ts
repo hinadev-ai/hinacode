@@ -28,6 +28,7 @@ import * as Messages from "./Messages.ts"
 import * as Projects from "./Projects.ts"
 import * as PullRequests from "./PullRequests.ts"
 import * as Secrets from "./Secrets.ts"
+import * as ClientSettings from "./ClientSettings.ts"
 import * as Settings from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
 import * as Scratch from "./Scratch.ts"
@@ -130,6 +131,7 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
       Layer.provideMerge(Settings.layer(dirname(dbPath))),
+      Layer.provideMerge(ClientSettings.layer(dirname(dbPath))),
     ),
     Messages.layer,
     Attachments.layer(join(dirname(dbPath), "attachments")),

@@ -47,6 +47,7 @@ import magpieProvider from "./migrations/0045_magpie_provider.ts"
 import appConnection from "./migrations/0046_app_connection.ts"
 import routines from "./migrations/0047_routines.ts"
 import dropPullRequestObservedStatus from "./migrations/0048_drop_pull_request_observed_status.ts"
+import projectGroupKind from "./migrations/0049_project_group_kind.ts"
 
 const run = Migrator.make({})
 
@@ -99,6 +100,7 @@ export const runMigrations = run({
     "46_app_connection": appConnection,
     "47_routines": routines,
     "48_drop_pull_request_observed_status": dropPullRequestObservedStatus,
+    "49_project_group_kind": projectGroupKind,
   }),
 }).pipe(
   Effect.tap((ran) =>

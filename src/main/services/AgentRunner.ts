@@ -8,6 +8,7 @@ import {
   Effect,
   Fiber,
   FiberMap,
+  type FileSystem,
   Layer,
   Option,
   Predicate,
@@ -97,6 +98,8 @@ import { Scratch } from "./Scratch.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import { Projects } from "./Projects.ts"
+import type { ClientSettings } from "./ClientSettings.ts"
+import { groupContext } from "./groupContext.ts"
 import { Threads, type UpdateThread } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
@@ -362,6 +365,7 @@ const make = Effect.gen(function* () {
   const accounts = yield* AgentAccounts
   const projects = yield* Projects
   const activeWorkspace = yield* makeActiveWorkspace
+  const groupServices = yield* Effect.context<Projects | ClientSettings | FileSystem.FileSystem>()
 
   const providers: Record<ProviderId, AgentProvider> = {
     claude: yield* ClaudeProvider,
@@ -377,15 +381,31 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => null),
     )
 
-  const subagentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment) =>
+  const subagentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment, thread: Thread) =>
     Effect.gen(function* () {
       const settingsValue = yield* settings.get
       const enabled = enabledProviders(settingsValue)
-      const listed = yield* Effect.all(
-        Record.map(providers, (provider, id) => (enabled.includes(id) ? listedModels(provider) : Effect.succeed(null))),
+      const [listed, group] = yield* Effect.all(
+        [
+          Effect.all(
+            Record.map(providers, (provider, id) =>
+              enabled.includes(id) ? listedModels(provider) : Effect.succeed(null),
+            ),
+            { concurrency: "unbounded" },
+          ),
+          groupContext(thread.projectId).pipe(
+            Effect.provide(groupServices),
+            Effect.orElseSucceed(() => null),
+          ),
+        ],
         { concurrency: "unbounded" },
       )
-      return agentInstructions(experimental, environment, subagentChoices(listed, settingsValue.modelPresets, enabled))
+      return agentInstructions(
+        experimental,
+        environment,
+        subagentChoices(listed, settingsValue.modelPresets, enabled),
+        group,
+      )
     })
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
@@ -609,7 +629,7 @@ const make = Effect.gen(function* () {
         forkAt: thread.providerSessionId === null ? (thread.forkedFrom?.checkpoint ?? null) : null,
         home,
         mcpServer,
-        instructions: yield* subagentInstructions(experimental, environment),
+        instructions: yield* subagentInstructions(experimental, environment, thread),
       }
       return input
     })
@@ -961,7 +981,7 @@ const make = Effect.gen(function* () {
         settings.get,
         nowIso,
       ])
-      const instructions = yield* subagentInstructions(experimental, environment)
+      const instructions = yield* subagentInstructions(experimental, environment, thread)
 
       const id = randomUUID()
       const sessionId = `${threadId}:agent:${id}`

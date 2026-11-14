@@ -151,6 +151,8 @@ onPushEvent((event) => {
     case "environments.changed":
       registry.refresh(projectsAtom)
       return void loadLists()
+    case "projects.changed":
+      return registry.refresh(projectsAtom)
   }
 })
 

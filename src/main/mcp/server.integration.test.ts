@@ -44,6 +44,7 @@ import * as Projects from "../services/Projects.ts"
 import * as PullRequests from "../services/PullRequests.ts"
 import { layer as linearLayer } from "../services/Linear.ts"
 import { noKeyring, layer as secretsLayer } from "../services/Secrets.ts"
+import * as ClientSettings from "../services/ClientSettings.ts"
 import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
 import { decodeTar, encodeTar } from "../services/tinyVm/tar.ts"
@@ -200,6 +201,7 @@ const core = Layer.mergeAll(
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(AgentAccounts.layer),
     Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-mcp-settings-")))),
+    Layer.provideMerge(ClientSettings.layer(mkdtempSync(join(tmpdir(), "kk-mcp-settings-")))),
   ),
   Messages.layer,
   Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),
@@ -1208,6 +1210,111 @@ layer(testLayer)("thread controls", (it) => {
         expect(result.isError).toBe(true)
         expect(result.text).toContain("own turn")
       }
+    }),
+  )
+})
+
+const seedGroup = Effect.gen(function* () {
+  const groupDir = mkdtempSync(join(repos, "group-"))
+  const seedIn = (name: string, kind?: "group") => {
+    mkdirSync(join(groupDir, name))
+    return seedThread({ rootPath: join(groupDir, name), ...(kind === undefined ? {} : { kind }) })
+  }
+  const conductor = yield* seedIn("conductor", "group")
+  const member = yield* seedIn("web")
+  const sibling = yield* seedIn("api")
+  const groupId = conductor.projectId
+  yield* ClientSettings.ClientSettings.use((settings) =>
+    settings.set({
+      sidebarGroups: {
+        groups: [{ id: groupId, name: "Shop", collapsed: false }],
+        groupOf: { [member.projectId]: groupId, [sibling.projectId]: groupId },
+      },
+    }),
+  )
+  return { conductor, member, sibling }
+})
+
+layer(testLayer)("conductor thread tools", (it) => {
+  it.effect("a conductor starts a thread in a member project, nested under itself", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const threads = yield* Threads
+      const { conductor, member } = yield* seedGroup
+      const result = yield* callFrom(conductor.threadId, "create_thread", {
+        title: "Rename in web",
+        prompt: "Rename userId",
+        project: member.projectId,
+      })
+      expect(result.isError).toBe(false)
+      const id = createdThreadId(result.text)
+      if (id === null) throw new Error(`no thread id in ${result.text}`)
+      expect(yield* threads.get(id)).toMatchObject({ projectId: member.projectId, parentId: conductor.threadId })
+      yield* runner.interrupt(id)
+    }),
+  )
+
+  it.effect("a conductor is refused a project outside its group and a project on another machine", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { b } = yield* Seeded
+      const { conductor, member } = yield* seedGroup
+      const outsider = (yield* threads.get(b)).projectId
+      const refused = yield* callFrom(conductor.threadId, "create_thread", {
+        title: "t",
+        prompt: "p",
+        project: outsider,
+      })
+      expect(refused).toMatchObject({ isError: true })
+      expect(refused.text).toContain(`Project ${outsider} is not in this group.`)
+      const remote = yield* callFrom(conductor.threadId, "create_thread", {
+        title: "t",
+        prompt: "p",
+        project: member.projectId,
+        machine: "machine-elsewhere",
+      })
+      expect(remote).toMatchObject({ isError: true, text: "Pass either `project` or `machine`, not both." })
+    }),
+  )
+
+  it.effect("a conductor lists, steers and stops the threads of its member projects", () =>
+    Effect.gen(function* () {
+      const { b } = yield* Seeded
+      const { conductor, member, sibling } = yield* seedGroup
+      const listed = JSON.parse((yield* callFrom(conductor.threadId, "list_threads")).text) as Array<{
+        id: string
+        project?: string
+      }>
+      const ids = listed.map((thread) => thread.id)
+      expect(ids).toEqual(expect.arrayContaining([conductor.threadId, member.threadId, sibling.threadId]))
+      expect(ids).not.toContain(b)
+      expect(listed.find((thread) => thread.id === member.threadId)?.project).toBe("demo")
+      const stopped = yield* callFrom(conductor.threadId, "stop_thread", { threadId: sibling.threadId })
+      expect(stopped).toMatchObject({ isError: false, text: `Interrupted thread ${sibling.threadId}.` })
+      const outside = yield* callFrom(conductor.threadId, "stop_thread", { threadId: b })
+      expect(outside).toMatchObject({ isError: true, text: `Thread ${b} is not in this project.` })
+    }),
+  )
+
+  it.effect("a member thread cannot pass a project or reach a sibling project's thread", () =>
+    Effect.gen(function* () {
+      const { member, sibling } = yield* seedGroup
+      const created = yield* callFrom(member.threadId, "create_thread", {
+        title: "t",
+        prompt: "p",
+        project: sibling.projectId,
+      })
+      expect(created).toMatchObject({ isError: true, text: "Only a group's conductor thread can pass `project`." })
+      for (const name of ["send_to_thread", "stop_thread"]) {
+        const result = yield* callFrom(member.threadId, name, { threadId: sibling.threadId, prompt: "x" })
+        expect(result).toMatchObject({ isError: true, text: `Thread ${sibling.threadId} is not in this project.` })
+      }
+      const listed = JSON.parse((yield* callFrom(member.threadId, "list_threads")).text) as Array<{
+        id: string
+        project?: string
+      }>
+      expect(listed.map((thread) => thread.id)).toStrictEqual([member.threadId])
+      expect(listed[0]?.project).toBeUndefined()
     }),
   )
 })

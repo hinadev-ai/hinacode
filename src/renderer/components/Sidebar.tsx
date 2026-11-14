@@ -5,7 +5,7 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { Link, useRouter, useNavigate } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react"
+import { type ReactNode, type RefObject, startTransition, useEffect, useId, useRef, useState } from "react"
 import { RiInbox2Line, RiPulseLine } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project, SidebarGroup, Thread } from "../../shared/domain.ts"
@@ -24,7 +24,7 @@ import {
   type ProjectGroup as Group,
 } from "../../shared/projectGroups.ts"
 import { projectsAtom } from "../lib/rpc.ts"
-import { arrangeRows, deleteGroup, moveGroup, renameGroup, setGroupCollapsed } from "../lib/sidebarGroups.ts"
+import { arrangeRows, moveGroup, renameGroup, setGroupCollapsed } from "../lib/sidebarGroups.ts"
 import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
 import { type InboxGroup, inboxGroup, rowState } from "../../shared/threadStatus.ts"
 import { pullRequestAttentionsAtom } from "../lib/rpc.ts"
@@ -75,9 +75,11 @@ import {
   PencilIcon,
   PlusIcon,
   SearchIcon,
+  SteerIcon,
   TrashIcon,
 } from "@hinacode/icons"
 import { ProjectMenu } from "./ProjectMenu.tsx"
+import { DeleteGroupDialog, useConductorThreadCount, useDeleteGroup } from "./DeleteGroupDialog.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { useAttentionCount } from "./DockBadge.tsx"
 import {
@@ -626,7 +628,7 @@ function SidebarFilterMenu() {
   const ids = useUi((state) => state.sidebarProjectIds)
   const setIds = useUi((state) => state.setSidebarProjectIds)
   const picked = new Set(ids)
-  const shownGroups = groupProjects(projects).filter((group) =>
+  const shownGroups = groupProjects(projects.filter((project) => project.kind !== "group")).filter((group) =>
     group.projects.some((project) => !hidden.has(environmentOf(project))),
   )
   const projectsPicked = shownGroups.some((group) => group.projects.some((project) => picked.has(project.id)))
@@ -726,11 +728,13 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
   const projects = useAtomValue(projectsAtom)
   const refresh = useAtomRefresh(projectsAtom)
   const [listRef] = useAutoAnimate<HTMLUListElement>(projectListMotion)
-  const groups = groupProjects(useFilteredProjects(AsyncResult.getOrElse(projects, () => [])))
+  const listed = AsyncResult.getOrElse(projects, () => [])
+  const groups = groupProjects(useFilteredProjects(listed))
+  const conductors = groupProjects(listed.filter((project) => project.kind === "group"))
   const draftTitles = useDraftTitles()
   const shownKeys = useThreads(
     useShallow((state) =>
-      groups
+      [...groups, ...conductors]
         .filter(
           (group) =>
             isFullList(query) ||
@@ -746,23 +750,30 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
   const projectRow = (group: Group, nested = false) => (
     <ProjectGroup key={group.key} group={group} query={query} nested={nested} focusAfterDelete={focusAfterDelete} />
   )
+  const conductorOf = (group: SidebarGroup) =>
+    conductors.find((row) => row.key === group.id && shownKeys.includes(row.key))
   const groupItems = (group: SidebarGroup, rows: ReadonlyArray<Group>) => {
     const open = !group.collapsed || query !== ""
-    const header = <GroupHeader key={group.id} group={group} open={open} />
+    const header = (
+      <GroupHeader key={`${group.id}-header`} group={group} open={open} focusAfterDelete={focusAfterDelete} />
+    )
     if (!open) return [header]
+    const conductor = conductorOf(group)
+    const conductorRow = conductor === undefined ? [] : [projectRow(conductor, true)]
     if (rows.length === 0) {
       return [
         header,
+        ...conductorRow,
         <li key={`${group.id}-empty`} className="px-3.5 py-1 text-xs text-muted-foreground">
           {m.sidebar_group_empty()}
         </li>,
       ]
     }
-    return [header, ...rows.map((row) => projectRow(row, true))]
+    return [header, ...conductorRow, ...rows.map((row) => projectRow(row, true))]
   }
   const items = [
     ...grouped
-      .filter(({ rows }) => isFullList(query) || rows.length > 0)
+      .filter(({ group, rows }) => isFullList(query) || rows.length > 0 || conductorOf(group) !== undefined)
       .flatMap(({ group, rows }) => groupItems(group, rows)),
     ...ungrouped.map((row) => projectRow(row)),
   ]
@@ -771,7 +782,7 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
     .onInitial(() => <p className="animate-reveal px-3 py-2 text-xs text-muted-foreground">{m.sidebar_loading()}</p>)
     .onSuccess((list) => (
       <>
-        {list.every((project) => project.kind === "chats") && (
+        {list.every((project) => project.kind !== "folder") && (
           <div className="flex flex-col items-start gap-2 px-3 py-4">
             <p className="text-sm font-medium">{m.sidebar_empty_title()}</p>
             <p className="text-xs text-muted-foreground">{m.sidebar_empty_hint()}</p>
@@ -802,9 +813,10 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
 interface GroupHeaderProps {
   readonly group: SidebarGroup
   readonly open: boolean
+  readonly focusAfterDelete: RefObject<HTMLElement | null>
 }
 
-function GroupHeader({ group, open }: GroupHeaderProps) {
+function GroupHeader({ group, open, focusAfterDelete }: GroupHeaderProps) {
   const [, update] = useSidebarGroups()
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -834,7 +846,7 @@ function GroupHeader({ group, open }: GroupHeaderProps) {
             {group.name}
           </span>
         </button>
-        <GroupMenu group={group} open={menuOpen} onOpenChange={setMenuOpen} />
+        <GroupMenu group={group} open={menuOpen} onOpenChange={setMenuOpen} focusAfterDelete={focusAfterDelete} />
       </div>
     </li>
   )
@@ -844,13 +856,21 @@ interface GroupMenuProps {
   readonly group: SidebarGroup
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
+  readonly focusAfterDelete: RefObject<HTMLElement | null>
 }
 
-function GroupMenu({ group, open, onOpenChange }: GroupMenuProps) {
+type GroupDialog = "rename" | "delete"
+
+function GroupMenu({ group, open, onOpenChange, focusAfterDelete }: GroupMenuProps) {
   const [state, update] = useSidebarGroups()
   const index = state.groups.findIndex((candidate) => candidate.id === group.id)
-  const [renaming, setRenaming] = useState(false)
-  const [renameQueued, setRenameQueued] = useState(false)
+  const [dialog, setDialog] = useState<GroupDialog | null>(null)
+  const [queued, setQueued] = useState<GroupDialog | null>(null)
+  const conductorThreads = useConductorThreadCount(group.id)
+  const removeGroup = useDeleteGroup(group, focusAfterDelete)
+  const closeDialog = (dialogOpen: boolean) => {
+    if (!dialogOpen) setDialog(null)
+  }
 
   return (
     <>
@@ -858,9 +878,9 @@ function GroupMenu({ group, open, onOpenChange }: GroupMenuProps) {
         open={open}
         onOpenChange={onOpenChange}
         onOpenChangeComplete={(menuOpen) => {
-          if (menuOpen || !renameQueued) return
-          setRenaming(true)
-          setRenameQueued(false)
+          if (menuOpen || queued === null) return
+          setDialog(queued)
+          setQueued(null)
         }}
       >
         <DropdownMenuTrigger
@@ -876,7 +896,7 @@ function GroupMenu({ group, open, onOpenChange }: GroupMenuProps) {
           <MoreIcon aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem onClick={() => setRenameQueued(true)}>
+          <DropdownMenuItem onClick={() => startTransition(() => setQueued("rename"))}>
             <PencilIcon aria-hidden />
             {m.sidebar_group_rename()}
           </DropdownMenuItem>
@@ -892,7 +912,10 @@ function GroupMenu({ group, open, onOpenChange }: GroupMenuProps) {
             {m.sidebar_group_move_down()}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={() => void update((next) => deleteGroup(next, group.id))}>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => (conductorThreads > 0 ? startTransition(() => setQueued("delete")) : void removeGroup())}
+          >
             <TrashIcon aria-hidden />
             {m.sidebar_group_delete()}
           </DropdownMenuItem>
@@ -900,9 +923,16 @@ function GroupMenu({ group, open, onOpenChange }: GroupMenuProps) {
       </DropdownMenu>
       <GroupNameDialog
         name={group.name}
-        open={renaming}
-        onOpenChange={setRenaming}
+        open={dialog === "rename"}
+        onOpenChange={closeDialog}
         onSubmit={(name) => void update((next) => renameGroup(next, group.id, name))}
+      />
+      <DeleteGroupDialog
+        name={group.name}
+        threadCount={conductorThreads}
+        open={dialog === "delete"}
+        onOpenChange={closeDialog}
+        onConfirm={removeGroup}
       />
     </>
   )
@@ -930,6 +960,7 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
   const drafts = useWrittenDrafts(projects, query)
   const cloud = useCloud(environmentOf(first))
   const cloudMarkId = useId()
+  const label = first.kind === "group" ? m.sidebar_conductor() : first.name
 
   return (
     <li className={nested ? "pl-2" : undefined}>
@@ -945,7 +976,7 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
           <CollapsibleTrigger
             data-stale={isStale(cloud)}
             className="group/trigger flex min-w-0 flex-1 items-center gap-1.5 rounded-md p-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[stale=true]:text-muted-foreground"
-            aria-label={m.sidebar_toggle_project({ project: first.name })}
+            aria-label={m.sidebar_toggle_project({ project: label })}
             aria-describedby={cloud && cloudMarkId}
           >
             <ChevronRightIcon
@@ -956,11 +987,13 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
               <CloudMark cloud={cloud} id={cloudMarkId} className="size-4" />
             ) : first.kind === "chats" ? (
               <ChatIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            ) : first.kind === "group" ? (
+              <SteerIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             ) : (
               <FolderIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             )}
             <span className="truncate font-medium" title={first.rootPath}>
-              {first.name}
+              {label}
             </span>
           </CollapsibleTrigger>
           <NewThreadButton projects={projects} buttonRef={newThreadButtonRef} onNewThread={newThread} />

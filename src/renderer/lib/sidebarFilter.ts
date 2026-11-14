@@ -38,7 +38,7 @@ export function filterSidebarProjects(
   projectIds: ReadonlyArray<string>,
 ): ReadonlyArray<Project> {
   return filterPickedProjects(
-    projects.filter((project) => !hidden.has(environmentOf(project))),
+    projects.filter((project) => project.kind !== "group" && !hidden.has(environmentOf(project))),
     projectIds,
   )
 }

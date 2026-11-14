@@ -62,3 +62,45 @@ test("sends only the blocks that changed since the agent last read its instructi
   expect(update).not.toContain("<hinacode>")
   expect(instructionsUpdate(current, current)).toBeNull()
 })
+
+const group = {
+  name: "Shop",
+  instructions: "Use pnpm in every repository.",
+  skills: [{ name: "release", description: "Ship a release", path: "/data/groups/g1/skills/release/SKILL.md" }],
+  members: [],
+}
+
+test("adds the group's AGENTS.md and skills after the environment", () => {
+  const instructions = agentInstructions(experimental, environment, [], group)
+  expect(instructions).toContain('project group "Shop"')
+  expect(instructions).toContain("Group AGENTS.md:\nUse pnpm in every repository.")
+  expect(instructions).toContain("- `release`: Ship a release (`/data/groups/g1/skills/release/SKILL.md`)")
+  expect(instructions.indexOf("<group>")).toBeGreaterThan(instructions.indexOf("</environment>"))
+})
+
+test("tells a member thread nothing about conducting", () => {
+  expect(agentInstructions(experimental, environment, [], group)).not.toContain("conductor")
+})
+
+test("lists the member projects for a conductor thread", () => {
+  const instructions = agentInstructions(experimental, environment, [], {
+    ...group,
+    members: [
+      { id: "p1", name: "web", rootPath: "/code/web", repository: "acme/web" },
+      { id: "p2", name: "notes", rootPath: "/code/notes", repository: null },
+    ],
+  })
+  expect(instructions).toContain("You are this group's conductor.")
+  expect(instructions).toContain("`create_thread`")
+  expect(instructions).toContain("- `p1`: web (`/code/web`, acme/web)\n- `p2`: notes (`/code/notes`)")
+})
+
+test("leaves out an empty group AGENTS.md", () => {
+  const instructions = agentInstructions(experimental, environment, [], { ...group, instructions: "" })
+  expect(instructions).toContain("<group>")
+  expect(instructions).not.toContain("Group AGENTS.md")
+})
+
+test("has no group block outside a group", () => {
+  expect(agentInstructions(experimental, environment, [])).not.toContain("<group>")
+})
