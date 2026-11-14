@@ -251,6 +251,8 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
       onNone: () => Effect.fail(new VmError({ message: "Boat is not available in this build." })),
       onSome: (boat) => boat.client.pipe(Effect.mapError(toVmError)),
     })
+    const hostSandbox = Option.match(boatService, { onNone: () => undefined, onSome: (boat) => boat.hostSandbox })
+    const stopsWithVm = (sandboxId: string) => sandboxId !== hostSandbox
     const clientFor = (vmProvider: VmProvider): Effect.Effect<SandboxClient, VmError> =>
       vmProvider === "boat" ? boatClientEffect : sbxClientEffect
 
@@ -452,6 +454,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
 
     const boatStart = (boat: BoatClient, threadId: string, size: string) =>
       Effect.gen(function* () {
+        if (hostSandbox !== undefined) return { id: hostSandbox, fresh: false }
         const map = yield* readBoatMap
         const existing = map[threadId]
         if (existing !== undefined) {
@@ -496,7 +499,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         return {
           sandboxId: started.id,
           profile: "off" as VmProfile,
-          dispose: Effect.ignore(boat.stop(started.id)),
+          dispose: stopsWithVm(started.id) ? Effect.ignore(boat.stop(started.id)) : Effect.void,
         }
       })
 
@@ -597,7 +600,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
             Effect.catch((error) => Effect.logWarning("tiny vm: profile save on stop failed", error.message)),
           )
         }
-        if (vm.status === "running" && vm.provider === "boat") {
+        if (vm.status === "running" && vm.provider === "boat" && stopsWithVm(vm.sandboxId)) {
           const stopped = yield* boatClientEffect.pipe(
             Effect.flatMap((boat) => boat.stop(vm.sandboxId)),
             Effect.as(true),

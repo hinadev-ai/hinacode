@@ -28,6 +28,7 @@ import { Attachments } from "./services/Attachments.ts"
 import { Browser } from "./services/Browser.ts"
 import { UnknownRootError } from "./services/errors.ts"
 import { ClientSettings } from "./services/ClientSettings.ts"
+import { BoatMachines } from "./services/boat/BoatMachines.ts"
 import { Environments } from "./services/Environments.ts"
 import { Events } from "./services/Events.ts"
 import { Files } from "./services/Files.ts"
@@ -67,6 +68,7 @@ import { Worktrees } from "./services/Worktrees.ts"
 export type AppServices =
   | AgentAccounts
   | AppConnections
+  | BoatMachines
   | AgentLogins
   | SessionImports
   | Projects
@@ -344,6 +346,9 @@ const handlers: Handlers = {
   "environments.add": (input) => Environments.use((environments) => environments.add(input)),
   "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
+  "boatMachines.options": () => BoatMachines.use((machines) => machines.options),
+  "boatMachines.connect": (input) => BoatMachines.use((machines) => machines.connect(input)),
+  "boatMachines.forThread": (input) => BoatMachines.use((machines) => machines.forThread(input)),
   "relayAccount.status": () => RelayAccount.use((account) => account.status),
   "relayAccount.signIn": (_, desktop) =>
     Effect.gen(function* () {

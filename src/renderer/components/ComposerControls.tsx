@@ -51,6 +51,7 @@ import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
 import { type ComposerPicker, returnFocus, useUi } from "../stores/ui.ts"
+import { BoatThreadDialog } from "./BoatThreadDialog.tsx"
 import { EffortIcon } from "./icons/EffortIcon.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { switchAccount, useAccountHint, useAccountOptions } from "./AccountSwitch.tsx"
@@ -888,6 +889,7 @@ export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   const clouds = useClouds()
   const [creatingOn, setCreatingOn] = useState<EnvironmentId | undefined>(undefined)
+  const [boatOpen, setBoatOpen] = useState(false)
   const current = projects.find((project) => project.id === thread.projectId)
   const environment = environmentOf(current)
   const members =
@@ -908,10 +910,11 @@ export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
       : reachable.filter((candidate) => members.every((project) => environmentOf(project) !== candidate))
   const inlineName = (id: EnvironmentId) =>
     id === null ? m.environment_this_machine_inline() : environmentName(id, clouds)
+  const boat = current?.repository !== undefined && !inBrowser() ? current : undefined
   return (
     <>
       <ContextSwitch thread={thread} label={inlineName(environment)} options={options}>
-        {missing.length > 0 && (
+        {(missing.length > 0 || boat !== undefined) && (
           <>
             <DropdownMenuSeparator />
             {missing.map((candidate) => (
@@ -922,9 +925,17 @@ export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
                 {m.thread_environment_create({ machine: inlineName(candidate) })}
               </DropdownMenuItem>
             ))}
+            {boat !== undefined && (
+              <DropdownMenuItem onClick={() => startTransition(() => setBoatOpen(true))}>
+                {m.boat_thread_new()}
+              </DropdownMenuItem>
+            )}
           </>
         )}
       </ContextSwitch>
+      {boat !== undefined && (
+        <BoatThreadDialog thread={thread} project={boat} open={boatOpen} onOpenChange={setBoatOpen} />
+      )}
       {creatingOn !== undefined && cloneSource !== null && (
         <ProjectDialog
           open

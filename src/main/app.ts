@@ -30,6 +30,7 @@ import * as ArtifactInspector from "./services/ArtifactInspector.ts"
 import * as Artifacts from "./services/Artifacts.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Boat from "./services/boat/Boat.ts"
+import * as BoatMachines from "./services/boat/BoatMachines.ts"
 import * as Settle from "./services/Settle.ts"
 import * as Browser from "./services/Browser.ts"
 import * as Routines from "./services/routines/Routines.ts"
@@ -144,7 +145,7 @@ export const makeAppLayer = ({
   artifactInspector = ArtifactInspector.unavailable,
 }: AppOptions) => {
   const providers = agentProviders(process.env)
-  const settings = Settings.layer(userData)
+  const settings = Settings.layer(userData, Settings.defaultsFor(process.env))
   const binaries = Layer.effect(
     AgentBinaries,
     Effect.gen(function* () {
@@ -235,7 +236,7 @@ export const makeAppLayer = ({
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
     AppConnections.followRelayLayer,
     AppServer.layer.pipe(Layer.provide(Secrets.layer)),
-  ).pipe(Layer.provideMerge(agents))
+  ).pipe(Layer.provideMerge(BoatMachines.layer(process.env).pipe(Layer.provide(boat))), Layer.provideMerge(agents))
   return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),

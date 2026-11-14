@@ -27,6 +27,8 @@ import * as Attachments from "./services/Attachments.ts"
 import * as Browser from "./services/Browser.ts"
 import { Routines } from "./services/routines/Routines.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
+import * as Boat from "./services/boat/Boat.ts"
+import * as BoatMachines from "./services/boat/BoatMachines.ts"
 import * as Environments from "./services/Environments.ts"
 import { type Events, makeEventsLayer, type PushBroadcast, type WindowPush } from "./services/Events.ts"
 import * as Favicons from "./services/Favicons.ts"
@@ -122,8 +124,12 @@ export const makeTestAppLayer = (
   const environments = RelayAccount.layer({ serviceUrl: Relay.DEFAULT_RELAY_SERVICE_URL }).pipe(
     Layer.provide(Layer.mergeAll(Secrets.layer, agents)),
   )
+  const boatMachines = BoatMachines.layer({}).pipe(
+    Layer.provide(Layer.mergeAll(Boat.layer({}).pipe(Layer.provide(Secrets.layer)), agents)),
+  )
   const base = Layer.mergeAll(
     agents,
+    boatMachines,
     routinesStub,
     updatesStub,
     logins,
