@@ -972,12 +972,13 @@ describe("pull request reads", () => {
     }).pipe(Effect.provide(gh.layer))
   })
 
-  it.effect("a refresh leaves alone a pull request nobody has read and one that is merged", () => {
+  it.effect("a refresh tells views to reload a pull request it has not read, and leaves a merged one alone", () => {
     const gh = fakeGh(() => apiReply(graphqlPullRequest("Done", "MERGED")))
     return Effect.gen(function* () {
       const github = yield* GitHub
       yield* github.refresh(PR_URL)
       expect(gh.runs.filter(isRead)).toHaveLength(0)
+      expect(gh.pushed.filter(isPullRequestPush)).toStrictEqual([{ type: "github.pullRequest", url: PR_URL }])
       yield* github.pullRequest(PR_URL)
       yield* github.refresh(PR_URL)
       expect(gh.runs.filter(isRead)).toHaveLength(1)

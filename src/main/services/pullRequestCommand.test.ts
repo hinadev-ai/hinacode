@@ -11,6 +11,10 @@ describe("touchesPullRequest", () => {
     { command: "glab mr merge 3" },
     { command: "git push -u origin feat/x" },
     { command: ["bash", "-lc", "gh pr merge --auto --squash"] },
+    { command: "cd /repo\ngh pr merge 7 --squash" },
+    { command: "pnpm test\ngit push origin HEAD" },
+    { command: "gh --repo o/r pr merge 7 --squash" },
+    { command: "git -C /repo push origin HEAD" },
   ])("matches $command", (input) => {
     expect(touchesPullRequest(input)).toBe(true)
   })
@@ -20,6 +24,7 @@ describe("touchesPullRequest", () => {
     { command: "gh pr list" },
     { command: "gh api repos/o/r/issues/7" },
     { command: "git pull" },
+    { command: "git status && gh pr view 7" },
     { file_path: "src/pulls.ts" },
     undefined,
   ])("ignores %o", (input) => {

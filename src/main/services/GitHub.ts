@@ -1213,7 +1213,8 @@ const make = Effect.gen(function* () {
     pullRequestDetail: (raw, options) => Effect.map(read(raw, options?.fresh), toPullRequestDetail),
     refresh: (url) => {
       const state = lastRead.get(url)?.state
-      return state === undefined || state === "MERGED" ? Effect.void : Effect.ignore(reread(url))
+      if (state === undefined) return events.publish({ type: "github.pullRequest", url })
+      return state === "MERGED" ? Effect.void : Effect.ignore(reread(url))
     },
     pullRequestDiff: (raw) =>
       ghByUrl(raw, (url) => ["pr", "diff", url, "--color=never"]).pipe(
