@@ -132,8 +132,8 @@ const markClass = {
   marker: "text-muted-foreground",
 }
 
-const LIST_INDENT_COLUMN_EM = 0.6
-const LIST_MARKER_WIDTH = "1.75em"
+const LIST_INDENT_COLUMN_EM = 0.5
+const LIST_MARKER_WIDTH = "1.25em"
 const listTextStart = `calc(var(--list-indent) + ${LIST_MARKER_WIDTH})`
 
 const placeholderBefore =
