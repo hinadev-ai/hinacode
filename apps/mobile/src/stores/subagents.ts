@@ -58,7 +58,7 @@ export const useSubagents = create<SubagentsState>()((set, get) => {
       const version = bump(key)
       if (get().work[key] === undefined) setWork(key, { status: "loading" })
       try {
-        const work = await call("subagents.transcript", { threadId, callId })
+        const work = await call("subagents.transcript", { threadId, callId, compact: true })
         if (versions.get(key) === version) setWork(key, { status: "ready", work })
       } catch (cause) {
         if (versions.get(key) === version && get().work[key]?.status !== "ready")

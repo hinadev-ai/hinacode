@@ -81,8 +81,9 @@ export const compactMessage = (message: Message): Message => ({
   parts: compactParts(message.parts),
 })
 
-const compactParts = (parts: ReadonlyArray<MessagePart>) =>
-  parts.filter((part) => part.type !== "tool_call" || part.parentCallId === undefined).map(compactPart)
+export const isOwnPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
+
+const compactParts = (parts: ReadonlyArray<MessagePart>) => parts.filter(isOwnPart).map(compactPart)
 
 export function compactPushes() {
   const subagentCallIdsByThread = new Map<string, Set<string>>()
@@ -134,13 +135,21 @@ export function outputPreview(output: unknown) {
   }
 }
 
-const previewPart = (part: MessagePart): MessagePart => {
+export const previewPart = (part: MessagePart): MessagePart => {
   if (part.type !== "tool_call" || spawnsSubagent(part)) return part
   const preview = outputPreview(part.output)
   return preview === undefined ? part : { ...part, ...preview }
 }
 
 export const previewMessage = (message: Message): Message => ({ ...message, parts: message.parts.map(previewPart) })
+
+const settledSubagentCall = (part: MessagePart) =>
+  !isOwnPart(part) && part.type === "tool_call" && part.status !== "running"
+
+export const previewTranscriptMessage = (message: Message): Message =>
+  message.completedAt === null
+    ? previewMessage(message)
+    : { ...message, parts: message.parts.filter((part) => !settledSubagentCall(part)).map(previewPart) }
 
 export function previewPush(push: TranscriptPush): TranscriptPush {
   if (push.type !== "thread.event") return { ...push, message: previewMessage(push.message) }
