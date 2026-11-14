@@ -117,7 +117,13 @@ import { RelayHost } from "./relayMachines.ts"
 import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 import {
   AgentAction,
+  AgentOutcome,
+  AgentSteps,
+  DeviceApp,
   DeviceCommand,
+  DeviceElement,
+  DeviceScreenshot,
+  DeviceTarget,
   SimulatorModelId,
   DeviceControl,
   DeviceFrame,
@@ -199,6 +205,28 @@ export const RpcMethods = {
     }),
     Schema.NullOr(PickedDeviceElement),
   ),
+  "device.act": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      action: AgentAction,
+      ...AgentSteps.fields,
+    }),
+    AgentOutcome,
+  ),
+  "device.screenshot": rpc(
+    Schema.Struct({ threadId: Schema.String, device: Schema.optionalKey(DeviceTarget) }),
+    DeviceScreenshot,
+  ),
+  "device.describe": rpc(
+    Schema.Struct({ threadId: Schema.String, device: Schema.optionalKey(DeviceTarget) }),
+    Schema.Array(DeviceElement),
+  ),
+  "device.launch": rpc(
+    Schema.Struct({ threadId: Schema.String, device: Schema.optionalKey(DeviceTarget), app: DeviceApp }),
+    AgentOutcome,
+  ),
+  "device.release": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "device.screenshot.save": rpc(
     Schema.Struct({ threadId: Schema.String, dataUrl: Schema.String, name: Schema.String }),
     Attachment,
@@ -752,6 +780,11 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "device.command": "mutation",
   "device.control": "mutation",
   "device.pick": "mutation",
+  "device.act": "mutation",
+  "device.screenshot": "read",
+  "device.describe": "read",
+  "device.launch": "mutation",
+  "device.release": "mutation",
   "device.screenshot.save": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",

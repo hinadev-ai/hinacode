@@ -477,6 +477,7 @@ erDiagram
     text thread_id PK "no FK, Devices releases rows of archived or deleted threads"
     text device_id PK
     int owned "1 = detaching deletes the device"
+    int guest "1 = written for another machine's thread, released only by device.release"
   }
   message_part {
     text message_id FK "CASCADE"

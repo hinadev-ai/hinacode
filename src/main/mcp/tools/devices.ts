@@ -2,14 +2,16 @@ import { Effect, Schema } from "effect"
 import { type McpSchema, Toolkit } from "effect/ai"
 import {
   type AgentAction,
+  type AgentSteps,
   DeviceApp,
   DeviceButton,
   type DeviceCommand,
   type DeviceElement,
+  DeviceTarget,
   DeviceUrl,
 } from "../../../shared/device.ts"
 import { Attachments } from "../../services/Attachments.ts"
-import { type AgentSteps, Devices } from "../../services/devices/Devices.ts"
+import { Devices } from "../../services/devices/Devices.ts"
 import * as McpTool from "./tool.ts"
 
 const Point = (what: string) =>
@@ -22,7 +24,7 @@ const SHOWS = "Returns a screenshot taken just after acting."
 const HANDED_BACK =
   "The user had control and has handed it back. The screen may have changed, so this action was not performed. Look at the screenshot before you continue."
 const Target = Schema.optionalKey(
-  Schema.String.check(Schema.isMaxLength(200)).annotate({
+  DeviceTarget.annotate({
     description:
       "The device's name or id, as an earlier device tool result shows it. Leave it out while the thread has at most one device.",
   }),
