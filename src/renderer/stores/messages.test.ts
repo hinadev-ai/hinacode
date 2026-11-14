@@ -718,3 +718,35 @@ test("a duplicate is dropped and a gap behind a held delta reloads", async () =>
   store().receive(event(6, { type: "text_delta", text: "f" }))
   expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "abcdef" }])
 })
+
+test("each loaded snapshot gets a new id that pushes keep", async () => {
+  await loadReady()
+  const first = ready().snapshotId
+  store().receive(event(1, { type: "text_delta", text: "a" }))
+  vi.runAllTimers()
+  expect(ready().snapshotId).toBe(first)
+
+  vi.useRealTimers()
+  transcriptResponse = Promise.withResolvers()
+  const reloading = store().reload(threadId)
+  transcriptResponse.resolve({
+    result: {
+      messages: [assistant("")],
+      approvals: [],
+      questions: [],
+      secretRequests: [],
+      seq: 1,
+      sequenceScope: "thread",
+    },
+  })
+  await reloading
+  expect(ready().snapshotId).not.toBe(first)
+})
+
+test("a finish for a call the history does not hold is counted, not folded", async () => {
+  await loadReady()
+  const before = ready()
+  store().receive(event(1, { type: "tool_call_finished", callId: "omitted", output: "late", isError: false }))
+  expect(ready().messages).toBe(before.messages)
+  expect(ready().missedFinishes).toBe(before.missedFinishes + 1)
+})
