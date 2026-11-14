@@ -46,7 +46,7 @@ import type {
   Thread,
   WorkspaceChoice,
 } from "../../shared/domain.ts"
-import { enabledProviders, isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
+import { enabledProviders, isInterrupted, isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
 import { previewPush } from "../../shared/compactTranscript.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { resumeGraceMs } from "../../shared/limits.ts"
@@ -141,6 +141,12 @@ type SendError =
   | PullRequestUrlInvalidError
   | RootBusyError
 
+export const RESUME_PROMPT = [
+  "HinaCode restarted while you were working, so your last turn stopped partway.",
+  "Before you continue, run `git status` and `git log` in your workspace to see what you already changed and committed.",
+  "Then carry on with the task.",
+].join(" ")
+
 const resumeAt = (thread: Thread): Deadline => {
   const reset = thread.usageLimit?.reset
   if (thread.status !== "limited" || reset?.autoResume !== true) return undefined
@@ -214,6 +220,7 @@ export class AgentRunner extends Context.Service<
     readonly isBusy: (threadId: string) => Effect.Effect<boolean>
     readonly release: <A, E>(threadId: string, whileIdle: Effect.Effect<A, E>) => Effect.Effect<Option.Option<A>, E>
     readonly warm: (threadId: string) => Effect.Effect<void>
+    readonly resume: (threadId: string) => Effect.Effect<void, SendError>
     readonly resumeAtReset: (
       threadId: string,
       enabled: boolean,
@@ -815,6 +822,7 @@ const make = Effect.gen(function* () {
 
     let next: QueuedMessage | undefined
     let finishing = false
+    let interruptedByRuntime = false
     const opened = Deferred.makeUnsafe<void>()
     const ended = Deferred.makeUnsafe<void>()
     const withdraw = (event: AgentEvent) => publishTranscript({ type: "thread.event", threadId: thread.id, event })
@@ -847,8 +855,10 @@ const make = Effect.gen(function* () {
       setTurnMessages(replaceLast(turnMessages, closed))
       yield* persist
       if (closed !== last) yield* publishTranscript({ type: "message.updated", message: closed })
-      if (isThreadBusy(state.status)) yield* updateThread({ id: thread.id, status: "idle" })
-      if (state.outcome !== "completed" || (yield* Deferred.isDone(stop))) return
+      const stopped = yield* Deferred.isDone(stop)
+      const interruptedAt = interruptedByRuntime && !stopped ? yield* nowIso : null
+      if (isThreadBusy(state.status)) yield* updateThread({ id: thread.id, status: "idle", interruptedAt })
+      if (state.outcome !== "completed" || stopped) return
       next = yield* nextQueued(thread.id)
     }).pipe(
       Effect.catch((error) => Effect.logError("failed to finish turn", error)),
@@ -875,6 +885,11 @@ const make = Effect.gen(function* () {
           }),
         ),
         Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
+        Effect.onInterrupt(() =>
+          Effect.sync(() => {
+            interruptedByRuntime = true
+          }),
+        ),
         Effect.ensuring(finish),
       )
 
@@ -1340,6 +1355,15 @@ const make = Effect.gen(function* () {
         )
       }
       return queue(threadId, text, attachments, { messageId, when })
+    })
+
+  const resume = (threadId: string) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      if (!isInterrupted(thread)) {
+        return yield* new AgentError({ provider: "hinacode", message: "This thread was not interrupted" })
+      }
+      yield* send(threadId, RESUME_PROMPT, [])
     })
 
   const resumeAtReset = (threadId: string, enabled: boolean) =>
@@ -1848,6 +1872,7 @@ const make = Effect.gen(function* () {
     reschedule,
     unschedule,
     sendDueSchedules,
+    resume,
     resumeAtReset,
     switchAccount,
     removeAccount,

@@ -18,13 +18,13 @@ import { IconButton, Notice } from "@/components/ui"
 import { useThreadConnection } from "@/hooks/use-server"
 import { type Palette, radius, READABLE_WIDTH } from "@/constants/theme"
 import { threadStatusLabel } from "@/constants/thread-status"
-import { headerStatus } from "@/lib/header-status"
+import { type HeaderStatus, headerStatus } from "@/lib/header-status"
 import { useNow } from "@/hooks/use-now"
 import { useSplitLayout } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { relativeTime } from "@/lib/relative-time"
-import type { Thread, ThreadStatus } from "@shared/domain.ts"
+import type { Thread } from "@shared/domain.ts"
 import { useMessages } from "@/stores/messages"
 import { useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
@@ -219,8 +219,8 @@ function ThreadActionsButton({ thread, onOpenTerminal }: { thread: Thread; onOpe
   )
 }
 
-const statusColor = (theme: Palette, status: ThreadStatus) =>
-  status === "awaiting_approval" || status === "limited"
+const statusColor = (theme: Palette, status: HeaderStatus) =>
+  status === "awaiting_approval" || status === "limited" || status === "interrupted"
     ? theme.attention
     : status === "running"
       ? theme.running
@@ -240,7 +240,7 @@ function ThreadTitle({
   const theme = useTheme()
   const now = useNow()
   const { width } = useWindowDimensions()
-  const status = thread === undefined ? undefined : headerStatus(thread.status, waiting)
+  const status = thread === undefined ? undefined : headerStatus(thread, waiting)
   const color = status === undefined ? theme.textMuted : statusColor(theme, status)
   const tabLabel = threadTabs.find((item) => item.value === tab)?.label ?? ""
   return (

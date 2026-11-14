@@ -162,6 +162,7 @@ export const routes: Record<RpcMethod, Route> = {
 
   "threads.update": owner("thread", "id"),
   "threads.delete": owner("thread", "id"),
+  "threads.resume": owner("thread", "id"),
   "threads.resumeAtReset": owner("thread", "id"),
   "threads.switchAccount": owner("thread", "id"),
   "threads.changes": thread,

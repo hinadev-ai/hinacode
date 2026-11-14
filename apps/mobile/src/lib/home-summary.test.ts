@@ -7,7 +7,8 @@ import { homeSummary, openRequests, stopwatch, threadsWithRequests, waitingThrea
 const at = (hour: number, day = 8) => new Date(2026, 10, day, hour, 0).toISOString()
 const NOW = Date.parse(at(15))
 
-const thread = (id: string, status: ThreadStatus, updatedAt = at(12)) => ({ id, status, updatedAt }) as Thread
+const thread = (id: string, status: ThreadStatus, updatedAt = at(12), interruptedAt: string | null = null) =>
+  ({ id, status, updatedAt, interruptedAt }) as Thread
 const approval = (id: string) => ({ id }) as ApprovalRequest
 const question = (id: string) => ({ id }) as QuestionRequest
 const history = (approvals: readonly ApprovalRequest[], questions: readonly QuestionRequest[] = []): ThreadHistory => ({
@@ -71,6 +72,7 @@ describe("homeSummary", () => {
         thread("archived", "archived"),
         thread("draft", "draft"),
         thread("limited", "limited"),
+        thread("stopped by a restart", "idle", at(2), at(1)),
       ],
       "ask",
       NOW,

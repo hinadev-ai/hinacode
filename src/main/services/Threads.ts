@@ -99,6 +99,7 @@ export interface UpdateThread {
   readonly pinned?: boolean | undefined
   readonly snoozedUntil?: string | null | undefined
   readonly settled?: boolean | undefined
+  readonly interruptedAt?: string | null | undefined
   readonly providerSessionId?: string | null | undefined
   readonly queue?: ReadonlyArray<QueuedMessage> | undefined
   readonly scheduled?: ReadonlyArray<ScheduledMessage> | undefined
@@ -369,6 +370,7 @@ const make = Effect.gen(function* () {
         pinnedAt: null,
         snoozedUntil: null,
         settledAt: null,
+        interruptedAt: null,
         queue: [],
         scheduled: [],
         createdBy,
@@ -460,6 +462,7 @@ const make = Effect.gen(function* () {
         pinnedAt: null,
         snoozedUntil: null,
         settledAt: null,
+        interruptedAt: null,
         queue: [],
         scheduled: [],
         createdBy: "user",
@@ -505,6 +508,7 @@ const make = Effect.gen(function* () {
         pinnedAt: null,
         snoozedUntil: null,
         settledAt: null,
+        interruptedAt: null,
         queue: [],
         scheduled: [],
         createdBy: "user",
@@ -627,6 +631,12 @@ const make = Effect.gen(function* () {
           input.providerSessionId !== undefined || (input.provider ?? current.provider) !== current.provider
             ? null
             : current.forkedFrom,
+        interruptedAt:
+          input.interruptedAt !== undefined
+            ? input.interruptedAt
+            : input.status !== undefined && isThreadBusy(input.status)
+              ? null
+              : current.interruptedAt,
         queue: input.queue ?? current.queue,
         scheduled: input.scheduled ?? current.scheduled,
         updatedAt: arranges && !reopening ? current.updatedAt : now,
@@ -637,6 +647,7 @@ const make = Effect.gen(function* () {
             effort = ${next.effort}, fast_mode = ${next.fastMode ? 1 : 0},
             access_mode = ${next.accessMode}, status = ${next.status},
             sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, snoozed_until = ${next.snoozedUntil}, settled_at = ${next.settledAt},
+            interrupted_at = ${next.interruptedAt},
             provider_session_id = ${next.providerSessionId},
             forked_from = ${next.forkedFrom === null ? null : JSON.stringify(next.forkedFrom)},
             updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)},
@@ -830,7 +841,7 @@ const make = Effect.gen(function* () {
       const now = yield* nowIso
       yield* sql`
         UPDATE thread
-        SET status = 'idle', usage_limit = NULL, snoozed_until = NULL, settled_at = NULL,
+        SET status = 'idle', usage_limit = NULL, snoozed_until = NULL, settled_at = NULL, interrupted_at = NULL,
             work_started_at = ${now}, updated_at = ${now}
         WHERE id = ${id} AND status = 'archived'
       `.pipe(Effect.mapError(persistence("threads.unarchive")))
@@ -926,9 +937,13 @@ const make = Effect.gen(function* () {
     unsettle,
     workStartedAt,
     remove,
-    resetInterrupted: sql`
-      UPDATE thread SET status = 'idle' WHERE status IN ('running', 'awaiting_approval')
-    `.pipe(Effect.asVoid, Effect.mapError(persistence("threads.resetInterrupted"))),
+    resetInterrupted: Effect.gen(function* () {
+      const now = yield* nowIso
+      yield* sql`
+        UPDATE thread SET status = 'idle', interrupted_at = ${now}, snoozed_until = NULL
+        WHERE status IN ('running', 'awaiting_approval')
+      `
+    }).pipe(Effect.mapError(persistence("threads.resetInterrupted"))),
   })
 })
 

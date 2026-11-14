@@ -423,6 +423,12 @@ export type ThreadStatus = typeof ThreadStatus.Type
 
 export const isThreadBusy = (status: ThreadStatus) => status === "running" || status === "awaiting_approval"
 
+export const isInterrupted = (thread: Pick<Thread, "status" | "interruptedAt">) =>
+  thread.status === "idle" && thread.interruptedAt !== null
+
+export const waitsOnDeveloper = (thread: Pick<Thread, "status" | "interruptedAt">) =>
+  thread.status === "awaiting_approval" || thread.status === "limited" || isInterrupted(thread)
+
 export const AccessMode = Schema.Literals(["supervised", "auto", "full"])
 export type AccessMode = typeof AccessMode.Type
 
@@ -489,6 +495,7 @@ export const Thread = Schema.Struct({
   pinnedAt: Schema.NullOr(Timestamp),
   snoozedUntil: Schema.NullOr(Timestamp).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   settledAt: Schema.NullOr(Timestamp).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  interruptedAt: Schema.NullOr(Timestamp).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   queue: Schema.Array(QueuedMessage),
   scheduled: Schema.Array(ScheduledMessage).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
   createdBy: Schema.String,

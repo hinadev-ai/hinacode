@@ -40,10 +40,14 @@ const lastActivity = (thread: Thread) =>
 const olderThan = (timestamp: string, days: number, now: number) => now - Date.parse(timestamp) >= days * DAY_MS
 
 const isIdleFor = (thread: Thread, days: number, now: number) =>
-  canAutoSettle(thread) && thread.status === "idle" && olderThan(lastActivity(thread), days, now)
+  canAutoSettle(thread) &&
+  thread.status === "idle" &&
+  thread.interruptedAt === null &&
+  olderThan(lastActivity(thread), days, now)
 
 const isSettledFor = (thread: Thread, days: number, now: number) =>
   thread.status === "idle" &&
+  thread.interruptedAt === null &&
   thread.pinnedAt === null &&
   thread.settledAt !== null &&
   olderThan(thread.settledAt, days, now)

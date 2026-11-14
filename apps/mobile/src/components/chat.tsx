@@ -3,6 +3,7 @@ import type { Compaction } from "@shared/agent.ts"
 import { collapsedParts } from "@shared/activityFold.ts"
 import { formatWorkDuration } from "@shared/workDuration.ts"
 import {
+  isInterrupted,
   type Message,
   type MessagePart,
   publishesArtifact,
@@ -28,7 +29,7 @@ import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { motion } from "@/lib/motion"
-import { ApprovalCard, QuestionCard, UsageLimitCallout } from "@/components/request-cards"
+import { ApprovalCard, InterruptedCallout, QuestionCard, UsageLimitCallout } from "@/components/request-cards"
 import { loadHistoryAtom, useMessages } from "@/stores/messages"
 import { loadSubagentsAtom } from "@/stores/subagents"
 import { useThreadRoot } from "@/stores/threads"
@@ -60,6 +61,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
   const [dockHeight, setDockHeight] = useState(0)
   const hasRequests =
     thread.usageLimit !== null ||
+    isInterrupted(thread) ||
     (history?.status === "ready" && history.approvals.length + history.questions.length > 0)
 
   return (
@@ -122,6 +124,9 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
             style={styles.requests}
             contentContainerStyle={styles.requestList}
           >
+            {isInterrupted(thread) && (
+              <InterruptedCallout key={`interrupted-${thread.id}`} threadId={thread.id} />
+            )}
             {thread.usageLimit !== null && (
               <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
             )}
