@@ -236,8 +236,6 @@ const ThreadOnMain = Schema.Struct({
 })
 const ThreadUpdatedOnMain = Schema.Struct({ type: Schema.Literal("thread.updated"), thread: ThreadOnMain })
 
-const overTheWire = (encoded: unknown): unknown => JSON.parse(JSON.stringify(encoded))
-
 it.live("an older phone, peer or CLI reads an interrupted thread from the list and the push as idle", () =>
   Effect.gen(function* () {
     const dbPath = freshDatabase("compat")
@@ -252,13 +250,15 @@ it.live("an older phone, peer or CLI reads an interrupted thread from the list a
         event.type === "thread.updated" && event.thread.id === threadId,
     )
     expect(pushed && isInterrupted(pushed.thread)).toBe(true)
-    const push = Schema.decodeUnknownSync(ThreadUpdatedOnMain)(overTheWire(Schema.encodeSync(PushEvent)(pushed!)))
+    const push = Schema.decodeUnknownSync(Schema.fromJsonString(ThreadUpdatedOnMain))(
+      JSON.stringify(Schema.encodeSync(PushEvent)(pushed!)),
+    )
     expect(push.thread).toMatchObject({ id: threadId, status: "idle" })
 
     const listed = yield* Threads.use((threads) => threads.list).pipe(Effect.provide(appOn(dbPath)))
     expect(listed.find((thread) => thread.id === threadId)).toSatisfy(isInterrupted)
-    const list = Schema.decodeUnknownSync(Schema.Array(ThreadOnMain))(
-      overTheWire(Schema.encodeSync(RpcMethods["threads.list"].response)(listed)),
+    const list = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(ThreadOnMain)))(
+      JSON.stringify(Schema.encodeSync(RpcMethods["threads.list"].response)(listed)),
     )
     expect(list.find((thread) => thread.id === threadId)).toMatchObject({ status: "idle" })
   }),
