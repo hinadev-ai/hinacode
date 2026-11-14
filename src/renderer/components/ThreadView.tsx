@@ -172,9 +172,10 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const load = useMessages((state) => state.load)
   const label = providerLabel[thread.provider]()
+  const agentCommands = useAtomValue(commandsAtom(completionKey(thread)))
   const commands = [
     ...artifactSkillCommands(),
-    ...AsyncResult.getOrElse(useAtomValue(commandsAtom(completionKey(thread))), (): ReadonlyArray<AgentCommand> => []),
+    ...AsyncResult.getOrElse(agentCommands, (): ReadonlyArray<AgentCommand> => []),
   ]
   const isChat = useIsChat(thread.projectId)
   const findOpen = useUi((state) => state.findThreadId === thread.id)
