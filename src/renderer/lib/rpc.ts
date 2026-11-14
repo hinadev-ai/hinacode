@@ -574,6 +574,10 @@ export const vmDesktopUrlAtom = familyOf((threadId: string, _sandboxId: string) 
 
 export const deviceHostAtom = Atom.family((threadId: string) => Atom.make(call("devices.list", { threadId })))
 
+export const deviceChecksAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(call("devices.checks", undefined, { environment })),
+)
+
 export const vmHostAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("vm.host", undefined, { environment })),
 )

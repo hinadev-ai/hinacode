@@ -6,6 +6,7 @@ import {
   type DeviceButton,
   type DevicePosture,
   type DeviceElement,
+  type DeviceId,
   type DeviceScreen as Screen,
   type ThreadDevice,
 } from "../../../../shared/device.ts"
@@ -25,10 +26,12 @@ import { AgentCaption, type ShownAgentAction } from "./AgentActivity.tsx"
 import { DeleteDeviceDialog, deleteDeviceLabel } from "./DeleteDeviceDialog.tsx"
 import { DeviceSession, type FrameShape } from "./deviceSession.ts"
 import { DeviceScreen } from "./DeviceScreen.tsx"
+import { DeviceSound } from "./deviceSound.ts"
 import {
   BookIcon,
   CameraIcon,
   CursorIcon,
+  HeadphonesIcon,
   HomeIcon,
   type IconComponent,
   KeyboardIcon,
@@ -101,11 +104,20 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
     localStorage.getItem(appearanceKey(device.id)) === "dark" ? "dark" : "light",
   )
   const [hardwareKeyboard, setHardwareKeyboard] = useState(() => localStorage.getItem(hardwareKeyboardKey) === "on")
+  const [sound, setSound] = useState<{ readonly deviceId: DeviceId; readonly unavailable: string | null } | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const sessionRef = useRef<DeviceSession | null>(null)
   const hintId = useId()
   const owned = device.ownerThreadId === threadId
   const deviceId = device.id
+  const soundUnavailable = sound?.deviceId === deviceId ? sound.unavailable : null
+  const listening = sound?.deviceId === deviceId && soundUnavailable === null
+
+  useEffect(() => {
+    if (!listening) return
+    const player = new DeviceSound(threadId, deviceId, (message) => setSound({ deviceId, unavailable: message }))
+    return () => player.dispose()
+  }, [listening, threadId, deviceId])
 
   useEffect(() => {
     const session = new DeviceSession(threadId, deviceId, {
@@ -300,6 +312,29 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
             <KeyboardIcon aria-hidden />
           </TooltipTrigger>
           <TooltipContent>{m.devices_hardware_keyboard_hint()}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant={listening ? "secondary" : "ghost"}
+                size="icon-sm"
+                aria-label={m.devices_sound()}
+                aria-pressed={listening}
+                action={() => setSound(listening ? null : { deviceId, unavailable: null })}
+                className={cn(listening && "text-primary", soundUnavailable !== null && "text-destructive")}
+              />
+            }
+          >
+            <HeadphonesIcon aria-hidden />
+          </TooltipTrigger>
+          <TooltipContent>
+            {soundUnavailable !== null
+              ? m.devices_sound_unavailable({ reason: soundUnavailable })
+              : listening
+                ? m.devices_sound_stop()
+                : m.devices_sound_play()}
+          </TooltipContent>
         </Tooltip>
         <div className="flex-1" />
         <DropdownMenu>

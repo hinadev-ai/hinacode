@@ -14,7 +14,7 @@ export type Entity =
 export type Route =
   | { readonly to: "client" }
   | { readonly to: "all" }
-  | { readonly to: "owner"; readonly entity: Entity; readonly key: string }
+  | { readonly to: "owner"; readonly entity: Entity; readonly key: string; readonly orElse?: "deviceHub" }
   | { readonly to: "named" }
 
 const client: Route = { to: "client" }
@@ -22,6 +22,7 @@ const all: Route = { to: "all" }
 const named: Route = { to: "named" }
 const owner = (entity: Entity, key: string): Route => ({ to: "owner", entity, key })
 const thread = owner("thread", "threadId")
+const threadDevice: Route = { to: "owner", entity: "thread", key: "threadId", orElse: "deviceHub" }
 const project = owner("project", "id")
 const root = owner("root", "root")
 
@@ -30,18 +31,31 @@ export const routes: Record<RpcMethod, Route> = {
   "browser.command": thread,
   "browser.frame": thread,
   "browser.close": thread,
-  "devices.list": thread,
-  "device.get": thread,
-  "device.attach": thread,
-  "device.create": thread,
-  "device.detach": thread,
-  "device.delete": thread,
-  "device.shutdown": thread,
-  "device.frame": thread,
-  "device.command": thread,
-  "device.control": thread,
-  "device.pick": thread,
+  "devices.list": threadDevice,
+  "devices.checks": named,
+  "device.get": threadDevice,
+  "device.attach": threadDevice,
+  "device.create": threadDevice,
+  "device.detach": threadDevice,
+  "device.delete": threadDevice,
+  "device.shutdown": threadDevice,
+  "device.frame": threadDevice,
+  "device.command": threadDevice,
+  "device.control": threadDevice,
+  "device.pick": threadDevice,
   "device.screenshot.save": client,
+  "devices.claim": client,
+  "devices.release": threadDevice,
+  "devices.setup": threadDevice,
+  "device.act": threadDevice,
+  "device.look": threadDevice,
+  "device.describe": threadDevice,
+  "device.launch": threadDevice,
+  "device.logs": threadDevice,
+  "device.install.begin": threadDevice,
+  "device.install.chunk": threadDevice,
+  "device.install.end": threadDevice,
+  "device.audio": threadDevice,
   "app.ready": client,
   "app.focus": client,
   "windows.openPullRequest": client,

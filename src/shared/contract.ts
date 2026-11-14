@@ -117,10 +117,21 @@ import { RelayHost } from "./relayMachines.ts"
 import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 import {
   AgentAction,
+  AgentInput,
+  AgentOutcome,
+  Device,
+  DeviceAudio,
+  DeviceClient,
   DeviceCommand,
+  DeviceElement,
+  DeviceTarget,
+  InstallKind,
+  MAX_INSTALL_BYTES,
+  Requirement,
   SimulatorModelId,
   DeviceControl,
   DeviceFrame,
+  DeviceCheck,
   DeviceHost,
   DeviceId,
   PickedDeviceElement,
@@ -160,10 +171,18 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 
 export const RpcMethods = {
   "devices.list": rpc(Schema.Struct({ threadId: Schema.String }), DeviceHost),
+  "devices.checks": rpc(Schema.Void, Schema.Array(DeviceCheck)),
   "device.get": rpc(Schema.Struct({ threadId: Schema.String }), ThreadDevices),
-  "device.attach": rpc(Schema.Struct({ threadId: Schema.String, deviceId: DeviceId }), ThreadDevice),
+  "device.attach": rpc(
+    Schema.Struct({ threadId: Schema.String, deviceId: DeviceId, client: Schema.optionalKey(DeviceClient) }),
+    ThreadDevice,
+  ),
   "device.create": rpc(
-    Schema.Struct({ threadId: Schema.String, model: Schema.optional(SimulatorModelId) }),
+    Schema.Struct({
+      threadId: Schema.String,
+      model: Schema.optional(SimulatorModelId),
+      client: Schema.optionalKey(DeviceClient),
+    }),
     ThreadDevice,
   ),
   "device.detach": rpc(Schema.Struct({ threadId: Schema.String, deviceId: Schema.NullOr(DeviceId) }), Schema.Void),
@@ -202,6 +221,99 @@ export const RpcMethods = {
   "device.screenshot.save": rpc(
     Schema.Struct({ threadId: Schema.String, dataUrl: Schema.String, name: Schema.String }),
     Attachment,
+  ),
+  "devices.claim": rpc(
+    Schema.Struct({
+      client: DeviceClient,
+      threads: Schema.Array(Schema.Struct({ id: Schema.String, title: Schema.NullOr(Schema.String) })),
+    }),
+    Schema.Void,
+  ),
+  "devices.release": rpc(Schema.Struct({ threadId: Schema.String, clientId: Schema.String }), Schema.Void),
+  "devices.setup": rpc(Schema.Struct({ threadId: Schema.String, requirement: Requirement }), DeviceHost),
+  "device.act": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      action: AgentAction,
+      input: AgentInput,
+      client: Schema.optionalKey(DeviceClient),
+    }),
+    AgentOutcome,
+  ),
+  "device.look": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      client: Schema.optionalKey(DeviceClient),
+    }),
+    Schema.Struct({
+      frame: DeviceFrame,
+      device: Device,
+      screen: Schema.Struct({ width: Schema.Number, height: Schema.Number }),
+    }),
+  ),
+  "device.describe": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      client: Schema.optionalKey(DeviceClient),
+    }),
+    Schema.Array(DeviceElement),
+  ),
+  "device.launch": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      app: Schema.String.check(Schema.isMaxLength(300)),
+      client: Schema.optionalKey(DeviceClient),
+    }),
+    AgentOutcome,
+  ),
+  "device.logs": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      app: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(300))),
+      sinceSeconds: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3600 })),
+      client: Schema.optionalKey(DeviceClient),
+    }),
+    Schema.Struct({ device: Schema.String, text: Schema.String }),
+  ),
+  "device.install.begin": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      kind: InstallKind,
+      bytes: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: MAX_INSTALL_BYTES })),
+      client: Schema.optionalKey(DeviceClient),
+    }),
+    Schema.Struct({ uploadId: Schema.String }),
+  ),
+  "device.install.chunk": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      uploadId: Schema.String.check(Schema.isMaxLength(64)),
+      index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      data: Schema.String.check(Schema.isMaxLength(6 * 1024 * 1024)),
+    }),
+    Schema.Void,
+  ),
+  "device.install.end": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      uploadId: Schema.String.check(Schema.isMaxLength(64)),
+      sha256: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
+    }),
+    Schema.Struct({ device: Schema.String, app: Schema.NullOr(Schema.String) }),
+  ),
+  "device.audio": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      deviceId: DeviceId,
+      after: Schema.Int.check(Schema.isGreaterThanOrEqualTo(-1)),
+    }),
+    DeviceAudio,
   ),
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
@@ -742,6 +854,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "browser.frame": "read",
   "browser.close": "mutation",
   "devices.list": "read",
+  "devices.checks": "read",
   "device.get": "read",
   "device.attach": "mutation",
   "device.create": "mutation",
@@ -753,6 +866,18 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "device.control": "mutation",
   "device.pick": "mutation",
   "device.screenshot.save": "mutation",
+  "devices.claim": "mutation",
+  "devices.release": "mutation",
+  "devices.setup": "mutation",
+  "device.act": "mutation",
+  "device.look": "read",
+  "device.describe": "read",
+  "device.launch": "mutation",
+  "device.logs": "read",
+  "device.install.begin": "mutation",
+  "device.install.chunk": "mutation",
+  "device.install.end": "mutation",
+  "device.audio": "read",
   "app.ready": "mutation",
   "app.focus": "mutation",
   "windows.openPullRequest": "mutation",

@@ -4,6 +4,7 @@ import { routes } from "../../shared/routes.ts"
 import { type AppServices, type DesktopCalls, dispatch, type HandlerError, RpcCall } from "../rpc.ts"
 import { inlineSource } from "../services/Attachments.ts"
 import { Environments } from "../services/Environments.ts"
+import { deviceHub, forwardToHub } from "../services/devices/hub.ts"
 
 const WindowCall = Schema.Struct({ ...RpcCall.fields, environment: Schema.optional(Schema.String) })
 const decodeWindowCall = Schema.decodeUnknownOption(WindowCall)
@@ -32,12 +33,13 @@ export const route = (raw: unknown, desktop: DesktopCalls | null) =>
     const { method, payload, environment } = decoded
     const where = routes[method]
     const owned = where.to === "owner" ? payloadId(payload, where.key) : undefined
-    const target =
-      where.to === "named"
-        ? environment
-        : where.to === "owner" && owned !== undefined
-          ? environments.owner(where.entity, owned)
-          : undefined
+    const owner = where.to === "owner" && owned !== undefined ? environments.owner(where.entity, owned) : undefined
+    const hub =
+      owner === undefined && where.to === "owner" && where.orElse === "deviceHub" ? yield* deviceHub : undefined
+    if (hub !== undefined) {
+      return yield* forwardToHub(hub, method, payload)
+    }
+    const target = where.to === "named" ? environment : owner
     if (target !== undefined) {
       return yield* inlineLocalAttachment(method, payload).pipe(
         Effect.flatMap((forwarded) => environments.forward(target, { method, payload: forwarded })),

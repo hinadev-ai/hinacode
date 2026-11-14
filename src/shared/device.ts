@@ -1,4 +1,10 @@
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
+
+export const DeviceClient = Schema.Struct({
+  id: Schema.String.check(Schema.isMaxLength(200)),
+  name: Schema.String.check(Schema.isMaxLength(200)),
+})
+export type DeviceClient = typeof DeviceClient.Type
 
 export const DevicePlatform = Schema.Literals(["ios", "android"])
 export type DevicePlatform = typeof DevicePlatform.Type
@@ -9,6 +15,15 @@ export type DeviceId = typeof DeviceId.Type
 
 export const devicePlatformOf = (id: DeviceId): DevicePlatform => (id.startsWith("ios:") ? "ios" : "android")
 
+export const DeviceHolder = Schema.Struct({
+  client: Schema.String,
+  threadId: Schema.String,
+  threadTitle: Schema.NullOr(Schema.String),
+  clientId: Schema.String,
+  seenAt: Schema.Number,
+})
+export type DeviceHolder = typeof DeviceHolder.Type
+
 export const Device = Schema.Struct({
   id: DeviceId,
   platform: DevicePlatform,
@@ -18,6 +33,7 @@ export const Device = Schema.Struct({
   slim: Schema.NullOr(Schema.Struct({ disabled: Schema.Int, total: Schema.Int })),
   memoryBytes: Schema.NullOr(Schema.Number),
   ownerThreadId: Schema.NullOr(Schema.String),
+  holders: Schema.Array(DeviceHolder).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 })
 export type Device = typeof Device.Type
 
@@ -41,10 +57,46 @@ export const SimulatorModel = Schema.Struct({
 })
 export type SimulatorModel = typeof SimulatorModel.Type
 
+export const Requirement = Schema.Literals([
+  "xcode",
+  "iosRuntime",
+  "simslim",
+  "axe",
+  "androidSdk",
+  "androidImage",
+  "avd",
+  "audioCapture",
+])
+export type Requirement = typeof Requirement.Type
+
+export const DeviceCheck = Schema.Struct({
+  requirement: Requirement,
+  state: Schema.Literals(["ready", "missing", "unsupported"]),
+  needed: Schema.Literals(["ios", "android", "recommended"]),
+  fix: Schema.Literals(["install", "manual"]),
+})
+export type DeviceCheck = typeof DeviceCheck.Type
+
+export const requirementPlatform: Record<Requirement, DevicePlatform> = {
+  xcode: "ios",
+  iosRuntime: "ios",
+  simslim: "ios",
+  axe: "ios",
+  audioCapture: "ios",
+  androidSdk: "android",
+  androidImage: "android",
+  avd: "android",
+}
+
+export const platformReady = (checks: ReadonlyArray<DeviceCheck>, platform: DevicePlatform) => {
+  const needed = checks.filter((check) => check.needed === platform)
+  return needed.length > 0 && needed.every((check) => check.state === "ready")
+}
+
 export const DeviceHost = Schema.Struct({
   ios: PlatformSupport,
   android: PlatformSupport,
-  simslim: Schema.Boolean,
+  checks: Schema.Array(DeviceCheck),
   devices: Schema.Array(Device),
   models: Schema.Array(SimulatorModel),
 })
@@ -189,3 +241,36 @@ export const PickedDeviceElement = Schema.Struct({
   element: DeviceElement,
 })
 export type PickedDeviceElement = typeof PickedDeviceElement.Type
+
+export const DeviceTarget = Schema.String.check(Schema.isMaxLength(200))
+
+export const AgentOutcome = Schema.Literals(["done", "handedBack"])
+export type AgentOutcome = typeof AgentOutcome.Type
+
+const Steps = Schema.Array(Schema.Array(DeviceCommand).check(Schema.isMaxLength(128))).check(Schema.isMaxLength(64))
+
+export const AgentInput = Schema.Struct({
+  steps: Steps,
+  gapMs: Schema.optionalKey(Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 5000 }))),
+  release: Schema.optionalKey(Schema.Array(DeviceCommand).check(Schema.isMaxLength(128))),
+})
+export type AgentInput = typeof AgentInput.Type
+
+export const InstallKind = Schema.Literals(["app", "apk"])
+export type InstallKind = typeof InstallKind.Type
+
+export const MAX_INSTALL_BYTES = 2 * 1024 * 1024 * 1024
+export const INSTALL_CHUNK_BYTES = 4 * 1024 * 1024
+
+export const AudioChunk = Schema.Struct({
+  sequence: Schema.Int,
+  data: Schema.String.check(Schema.isMaxLength(1024 * 1024)),
+})
+export type AudioChunk = typeof AudioChunk.Type
+
+export const DeviceAudio = Schema.Struct({
+  rate: Schema.Int,
+  channels: Schema.Int,
+  chunks: Schema.Array(AudioChunk),
+})
+export type DeviceAudio = typeof DeviceAudio.Type

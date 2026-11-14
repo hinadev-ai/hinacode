@@ -13,6 +13,7 @@ import * as AppConnections from "./apps/AppConnections.ts"
 import * as AppServer from "./apps/server.ts"
 import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
+import { hubClaimsLayer } from "./services/devices/hubClaims.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import * as CliSocket from "./remote/cliSocket.ts"
@@ -62,7 +63,7 @@ import type { Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 import { makeAndroidDriver } from "./services/devices/android.ts"
 import { devicesLayer } from "./services/devices/Devices.ts"
-import { makeIosDriver, simslimAvailable } from "./services/devices/ios.ts"
+import { makeIosDriver } from "./services/devices/ios.ts"
 import { simhelperSources } from "./services/devices/simhelperSources.ts"
 import { SpanLedger, traceLayer } from "./trace.ts"
 import { STALL_MS, watchdogLayer } from "./watchdog.ts"
@@ -205,7 +206,7 @@ export const makeAppLayer = ({
       ios: makeIosDriver({ cacheDir: join(userData, "devices"), sources: simhelperSources }),
       android: makeAndroidDriver(),
     },
-    simslimAvailable: () => simslimAvailable(),
+    uploadsDir: join(userData, "devices", "uploads"),
   })
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
@@ -236,7 +237,7 @@ export const makeAppLayer = ({
     AppConnections.followRelayLayer,
     AppServer.layer.pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
-  return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer).pipe(
+  return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer, hubClaimsLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
     Layer.provide(providers.layer.pipe(Layer.provide(Layer.mergeAll(settings, Secrets.layer, binaries)))),

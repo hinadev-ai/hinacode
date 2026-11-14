@@ -1,4 +1,5 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useEffect, useState } from "react"
 import { devicePlatformOf, type PrepareStep, type ThreadDevice, type ThreadDevices } from "../../../../shared/device.ts"
@@ -14,7 +15,8 @@ import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
 import { DeviceList } from "./DeviceList.tsx"
 import { DeviceReady } from "./DeviceReady.tsx"
 import { devicePanelId, deviceTabId } from "./DeviceTabStrip.tsx"
-import { CheckIcon, CircleIcon, SpinnerIcon, WarningIcon } from "@hinacode/icons"
+import { type DeviceHub, lastValue, useDeviceHub } from "./deviceHub.ts"
+import { CheckIcon, CircleIcon, ServerIcon, SpinnerIcon, WarningIcon } from "@hinacode/icons"
 
 export function DevicesView({ thread }: { thread: Thread }) {
   const devices = useAtomValue(threadDevicesAtom(thread.id))
@@ -27,20 +29,50 @@ export function DevicesView({ thread }: { thread: Thread }) {
       if (event.type === "device.agentAction" && event.threadId === threadId) markSeen(threadId)
     })
   }, [threadId])
+  const hub = useDeviceHub(threadId)
+  const offline = hub?.offline === true
+  const lastDevices = lastValue(devices)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {AsyncResult.builder(devices)
-        .onInitial(() => null)
-        .onSuccess((entries) => <ShownTab thread={thread} devices={entries} />)
-        .onError((cause) => (
-          <Failure message={errorMessage(cause)}>
-            <Button variant="outline" size="sm" onClick={refresh}>
-              {m.common_retry()}
-            </Button>
-          </Failure>
-        ))
-        .orElse(() => null)}
+      {hub && <HubHeader hub={hub} />}
+      {offline
+        ? lastDevices && (
+            <div inert className="flex min-h-0 flex-1 flex-col opacity-50">
+              <ShownTab thread={thread} devices={lastDevices} />
+            </div>
+          )
+        : AsyncResult.builder(devices)
+            .onInitial(() => null)
+            .onSuccess((entries) => <ShownTab thread={thread} devices={entries} />)
+            .onError((cause) => (
+              <Failure message={errorMessage(cause)}>
+                <Button variant="outline" size="sm" onClick={refresh}>
+                  {m.common_retry()}
+                </Button>
+              </Failure>
+            ))
+            .orElse(() => null)}
     </div>
+  )
+}
+
+function HubHeader({ hub }: { hub: DeviceHub }) {
+  return (
+    <output
+      className={cn(
+        "flex min-w-0 shrink-0 items-start gap-1.5 border-b border-border px-3 py-1.5 text-xs",
+        hub.offline ? "text-destructive" : "text-muted-foreground",
+      )}
+    >
+      {hub.offline ? (
+        <WarningIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+      ) : (
+        <ServerIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+      )}
+      <span className="min-w-0 text-pretty">
+        {hub.offline ? m.devices_hub_offline({ name: hub.name }) : m.devices_on_machine({ name: hub.name })}
+      </span>
+    </output>
   )
 }
 

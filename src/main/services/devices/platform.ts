@@ -1,5 +1,7 @@
 import type {
   Device,
+  DeviceCheck,
+  Requirement,
   DeviceCommand,
   DeviceElement,
   DeviceFrame,
@@ -22,7 +24,24 @@ export interface DeviceLink {
   readonly close: () => Promise<void>
 }
 
+export interface AudioLink {
+  readonly rate: number
+  readonly channels: number
+  readonly ended: Promise<string>
+  readonly close: () => Promise<void>
+}
+
+export const notBuiltYet = () => Promise.reject(new DeviceError("Not built yet."))
+
+export const LOG_LINES = 200
+export const lastLines = (text: string) => text.trimEnd().split("\n").slice(-LOG_LINES).join("\n")
+
 export interface DevicePlatformDriver {
+  readonly checks: () => Promise<ReadonlyArray<DeviceCheck>>
+  readonly setup: (requirement: Requirement) => Promise<void>
+  readonly install: (id: DeviceId, path: string) => Promise<string | null>
+  readonly logs: (id: DeviceId, app: string | null, sinceSeconds: number) => Promise<string>
+  readonly audio: (id: DeviceId, onPcm: (pcm: Buffer) => void) => Promise<AudioLink>
   readonly support: () => Promise<PlatformSupport>
   readonly list: () => Promise<ReadonlyArray<Device>>
   readonly models: () => Promise<ReadonlyArray<SimulatorModel>>
