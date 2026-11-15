@@ -4,7 +4,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { isSea } from "node:sea"
 import { fileURLToPath } from "node:url"
-import { Effect, Layer, ManagedRuntime, References } from "effect"
+import { Effect, Layer, ManagedRuntime, Option, References } from "effect"
 import QRCode from "qrcode"
 import packageJson from "../../package.json" with { type: "json" }
 import type { RemotePairing } from "../shared/domain.ts"
@@ -13,7 +13,7 @@ import { makeAppLayer } from "./app.ts"
 import * as CloudUpdater from "./cloudUpdater.ts"
 import { chromiumDir, desktopPid, isAlive } from "./dataDir.ts"
 import * as Db from "./db/client.ts"
-import { layer as RemoteAccessLayer, RemoteAccess } from "./remote/access.ts"
+import { RemoteAccess, storedPairing } from "./remote/access.ts"
 import { storedTunnel } from "./remote/relay.ts"
 import {
   applyServeRelay,
@@ -176,8 +176,7 @@ export const readPairingText = async (userData: string): Promise<string | undefi
   const database = join(userData, "hinacode.sqlite")
   if (!existsSync(database)) return undefined
   const runtime = ManagedRuntime.make(
-    RemoteAccessLayer.pipe(
-      Layer.provideMerge(Layer.mergeAll(SettingsLayer(userData), SecretsLayer)),
+    Layer.mergeAll(SettingsLayer(userData), SecretsLayer).pipe(
       Layer.provideMerge(Layer.mergeAll(Db.layer(database), noKeyring)),
       Layer.provide(Layer.succeed(References.MinimumLogLevel, "Warn")),
     ),
@@ -185,7 +184,9 @@ export const readPairingText = async (userData: string): Promise<string | undefi
   try {
     const { remote } = await runtime.runPromise(Settings.use((settings) => settings.get))
     if (!remote.enabled) return undefined
-    const pairing = await runtime.runPromise(RemoteAccess.use((access) => access.pairing))
+    const stored = await runtime.runPromise(storedPairing)
+    if (Option.isNone(stored)) return undefined
+    const pairing = stored.value
     const tunnel = await runtime.runPromise(storedTunnel)
     return await pairingText(userData, { ...pairing, relay: tunnel?.hostname ?? null })
   } finally {
