@@ -67,6 +67,7 @@ describe("runScript", () => {
   it("fails a promise that can never settle instead of hanging", async () => {
     expect(await run(`await new Promise(() => {})`)).toMatchObject({
       _tag: "Failed",
+      reason: "stuck",
       error: "The script awaits a promise that can never settle.",
     })
   })
@@ -74,6 +75,7 @@ describe("runScript", () => {
   it("stops a script that computes without yielding", async () => {
     expect(await run(`for (;;) {}`)).toMatchObject({
       _tag: "Failed",
+      reason: "computation",
       error: `The script computed for more than ${DEFAULT_LIMITS.sliceMs} ms without awaiting anything, so it was stopped.`,
     })
   })
@@ -83,7 +85,7 @@ describe("runScript", () => {
     'const parts = []; for (;;) parts.push("x".repeat(1 << 24) + parts.length)',
     "return new ArrayBuffer(2 ** 30).byteLength",
   ])("stops a script that needs more memory than the sandbox has: %s", async (code) => {
-    expect(await run(code)).toMatchObject({ _tag: "Failed", error: OUT_OF_MEMORY })
+    expect(await run(code)).toMatchObject({ _tag: "Failed", reason: "memory", error: OUT_OF_MEMORY })
   })
 
   it("takes its limits from the caller", async () => {
@@ -205,6 +207,7 @@ describe("runScript time limits", () => {
     })
     expect(outcome).toEqual({
       _tag: "Failed",
+      reason: "deadline",
       output: "started",
       error: "The script ran for more than 50 ms, so it was stopped.",
     })

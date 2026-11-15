@@ -33,9 +33,11 @@ export interface RunScriptOptions {
   readonly limits?: Partial<Limits>
 }
 
+export type FailureReason = "threw" | "deadline" | "computation" | "memory" | "stuck" | "cancelled"
+
 export type ScriptOutcome =
   | { readonly _tag: "Completed"; readonly output: string }
-  | { readonly _tag: "Failed"; readonly output: string; readonly error: string }
+  | { readonly _tag: "Failed"; readonly reason: FailureReason; readonly output: string; readonly error: string }
 
 export const DEFAULT_LIMITS: Limits = {
   memoryBytes: 512 * 1024 * 1024,
@@ -184,15 +186,26 @@ export const runScript = async ({
     sliceDeadline = performance.now() + limits.sliceMs
   }
 
-  const failed = (error: string): ScriptOutcome => ({
-    _tag: "Failed",
-    output: output.text(),
-    error: overran
-      ? `The script computed for more than ${limits.sliceMs} ms without awaiting anything, so it was stopped.`
-      : outOfMemory || error.startsWith("InternalError: out of memory")
-        ? OUT_OF_MEMORY
-        : error,
-  })
+  const messages: Record<Exclude<FailureReason, "threw">, string> = {
+    deadline: `The script ran for more than ${duration(limits.timeoutMs)}, so it was stopped.`,
+    computation: `The script computed for more than ${limits.sliceMs} ms without awaiting anything, so it was stopped.`,
+    memory: OUT_OF_MEMORY,
+    stuck: "The script awaits a promise that can never settle.",
+    cancelled: "The script was cancelled.",
+  }
+  const failed = (reason: FailureReason, thrown = ""): ScriptOutcome => {
+    const actual = overran
+      ? "computation"
+      : outOfMemory || thrown.startsWith("InternalError: out of memory")
+        ? "memory"
+        : reason
+    return {
+      _tag: "Failed",
+      reason: actual,
+      output: output.text(),
+      error: actual === "threw" ? thrown : messages[actual],
+    }
+  }
 
   const heapCanHold = (text: string) =>
     memory.buffer.byteLength + Buffer.byteLength(text) + HEAP_SLACK_BYTES <= limits.memoryBytes
@@ -276,7 +289,6 @@ export const runScript = async ({
   const expired = new Promise<"expired">((resolve) => {
     deadlineTimer = setTimeout(() => resolve("expired"), limits.timeoutMs)
   })
-  const ranTooLong = `The script ran for more than ${duration(limits.timeoutMs)}, so it was stopped.`
 
   let script: QuickJSHandle | undefined
   const run = async (): Promise<ScriptOutcome> => {
@@ -287,7 +299,7 @@ export const runScript = async ({
     if (evaluated.error !== undefined) {
       const error = errorText(context, evaluated.error)
       evaluated.error.dispose()
-      return failed(error)
+      return failed("threw", error)
     }
     script = evaluated.value
     for (;;) {
@@ -296,7 +308,7 @@ export const runScript = async ({
       if (jobs.error !== undefined) {
         const error = errorText(context, jobs.error)
         jobs.error.dispose()
-        return failed(error)
+        return failed("threw", error)
       }
       const state = context.getPromiseState(script)
       if (state.type === "fulfilled") {
@@ -308,20 +320,20 @@ export const runScript = async ({
       if (state.type === "rejected") {
         const error = errorText(context, state.error)
         state.error.dispose()
-        return failed(error)
+        return failed("threw", error)
       }
-      if (pending.size === 0) return failed("The script awaits a promise that can never settle.")
+      if (pending.size === 0) return failed("stuck")
       const woke = await Promise.race([aborted, expired, Promise.race(pending)])
-      if (woke === "aborted") return failed("The script was cancelled.")
-      if (woke === "expired") return failed(ranTooLong)
+      if (woke === "aborted") return failed("cancelled")
+      if (woke === "expired") return failed("deadline")
       await yieldToEventLoop()
-      if (signal.aborted) return failed("The script was cancelled.")
-      if (performance.now() > deadline) return failed(ranTooLong)
-      if (outOfMemory) return failed(OUT_OF_MEMORY)
+      if (signal.aborted) return failed("cancelled")
+      if (performance.now() > deadline) return failed("deadline")
+      if (outOfMemory) return failed("memory")
     }
   }
 
-  const outcome = await run().catch(() => failed(OUT_OF_MEMORY))
+  const outcome = await run().catch(() => failed("memory"))
   finished = true
   clearTimeout(deadlineTimer)
   calls.abort()
@@ -332,6 +344,6 @@ export const runScript = async ({
     runtime.dispose()
     return outcome
   } catch {
-    return failed(OUT_OF_MEMORY)
+    return failed("memory")
   }
 }

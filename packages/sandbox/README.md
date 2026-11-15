@@ -18,7 +18,7 @@ const outcome = await runScript({
   },
   signal,
 })
-// { _tag: "Completed", output: "1" } or { _tag: "Failed", output, error }
+// { _tag: "Completed", output: "1" } or { _tag: "Failed", reason, output, error }
 ```
 
 ## Bindings
@@ -28,6 +28,8 @@ const outcome = await runScript({
 A host function receives the script's arguments as `unknown[]` and an `AbortSignal`. Validate the arguments: they come from the script. Arguments and results cross as JSON, so return plain data. A thrown `Error` rejects the script's promise with its message. The signal aborts when the caller's `signal` aborts or when the script ends while the call is still running.
 
 `fileBindings` grants named files, never directories. The script passes a name from the map, so it cannot reach a path you did not list. Files are read-only unless the grant says `writable: true`.
+
+A failure's `reason` is `threw`, `deadline`, `computation`, `memory`, `stuck` (it awaits a promise nothing can settle) or `cancelled`. Map it to what the caller should do next, the way `run_script` does.
 
 ## Built in
 
