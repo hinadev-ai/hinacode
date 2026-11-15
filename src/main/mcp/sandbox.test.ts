@@ -74,10 +74,14 @@ describe("runScript", () => {
     })
   })
 
-  it("stops a script that runs out of memory", async () => {
-    expect(await run(`const buffers = []; for (;;) buffers.push(new ArrayBuffer(1 << 24))`)).toMatchObject({
+  it.each([
+    "const buffers = []; for (;;) buffers.push(new ArrayBuffer(1 << 26))",
+    'const parts = []; for (;;) parts.push("x".repeat(1 << 24) + parts.length)',
+    "return new ArrayBuffer(2 ** 30).byteLength",
+  ])("stops a script that needs more memory than the sandbox has: %s", async (code) => {
+    expect(await run(code)).toMatchObject({
       _tag: "Failed",
-      error: expect.stringMatching(/out of memory/),
+      error: "The script ran out of memory in the sandbox.",
     })
   })
 

@@ -1,11 +1,10 @@
 import variant from "@jitl/quickjs-singlefile-mjs-release-sync"
 import {
   newQuickJSWASMModuleFromVariant,
+  newVariant,
   type QuickJSContext,
   type QuickJSDeferredPromise,
   type QuickJSHandle,
-  type QuickJSRuntime,
-  type QuickJSWASMModule,
 } from "quickjs-emscripten-core"
 
 export interface ScriptHost {
@@ -18,11 +17,17 @@ export type ScriptOutcome =
   | { readonly _tag: "Failed"; readonly output: string; readonly error: string }
 
 export const SLICE_MS = 500
-export const MEMORY_LIMIT_BYTES = 128 * 1024 * 1024
+export const MEMORY_LIMIT_BYTES = 512 * 1024 * 1024
 export const MAX_OUTPUT_CHARS = 40_000
 
-let quickJs: Promise<QuickJSWASMModule> | undefined
-const loadQuickJs = () => (quickJs ??= newQuickJSWASMModuleFromVariant(variant))
+const WASM_PAGE_BYTES = 64 * 1024
+
+const loadQuickJs = () =>
+  newQuickJSWASMModuleFromVariant(
+    newVariant(variant, {
+      wasmMemory: new WebAssembly.Memory({ initial: 256, maximum: MEMORY_LIMIT_BYTES / WASM_PAGE_BYTES }),
+    }),
+  )
 
 const PRELUDE = `
 const describe = (value) => typeof value === "string" ? value : value instanceof Error ? String(value) : JSON.stringify(value, null, 2) ?? String(value)
@@ -55,7 +60,7 @@ const errorText = (context: QuickJSContext, handle: QuickJSHandle) => {
 }
 
 export const runScript = async (code: string, host: ScriptHost, signal: AbortSignal): Promise<ScriptOutcome> => {
-  const runtime: QuickJSRuntime = (await loadQuickJs()).newRuntime()
+  const runtime = (await loadQuickJs()).newRuntime()
   const context = runtime.newContext()
   const calls = new AbortController()
   const pending = new Set<Promise<void>>()
@@ -65,7 +70,6 @@ export const runScript = async (code: string, host: ScriptHost, signal: AbortSig
   let overran = false
   let finished = false
 
-  runtime.setMemoryLimit(MEMORY_LIMIT_BYTES)
   runtime.setMaxStackSize(1024 * 1024)
   runtime.setInterruptHandler(() => {
     overran ||= performance.now() > sliceDeadline
@@ -82,7 +86,9 @@ export const runScript = async (code: string, host: ScriptHost, signal: AbortSig
     output: output(),
     error: overran
       ? `The script ran for more than ${SLICE_MS} ms without waiting on a tool, so it was stopped.`
-      : error,
+      : error.startsWith("InternalError: out of memory")
+        ? "The script ran out of memory in the sandbox."
+        : error,
   })
 
   const settle = (deferred: QuickJSDeferredPromise, outcome: { ok: string } | { error: string }) => {
