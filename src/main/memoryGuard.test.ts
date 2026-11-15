@@ -84,17 +84,37 @@ describe("memoryByThread", () => {
 })
 
 describe("heaviestWorthShedding", () => {
-  const threads = memoryByThread(processes, agents)
+  const capacity = 16 * GIB
+  const nearlyFull = GIB / 2
+  const idleAgents: ReadonlyArray<ProcessUsage> = [
+    { pid: 500, parent: hinacode, bytes: 400 * MIB },
+    { pid: 600, parent: hinacode, bytes: 400 * MIB },
+    { pid: 700, parent: hinacode, bytes: 400 * MIB },
+  ]
+  const idleThreads = new Map([
+    ["a", new Set([500])],
+    ["b", new Set([600])],
+    ["c", new Set([700])],
+  ])
 
-  it("picks the heaviest thread when the agents hold at least the reserve", () => {
-    expect(heaviestWorthShedding(threads, 16 * GIB)?.threadId).toBe("heavy")
+  it("stops the heaviest thread when the agents hold most of the used memory", () => {
+    const busy: ReadonlyArray<ProcessUsage> = [
+      ...idleAgents,
+      { pid: 510, parent: 500, bytes: 9 * GIB },
+      { pid: 800, parent: 1, bytes: 5.7 * GIB },
+    ]
+    expect(heaviestWorthShedding(memoryByThread(busy, idleThreads), capacity, nearlyFull)?.threadId).toBe("a")
   })
 
-  it("stands down when the agents hold less than the reserve", () => {
-    expect(heaviestWorthShedding(memoryByThread(processes, new Map([["light", new Set([300])]])), 16 * GIB)).toBe(
-      undefined,
-    )
-    expect(heaviestWorthShedding([], 16 * GIB)).toBe(undefined)
+  it("leaves idle agent threads alone when something else holds most of the memory", () => {
+    const outsidePressure: ReadonlyArray<ProcessUsage> = [...idleAgents, { pid: 800, parent: 1, bytes: 14.3 * GIB }]
+    expect(heaviestWorthShedding(memoryByThread(outsidePressure, idleThreads), capacity, nearlyFull)).toBe(undefined)
+  })
+
+  it("stands down when the heaviest thread could not restore the reserve on its own", () => {
+    const manySmall = Array.from({ length: 30 }, (_, index) => ({ threadId: `t${index}`, bytes: 500 * MIB, tools: [] }))
+    expect(heaviestWorthShedding(manySmall, capacity, nearlyFull)).toBe(undefined)
+    expect(heaviestWorthShedding([], capacity, nearlyFull)).toBe(undefined)
   })
 })
 
