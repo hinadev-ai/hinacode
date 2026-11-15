@@ -207,58 +207,16 @@ importers:
 
   .:
     dependencies:
-      '@anthropic-ai/claude-agent-sdk':
-        specifier: 0.3.321
-        version: 0.3.321(@anthropic-ai/sdk@0.129.0(zod@4.6.5))(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.5))(zod@4.6.5)
-      '@effect/platform-node':
-        specifier: 4.0.3
-        version: 4.0.3(effect@4.0.3)(redis@6.3.0)
-      '@effect/sql-sqlite-node':
-        specifier: 4.0.3
-        version: 4.0.3(effect@4.0.3)
-      '@grpc/grpc-js':
-        specifier: ^1.14.6
-        version: 1.14.6
-      '@grpc/proto-loader':
-        specifier: ^0.8.1
-        version: 0.8.1
-      '@hinacode/artifacts':
-        specifier: workspace:*
-        version: link:packages/artifacts
-      '@linear/sdk':
-        specifier: 97.1.0
-        version: 97.1.0(graphql@17.0.2)
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.1
-        version: 1.32.1(supports-color@7.2.0)(zod@4.6.5)
-      '@muse-code/sdk':
-        specifier: 1.4.13
-        version: 1.4.13(@types/node@24.19.2)
-      '@noble/hashes':
-        specifier: 2.4.0
-        version: 2.4.0
-      effect:
-        specifier: 4.0.3
-        version: 4.0.3
-      electron-updater:
-        specifier: 6.8.9
-        version: 6.8.9(supports-color@7.2.0)
       node-pty:
         specifier: 1.2.0-beta.15
         version: 1.2.0-beta.15
       playwright-core:
         specifier: 1.64.0
         version: 1.64.0
-      undici:
-        specifier: 7.30.0
-        version: 7.30.0
-      which:
-        specifier: ^6.0.1
-        version: 6.0.1
-      ws:
-        specifier: 8.22.0
-        version: 8.22.0
     devDependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: 0.3.321
+        version: 0.3.321(@anthropic-ai/sdk@0.129.0(zod@4.6.5))(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.5))(zod@4.6.5)
       '@babel/core':
         specifier: 7.29.7
         version: 7.29.7(supports-color@7.2.0)
@@ -292,6 +250,12 @@ importers:
       '@effect/language-service':
         specifier: 0.87.4
         version: 0.87.4
+      '@effect/platform-node':
+        specifier: 4.0.3
+        version: 4.0.3(effect@4.0.3)(redis@6.3.0)
+      '@effect/sql-sqlite-node':
+        specifier: 4.0.3
+        version: 4.0.3(effect@4.0.3)
       '@effect/vitest':
         specifier: 4.0.3
         version: 4.0.3(effect@4.0.3)(vitest@5.0.3)
@@ -319,6 +283,15 @@ importers:
       '@formkit/auto-animate':
         specifier: 0.10.0
         version: 0.10.0
+      '@grpc/grpc-js':
+        specifier: ^1.14.6
+        version: 1.14.6
+      '@grpc/proto-loader':
+        specifier: ^0.8.1
+        version: 0.8.1
+      '@hinacode/artifacts':
+        specifier: workspace:*
+        version: link:packages/artifacts
       '@hinacode/icons':
         specifier: workspace:*
         version: link:packages/icons
@@ -328,6 +301,18 @@ importers:
       '@legendapp/list':
         specifier: 3.6.0
         version: 3.6.0(patch_hash=54cd636ccdb5344ce53277d46d6d4ef5208bb92fade738b0054adac5fd358018)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@linear/sdk':
+        specifier: 97.1.0
+        version: 97.1.0(graphql@17.0.2)
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.1
+        version: 1.32.1(supports-color@7.2.0)(zod@4.6.5)
+      '@muse-code/sdk':
+        specifier: 1.4.13
+        version: 1.4.13(@types/node@24.19.2)
+      '@noble/hashes':
+        specifier: 2.4.0
+        version: 2.4.0
       '@novnc/novnc':
         specifier: 1.7.0
         version: 1.7.0
@@ -442,12 +427,18 @@ importers:
       cn:
         specifier: ^0.4.0
         version: 0.4.0
+      effect:
+        specifier: 4.0.3
+        version: 4.0.3
       electron:
         specifier: 44.9.3
         version: 44.9.3(supports-color@7.2.0)
       electron-builder:
         specifier: 26.17.0
         version: 26.17.0(electron-builder-squirrel-windows@26.17.0)(supports-color@7.2.0)
+      electron-updater:
+        specifier: 6.8.9
+        version: 6.8.9(supports-color@7.2.0)
       electron-vite:
         specifier: 5.0.0
         version: 5.0.0(supports-color@7.2.0)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1))
@@ -544,6 +535,9 @@ importers:
       typescript:
         specifier: 6.0.3
         version: 6.0.3
+      undici:
+        specifier: 7.30.0
+        version: 7.30.0
       vite:
         specifier: 7.3.7
         version: 7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1)
@@ -553,6 +547,12 @@ importers:
       vitest-browser-react:
         specifier: 2.3.0
         version: 2.3.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@5.0.3)
+      which:
+        specifier: ^6.0.1
+        version: 6.0.1
+      ws:
+        specifier: 8.22.0
+        version: 8.22.0
       zustand:
         specifier: 5.0.15
         version: 5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))

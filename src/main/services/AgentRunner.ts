@@ -91,6 +91,7 @@ import {
 import { Git, type CommandError } from "./Git.ts"
 import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
 import { Messages, type ToolCallRef } from "./Messages.ts"
+import { touchesPullRequest } from "./pullRequestCommand.ts"
 import { PullRequests } from "./PullRequests.ts"
 import { Attachments, extensionForMime } from "./Attachments.ts"
 import { Scratch } from "./Scratch.ts"
@@ -98,6 +99,7 @@ import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import { Projects } from "./Projects.ts"
 import { Threads, type UpdateThread } from "./Threads.ts"
+import { SourceControl } from "./SourceControl.ts"
 import { Worktrees } from "./Worktrees.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import { type ActiveWorkspace, makeActiveWorkspace } from "./workspace.ts"
@@ -353,6 +355,7 @@ const make = Effect.gen(function* () {
   const attachments = yield* Attachments
   const git = yield* Git
   const pullRequests = yield* PullRequests
+  const sourceControl = yield* SourceControl
   const messages = yield* Messages
   const sql = yield* SqlClient.SqlClient
   const push = yield* Events
@@ -614,6 +617,15 @@ const make = Effect.gen(function* () {
       return input
     })
 
+  const refreshPullRequests = (thread: Thread, { branch }: { readonly branch: boolean }) =>
+    Effect.gen(function* () {
+      const linked = (yield* pullRequests.list(thread.id)).map((link) => link.url)
+      yield* Effect.forEach(linked, sourceControl.refresh, { concurrency: "unbounded", discard: true })
+      if (!branch || thread.worktreeId === null) return
+      const pullRequest = yield* worktrees.pullRequest(thread.worktreeId)
+      if (pullRequest !== null && !linked.includes(pullRequest.url)) yield* sourceControl.refresh(pullRequest.url)
+    }).pipe(Effect.ignore, Effect.forkIn(scope), Effect.asVoid)
+
   const insertMessage = (message: Message) =>
     messages.insert(message).pipe(Effect.andThen(publishTranscript({ type: "message.created", message })))
 
@@ -631,6 +643,7 @@ const make = Effect.gen(function* () {
     let persistedBytes = 0
     const dirty = new Map<string, Message>()
     const subagentCalls = new Set<string>()
+    const pullRequestCalls = new Set<string>()
 
     const persist = Effect.suspend(() => {
       const changed = turnMessages.flatMap((message) => {
@@ -661,6 +674,10 @@ const make = Effect.gen(function* () {
     const apply = (event: AgentEvent) =>
       Effect.gen(function* () {
         if (event.type === "tool_call_started" && spawnsSubagent(event)) subagentCalls.add(event.callId)
+        if (event.type === "tool_call_started" && touchesPullRequest(event.input)) pullRequestCalls.add(event.callId)
+        if (event.type === "tool_call_finished" && pullRequestCalls.delete(event.callId)) {
+          yield* refreshPullRequests(thread, { branch: true })
+        }
         const whole = event.type === "tool_call_finished" && subagentCalls.has(event.callId)
         yield* publishTranscript({ type: "thread.event", threadId: thread.id, event }, { whole })
         setTurnMessages(foldTranscript(turnMessages, event, yield* nowIso))
@@ -672,6 +689,9 @@ const make = Effect.gen(function* () {
         const [after, effects] = step(state, event, { waitsOnUser: waitsOnUser(thread.id) })
         yield* Effect.forEach(effects, perform, { discard: true })
         state = after
+        if (event.type === "turn_completed" || event.type === "turn_failed") {
+          yield* refreshPullRequests(thread, { branch: false })
+        }
         const interval = Math.max(PERSIST_INTERVAL_MS, (persistedBytes / PERSIST_BYTES_PER_SECOND) * 1000)
         if (dirty.size > 0 && Date.now() - persistedAt >= interval) yield* persist
       })
