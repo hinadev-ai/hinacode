@@ -1,4 +1,4 @@
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { cdp, page } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import "../index.css"
@@ -6,7 +6,7 @@ import { SIDE_PANEL_BOUNDS, SIDEBAR_BOUNDS } from "../lib/panelSize.ts"
 import { useUi } from "../stores/ui.ts"
 import { WorkspaceSash } from "./WorkspaceSash.tsx"
 
-function Workspace() {
+function Workspace({ onResetSidePanel = () => {} }: { readonly onResetSidePanel?: () => void }) {
   const sidebarOpen = useUi((state) => state.sidebarOpen)
   const sidebarWidth = useUi((state) => state.sidebarWidth)
   const sidePanelOpen = useUi((state) => state.sidePanelOpen)
@@ -43,7 +43,7 @@ function Workspace() {
             edge="left"
             bounds={SIDE_PANEL_BOUNDS}
             width={sidePanelWidth}
-            onReset={() => {}}
+            onReset={onResetSidePanel}
           />
         </section>
       )}
@@ -54,10 +54,10 @@ function Workspace() {
 const mouse = (type: "mousePressed" | "mouseMoved" | "mouseReleased", x: number, y: number) =>
   cdp().send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mouseReleased" ? 0 : 1 })
 
-async function renderWorkspace() {
+async function renderWorkspace(onResetSidePanel?: () => void) {
   useUi.setState({ sidebarOpen: true, sidebarWidth: 300, sidePanelOpen: true, sidePanelWidth: 300 })
   await page.viewport(1200, 400)
-  await render(<Workspace />)
+  await render(<Workspace onResetSidePanel={onResetSidePanel} />)
   const sash = page.getByRole("separator", { name: "Resize side panel" }).element().getBoundingClientRect()
   return { x: sash.left + sash.width / 2, y: sash.top + sash.height / 2 }
 }
@@ -91,4 +91,23 @@ test("dragging the side panel past half its minimum snaps it closed and keeps it
   await mouse("mouseReleased", x + 200, y)
 
   await expect.poll(layout).toMatchObject({ sidePanelOpen: false, sidePanelWidth: 300 })
+})
+
+test("releasing away from the last move keeps the release width", async () => {
+  const { x, y } = await renderWorkspace()
+
+  await mouse("mousePressed", x, y)
+  await mouse("mouseMoved", x - 40, y)
+  await mouse("mouseReleased", x - 120, y)
+
+  await expect.poll(layout).toMatchObject({ sidebarOpen: true, sidePanelWidth: 420 })
+})
+
+test("double-clicking the sash resets the width", async () => {
+  const onReset = vi.fn()
+  await renderWorkspace(onReset)
+
+  await page.getByRole("separator", { name: "Resize side panel" }).dblClick()
+
+  await expect.poll(() => onReset.mock.calls.length).toBe(1)
 })
