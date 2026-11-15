@@ -887,7 +887,7 @@ export function ThreadProjectSwitch({ thread }: { thread: Thread }) {
       <ContextSwitch thread={thread} label={current?.name ?? ""} options={options}>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => startTransition(() => setAdding(true))}>
-          {m.thread_project_add_existing()}
+          {m.project_add_existing()}
         </DropdownMenuItem>
       </ContextSwitch>
       {adding && (
