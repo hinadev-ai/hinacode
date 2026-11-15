@@ -31,12 +31,18 @@ if (session === "ses_missing") {
   process.exit(1)
 }
 if (session === "ses_elsewhere") {
-  process.stdout.write("Session found in different project: /elsewhere\nFork this session into current directory? [y/N] ")
+  process.stdout.write(
+    "Session found in different project: /elsewhere\nFork this session into current directory? [y/N] ",
+  )
   process.stdout.write("Aborted.\n")
   process.exit(0)
 }
 
 const send = (message: object, ending = "\n") => process.stdout.write(`${JSON.stringify(message)}${ending}`)
+
+if (argv.includes("-e") && session !== "ses_old_pi") {
+  send({ type: "extension_ui_request", id: "ready", method: "setStatus", statusKey: "hinacode", statusText: "ready" })
+}
 
 const zeroUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } }
 
@@ -80,6 +86,7 @@ const ask = (request: object) =>
 
 let onAbort: (() => void) | undefined
 let onSteer: ((message: string) => void) | undefined
+let settlesBeforeSteer = false
 
 const tools: Record<string, { name: string; args: object; details?: object }> = {
   edit: {
@@ -133,6 +140,12 @@ const prompt = async (text: string) => {
     await new Promise<void>((resolve) => (onAbort = resolve))
     endMessage({ stopReason: "aborted" })
     return settle(true)
+  }
+  if (text === "late-steer") {
+    delta("text_delta", "finishing")
+    endMessage({})
+    settlesBeforeSteer = true
+    return
   }
   if (text === "steer") {
     delta("text_delta", "waiting")
@@ -199,9 +212,17 @@ const handle = (command: Command) => {
         ],
       })
     case "prompt":
+      if (command.message === "/handled") return respond({ disposition: "handled" })
+      if (command.message === "preflight") {
+        return void ask({ method: "input", title: "Ticket?", placeholder: "ABC-1" }).then((answer) => {
+          respond({ disposition: "started" })
+          void prompt(`echo ${answer.value}`)
+        })
+      }
       respond({ disposition: "started" })
       return void prompt(command.message ?? "")
     case "steer":
+      if (settlesBeforeSteer) settle()
       respond({ disposition: "queued" })
       return onSteer?.(command.message ?? "")
     case "abort":

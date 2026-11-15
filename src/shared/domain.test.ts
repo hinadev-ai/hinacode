@@ -73,6 +73,14 @@ describe("older cloud responses", () => {
     expect(settings.defaultFastMode.opencode).toBe(false)
   })
 
+  it("marks pi as not installed when an older cloud lists its agent binaries without it", () => {
+    const installed = { installed: true, path: "/usr/bin/agent" }
+    const beforePi = { claude: installed, codex: installed, muse: installed, opencode: installed, magpie: installed }
+    const binaries = Schema.decodeUnknownSync(RpcMethods["agents.binaries"].response)(beforePi)
+    expect(binaries.pi).toStrictEqual({ installed: false, path: null })
+    expect(binaries.claude).toStrictEqual(installed)
+  })
+
   it("has no global actions when settings predate them", () => {
     const { actions: _actions, ...withoutActions } = defaultSettings
     expect(Schema.decodeUnknownSync(Settings)(withoutActions).actions).toStrictEqual([])

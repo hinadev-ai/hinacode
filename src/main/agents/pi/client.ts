@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process"
+import { type ChildProcess, spawn } from "node:child_process"
 import { stripVTControlCharacters } from "node:util"
 import { Deferred, Duration, Effect, Option, Schema, Scope } from "effect"
 import { Response } from "./protocol.ts"
@@ -21,8 +21,13 @@ export class PiTimeout extends Schema.TaggedError<PiTimeout>()("PiTimeout", {
 export type PiFailure = PiCommandError | PiExit | PiTimeout
 
 export type Incoming =
-  | { readonly kind: "event"; readonly event: unknown }
+  | { readonly kind: "event"; readonly event: unknown; readonly line: number }
   | { readonly kind: "exit"; readonly error: PiExit }
+
+export interface Answer {
+  readonly data: unknown
+  readonly line: number
+}
 
 export interface PiClient {
   readonly pid: () => number | undefined
@@ -31,7 +36,7 @@ export interface PiClient {
     type: string,
     fields?: object,
     timeout?: Duration.Duration | null,
-  ) => Effect.Effect<unknown, PiFailure>
+  ) => Effect.Effect<Answer, PiFailure>
   readonly send: (message: object) => Effect.Effect<void>
   readonly subscribe: (listener: (message: Incoming) => void) => Effect.Effect<void, never, Scope.Scope>
 }
@@ -56,6 +61,18 @@ export const splitLines = (onLine: (line: string) => void) => {
   }
 }
 
+const signalUntilExit = (proc: ChildProcess, signal: NodeJS.Signals): Effect.Effect<void> =>
+  Effect.callback<void>((resume) => {
+    if (proc.exitCode !== null || proc.signalCode !== null) return resume(Effect.void)
+    proc.once("exit", () => resume(Effect.void))
+    proc.kill(signal)
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: SHUTDOWN_GRACE,
+      orElse: () => (signal === "SIGKILL" ? Effect.void : signalUntilExit(proc, "SIGKILL")),
+    }),
+  )
+
 export const makePiClient = (options: {
   readonly binaryPath: string
   readonly args: ReadonlyArray<string>
@@ -76,15 +93,12 @@ export const makePiClient = (options: {
           if (proc.exitCode !== null || proc.signalCode !== null) return resume(Effect.void)
           proc.once("exit", () => resume(Effect.void))
           proc.stdin.end()
-        }).pipe(
-          Effect.timeoutOrElse({ duration: SHUTDOWN_GRACE, orElse: () => Effect.void }),
-          Effect.ensuring(Effect.sync(() => proc.kill())),
-        ),
+        }).pipe(Effect.timeoutOrElse({ duration: SHUTDOWN_GRACE, orElse: () => signalUntilExit(proc, "SIGTERM") })),
     )
 
     const pending = new Map<
       string,
-      { readonly command: string; readonly answer: Deferred.Deferred<unknown, PiFailure> }
+      { readonly command: string; readonly answer: Deferred.Deferred<Answer, PiFailure> }
     >()
     const listeners = new Set<(message: Incoming) => void>()
     let nextId = 1
@@ -118,12 +132,15 @@ export const makePiClient = (options: {
     }
     child.stderr.on("data", keepOutput)
 
-    const handleLine = (line: string) => {
-      const parsed = decodeJson(line)
-      if (Option.isNone(parsed)) return keepOutput(`${line}\n`)
+    let lineCount = 0
+
+    const handleLine = (text: string) => {
+      const parsed = decodeJson(text)
+      if (Option.isNone(parsed)) return keepOutput(`${text}\n`)
+      const line = ++lineCount
       const response = decodeResponse(parsed.value)
       if (Option.isNone(response)) {
-        for (const listener of listeners) listener({ kind: "event", event: parsed.value })
+        for (const listener of listeners) listener({ kind: "event", event: parsed.value, line })
         return
       }
       const { id, success, data, error } = response.value
@@ -133,7 +150,7 @@ export const makePiClient = (options: {
       Deferred.doneUnsafe(
         waiting.answer,
         success
-          ? Effect.succeed(data)
+          ? Effect.succeed({ data, line })
           : Effect.fail(new PiCommandError({ command: waiting.command, message: error ?? "failed" })),
       )
     }
@@ -144,11 +161,11 @@ export const makePiClient = (options: {
       type: string,
       fields: object = {},
       timeout: Duration.Duration | null = COMMAND_TIMEOUT,
-    ): Effect.Effect<unknown, PiFailure> =>
+    ): Effect.Effect<Answer, PiFailure> =>
       Effect.suspend(() => {
         if (exitError !== undefined) return Effect.fail(exitError)
         const id = String(nextId++)
-        const answer = Deferred.makeUnsafe<unknown, PiFailure>()
+        const answer = Deferred.makeUnsafe<Answer, PiFailure>()
         pending.set(id, { command: type, answer })
         write({ ...fields, id, type })
         const awaited = Deferred.await(answer).pipe(Effect.onInterrupt(() => Effect.sync(() => pending.delete(id))))

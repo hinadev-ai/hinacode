@@ -390,6 +390,50 @@ describe("makePiProvider", () => {
     ),
   )
 
+  it.live("refuses a steer that pi took after it settled, so the runner sends it to the next turn", () =>
+    withPi((pi) =>
+      Effect.gen(function* () {
+        const turn = yield* startTurn(pi, input({ prompt: "late-steer" }))
+        yield* turn.until("text_delta")
+        expect(yield* pi.steer!("t1", "one more thing", [], "now")).toBe(false)
+        yield* Fiber.join(turn.fiber)
+        expect(turn.events.at(-1)).toMatchObject({ type: "turn_completed" })
+      }),
+    ),
+  )
+
+  it.live("completes a prompt an extension handled without starting a run", () =>
+    withPi((pi) =>
+      Effect.gen(function* () {
+        const events = yield* runToEnd(pi, input({ prompt: "/handled" }))
+        expect(events.slice(1)).toStrictEqual([{ type: "turn_completed" }])
+      }),
+    ),
+  )
+
+  it.live("answers an extension dialog that pi shows before it accepts the prompt", () =>
+    withPi((pi) =>
+      Effect.gen(function* () {
+        const turn = yield* startTurn(pi, input({ prompt: "preflight" }))
+        const asked = yield* turn.until("question_requested")
+        const [question] = asked.request.questions
+        yield* pi.respondQuestion(asked.request.id, { [question!.id]: ["ABC-7"] })
+        yield* Fiber.join(turn.fiber)
+        expect(turn.events).toContainEqual({ type: "text_delta", text: "echo: echo ABC-7" })
+      }),
+    ),
+  )
+
+  it.live("refuses to prompt when pi did not load HinaCode's extension", () =>
+    withPi((pi, received) =>
+      Effect.gen(function* () {
+        const failure = yield* runToEnd(pi, input({ resumeSessionId: "ses_old_pi" })).pipe(Effect.flip)
+        expect(failure.message).toContain("did not load HinaCode's extension")
+        expect(commands(received).filter((command) => command.type === "prompt")).toStrictEqual([])
+      }),
+    ),
+  )
+
   it.live("interrupts with clear_queue and abort, closes the open tool and ends the turn interrupted", () =>
     withPi((pi, received) =>
       Effect.gen(function* () {

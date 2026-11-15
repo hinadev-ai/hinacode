@@ -7,14 +7,20 @@ type ToolCallHandler = (
   ctx: { ui: { select: (...args: Array<unknown>) => Promise<string | undefined> }; signal: AbortSignal },
 ) => Promise<unknown>
 
+type SetStatus = (key: string, text: string) => void
+
 const load = () => {
   const servers: Array<[string, unknown]> = []
-  const handlers = new Map<string, ToolCallHandler>()
+  const handlers = new Map<string, Function>()
   hinacode({
     registerMcpServer: (name: string, config: unknown) => servers.push([name, config]),
-    on: (event: string, handler: ToolCallHandler) => handlers.set(event, handler),
+    on: (event: string, handler: Function) => handlers.set(event, handler),
   })
-  return { servers, onToolCall: handlers.get("tool_call")! }
+  return {
+    servers,
+    onToolCall: handlers.get("tool_call") as ToolCallHandler,
+    onSessionStart: handlers.get("session_start") as (event: unknown, ctx: { ui: { setStatus: SetStatus } }) => void,
+  }
 }
 
 afterEach(() => {
@@ -60,5 +66,11 @@ describe("the pi extension", () => {
       reason: "The user denied this tool call",
     })
     expect(select).toHaveBeenNthCalledWith(1, "hinacode:approve c1", ["allow", "deny"], { signal })
+  })
+
+  it("tells HinaCode it loaded once the session starts", () => {
+    const setStatus = vi.fn<SetStatus>()
+    load().onSessionStart({}, { ui: { setStatus } })
+    expect(setStatus).toHaveBeenCalledWith("hinacode", "ready")
   })
 })

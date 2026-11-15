@@ -705,7 +705,7 @@ export const BindHost = Schema.String.check(Schema.isPattern(/^(?!(?:0\.0\.0\.0|
 
 const ListenPort = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))
 
-const perProvider = <S extends Schema.Top>(value: S, fallback: S["Encoded"]) => {
+export const perProvider = <S extends Schema.Top>(value: S, fallback: S["Encoded"]) => {
   const field = value.pipe(Schema.withDecodingDefaultKey(Effect.succeed(fallback)))
   return Schema.Struct({ claude: field, codex: field, muse: field, opencode: field, magpie: field, pi: field })
 }

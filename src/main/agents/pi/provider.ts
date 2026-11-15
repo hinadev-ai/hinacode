@@ -26,7 +26,7 @@ import { type Incoming, makePiClient, type PiClient, type PiFailure } from "./cl
 import { displayName, type EventMapper, makeEventMapper, type PiToolCall, stringArg, toolInput } from "./events.ts"
 import extensionSource from "./extension.mjs?raw"
 import { modelArgs, toModelInfo } from "./models.ts"
-import { AgentSettled, Commands, Models, State, UiRequest } from "./protocol.ts"
+import { AgentSettled, Commands, ExtensionReady, Models, PromptAccepted, State, UiRequest } from "./protocol.ts"
 
 const INTERRUPT_GRACE = Duration.seconds(5)
 const APPROVE_PREFIX = "hinacode:approve "
@@ -38,6 +38,11 @@ const NO = "No"
 
 const decodeUiRequest = Schema.decodeUnknownOption(UiRequest)
 const decodeSettled = Schema.decodeUnknownOption(AgentSettled)
+const isExtensionReady = Schema.is(ExtensionReady)
+
+type TurnMessage =
+  | Incoming
+  | { readonly kind: "prompted"; readonly exit: Exit.Exit<typeof PromptAccepted.Type, AgentError> }
 
 interface PendingUi {
   readonly approvalId?: string
@@ -50,6 +55,7 @@ interface Run {
   client?: PiClient
   mapper?: EventMapper
   prompting: boolean
+  settledAtLine?: number
 }
 
 interface PiImage {
@@ -193,7 +199,7 @@ export const makePiProvider: Effect.Effect<AgentProvider, never, Scope.Scope> = 
   const query = <A>(client: PiClient, command: string, schema: Schema.Decoder<A>) =>
     client.command(command).pipe(
       Effect.mapError(toAgentError),
-      Effect.flatMap((data) =>
+      Effect.flatMap(({ data }) =>
         Schema.decodeUnknownEffect(schema)(data).pipe(
           Effect.mapError(() => agentError(`${name} sent an invalid ${command} response`)),
         ),
@@ -381,11 +387,18 @@ export const makePiProvider: Effect.Effect<AgentProvider, never, Scope.Scope> = 
           Effect.sync(() => registerAgentPid(input.threadId, client.pid)),
           (unregister) => Effect.sync(unregister),
         )
-        const inbox = yield* Queue.unbounded<Incoming>()
-        yield* client.subscribe((message) => Queue.offerUnsafe(inbox, message))
+        const inbox = yield* Queue.unbounded<TurnMessage>()
+        let extensionReady = false
+        yield* client.subscribe((message) => {
+          if (message.kind === "event") {
+            if (isExtensionReady(message.event)) extensionReady = true
+            if (Option.isSome(decodeSettled(message.event))) run.settledAtLine ??= message.line
+          }
+          Queue.offerUnsafe(inbox, message)
+        })
 
         const state = yield* client.command("get_state").pipe(
-          Effect.map((data) => ({ lost: null, data })),
+          Effect.map(({ data }) => ({ lost: null, data })),
           Effect.catchTag("PiExit", (exit) =>
             lostSession.test(exit.output) ? Effect.succeed({ lost: exit.output, data: null }) : Effect.fail(exit),
           ),
@@ -406,19 +419,42 @@ export const makePiProvider: Effect.Effect<AgentProvider, never, Scope.Scope> = 
         const { sessionId, model } = yield* Schema.decodeUnknownEffect(State)(state.data).pipe(
           Effect.mapError(() => agentError(`${name} sent an invalid get_state response`)),
         )
+        if (!extensionReady) {
+          return yield* agentError(
+            `${name} did not load HinaCode's extension, so it could run tools without approval. Run \`pi update\`, then try again`,
+          )
+        }
         yield* emit({ type: "session_bound", providerSessionId: sessionId })
 
         const mapper = makeEventMapper(input.cwd)
         Object.assign(run, { client, mapper })
         const { message, images } = yield* promptParts(input.prompt, input.attachments)
-        yield* client
-          .command("prompt", { message, ...(images.length > 0 && { images }) })
-          .pipe(Effect.mapError(toAgentError))
-        run.prompting = true
-        yield* input.onOpen ?? Effect.void
+        yield* client.command("prompt", { message, ...(images.length > 0 && { images }) }, null).pipe(
+          Effect.mapError(toAgentError),
+          Effect.flatMap(({ data }) =>
+            Schema.decodeUnknownEffect(PromptAccepted)(data).pipe(
+              Effect.mapError(() => agentError(`${name} sent an invalid prompt response`)),
+            ),
+          ),
+          Effect.exit,
+          Effect.flatMap((exit) => Queue.offer(inbox, { kind: "prompted", exit })),
+          Effect.forkScoped,
+        )
 
         while (true) {
           const incoming = yield* Queue.take(inbox)
+          if (incoming.kind === "prompted") {
+            if (Exit.isFailure(incoming.exit)) {
+              for (const event of mapper.closeOpenTools("Turn failed")) yield* emit(event)
+              return yield* incoming.exit
+            }
+            if (incoming.exit.value.disposition === "handled") {
+              return yield* emit({ type: "turn_completed" })
+            }
+            run.prompting = true
+            yield* input.onOpen ?? Effect.void
+            continue
+          }
           if (incoming.kind === "exit") {
             for (const event of mapper.closeOpenTools("Turn failed")) yield* emit(event)
             return yield* toAgentError(incoming.error)
@@ -440,12 +476,18 @@ export const makePiProvider: Effect.Effect<AgentProvider, never, Scope.Scope> = 
     Effect.gen(function* () {
       const run = runs.get(threadId)
       const client = run?.client
-      if (run === undefined || client === undefined || !run.prompting || !client.isAlive()) return false
+      const open = () =>
+        run !== undefined &&
+        client !== undefined &&
+        run.prompting &&
+        run.settledAtLine === undefined &&
+        client.isAlive()
+      if (!open() || client === undefined) return false
       const { message, images } = yield* promptParts(text, attachments)
-      yield* client
+      const { line } = yield* client
         .command("steer", { message, ...(images.length > 0 && { images }) })
         .pipe(Effect.mapError(toAgentError))
-      return true
+      return run?.settledAtLine === undefined || line < run.settledAtLine
     })
 
   const interrupt = (threadId: string) =>

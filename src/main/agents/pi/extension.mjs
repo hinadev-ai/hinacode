@@ -14,4 +14,5 @@ export default function hinacode(pi) {
     })
     if (answer !== "allow") return { block: true, reason: "The user denied this tool call" }
   })
+  pi.on("session_start", (_event, ctx) => ctx.ui.setStatus("hinacode", "ready"))
 }

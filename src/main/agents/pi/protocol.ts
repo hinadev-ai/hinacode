@@ -123,3 +123,11 @@ export const PiEvent = Schema.Union([
   AgentSettled,
 ])
 export type PiEvent = typeof PiEvent.Type
+
+export const PromptAccepted = Schema.Struct({ disposition: Schema.Literals(["started", "queued", "handled"]) })
+
+export const ExtensionReady = Schema.Struct({
+  type: Schema.Literal("extension_ui_request"),
+  method: Schema.Literal("setStatus"),
+  statusKey: Schema.Literal("hinacode"),
+})
