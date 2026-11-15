@@ -41,6 +41,16 @@ The `Build` workflow builds macOS on a Blacksmith macOS runner, and Linux and Wi
 
 For a local build without signing or publishing, run `CSC_IDENTITY_AUTO_DISCOVERY=false pnpm dist -c.mac.notarize=false`. It builds for the current platform, and the output lands in `dist/`.
 
+## The oxlint plugin
+
+`packages/oxlint-plugin-hinacode` ships to npm on its own version, separate from the app's tags. Bump `version` in its `package.json`, then publish with pnpm, not npm, because only pnpm applies `publishConfig.exports`:
+
+```sh
+pnpm --filter oxlint-plugin-hinacode publish
+```
+
+`prepack` builds `dist/` first. The repository itself keeps linting with `src/` through the workspace link, so a rule change takes effect here without a build. To check a release before it goes out, run `pnpm --filter oxlint-plugin-hinacode pack`, install the tarball in a project outside this checkout, and run `oxlint` there.
+
 ## If it goes wrong
 
 - **The app quits at startup with `ERR_MODULE_NOT_FOUND`.** A main-process import pulls in a package that is not packaged. Only packages that `out/main` leaves external belong in `dependencies`; the renderer is bundled by Vite, so its packages are `devDependencies`. Import a subpath instead of a barrel (for example `@effect/platform-node/NodeHttpServer`), or move the package to `dependencies`. The server bundle leaves only the externals in `scripts/server-package.ts` external, and the staged npm manifest lists exactly those.
