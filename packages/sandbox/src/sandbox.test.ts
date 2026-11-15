@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { DEFAULT_LIMITS, type Globals, OUT_OF_MEMORY, runScript } from "./sandbox.ts"
+import { DEFAULT_LIMITS, type Globals, OUT_OF_MEMORY, runScript, withTimeout } from "./sandbox.ts"
 
 const MAX_OUTPUT_CHARS = DEFAULT_LIMITS.outputChars
 
@@ -159,5 +159,82 @@ describe("runScript", () => {
     const outcome = await run(`return "a".repeat(${MAX_OUTPUT_CHARS}) + "end"`)
     expect(outcome._tag).toBe("Completed")
     expect(outcome.output).toMatch(/^a+\n… 3 characters omitted …\na+end$/)
+  })
+})
+
+const hanging = () => {
+  const signals: Array<AbortSignal> = []
+  const hang = (_args: ReadonlyArray<unknown>, signal: AbortSignal) => {
+    signals.push(signal)
+    return new Promise(() => {})
+  }
+  return { hang, signals }
+}
+
+describe("runScript time limits", () => {
+  it("times out a host call that never answers, aborts it, and lets the script recover", async () => {
+    const { hang, signals } = hanging()
+    const outcome = await runScript({
+      code: `try { await tools.hang() } catch (error) { return error.message }`,
+      globals: { tools: { hang } },
+      limits: { callTimeoutMs: 20 },
+    })
+    expect(outcome).toEqual({ _tag: "Completed", output: "tools.hang timed out after 20 ms." })
+    expect(signals.map((signal) => signal.aborted)).toEqual([true])
+  })
+
+  it("uses a binding's own timeout over the default", async () => {
+    const { hang } = hanging()
+    const outcome = await runScript({
+      code: `await tools.slow()`,
+      globals: { tools: { slow: withTimeout(hang, 30) } },
+      limits: { callTimeoutMs: 60_000 },
+    })
+    expect(outcome).toMatchObject({
+      _tag: "Failed",
+      error: expect.stringMatching(/^Error: tools.slow timed out after 30 ms/),
+    })
+  })
+
+  it("stops the whole script at its deadline and aborts what is still running", async () => {
+    const { hang, signals } = hanging()
+    const outcome = await runScript({
+      code: `console.log("started"); await tools.forever()`,
+      globals: { tools: { forever: withTimeout(hang, Number.POSITIVE_INFINITY) } },
+      limits: { timeoutMs: 50 },
+    })
+    expect(outcome).toEqual({
+      _tag: "Failed",
+      output: "started",
+      error: "The script ran for more than 50 ms, so it was stopped.",
+    })
+    expect(signals[0]?.aborted).toBe(true)
+  })
+
+  it("sleeps, and refuses a sleep that is not a duration", async () => {
+    expect(await run(`await sleep(5); return "woke"`)).toEqual({ _tag: "Completed", output: "woke" })
+    expect(await run(`await sleep("soon")`)).toMatchObject({
+      _tag: "Failed",
+      error: expect.stringMatching(/sleep takes a number of milliseconds/),
+    })
+  })
+
+  it("runs at most maxConcurrentCalls host calls at once and queues the rest", async () => {
+    let active = 0
+    let peak = 0
+    const work = async () => {
+      active += 1
+      peak = Math.max(peak, active)
+      await Promise.resolve()
+      active -= 1
+      return null
+    }
+    const outcome = await runScript({
+      code: `await Promise.all(Array.from({ length: 6 }, () => tools.work())); return "done"`,
+      globals: { tools: { work } },
+      limits: { maxConcurrentCalls: 2 },
+    })
+    expect(outcome).toEqual({ _tag: "Completed", output: "done" })
+    expect(peak).toBe(2)
   })
 })

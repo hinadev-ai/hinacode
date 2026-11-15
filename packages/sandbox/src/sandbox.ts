@@ -1,4 +1,4 @@
-import { setImmediate as yieldToEventLoop } from "node:timers/promises"
+import { setTimeout as delay, setImmediate as yieldToEventLoop } from "node:timers/promises"
 import variant from "@jitl/quickjs-singlefile-mjs-release-sync"
 import {
   newQuickJSWASMModuleFromVariant,
@@ -8,7 +8,10 @@ import {
   type QuickJSHandle,
 } from "quickjs-emscripten-core"
 
-export type HostFunction = (args: ReadonlyArray<unknown>, signal: AbortSignal) => unknown
+export interface HostFunction {
+  (args: ReadonlyArray<unknown>, signal: AbortSignal): unknown
+  readonly timeoutMs?: number
+}
 
 export interface Globals {
   readonly [name: string]: HostFunction | Globals
@@ -18,6 +21,9 @@ export interface Limits {
   readonly memoryBytes: number
   readonly sliceMs: number
   readonly outputChars: number
+  readonly timeoutMs: number
+  readonly callTimeoutMs: number
+  readonly maxConcurrentCalls: number
 }
 
 export interface RunScriptOptions {
@@ -31,7 +37,48 @@ export type ScriptOutcome =
   | { readonly _tag: "Completed"; readonly output: string }
   | { readonly _tag: "Failed"; readonly output: string; readonly error: string }
 
-export const DEFAULT_LIMITS: Limits = { memoryBytes: 512 * 1024 * 1024, sliceMs: 500, outputChars: 40_000 }
+export const DEFAULT_LIMITS: Limits = {
+  memoryBytes: 512 * 1024 * 1024,
+  sliceMs: 500,
+  outputChars: 40_000,
+  timeoutMs: 5 * 60_000,
+  callTimeoutMs: 30_000,
+  maxConcurrentCalls: 8,
+}
+
+export const withTimeout = (
+  run: (args: ReadonlyArray<unknown>, signal: AbortSignal) => unknown,
+  timeoutMs: number,
+): HostFunction =>
+  Object.assign((args: ReadonlyArray<unknown>, signal: AbortSignal) => run(args, signal), { timeoutMs })
+
+const sleep = withTimeout(([ms], signal) => {
+  if (typeof ms !== "number" || !(ms >= 0)) throw new Error("sleep takes a number of milliseconds.")
+  return delay(ms, null, { signal })
+}, Number.POSITIVE_INFINITY)
+
+const duration = (ms: number) => (ms < 1000 ? `${Math.round(ms)} ms` : `${Math.round(ms / 100) / 10} s`)
+
+const slots = (size: number) => {
+  let free = size
+  const waiting: Array<() => void> = []
+  return {
+    acquire: async () => {
+      if (free > 0) {
+        free -= 1
+        return
+      }
+      await new Promise<void>((resolve) => {
+        waiting.push(resolve)
+      })
+    },
+    release: () => {
+      const next = waiting.shift()
+      if (next === undefined) free += 1
+      else next()
+    },
+  }
+}
 
 export const OUT_OF_MEMORY = "The script ran out of memory in the sandbox."
 
@@ -111,7 +158,9 @@ export const runScript = async ({
   limits: overrides,
 }: RunScriptOptions): Promise<ScriptOutcome> => {
   const limits = { ...DEFAULT_LIMITS, ...overrides }
-  const bindings = flatten(globals)
+  const bindings = flatten({ sleep, ...globals })
+  const deadline = performance.now() + limits.timeoutMs
+  const concurrency = slots(limits.maxConcurrentCalls)
   const memory = new WebAssembly.Memory({ initial: 256, maximum: Math.ceil(limits.memoryBytes / WASM_PAGE_BYTES) })
   const quickJs = await newQuickJSWASMModuleFromVariant(newVariant(variant, { wasmMemory: memory }))
   const runtime = quickJs.newRuntime()
@@ -163,6 +212,30 @@ export const runScript = async ({
     deferred.dispose()
   }
 
+  const invoke = async (binding: Binding, args: ReadonlyArray<unknown>) => {
+    await concurrency.acquire()
+    const controller = new AbortController()
+    const abort = () => controller.abort()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      if (calls.signal.aborted) throw new Error("The script has ended.")
+      calls.signal.addEventListener("abort", abort, { once: true })
+      const timeoutMs = binding.run.timeoutMs ?? limits.callTimeoutMs
+      const timedOut = new Promise<never>((_, reject) => {
+        if (timeoutMs >= deadline - performance.now()) return
+        timer = setTimeout(() => {
+          controller.abort()
+          reject(new Error(`${binding.path.join(".")} timed out after ${duration(timeoutMs)}.`))
+        }, timeoutMs)
+      })
+      return await Promise.race([Promise.resolve().then(() => binding.run(args, controller.signal)), timedOut])
+    } finally {
+      clearTimeout(timer)
+      calls.signal.removeEventListener("abort", abort)
+      concurrency.release()
+    }
+  }
+
   const call = context.newFunction("__call", (idHandle, argsHandle) => {
     const binding = bindings[context.getNumber(idHandle)]
     const args: unknown = JSON.parse(context.getString(argsHandle))
@@ -171,7 +244,7 @@ export const runScript = async ({
     const task = Promise.resolve()
       .then(() => {
         if (binding === undefined || !Array.isArray(args)) throw new Error("No such host function.")
-        return binding.run(args, calls.signal)
+        return invoke(binding, args)
       })
       .then(
         (value) => settle(deferred, { ok: JSON.stringify(value) ?? "null" }),
@@ -199,6 +272,11 @@ export const runScript = async ({
     if (signal.aborted) resolve("aborted")
     signal.addEventListener("abort", () => resolve("aborted"), { once: true })
   })
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined
+  const expired = new Promise<"expired">((resolve) => {
+    deadlineTimer = setTimeout(() => resolve("expired"), limits.timeoutMs)
+  })
+  const ranTooLong = `The script ran for more than ${duration(limits.timeoutMs)}, so it was stopped.`
 
   let script: QuickJSHandle | undefined
   const run = async (): Promise<ScriptOutcome> => {
@@ -233,16 +311,19 @@ export const runScript = async ({
         return failed(error)
       }
       if (pending.size === 0) return failed("The script awaits a promise that can never settle.")
-      if ((await Promise.race([aborted, Promise.race(pending)])) === "aborted")
-        return failed("The script was cancelled.")
+      const woke = await Promise.race([aborted, expired, Promise.race(pending)])
+      if (woke === "aborted") return failed("The script was cancelled.")
+      if (woke === "expired") return failed(ranTooLong)
       await yieldToEventLoop()
       if (signal.aborted) return failed("The script was cancelled.")
+      if (performance.now() > deadline) return failed(ranTooLong)
       if (outOfMemory) return failed(OUT_OF_MEMORY)
     }
   }
 
   const outcome = await run().catch(() => failed(OUT_OF_MEMORY))
   finished = true
+  clearTimeout(deadlineTimer)
   calls.abort()
   try {
     for (const deferred of deferreds) deferred.dispose()

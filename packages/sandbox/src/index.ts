@@ -8,4 +8,5 @@ export {
   type RunScriptOptions,
   runScript,
   type ScriptOutcome,
+  withTimeout,
 } from "./sandbox.ts"
