@@ -106,13 +106,13 @@ HinaCode **是一個令人愉悅的程式碼代理工作站**。它負責每個�
 
 ## 遠端與無介面執行
 
-在另一台機器上以無介面常駐程式執行 HinaCode，然後從桌面或手機操作它：
+在另一台機器上以無介面常駐程式執行 HinaCode，然後從桌面或手機操作它。在 macOS 或 Linux 上，一行指令就能把它安裝成開機自動啟動的服務：
 
 ```sh
-npx hinacode serve
+curl -fsSL https://hinacode.app/install.sh | bash
 ```
 
-常駐程式啟動時會列印配對 URL。在桌面的**設定**中新增該機器，或用手機應用程式掃描 QR code。它維護自己的資料目錄（預設為 `~/.hinacode-cloud`，可用 `HINACODE_USER_DATA` 覆寫），因此也有自己的專案和對話串。
+有 Node 24 的話，也可以用 `npx hinacode serve` 在前景執行。兩種方式都會在啟動時列印配對 URL，`hinacode pair` 可以再列印一次。在桌面的**設定**中新增該機器，或用手機應用程式掃描 QR code。它維護自己的資料目錄（預設為 `~/.hinacode-cloud`，可用 `HINACODE_USER_DATA` 覆寫），因此也有自己的專案和對話串。
 
 ---
 

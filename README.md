@@ -106,13 +106,13 @@ The headless server runs anywhere Node 24 does (see [Remote and headless](#remot
 
 ## Remote and headless
 
-Run HinaCode as a headless daemon on another machine, then drive it from your desktop or phone:
+Run HinaCode as a headless daemon on another machine, then drive it from your desktop or phone. On macOS or Linux, one command installs it as a service that starts at boot:
 
 ```sh
-npx hinacode serve
+curl -fsSL https://hinacode.app/install.sh | bash
 ```
 
-The daemon prints pairing URLs on startup. Add the machine in **Settings** on the desktop, or scan the QR code with the phone app. It keeps its own data directory (`~/.hinacode-cloud` by default, override with `HINACODE_USER_DATA`) and therefore its own projects and threads.
+With Node 24, `npx hinacode serve` runs it in the foreground instead. Either way the daemon prints pairing URLs on startup, and `hinacode pair` prints them again. Add the machine in **Settings** on the desktop, or scan the QR code with the phone app. It keeps its own data directory (`~/.hinacode-cloud` by default, override with `HINACODE_USER_DATA`) and therefore its own projects and threads.
 
 ---
 
