@@ -8,7 +8,7 @@ import { PanelToggle, ThreadSidePanel } from "../components/ThreadSidePanel.tsx"
 import { ActionsMenu, ThreadOverview } from "../components/ThreadOverview.tsx"
 import { ThreadView } from "../components/ThreadView.tsx"
 import { Dialog, DialogPortal, DialogTitle } from "../components/ui/dialog.tsx"
-import { usePanelLayout } from "../lib/panelLayout.ts"
+import { CONTENT_MIN_WIDTH, usePanelLayout } from "../lib/panelLayout.ts"
 import { m } from "../paraglide/messages.js"
 import { selectOpenableThread, useThreads } from "../stores/threads.ts"
 import { useSidePanelExpanded, useUi } from "../stores/ui.ts"
@@ -48,7 +48,12 @@ export function ThreadRoute() {
   }
   return (
     <div className="flex min-h-0 flex-1">
-      <div hidden={expanded} className="flex min-w-0 flex-1 flex-col">
+      <div
+        hidden={expanded}
+        data-workspace-pane="content"
+        style={{ minWidth: CONTENT_MIN_WIDTH }}
+        className="flex flex-1 flex-col"
+      >
         <ThreadView
           key={thread.id}
           thread={thread}
