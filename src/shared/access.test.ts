@@ -17,9 +17,14 @@ describe("accessBehavior", () => {
     expect(accessBehavior("opencode", "auto", undefined)).toBe("acceptEdits")
   })
 
+  test("pi asks unless a tool only reads, and its auto mode accepts edits", () => {
+    expect(accessBehavior("pi", "supervised", undefined)).toBe("askUnlessReadOnly")
+    expect(accessBehavior("pi", "auto", undefined)).toBe("acceptEdits")
+  })
+
   test("full access is unrestricted on Muse and bypasses approvals everywhere else", () => {
     expect(accessBehavior("muse", "full", undefined)).toBe("unrestricted")
-    for (const provider of ["claude", "magpie", "codex", "opencode"] satisfies ProviderId[]) {
+    for (const provider of ["claude", "magpie", "codex", "opencode", "pi"] satisfies ProviderId[]) {
       expect(accessBehavior(provider, "full", { autoMode: true })).toBe("bypass")
     }
   })

@@ -58,4 +58,13 @@ export const providerInfo: Record<ProviderId, ProviderInfo> = {
     movesCommandsToBackground: true,
     subagentModels: "picked",
   },
+  pi: {
+    name: "pi",
+    binary: "pi",
+    installUrl: "https://pi.dev",
+    steersRunningTurn: true,
+    autoCompacts: false,
+    movesCommandsToBackground: false,
+    subagentModels: "picked",
+  },
 }

@@ -4,7 +4,7 @@ import type { AccessMode, Attachment } from "./domain.ts"
 import { PlanLimits, UsageLimit } from "./limits.ts"
 import { ownToolName } from "./toolNames.ts"
 
-export const ProviderId = Schema.Literals(["claude", "codex", "muse", "opencode", "magpie"])
+export const ProviderId = Schema.Literals(["claude", "codex", "muse", "opencode", "magpie", "pi"])
 export type ProviderId = typeof ProviderId.Type
 
 export const AccountProviderId = Schema.Literals(["claude", "codex"])

@@ -9,6 +9,7 @@ import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
 import { MagpieProvider } from "./agents/magpie/index.ts"
 import { OpencodeProvider } from "./agents/opencode/index.ts"
+import { PiProvider } from "./agents/pi/index.ts"
 import * as AppConnections from "./apps/AppConnections.ts"
 import * as AppServer from "./apps/server.ts"
 import * as Db from "./db/client.ts"
@@ -112,6 +113,10 @@ export const agentProviders = (env: NodeJS.ProcessEnv) => {
           MagpieProvider,
           ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "magpie" })),
         ),
+        Layer.effect(
+          PiProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "pi" })),
+        ),
       ).pipe(Layer.provideMerge(everyAgent)),
     }
   const claude = simulatedClaude("HINACODE_MOCK_CLAUDE", env)
@@ -124,6 +129,7 @@ export const agentProviders = (env: NodeJS.ProcessEnv) => {
       MuseProvider.layer,
       OpencodeProvider.layer,
       MagpieProvider.layer,
+      PiProvider.layer,
     ),
   }
 }

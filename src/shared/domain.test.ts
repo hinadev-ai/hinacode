@@ -59,6 +59,7 @@ describe("older cloud responses", () => {
       muse: null,
       opencode: null,
       magpie: null,
+      pi: null,
     })
   })
 
@@ -168,14 +169,14 @@ describe("listener settings", () => {
 })
 
 describe("enabledProviders", () => {
-  const installed = { claude: false, codex: true, muse: false, opencode: true, magpie: false }
+  const installed = { claude: false, codex: true, muse: false, opencode: true, magpie: false, pi: false }
 
   it("leaves out an agent whose CLI is missing, whatever its switch says", () => {
     expect(enabledProviders(defaultSettings, installed)).toStrictEqual(["codex", "opencode"])
   })
 
   it("keeps every switched-on agent while the machine has not answered yet", () => {
-    expect(enabledProviders(defaultSettings)).toStrictEqual(["claude", "codex", "muse", "opencode", "magpie"])
+    expect(enabledProviders(defaultSettings)).toStrictEqual(["claude", "codex", "muse", "opencode", "magpie", "pi"])
   })
 
   it("starts new threads on the first installed agent when the default one is missing", () => {

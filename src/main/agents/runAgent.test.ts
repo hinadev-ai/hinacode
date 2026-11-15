@@ -103,23 +103,24 @@ const modelOf = (id: string): ModelInfo => ({
   autoMode: false,
 })
 const listing = Array.from({ length: 30 }, (_, index) => modelOf(`m${index}`))
-const noPresets = { claude: [], codex: [], muse: [], opencode: [], magpie: [] }
+const noPresets = { claude: [], codex: [], muse: [], opencode: [], magpie: [], pi: [] }
 
-test("offers the first 20 listed models of magpie and opencode until the user picks some", () => {
+test("offers the first 20 listed models of magpie, opencode and pi until the user picks some", () => {
   const choices = subagentChoices(
-    { claude: null, codex: null, muse: null, opencode: listing, magpie: listing },
-    { ...noPresets, magpie: ["m25"] },
-    ["opencode", "magpie"],
+    { claude: null, codex: null, muse: null, opencode: listing, magpie: listing, pi: listing },
+    { ...noPresets, magpie: ["m25"], pi: ["m1", "m2"] },
+    ["opencode", "magpie", "pi"],
   )
   expect(choices.map((choice) => [choice.provider, choice.models.length, choice.hidden])).toStrictEqual([
     ["opencode", 20, 10],
     ["magpie", 1, 0],
+    ["pi", 2, 0],
   ])
 })
 
 test("leaves disabled providers out of the choices", () => {
   const choices = subagentChoices(
-    { claude: [modelOf("c")], codex: [modelOf("x")], muse: null, opencode: listing, magpie: null },
+    { claude: [modelOf("c")], codex: [modelOf("x")], muse: null, opencode: listing, magpie: null, pi: null },
     noPresets,
     ["codex"],
   )
