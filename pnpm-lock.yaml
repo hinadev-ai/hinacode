@@ -225,9 +225,9 @@ importers:
       '@hinacode/artifacts':
         specifier: workspace:*
         version: link:packages/artifacts
-      '@jitl/quickjs-singlefile-mjs-release-sync':
-        specifier: 0.32.0
-        version: 0.32.0
+      '@hinacode/sandbox':
+        specifier: workspace:*
+        version: link:packages/sandbox
       '@linear/sdk':
         specifier: 97.1.0
         version: 97.1.0(graphql@17.0.2)
@@ -252,9 +252,6 @@ importers:
       playwright-core:
         specifier: 1.64.0
         version: 1.64.0
-      quickjs-emscripten-core:
-        specifier: 0.32.0
-        version: 0.32.0
       undici:
         specifier: 7.30.0
         version: 7.30.0
@@ -602,6 +599,15 @@ importers:
         version: 1.87.0
 
   packages/perf-frames: {}
+
+  packages/sandbox:
+    dependencies:
+      '@jitl/quickjs-singlefile-mjs-release-sync':
+        specifier: 0.32.0
+        version: 0.32.0
+      quickjs-emscripten-core:
+        specifier: 0.32.0
+        version: 0.32.0
 
   relay:
     dependencies:

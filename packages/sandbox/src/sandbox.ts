@@ -8,28 +8,65 @@ import {
   type QuickJSHandle,
 } from "quickjs-emscripten-core"
 
-export interface ScriptHost {
-  readonly tools: ReadonlyArray<string>
-  readonly call: (name: string, args: unknown, signal: AbortSignal) => Promise<unknown>
+export type HostFunction = (args: ReadonlyArray<unknown>, signal: AbortSignal) => unknown
+
+export interface Globals {
+  readonly [name: string]: HostFunction | Globals
+}
+
+export interface Limits {
+  readonly memoryBytes: number
+  readonly sliceMs: number
+  readonly outputChars: number
+}
+
+export interface RunScriptOptions {
+  readonly code: string
+  readonly globals?: Globals
+  readonly signal?: AbortSignal
+  readonly limits?: Partial<Limits>
 }
 
 export type ScriptOutcome =
   | { readonly _tag: "Completed"; readonly output: string }
   | { readonly _tag: "Failed"; readonly output: string; readonly error: string }
 
-export const SLICE_MS = 500
-export const MEMORY_LIMIT_BYTES = 512 * 1024 * 1024
-export const MAX_OUTPUT_CHARS = 40_000
+export const DEFAULT_LIMITS: Limits = { memoryBytes: 512 * 1024 * 1024, sliceMs: 500, outputChars: 40_000 }
+
+export const OUT_OF_MEMORY = "The script ran out of memory in the sandbox."
 
 const WASM_PAGE_BYTES = 64 * 1024
+const HEAP_SLACK_BYTES = 1024 * 1024
+
+interface Binding {
+  readonly path: ReadonlyArray<string>
+  readonly run: HostFunction
+}
+
+const flatten = (globals: Globals, parent: ReadonlyArray<string> = []): ReadonlyArray<Binding> =>
+  Object.entries(globals).flatMap(([name, value]) =>
+    typeof value === "function" ? [{ path: [...parent, name], run: value }] : flatten(value, [...parent, name]),
+  )
 
 const PRELUDE = `
+const call = __call, print = __print, paths = JSON.parse(__paths)
+delete globalThis.__call
+delete globalThis.__print
+delete globalThis.__paths
 const describe = (value) => typeof value === "string" ? value : value instanceof Error ? String(value) : JSON.stringify(value, null, 2) ?? String(value)
-globalThis.tools = Object.freeze(Object.fromEntries(JSON.parse(__toolNames).map((name) => [name, (args = {}) =>
-  __call(name, JSON.stringify(args)).then(JSON.parse, (message) => { throw new Error(message) })])))
 globalThis.console = Object.freeze(Object.fromEntries(["log", "info", "warn", "error", "debug"].map((level) =>
-  [level, (...values) => __print(values.map(describe).join(" "))])))
-globalThis.__describe = describe
+  [level, (...values) => print(values.map(describe).join(" "))])))
+const tree = Object.create(null)
+paths.forEach((path, id) => {
+  let node = tree
+  for (const key of path.slice(0, -1)) node = Object.hasOwn(node, key) ? node[key] : (node[key] = Object.create(null))
+  node[path[path.length - 1]] = (...args) =>
+    call(id, JSON.stringify(args)).then(JSON.parse, (message) => { throw new Error(message) })
+})
+const freeze = (node) => typeof node === "function" ? node : Object.freeze(Object.fromEntries(Object.entries(node).map(([key, value]) => [key, freeze(value)])))
+for (const [name, node] of Object.entries(tree))
+  Object.defineProperty(globalThis, name, { value: freeze(node), enumerable: true, configurable: true })
+Object.defineProperty(globalThis, "__describe", { value: describe })
 `
 
 const wrap = (code: string) =>
@@ -37,8 +74,8 @@ const wrap = (code: string) =>
   throw error instanceof Error ? [String(error), error.stack ?? ""].join("\\n").trim() : __describe(error)
 })`
 
-const boundedText = () => {
-  const half = MAX_OUTPUT_CHARS / 2
+const boundedText = (maxChars: number) => {
+  const half = maxChars / 2
   let head = ""
   let tail = ""
   let total = 0
@@ -67,18 +104,22 @@ const errorText = (context: QuickJSContext, handle: QuickJSHandle) => {
   return JSON.stringify(dumped)
 }
 
-const OUT_OF_MEMORY = "The script ran out of memory in the sandbox."
-const HEAP_SLACK_BYTES = 1024 * 1024
-
-export const runScript = async (code: string, host: ScriptHost, signal: AbortSignal): Promise<ScriptOutcome> => {
-  const memory = new WebAssembly.Memory({ initial: 256, maximum: MEMORY_LIMIT_BYTES / WASM_PAGE_BYTES })
+export const runScript = async ({
+  code,
+  globals = {},
+  signal = new AbortController().signal,
+  limits: overrides,
+}: RunScriptOptions): Promise<ScriptOutcome> => {
+  const limits = { ...DEFAULT_LIMITS, ...overrides }
+  const bindings = flatten(globals)
+  const memory = new WebAssembly.Memory({ initial: 256, maximum: Math.ceil(limits.memoryBytes / WASM_PAGE_BYTES) })
   const quickJs = await newQuickJSWASMModuleFromVariant(newVariant(variant, { wasmMemory: memory }))
   const runtime = quickJs.newRuntime()
   const context = runtime.newContext()
   const calls = new AbortController()
   const pending = new Set<Promise<void>>()
   const deferreds = new Set<QuickJSDeferredPromise>()
-  const output = boundedText()
+  const output = boundedText(limits.outputChars)
   let sliceDeadline = 0
   let overran = false
   let outOfMemory = false
@@ -91,21 +132,21 @@ export const runScript = async (code: string, host: ScriptHost, signal: AbortSig
   })
 
   const startSlice = () => {
-    sliceDeadline = performance.now() + SLICE_MS
+    sliceDeadline = performance.now() + limits.sliceMs
   }
 
   const failed = (error: string): ScriptOutcome => ({
     _tag: "Failed",
     output: output.text(),
     error: overran
-      ? `The script ran for more than ${SLICE_MS} ms without waiting on a tool, so it was stopped.`
+      ? `The script computed for more than ${limits.sliceMs} ms without awaiting anything, so it was stopped.`
       : outOfMemory || error.startsWith("InternalError: out of memory")
         ? OUT_OF_MEMORY
         : error,
   })
 
   const heapCanHold = (text: string) =>
-    memory.buffer.byteLength + Buffer.byteLength(text) + HEAP_SLACK_BYTES <= MEMORY_LIMIT_BYTES
+    memory.buffer.byteLength + Buffer.byteLength(text) + HEAP_SLACK_BYTES <= limits.memoryBytes
 
   const settle = (deferred: QuickJSDeferredPromise, outcome: { ok: string } | { error: string }) => {
     if (finished) return
@@ -122,15 +163,16 @@ export const runScript = async (code: string, host: ScriptHost, signal: AbortSig
     deferred.dispose()
   }
 
-  const call = context.newFunction("__call", (nameHandle, argsHandle) => {
-    const name = context.getString(nameHandle)
+  const call = context.newFunction("__call", (idHandle, argsHandle) => {
+    const binding = bindings[context.getNumber(idHandle)]
     const args: unknown = JSON.parse(context.getString(argsHandle))
     const deferred = context.newPromise()
     deferreds.add(deferred)
     const task = Promise.resolve()
-      .then(() =>
-        host.tools.includes(name) ? host.call(name, args, calls.signal) : Promise.reject(new Error(`No tool ${name}.`)),
-      )
+      .then(() => {
+        if (binding === undefined || !Array.isArray(args)) throw new Error("No such host function.")
+        return binding.run(args, calls.signal)
+      })
       .then(
         (value) => settle(deferred, { ok: JSON.stringify(value) ?? "null" }),
         (error: unknown) => settle(deferred, { error: error instanceof Error ? error.message : String(error) }),
@@ -145,13 +187,13 @@ export const runScript = async (code: string, host: ScriptHost, signal: AbortSig
   const print = context.newFunction("__print", (line) => {
     output.append(context.getString(line))
   })
-  const toolNames = context.newString(JSON.stringify(host.tools))
+  const paths = context.newString(JSON.stringify(bindings.map(({ path }) => path)))
   context.setProp(context.global, "__call", call)
   context.setProp(context.global, "__print", print)
-  context.setProp(context.global, "__toolNames", toolNames)
+  context.setProp(context.global, "__paths", paths)
   call.dispose()
   print.dispose()
-  toolNames.dispose()
+  paths.dispose()
 
   const aborted = new Promise<"aborted">((resolve) => {
     if (signal.aborted) resolve("aborted")

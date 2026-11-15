@@ -496,8 +496,10 @@ layer(testLayer)("run_script", (it) => {
         isError: false,
         text: "undefined,undefined,function",
       })
-      const nested = yield* callAs(connection, "run_script", { code: `return await __call("run_script", "{}")` })
-      expect(nested).toMatchObject({ isError: true, text: expect.stringMatching(/No tool run_script/) })
+      expect(yield* callAs(connection, "run_script", { code: `return typeof __call` })).toMatchObject({
+        isError: false,
+        text: "undefined",
+      })
     }),
   )
 

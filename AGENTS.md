@@ -40,6 +40,7 @@ src/preload   contextBridge exposing window.hinacode { rpc, onEvent, pathForFile
 src/renderer  React 19, TanStack Router, zustand stores, Tailwind 4, shadcn on Base UI
 src/shared    Effect Schema contracts (contract.ts rpc method map, domain.ts, agent.ts) and pure code both apps run, such as routes.ts
 packages/icons  @hinacode/icons: HinaCode's icons, one file each, rendered by the renderer and apps/mobile
+packages/sandbox  @hinacode/sandbox: QuickJS runner for untrusted scripts that reach out only through the host functions bound into them
 messages/     Paraglide catalogs: en.json, zh-TW.json, zh-CN.json and ja.json
 ```
 
