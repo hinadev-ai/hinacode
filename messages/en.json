@@ -1547,6 +1547,8 @@
   "mobile_settings_server_reconnect": "Reconnect now",
   "mobile_settings_server_pair_again": "Pair again",
   "mobile_settings_server_forget": "Forget",
+  "mobile_settings_server_rename": "Rename",
+  "mobile_settings_server_name": "Name",
   "mobile_settings_server_forget_title": "Forget {server}?",
   "mobile_settings_server_forget_message": "Its projects and threads leave this phone. You will need to pair again to see them.",
   "mobile_settings_server_settings": "Settings for",

@@ -1538,6 +1538,8 @@
   "mobile_settings_server_reconnect": "立即重连",
   "mobile_settings_server_pair_again": "重新配对",
   "mobile_settings_server_forget": "移除",
+  "mobile_settings_server_rename": "重命名",
+  "mobile_settings_server_name": "名称",
   "mobile_settings_server_forget_title": "移除 {server}？",
   "mobile_settings_server_forget_message": "它的项目和对话将从此手机移除，需要重新配对才能再次看到。",
   "mobile_settings_server_settings": "设置对象",

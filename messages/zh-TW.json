@@ -1511,6 +1511,8 @@
   "mobile_settings_server_reconnect": "立即重新連線",
   "mobile_settings_server_pair_again": "重新配對",
   "mobile_settings_server_forget": "移除",
+  "mobile_settings_server_rename": "重新命名",
+  "mobile_settings_server_name": "名稱",
   "mobile_settings_server_forget_title": "要移除 {server} 嗎？",
   "mobile_settings_server_forget_message": "它的專案與對話串會從這支手機移除。要再看到它們，需要重新配對。",
   "mobile_settings_server_settings": "設定對象",
