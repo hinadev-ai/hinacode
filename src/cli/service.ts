@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join, sep } from "node:path"
 import { isAlive } from "../main/dataDir.ts"
 
@@ -150,6 +150,14 @@ export const serveProgram = (
   return [process.execPath, script, "serve"]
 }
 
+export const prepareLog = (log: string) => {
+  const dir = dirname(log)
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  chmodSync(dir, 0o700)
+  writeFileSync(log, "", { flag: "a", mode: 0o600 })
+  chmodSync(log, 0o600)
+}
+
 const runSteps = (steps: ReadonlyArray<Step>) => {
   for (const step of steps) {
     try {
@@ -226,7 +234,7 @@ export const connect = async (options: {
     ...(options.customDataDir && { HINACODE_USER_DATA: options.userData }),
   }
   mkdirSync(dirname(manager.unitPath), { recursive: true })
-  mkdirSync(dirname(manager.log), { recursive: true })
+  prepareLog(manager.log)
   writeFileSync(manager.unitPath, manager.render({ program: options.program, env, log: manager.log }))
   runSteps(manager.reload)
   runSteps(manager.start)

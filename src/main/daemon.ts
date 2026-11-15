@@ -80,6 +80,9 @@ const pairingText = async (userData: string, pairing: RemotePairing) => {
   ].join("\n")
 }
 
+export const serveOutput = async (userData: string, pairing: RemotePairing, terminal: boolean) =>
+  terminal ? await pairingText(userData, pairing) : "Run `hinacode pair` to print the pairing URLs.\n"
+
 const openInBrowser = (url: string) => {
   const command = process.stdout.isTTY ? browserCommand(url, process.platform, process.env) : null
   if (command === null) return
@@ -166,7 +169,7 @@ export const serve = async (flags: ServeFlags, userData: string) => {
     throw error
   }
   const pairing = await runtime.runPromise(RemoteAccess.use((remote) => remote.pairing))
-  process.stdout.write(await pairingText(userData, pairing))
+  process.stdout.write(await serveOutput(userData, pairing, process.stdout.isTTY === true))
 }
 
 export const readPairingText = async (userData: string): Promise<string | undefined> => {

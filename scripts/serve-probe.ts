@@ -33,12 +33,9 @@ export const withServe = async (
 
   try {
     await new Promise<void>((resolveBoot, reject) => {
-      const deadline = setTimeout(
-        () => reject(new Error(`serve did not print its pairing block in 30s:\n${output}`)),
-        30_000,
-      )
+      const deadline = setTimeout(() => reject(new Error(`serve did not finish booting in 30s:\n${output}`)), 30_000)
       child.stdout.on("data", () => {
-        if (output.includes("Pair a phone")) {
+        if (output.includes("hinacode pair")) {
           clearTimeout(deadline)
           resolveBoot()
         }
