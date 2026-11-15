@@ -51,6 +51,7 @@
     "@grpc/grpc-js": "^1.14.6",
     "@grpc/proto-loader": "^0.8.1",
     "@hinacode/artifacts": "workspace:*",
+    "@jitl/quickjs-singlefile-mjs-release-sync": "0.32.0",
     "@linear/sdk": "97.1.0",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@muse-code/sdk": "1.4.13",
@@ -59,6 +60,7 @@
     "electron-updater": "6.8.9",
     "node-pty": "1.2.0-beta.15",
     "playwright-core": "1.64.0",
+    "quickjs-emscripten-core": "0.32.0",
     "undici": "7.30.0",
     "which": "^6.0.1",
     "ws": "8.22.0"
