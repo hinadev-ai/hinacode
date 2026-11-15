@@ -1,0 +1,46 @@
+# run_script
+
+Status: Shipped
+Date: 2026-11-15
+
+## Problem
+
+An agent that drives HinaCode's tools pays one model round trip per call, and every result lands in its context in full. Fanning `run_agent` out to three providers, reading five threads to find one fact, or clicking through a VM screen by screen costs turns and tokens the agent does not need. The agent cannot run these calls in parallel or filter their results before it reads them.
+
+## User flow
+
+The agent calls `run_script` with JavaScript instead of calling tools one by one:
+
+```js
+const [codex, claude] = await Promise.all([
+  tools.run_agent({ provider: "codex", description: "review", prompt: "Review the diff" }),
+  tools.run_agent({ provider: "claude", description: "review", prompt: "Review the diff" }),
+])
+return { codex, claude }
+```
+
+The tool result holds the `console.log` lines and the returned value, and nothing else the script read. The developer sees one `run_script` call in the transcript, and the sub-agents and other side effects show up where they always do.
+
+## Design
+
+`run_script` is one tool on the thread MCP server (`src/main/mcp/tools/runScript.ts`). Its parameter is `code`, the body of an async function.
+
+- **Sandbox.** `src/main/mcp/sandbox.ts` runs the code in QuickJS (`quickjs-emscripten-core` with the single-file sync variant, so the wasm survives the Electron, daemon and single-executable bundles). Each call gets a fresh runtime and context, disposed when it ends. There is no file system, network, timers, `require` or `process`.
+- **Tools.** `tools.<name>(args)` exists for every tool the caller's session can see, read from `McpServer.tools` and filtered by each tool's `EnabledWhen`, so VM and device tools appear only while their toggles are on. `run_script` itself is left out, and the host refuses any name outside that list, so a script cannot nest scripts. A call goes through `McpServer.callTool` in the caller's request context, so it runs as the same thread with the same credential checks as a direct call.
+- **Values.** Arguments and results cross the boundary as JSON strings. A tool resolves to its structured content, else its text, else its encoded content blocks, and rejects with an `Error` carrying the tool's message.
+- **Limits.** The sandbox runs on the main process's event loop. An interrupt handler stops a script that computes for more than 500 ms between awaits, so a runaway loop stalls HinaCode for at most that long. Memory is capped at 128 MB and the stack at 1 MB. A script waiting on a promise with no tool call in flight fails at once, because nothing could settle it. Output keeps its first and last 20,000 characters.
+- **Cancellation.** When the MCP request is interrupted, the script stops and its in-flight tool calls are interrupted through their `AbortSignal`. When a script returns while calls are still running, those calls are interrupted too.
+
+Trust boundary: the script is code the agent writes, and it can reach only what the agent could already reach through the same tools. It adds no capability.
+
+## Out of scope
+
+- The agent's own tools (shell, file edits) and other MCP servers. The sandbox lives in HinaCode, which reaches only its own tools.
+- Persisted state between scripts and TypeScript declarations in the description. The agent already sees every tool's schema in its tool list.
+- A worker thread. The 500 ms slice keeps the main process responsive without a second bundle entry for the Electron, daemon and executable builds. Move it to a worker if real scripts need long computation.
+
+## Verification
+
+- `src/main/mcp/sandbox.test.ts` covers output, parallel calls, failed calls, refused names, missing globals, a never settling promise, CPU and memory limits, cancellation and truncation.
+- `src/main/mcp/server.integration.test.ts` (`run_script`) calls real tools over HTTP as one thread, checks that `run_script` and disabled tools are hidden, and checks the failure result.
+- In the real app with `verify-hinacode`, call `run_script` through `mcp-call.ts`, then ask a Claude thread to use it and check the transcript for the `mcp__hinacode__run_script` call.

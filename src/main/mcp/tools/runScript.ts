@@ -1,0 +1,76 @@
+import { Context, Effect, Option, Predicate, Schema } from "effect"
+import { McpSchema, McpServer, Toolkit } from "effect/ai"
+import { runScript, MEMORY_LIMIT_BYTES, SLICE_MS } from "../sandbox.ts"
+import * as McpTool from "./tool.ts"
+
+export const RUN_SCRIPT_TOOL = "run_script"
+
+export const ScriptTools = Toolkit.make(
+  McpTool.make(RUN_SCRIPT_TOOL, {
+    description: `Run JavaScript in a QuickJS sandbox that calls this server's other tools, so you can chain calls, run them in parallel and filter large results before they reach your context. The code is the body of an async function, so \`await\` and \`return\` work at the top level. Each tool this server lists is \`tools.<name>(args)\` with the same arguments. It resolves to the tool's structured content, else its text, else its content blocks, and rejects with an Error carrying the tool's message when it fails. \`console.log\` lines and the returned value make up the result. There is no file system, network, timers, \`require\` or \`process\`, and \`run_script\` cannot call itself. Calls are real and are not undone when the script fails. A script that computes for more than ${SLICE_MS} ms between awaits, or uses more than ${MEMORY_LIMIT_BYTES / 1024 / 1024} MB, is stopped.`,
+    parameters: Schema.Struct({
+      code: Schema.String.annotate({
+        description:
+          "JavaScript, for example `const [a, b] = await Promise.all([tools.x({}), tools.y({})]); return a`.",
+      }),
+    }),
+  }),
+)
+
+const visibleTo =
+  (client: McpSchema.McpServerClient["Service"]) =>
+  ({ annotations }: { readonly annotations: Context.Context<never> }) => {
+    const enabledWhen = Context.getOrUndefined(annotations, McpSchema.EnabledWhen)
+    return (
+      enabledWhen === undefined ||
+      enabledWhen({
+        protocolVersion: client.protocolVersion,
+        capabilities: client.clientCapabilities,
+        clientInfo: client.clientInfo,
+      })
+    )
+  }
+
+const encodeContent = Schema.encodeSync(Schema.Array(McpSchema.ContentBlock))
+
+const scriptValue = (result: McpSchema.CallToolResult): Effect.Effect<unknown, Error> => {
+  const texts = result.content.flatMap((block) => (block.type === "text" ? [block.text] : []))
+  if (result.isError === true) return Effect.fail(new Error(texts.join("\n") || "The tool failed."))
+  if (result.structuredContent !== undefined) return Effect.succeed(result.structuredContent)
+  return Effect.succeed(texts.length === result.content.length ? texts.join("\n") : encodeContent(result.content))
+}
+
+export const scriptToolsLayer = ScriptTools.toLayer(
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer
+    return ScriptTools.of({
+      [RUN_SCRIPT_TOOL]: ({ code }) =>
+        Effect.gen(function* () {
+          const client = yield* Effect.serviceOption(McpSchema.McpServerClient)
+          if (Option.isNone(client)) return yield* Effect.fail({ message: "run_script needs an MCP session." })
+          const context = yield* Effect.context<never>()
+          const tools = server.tools
+            .filter(visibleTo(client.value))
+            .map(({ tool }) => tool.name)
+            .filter((name) => name !== RUN_SCRIPT_TOOL)
+          const call = (name: string, args: unknown, signal: AbortSignal) =>
+            Predicate.isObject(args) && !Array.isArray(args)
+              ? Effect.runPromiseWith(context)(
+                  server
+                    .callTool({ name, arguments: args as Record<string, unknown> })
+                    .pipe(Effect.flatMap(scriptValue), Effect.provideService(McpSchema.McpServerClient, client.value)),
+                  { signal },
+                )
+              : Promise.reject(new Error(`${name} takes one object of arguments.`))
+          const outcome = yield* Effect.tryPromise((signal) => runScript(code, { tools, call }, signal)).pipe(
+            Effect.mapError((error) => ({ message: error.message })),
+          )
+          if (outcome._tag === "Failed")
+            return yield* Effect.fail({
+              message: [outcome.output, `Script error: ${outcome.error}`].filter((part) => part !== "").join("\n\n"),
+            })
+          return outcome.output === "" ? "The script finished without output." : outcome.output
+        }),
+    })
+  }),
+)
