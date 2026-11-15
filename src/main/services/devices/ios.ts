@@ -15,6 +15,7 @@ import type {
 } from "../../../shared/device.ts"
 import { findBinary } from "../../agents/binary.ts"
 import { consumerUsage, hidUsage, keystrokesFor } from "./hidUsage.ts"
+import { iosVersionOf } from "./iosParsers.ts"
 import { DeviceError, type DeviceLink, type DevicePlatformDriver, type Frame } from "./platform.ts"
 
 export interface SimhelperSources {
@@ -156,8 +157,6 @@ const decode = <A>(schema: Schema.Decoder<A>, text: Buffer, what: string): A => 
 
 const deviceState = (state: string): Device["state"] =>
   state === "Booted" ? "booted" : state === "Booting" ? "booting" : "shutdown"
-
-const iosVersionOf = (runtime: string) => /\.iOS-([\d-]+)$/.exec(runtime)?.[1]?.replaceAll("-", ".") ?? null
 
 const compareVersions = (a: string, b: string) => {
   const left = a.split(".").map(Number)

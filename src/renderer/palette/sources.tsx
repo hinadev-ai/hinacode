@@ -11,7 +11,7 @@ import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { type Project, threadFolder, Thread } from "../../shared/domain.ts"
 import type { PaletteContext, PaletteItem, PaletteSource } from "./types.ts"
-import { FileTextIcon, PlusIcon } from "@hinacode/icons"
+import { FileTextIcon, FolderAddIcon, PlusIcon } from "@hinacode/icons"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
 
@@ -72,7 +72,14 @@ export const newThreadSource: PaletteSource = {
     const preferred = ctx.threadId ? ctx.threads[ctx.threadId]?.projectId : newest?.projectId
     const current = `new-thread:${preferred}`
     const isCurrent = (item: PaletteItem) => item.id === current
-    return [...items.filter(isCurrent), ...items.filter((item) => !isCurrent(item))]
+    const addProject: PaletteItem = {
+      id: "new-thread:add-project",
+      group: "commands",
+      title: m.project_add_existing(),
+      icon: <FolderAddIcon aria-hidden className={iconClass} />,
+      run: () => useUi.getState().setAddProjectOpen(true),
+    }
+    return [...items.filter(isCurrent), ...items.filter((item) => !isCurrent(item)), addProject]
   },
 }
 

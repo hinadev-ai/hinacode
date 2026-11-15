@@ -117,6 +117,7 @@
   "common_copied": "Copied",
   "thread_empty_title": "What do you want to do in {project} on {environment}?",
   "thread_environment_create": "Create on {machine}",
+  "project_add_existing": "Add existing project…",
   "thread_empty_chat_title": "What do you want to ask on {environment}?",
   "thread_loading": "Loading messages…",
   "thread_load_failed": "Could not load messages: {message}",
