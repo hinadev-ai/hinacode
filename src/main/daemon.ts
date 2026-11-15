@@ -169,13 +169,9 @@ export const serve = async (flags: ServeFlags, userData: string) => {
   process.stdout.write(await pairingText(userData, pairing))
 }
 
-export const pair = async (userData: string) => {
+export const readPairingText = async (userData: string): Promise<string | undefined> => {
   const database = join(userData, "hinacode.sqlite")
-  const noCloud = () => {
-    process.stderr.write(`No cloud in ${userData} yet. Start one with \`hinacode serve\`.\n`)
-    process.exitCode = 1
-  }
-  if (!existsSync(database)) return noCloud()
+  if (!existsSync(database)) return undefined
   const runtime = ManagedRuntime.make(
     RemoteAccessLayer.pipe(
       Layer.provideMerge(Layer.mergeAll(SettingsLayer(userData), SecretsLayer)),
@@ -185,11 +181,18 @@ export const pair = async (userData: string) => {
   )
   try {
     const { remote } = await runtime.runPromise(Settings.use((settings) => settings.get))
-    if (!remote.enabled) return noCloud()
+    if (!remote.enabled) return undefined
     const pairing = await runtime.runPromise(RemoteAccess.use((access) => access.pairing))
     const tunnel = await runtime.runPromise(storedTunnel)
-    process.stdout.write(await pairingText(userData, { ...pairing, relay: tunnel?.hostname ?? null }))
+    return await pairingText(userData, { ...pairing, relay: tunnel?.hostname ?? null })
   } finally {
     await runtime.dispose()
   }
+}
+
+export const pair = async (userData: string) => {
+  const text = await readPairingText(userData)
+  if (text !== undefined) return void process.stdout.write(text)
+  process.stderr.write(`No cloud in ${userData} yet. Start one with \`hinacode serve\`.\n`)
+  process.exitCode = 1
 }
