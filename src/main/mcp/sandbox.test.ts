@@ -85,6 +85,47 @@ describe("runScript", () => {
     })
   })
 
+  it("fails cleanly when a tool result cannot fit in a full sandbox heap", async () => {
+    const big = host({ big: async () => "x".repeat(1 << 20) })
+    const code = `const kept = []; try { for (;;) kept.push(new ArrayBuffer(1 << 20)) } catch {}; return (await tools.big()).length`
+    expect(await run(code, big)).toMatchObject({
+      _tag: "Failed",
+      error: "The script ran out of memory in the sandbox.",
+    })
+    expect(await run(`return (await tools.big()).length`, big)).toEqual({ _tag: "Completed", output: "1048576" })
+  })
+
+  it("lets the event loop run while a script awaits tools that answer at once", async () => {
+    const controller = new AbortController()
+    const channel = new MessageChannel()
+    channel.port1.addEventListener("message", () => controller.abort(), { once: true })
+    channel.port1.start()
+    let calls = 0
+    const outcome = await runScript(
+      `for (;;) await tools.instant()`,
+      {
+        tools: ["instant"],
+        call: () => {
+          calls += 1
+          if (calls === 100) channel.port2.postMessage(null)
+          return Promise.resolve(null)
+        },
+      },
+      controller.signal,
+    )
+    channel.port1.close()
+    expect(outcome).toMatchObject({ _tag: "Failed", error: "The script was cancelled." })
+    expect(calls).toBeLessThan(200)
+  })
+
+  it("keeps only the start and end of a script that logs far more than it returns", async () => {
+    const outcome = await run(`const line = "x".repeat(1 << 20); for (let i = 0; i < 64; i++) console.log(line)`)
+    const total = 64 * (1 << 20) + 63
+    expect(outcome._tag).toBe("Completed")
+    expect(outcome.output).toContain(`… ${total - MAX_OUTPUT_CHARS} characters omitted …`)
+    expect(outcome.output.length).toBeLessThan(MAX_OUTPUT_CHARS + 100)
+  })
+
   it("reports a syntax error", async () => {
     expect(await run(`return (`)).toMatchObject({ _tag: "Failed", error: expect.stringMatching(/SyntaxError/) })
   })
