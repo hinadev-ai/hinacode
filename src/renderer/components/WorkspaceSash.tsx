@@ -67,11 +67,11 @@ const findSash = (panes: ReadonlyArray<WorkspacePane>, pane: WorkspacePaneId, ed
   return index >= 0 && sash >= 0 && sash < panes.length - 1 ? sash : undefined
 }
 
-function createDragShield(pointerId: number) {
+function createDragShield() {
   const shield = document.createElement("div")
+  shield.dataset.workspaceShield = ""
   Object.assign(shield.style, { position: "fixed", inset: "0", zIndex: "2147483647", cursor: "col-resize" })
   document.body.append(shield)
-  shield.setPointerCapture(pointerId)
   return shield
 }
 
@@ -79,28 +79,66 @@ function dragWorkspace(event: ReactPointerEvent<HTMLElement>, pane: WorkspacePan
   const panes = readWorkspacePanes()
   const sash = findSash(panes, pane, edge)
   if (sash === undefined) return false
-  const startX = event.clientX
+  const { pointerId, clientX: startX } = event
+  let target: HTMLElement = event.currentTarget
+  let shield: HTMLElement | undefined
   let layout: SplitLayout | undefined
   let frame = 0
+  let ended = false
 
-  const shield = createDragShield(event.pointerId)
+  const follow = (pointer: PointerEvent) => {
+    if (!shield && pointer.clientX === startX) return
+    layout = dragSash(panes, sash, pointer.clientX - startX)
+  }
 
-  shield.addEventListener("pointermove", (move) => {
-    layout = dragSash(panes, sash, move.clientX - startX)
+  const onMove = (pointer: PointerEvent) => {
+    follow(pointer)
+    if (!layout) return
+    if (!shield) {
+      unlisten(target)
+      shield = createDragShield()
+      target = shield
+      listen(target)
+      target.setPointerCapture(pointerId)
+    }
     if (frame !== 0) return
     frame = requestAnimationFrame(() => {
       frame = 0
       if (layout) useUi.setState(layoutState(panes, layout))
     })
-  })
+  }
+
   const end = () => {
-    if (!shield.isConnected) return
+    if (ended) return
+    ended = true
     cancelAnimationFrame(frame)
-    shield.remove()
+    unlisten(target)
+    shield?.remove()
     if (layout) commitLayout(panes, layout)
     onEnd()
   }
-  for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) shield.addEventListener(type, end)
+
+  const onUp = (pointer: PointerEvent) => {
+    follow(pointer)
+    end()
+  }
+
+  function listen(element: HTMLElement) {
+    element.addEventListener("pointermove", onMove)
+    element.addEventListener("pointerup", onUp)
+    element.addEventListener("pointercancel", end)
+    element.addEventListener("lostpointercapture", end)
+  }
+
+  function unlisten(element: HTMLElement) {
+    element.removeEventListener("pointermove", onMove)
+    element.removeEventListener("pointerup", onUp)
+    element.removeEventListener("pointercancel", end)
+    element.removeEventListener("lostpointercapture", end)
+  }
+
+  listen(target)
+  target.setPointerCapture(pointerId)
   return true
 }
 
