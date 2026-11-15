@@ -64,9 +64,9 @@ export const wholePercents = (values: ReadonlyArray<number>): ReadonlyArray<numb
   const exact = values.map((value) => (value / total) * 100)
   const floors = exact.map(Math.floor)
   const missing = 100 - floors.reduce((sum, value) => sum + value, 0)
-  const byRemainder = exact
-    .map((value, index) => ({ index, remainder: value - floors[index]! }))
-    .toSorted((a, b) => b.remainder - a.remainder)
+  const byRemainder = exact.map((value, index) => ({ index, remainder: value - floors[index]! }))
+  // oxlint-disable-next-line unicorn/no-array-sort -- the phone runs this on Hermes, which has no `toSorted`; `map` made a copy.
+  byRemainder.sort((a, b) => b.remainder - a.remainder)
   const bumped = new Set(byRemainder.slice(0, missing).map(({ index }) => index))
   return floors.map((value, index) => (bumped.has(index) ? value + 1 : value))
 }
@@ -80,9 +80,14 @@ const sumBy = <K>(rows: ReadonlyArray<UsageRow>, key: (row: UsageRow) => K) => {
     total.threads.add(row.threadId)
     totals.set(key(row), total)
   }
-  return [...totals]
-    .map(([id, total]) => ({ id, turns: total.turns, tokens: total.tokens, threads: total.threads.size }))
-    .toSorted((a, b) => b.turns - a.turns || b.tokens - a.tokens)
+  const summed = [...totals].map(([id, total]) => ({
+    id,
+    turns: total.turns,
+    tokens: total.tokens,
+    threads: total.threads.size,
+  }))
+  // oxlint-disable-next-line unicorn/no-array-sort -- the phone runs this on Hermes, which has no `toSorted`; `map` made a copy.
+  return summed.sort((a, b) => b.turns - a.turns || b.tokens - a.tokens)
 }
 
 export const summarizeUsage = (rows: ReadonlyArray<UsageRow>, options: SummarizeOptions = {}): UsageSummary => {
