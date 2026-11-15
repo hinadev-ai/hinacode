@@ -7,7 +7,7 @@ import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import type { PushEvent } from "../../src/shared/contract.ts"
-import { rpc } from "./rpc.ts"
+import { Seed } from "./seed.ts"
 
 export const projectRoot = resolve(import.meta.dirname, "..", "..")
 
@@ -89,33 +89,46 @@ const launch = async (
   options: SpawnAppOptions,
 ): Promise<{ app: ElectronApplication; page: Page } & StartupAppearance> => {
   const app = await electron.launch({ executablePath, args: appArgs, cwd: projectRoot, env: appEnv(userData, options) })
-  await app.evaluate(
-    ({ app: electronApp, BrowserWindow }) =>
-      new Promise<void>((done) => {
-        const waitForShow = (nativeWindow: ElectronWindow) => {
-          if (nativeWindow.isVisible()) done()
-          else nativeWindow.once("show", () => done())
-        }
-        const existingWindow = BrowserWindow.getAllWindows()[0]
-        if (existingWindow) waitForShow(existingWindow)
-        else electronApp.once("browser-window-created", (_, createdWindow) => waitForShow(createdWindow))
-      }),
-  )
-  const startup = Schema.decodeUnknownSync(StartupAppearance)(
-    await app.evaluate(() => globalThis.hinacodeStartupAppearance),
-  )
-  const page = await app.firstWindow()
-  await waitForRenderer(page)
-  return { app, page, ...startup }
+  try {
+    await app.evaluate(
+      ({ app: electronApp, BrowserWindow }) =>
+        new Promise<void>((done) => {
+          const waitForShow = (nativeWindow: ElectronWindow) => {
+            if (nativeWindow.isVisible()) done()
+            else nativeWindow.once("show", () => done())
+          }
+          const existingWindow = BrowserWindow.getAllWindows()[0]
+          if (existingWindow) waitForShow(existingWindow)
+          else electronApp.once("browser-window-created", (_, createdWindow) => waitForShow(createdWindow))
+        }),
+    )
+    const startup = Schema.decodeUnknownSync(StartupAppearance)(
+      await app.evaluate(() => globalThis.hinacodeStartupAppearance),
+    )
+    const page = await app.firstWindow()
+    await waitForRenderer(page)
+    return { app, page, ...startup }
+  } catch (error) {
+    await app.close().catch(() => undefined)
+    throw error
+  }
 }
 
 export const spawnApp = async (options: SpawnAppOptions = {}): Promise<HinacodeApp> => {
   const userData = mkdtempSync(join(tmpdir(), "kk-e2e-"))
-  let current = await launch(userData, options)
-  await rpc(current.page, "settings.set", { routines: { bindHost: "127.0.0.1", port: await freePort() } })
+  const dbPath = join(userData, "hinacode.sqlite")
+  const removeProfile = () => rmSync(userData, { recursive: true, force: true })
+  let current: Awaited<ReturnType<typeof launch>>
+  try {
+    new Seed(dbPath).setting("routines", { bindHost: "127.0.0.1", port: await freePort() })
+    current = await launch(userData, options)
+  } catch (error) {
+    removeProfile()
+    throw error
+  }
   return {
     userData,
-    dbPath: join(userData, "hinacode.sqlite"),
+    dbPath,
     get page() {
       return current.page
     },
@@ -184,8 +197,11 @@ export const spawnApp = async (options: SpawnAppOptions = {}): Promise<HinacodeA
         })
       }),
     close: async () => {
-      await current.app.close()
-      rmSync(userData, { recursive: true, force: true })
+      try {
+        await current.app.close()
+      } finally {
+        removeProfile()
+      }
     },
   }
 }

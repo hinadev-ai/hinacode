@@ -78,9 +78,21 @@ When("I click {string} in the file viewer", async ({ app }, button: string) => {
 const treeRow = (page: import("@playwright/test").Page, name: string) =>
   fileTree(page).getByRole("treeitem", { name, exact: true })
 
-const pressOn = async (page: import("@playwright/test").Page, source: string) => {
-  await treeRow(page, source).hover()
-  await page.mouse.down()
+// FIXME: workers share one Xvfb display, so another worker's window can send a real pointer event between our mouse down and move, and Chromium then never starts the drag
+const startDrag = async (page: import("@playwright/test").Page, source: string, folder: string) => {
+  await expect(async () => {
+    const drag = await page.evaluateHandle(() => {
+      const state = { started: false }
+      window.addEventListener("dragstart", () => (state.started = true), { once: true, capture: true })
+      return state
+    })
+    await treeRow(page, source).hover()
+    await page.mouse.down()
+    await treeRow(page, folder).hover({ position: { x: 40, y: 12 } })
+    const started = await drag.evaluate((state) => state.started)
+    if (!started) await page.mouse.up()
+    expect(started).toBe(true)
+  }).toPass()
 }
 
 // FIXME: over CDP Chromium fires dragover only on a move within the element a previous move entered, and the row's name is a child element
@@ -95,7 +107,7 @@ const dragOver = async (page: import("@playwright/test").Page, name: string) => 
 When(
   "I drag {string} onto {string} in the file tree and hold until it opens",
   async ({ app }, source: string, folder: string) => {
-    await pressOn(app.page, source)
+    await startDrag(app.page, source, folder)
     await dragOver(app.page, folder)
     await expect(treeRow(app.page, folder)).toHaveAttribute("aria-expanded", "true")
   },
@@ -107,7 +119,7 @@ When("I drop on {string} in the file tree", async ({ app }, folder: string) => {
 })
 
 When("I drag {string} onto {string} in the file tree", async ({ app }, source: string, folder: string) => {
-  await pressOn(app.page, source)
+  await startDrag(app.page, source, folder)
   await dragOver(app.page, folder)
   await app.page.mouse.up()
 })

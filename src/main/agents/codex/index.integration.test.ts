@@ -17,7 +17,7 @@ import { TestClock } from "effect/testing"
 import type { AccountHome, AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import { AGENT_INSTRUCTIONS, instructionsUpdate } from "../instructions.ts"
 import type { BackgroundTasksChange } from "../provider.ts"
-import { CodexProvider } from "./index.ts"
+import { CodexProvider, TerminalPollInterval } from "./index.ts"
 import fruitShop from "./fixtures/fruit-shop-thread.json" with { type: "json" }
 
 const bin = mkdtempSync(join(tmpdir(), "kk-fake-codex-"))
@@ -152,6 +152,9 @@ const finishesSoon = <A, E>(fiber: Fiber.Fiber<A, E>) => Fiber.join(fiber)
 
 const withProvider = <A, E>(effect: Effect.Effect<A, E, CodexProvider>) =>
   effect.pipe(Effect.provide(CodexProvider.layer))
+
+const withFastTerminalPolls = <A, E>(effect: Effect.Effect<A, E, CodexProvider>) =>
+  effect.pipe(Effect.provide(CodexProvider.layer), Effect.provideService(TerminalPollInterval, "10 millis"))
 
 describe("Codex app-server log", () => {
   it("reads an appended message only after its JSONL terminator arrives", () => {
@@ -836,7 +839,7 @@ const pendingQuestion = (turn: Turn) => {
 
 describe("Codex background terminals", () => {
   it.live("lists a command left running after the turn, stops it, and empties the set", () =>
-    withProvider(
+    withFastTerminalPolls(
       Effect.gen(function* () {
         const provider = yield* CodexProvider
         const backgroundTasks = provider.backgroundTasks ?? (yield* Effect.die("backgroundTasks is missing"))
@@ -872,7 +875,7 @@ describe("Codex background terminals", () => {
 
 describe("Codex closed sessions", () => {
   it.live("terminates the background terminals of a session the thread leaves, and empties the set", () =>
-    withProvider(
+    withFastTerminalPolls(
       Effect.gen(function* () {
         const provider = yield* CodexProvider
         const backgroundTasks = provider.backgroundTasks ?? (yield* Effect.die("backgroundTasks is missing"))

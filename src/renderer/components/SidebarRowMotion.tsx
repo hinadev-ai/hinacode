@@ -77,7 +77,7 @@ export function SidebarRowPresence({
     setSeen({ signature, placements, moves: seen.moves + (movedBetween(seen.placements, placements) ? 1 : 0) })
   return (
     <RowMotion value={{ moves: seen.moves, still }}>
-      <AnimatePresence initial={false} custom={still}>
+      <AnimatePresence initial={false} custom={still} presenceAffectsLayout={false}>
         {children}
       </AnimatePresence>
     </RowMotion>

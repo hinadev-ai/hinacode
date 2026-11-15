@@ -1,10 +1,20 @@
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { Cause, Option } from "effect"
+import { AsyncResult } from "effect/reactivity"
 import { useEffect, useRef } from "react"
 import type { Message, Thread } from "../../shared/domain.ts"
-import { findSubagentWork, inputField, statusOfCall, subagentReport } from "../../shared/subagents.ts"
+import {
+  findSubagentWork,
+  inputField,
+  mergeSubagentWork,
+  statusOfCall,
+  subagentReport,
+} from "../../shared/subagents.ts"
+import { errorMessage } from "../lib/errorMessage.ts"
 import { useOpenSubagent } from "../lib/subagents.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
-import { useSubagentByCallId } from "../stores/subagents.ts"
+import { subagentWorkAtom, unloadedSubagentWorkAtom, useSubagentByCallId } from "../stores/subagents.ts"
 import { useUi } from "../stores/ui.ts"
 import { MessageList } from "./MessageList.tsx"
 import { formatOutput } from "./MessagePart.tsx"
@@ -13,15 +23,29 @@ import { StopSubagentButton, SubagentStatusIcon, SubagentStats, useSecondTick } 
 import { Button } from "./ui/button.tsx"
 import { ArrowLeftIcon } from "@hinacode/icons"
 
-export function useSubagentLabel(threadId: string, callId: string) {
+const useWorkRevision = (threadId: string) =>
+  useMessages((state) => {
+    const history = state.byThread[threadId]
+    return history?.status === "ready" ? `${history.snapshotId}:${history.missedFinishes}` : undefined
+  })
+
+export function useSubagentLabel(threadId: string, callId: string | undefined) {
   const reported = useSubagentByCallId(threadId, callId)?.label
   const described = useMessages((state) => {
     const history = state.byThread[threadId]
-    return history?.status === "ready"
+    return history?.status === "ready" && callId !== undefined
       ? inputField(findSubagentWork(history.messages, callId).spawn, "description")
       : undefined
   })
-  return reported ?? described ?? m.agents_untitled()
+  const revision = useWorkRevision(threadId)
+  const fetched = useAtomValue(
+    reported === undefined && described === undefined && callId !== undefined && revision !== undefined
+      ? subagentWorkAtom(threadId, callId, revision)
+      : unloadedSubagentWorkAtom,
+  )
+  const fetchedSpawn = Option.getOrUndefined(AsyncResult.value(fetched))?.spawn
+  const fetchedDescription = inputField(fetchedSpawn?.type === "tool_call" ? fetchedSpawn : undefined, "description")
+  return reported ?? described ?? fetchedDescription ?? m.agents_untitled()
 }
 
 export function SubagentTranscript({
@@ -36,13 +60,21 @@ export function SubagentTranscript({
   providerLabel: string
 }) {
   const subagent = useSubagentByCallId(thread.id, callId)
-  const { spawn, calls, startedAt } = findSubagentWork(messages, callId)
+  const revision = useWorkRevision(thread.id)
+  const workAtom = revision === undefined ? unloadedSubagentWorkAtom : subagentWorkAtom(thread.id, callId, revision)
+  const fetchedWork = useAtomValue(workAtom)
+  const retry = useAtomRefresh(workAtom)
+  const fetched = Option.getOrUndefined(AsyncResult.value(fetchedWork))
+  const { spawn, calls, startedAt } = mergeSubagentWork(fetched, findSubagentWork(messages, callId))
+  const hasWork = spawn !== undefined || calls.length > 0
+  const failure = AsyncResult.isFailure(fetchedWork) && !fetchedWork.waiting ? fetchedWork.cause : undefined
+  const loading = !hasWork && fetched === undefined && failure === undefined
   const open = useOpenSubagent(thread.id)
   const now = useSecondTick(subagent?.status === "running")
   const headingRef = useRef<HTMLHeadingElement>(null)
 
   const status = subagent?.status ?? (spawn && statusOfCall[spawn.status])
-  const label = useSubagentLabel(thread.id, callId)
+  const label = subagent?.label ?? inputField(spawn, "description") ?? m.agents_untitled()
   const prompt = inputField(spawn, "prompt")
   const result =
     spawn?.output !== undefined
@@ -51,10 +83,8 @@ export function SubagentTranscript({
         ? (subagent?.summary ?? undefined)
         : undefined
   const parentCallId = spawn?.parentCallId
-  const parentLabel =
-    parentCallId === undefined
-      ? thread.title
-      : (inputField(findSubagentWork(messages, parentCallId).spawn, "description") ?? m.agents_untitled())
+  const parentAgentLabel = useSubagentLabel(thread.id, parentCallId)
+  const parentLabel = parentCallId === undefined ? thread.title : parentAgentLabel
 
   const createdAt = startedAt ?? subagent?.startedAt
   const transcript: ReadonlyArray<Message> =
@@ -131,7 +161,21 @@ export function SubagentTranscript({
           <span className="truncate">{parentLabel}</span>
         </Button>
       </div>
-      {transcript.length === 0 ? (
+      {failure !== undefined ? (
+        <>
+          {header}
+          <div role="alert" className="m-auto flex max-w-3xl clear-overview flex-col items-center gap-2 px-4">
+            <p className="text-center text-sm wrap-break-word text-destructive">
+              {m.thread_load_failed({ message: errorMessage(Cause.squash(failure)) })}
+            </p>
+            <Button variant="outline" size="sm" onClick={retry}>
+              {m.common_retry()}
+            </Button>
+          </div>
+        </>
+      ) : loading ? (
+        header
+      ) : transcript.length === 0 ? (
         <>
           {header}
           <p className="m-auto clear-overview px-4 text-sm text-muted-foreground">{m.agents_missing()}</p>

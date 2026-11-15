@@ -119,7 +119,17 @@ test("a missing folder shows one Folder missing link to Details instead of its p
 test("a new thread whose project folder is missing still says why commands did not load", async () => {
   const thread = { ...threadWith("folder-missing-draft", "idle"), worktreeId: null }
   useMessages.setState({
-    byThread: { [thread.id]: { status: "ready", messages: [], approvals: [], questions: [], secretRequests: [] } },
+    byThread: {
+      [thread.id]: {
+        status: "ready",
+        messages: [],
+        approvals: [],
+        questions: [],
+        secretRequests: [],
+        snapshotId: 1,
+        missedFinishes: 0,
+      },
+    },
   })
   await render(<Composer thread={thread} />)
 
@@ -147,6 +157,8 @@ test("a started thread on the project root keeps the commands line, since Detail
         approvals: [],
         questions: [],
         secretRequests: [],
+        snapshotId: 1,
+        missedFinishes: 0,
       },
     },
   })

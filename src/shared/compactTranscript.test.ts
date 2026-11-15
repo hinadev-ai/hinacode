@@ -5,6 +5,7 @@ import {
   compactMessage,
   compactPushes,
   previewMessage,
+  previewTranscriptMessage,
   publishPreview,
   previewPush,
   TOOL_OUTPUT_PREVIEW_CHARS,
@@ -292,6 +293,26 @@ describe("previewMessage", () => {
   test("leaves short and structured outputs whole", () => {
     const parts = [call("x".repeat(TOOL_OUTPUT_PREVIEW_CHARS)), call([{ type: "text", text: lines }])]
     expect(previewMessage(message(parts)).parts).toStrictEqual(parts)
+  })
+})
+
+describe("previewTranscriptMessage", () => {
+  const own = { ...call("x".repeat(TOOL_OUTPUT_PREVIEW_CHARS * 2)), callId: "own" }
+  const nested = { ...call("nested"), callId: "nested", parentCallId: "agent" }
+
+  test("drops sub-agent calls from a completed message and previews the thread's own calls", () => {
+    const completed = { ...message([own, nested]), completedAt: "2026-10-18T00:00:01.000Z" }
+    expect(previewTranscriptMessage(completed).parts).toStrictEqual(previewMessage(message([own])).parts)
+  })
+
+  test("keeps a running sub-agent call in a message that steering completed", () => {
+    const running = { ...nested, status: "running" as const }
+    const completed = { ...message([own, nested, running]), completedAt: "2026-10-18T00:00:01.000Z" }
+    expect(previewTranscriptMessage(completed).parts).toStrictEqual(previewMessage(message([own, running])).parts)
+  })
+
+  test("keeps sub-agent calls in an open message", () => {
+    expect(previewTranscriptMessage(message([own, nested]))).toStrictEqual(previewMessage(message([own, nested])))
   })
 })
 

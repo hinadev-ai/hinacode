@@ -128,7 +128,7 @@ const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-C", 
 const cloneDir = join(data, "repos", PUBLIC_PROJECT)
 const prepareRepos = () => {
   mkdirSync(join(data, "repos"), { recursive: true })
-  execFileSync("git", ["clone", "-q", "--local", "--single-branch", "--branch", "main", repo, cloneDir])
+  execFileSync("git", ["clone", "-q", "--single-branch", "--branch", "main", repo, cloneDir])
   git(cloneDir, "remote", "set-url", "origin", "https://github.com/hinadev-ai/hinacode.git")
   projects.forEach((project, index) => {
     if (project === publicProject || project.kind === "chats") return
@@ -158,20 +158,28 @@ const seedProjects = () =>
     })
   })
 
+const seededWorktreePath = (sourcePath: string) => {
+  const path = scrub(sourcePath)
+  return path.startsWith(data) ? path : join(data, "worktrees", basename(dirname(path)), basename(path))
+}
+
 const seedWorktrees = () =>
   rows("SELECT * FROM worktree").forEach((worktree) => {
-    const path = scrub(String(worktree.path))
+    const path = seededWorktreePath(String(worktree.path))
+    const branch = scrub(String(worktree.branch))
     const live = worktree.status === "ready" && liveWorktrees.has(worktree.id)
     if (live) {
       mkdirSync(join(path, ".."), { recursive: true })
       try {
-        git(cloneDir, "worktree", "add", "-q", "-B", String(worktree.branch), path)
+        git(cloneDir, "worktree", "add", "-q", "-B", branch, path)
       } catch {
         git(cloneDir, "worktree", "add", "-q", "--detach", path)
       }
     }
     insert("worktree", {
-      ...pick(worktree, ["id", "project_id", "branch", "base_ref", "created_at"]),
+      ...pick(worktree, ["id", "project_id", "created_at"]),
+      branch,
+      base_ref: worktree.base_ref == null ? null : scrub(String(worktree.base_ref)),
       path,
       status: live ? "ready" : "removed",
       setup_log: scrub(String(worktree.setup_log)),

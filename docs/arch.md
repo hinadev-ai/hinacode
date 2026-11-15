@@ -275,6 +275,7 @@ sequenceDiagram
     AR-->>R: push thread.subagents (not a transcript push)
     P-->>AR: tool_call_started { parentCallId }
     AR-->>R: thread.event (shown in the sub-agent's view, not the thread's)
+    R->>AR: rpc subagents.transcript { compact: false } for settled calls in completed messages, which threads.transcript drops
   end
   opt request_secret (MCP tool)
     AR-->>R: secret_requested, thread.updated(awaiting_approval)
