@@ -229,6 +229,30 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
           Stream.flatMap(() => Stream.fromIterable(scriptedTurn)),
         )
       }
+      if (input.prompt === "simulate a sub-agent") {
+        return Stream.make<Array<AgentEvent>>(
+          {
+            type: "tool_call_started",
+            callId: "agent",
+            name: "Agent",
+            input: { description: "Survey", prompt: "Look" },
+          },
+          {
+            type: "tool_call_started",
+            callId: "child",
+            name: "Read",
+            input: { file_path: "a.ts" },
+            parentCallId: "agent",
+          },
+          { type: "tool_call_finished", callId: "child", output: longOutput, isError: false },
+          { type: "tool_call_finished", callId: "agent", output: "Surveyed.", isError: false },
+        ).pipe(
+          Stream.concat(Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(Stream.drain)),
+          Stream.concat(
+            Stream.make<Array<AgentEvent>>({ type: "text_delta", text: "Done." }, { type: "turn_completed" }),
+          ),
+        )
+      }
       if (input.prompt === "simulate a long tool output") {
         return Stream.make<Array<AgentEvent>>(
           { type: "tool_call_started", callId: "long-1", name: "Bash", input: { command: "seq" } },
@@ -1407,6 +1431,46 @@ describe("long tool outputs over rpc", () => {
       "NotFoundError",
     )
     expect(result(await invoke("threads.toolOutput", { threadId: thread.id, callId: "long-1" }))).toBe(longOutput)
+  })
+})
+
+describe("sub-agent work over rpc", () => {
+  test("stays in an open message, leaves a completed one and loads per sub-agent", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    heldTurn = Promise.withResolvers()
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a sub-agent" }))
+    const latest = async () => result(await invoke("threads.transcript", { threadId: thread.id })).messages.at(-1)
+
+    await expect.poll(latest).toMatchObject({
+      completedAt: null,
+      parts: [
+        { type: "tool_call", callId: "agent", status: "done" },
+        { type: "tool_call", callId: "child", parentCallId: "agent", fullOutputBytes: longOutput.length },
+      ],
+    })
+
+    heldTurn.resolve()
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+    const parts = (await latest())?.parts
+    expect(parts).toMatchObject([
+      { type: "tool_call", callId: "agent", output: "Surveyed." },
+      { type: "text", text: "Done." },
+    ])
+
+    const work = result(await invoke("subagents.transcript", { threadId: thread.id, callId: "agent", compact: false }))
+    expect(work.spawn).toMatchObject({ callId: "agent", input: { description: "Survey", prompt: "Look" } })
+    expect(work.calls).toMatchObject([
+      { type: "tool_call", callId: "child", input: { file_path: "a.ts" }, fullOutputBytes: longOutput.length },
+    ])
+    const preview = work.calls[0]?.type === "tool_call" ? String(work.calls[0].output) : ""
+    expect(preview.length).toBeLessThanOrEqual(TOOL_OUTPUT_PREVIEW_CHARS)
+    expect(longOutput.endsWith(preview)).toBe(true)
+
+    const compact = result(await invoke("subagents.transcript", { threadId: thread.id, callId: "agent" }))
+    expect(compact.calls).toStrictEqual([
+      { type: "tool_call", callId: "child", name: "Read", input: { file_path: "a.ts" }, status: "done" },
+    ])
   })
 })
 

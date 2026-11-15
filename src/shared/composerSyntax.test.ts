@@ -2,12 +2,14 @@ import { describe, expect, test } from "@effect/vitest"
 import {
   completionAt,
   continueList,
+  continueQuote,
   endsWithClosedFence,
   highlight,
   indentList,
   leadingSkill,
   listBackspace,
   matchFiles,
+  quoteBackspace,
   matchPullRequests,
   matchThreads,
   segmentText,
@@ -137,7 +139,47 @@ describe("listBackspace", () => {
   })
 })
 
+describe("continueQuote", () => {
+  test("starts the next line as a quote and carries the text after the caret", () => {
+    expect(continueQuote("> first", 7, 7)).toStrictEqual({ from: 7, to: 7, insert: "\n> ", anchor: 10 })
+    expect(continueQuote("a\n> split here", 9, 10)).toStrictEqual({ from: 9, to: 10, insert: "\n> ", anchor: 12 })
+  })
+
+  test("ends the quote on an empty line", () => {
+    expect(continueQuote("> a\n> ", 6, 6)).toStrictEqual({ from: 4, to: 6, insert: "", anchor: 4 })
+  })
+
+  test("leaves plain lines, the marker itself and fenced code alone", () => {
+    expect(continueQuote("plain", 5, 5)).toBeNull()
+    expect(continueQuote(">tight", 6, 6)).toBeNull()
+    expect(continueQuote("> quote", 1, 1)).toBeNull()
+    expect(continueQuote("```\n> in code", 13, 13)).toBeNull()
+  })
+})
+
+describe("quoteBackspace", () => {
+  test("removes the marker right before the caret and nothing of the quote's text", () => {
+    expect(quoteBackspace("a\n>  indented", 4)).toStrictEqual({ from: 2, to: 4, insert: "", anchor: 2 })
+  })
+
+  test("leaves the rest of a quote, plain lines and fenced code alone", () => {
+    expect(quoteBackspace("> quote", 3)).toBeNull()
+    expect(quoteBackspace("a > b", 4)).toBeNull()
+    expect(quoteBackspace("```\n> in code", 6)).toBeNull()
+  })
+})
+
 describe("highlight", () => {
+  test("marks a quote's marker at the start of a line, and what the quote holds", () => {
+    const text = "> see `code`\n >not\na > b\n```\n> in code\n```"
+    const segments = highlight(text, known)
+    expect(segments.map(segmentText).join("")).toBe(text)
+    expect(segments.filter((segment) => segment.kind !== "text" && segment.kind !== "fence")).toStrictEqual([
+      { kind: "quote", text: "> " },
+      { kind: "code", text: "`code`" },
+    ])
+  })
+
   test("marks bullets, inline code and known commands, and keeps every character", () => {
     const text =
       "This is kalan\n* item\n  - nested\n1. first\n`hello` and /kalan-mode\n/usr/bin is a path\nsee @src/main/ipc.ts, not @nope or a@b.c"

@@ -1,6 +1,6 @@
 # Remote mode
 
-A user can control hinacode from elsewhere in two ways, both on Settings > `Connections`. Its Remote section turns on a token-guarded listener that the phone app pairs with, and optionally a relay that reaches it from any network. Its environments section pairs this desktop with a cloud, a machine running `hinacode serve`; the cloud's projects and threads then show in the sidebar with a cloud icon, and their agents run on that machine. The machine-scoped settings pages then edit either machine through the `Editing settings for` picker. No agent turn is needed.
+A user can control hinacode from elsewhere in two ways, both on Settings > `Connections`. Its Remote section turns on a token-guarded listener that the phone app pairs with, and optionally a relay that reaches it from any network. Its environments section pairs this desktop with a cloud, a machine running `hinacode serve`; the cloud's projects and threads then show in the sidebar with a cloud icon, and their agents run on that machine. The machine-scoped settings pages and the Remote section then edit either machine through the `Editing settings for` picker. No agent turn is needed.
 
 ## Automated coverage
 
@@ -13,7 +13,7 @@ No scenario in `e2e/features` covers remote mode. `src/main/ipc.integration.test
 - `relay` `Turn on relay` links the machine to the user's HinaCode account through a browser sign-in.
 - `environment-add` a `Pairing URL` from `hinacode serve` adds a cloud whose card reads `Connected`.
 - `cloud-sidebar` the cloud's projects and threads show in the sidebar with a cloud icon named `On <cloud>`; Details shows `On <cloud>` and the cloud's ports.
-- `settings-picker` once a cloud exists, `Editing settings for` shows on `Providers`, `Worktrees`, `Integrations`, `Routines` and `Experimental` and switches them to it. `Connections` has no picker and always edits this machine.
+- `settings-picker` once a cloud exists, `Editing settings for` shows on `Providers`, `Worktrees`, `Integrations`, `Routines` and `Experimental` and switches them to it. The Remote section on `Connections` has the same picker (`[aria-labelledby=remote-environment]`); for a cloud it shows the status lines and `Remote listener` only, with no switch, `Port`, `Pair a phone` or `Apps`.
 - `environment-remove` `Remove` with confirmation in `Remove <name>?` forgets the cloud.
 
 ## How to get to it (user POV)
@@ -34,6 +34,7 @@ Preconditions:
 - **Add the environment.** On `Connections`, `ab fill '#environment-name' kk-cloud`, `ab fill '#environment-pairing-url' "$URL"`, `ab find role button click --name "Add" --exact`. `Connected to kk-cloud.` shows and the card reads `Connected`. Screenshot `remote-02-environment.png`. `$S/rpc.ts $PORT environments.list` lists it.
 - **Cloud project in the sidebar.** Click `Add a project on kk-cloud` (shown right after `Add` succeeds). The dialog's `Where` reads `kk-cloud`. Fill `Folder or GitHub repository` with `$CLOUD/repo`, but fill `Name` with `ab fill '[role=dialog] #project-name' <name>`: `find label "Name"` fills `#environment-name` behind the dialog. Submit with `ab click '[role=dialog] button[type=submit]'`. The draft asks `What do you want to do in repo on kk-cloud?`, the sidebar gains the project with the cloud icon (hidden label `On kk-cloud`), and Details reads `On kk-cloud`. Screenshot `remote-03-cloud-sidebar.png`.
 - **Settings picker.** `Editing settings for` now shows on `Providers` and the other machine-scoped pages. Pick `kk-cloud`; `Providers` shows the cloud's settings.
+- **A cloud's listener.** On `Connections`, pick `kk-cloud` in the Remote section's picker. `#remote-bind-host` reads the cloud's `This machine only (127.0.0.1)`. Pick `Local network and Tailscale`: the cloud has no relay, so `Change the listener on kk-cloud?` opens first. `Change listener` saves it, the cloud's log gains `remote listening private:<CPORT>`, and the card returns to `Connected` after a moment offline. This opens `$CPORT` on the LAN, so set it back to `This machine only (127.0.0.1)` when done.
 - **Seeding the cloud through rpc.** `$S/rpc.ts` always calls this machine. To create a project or thread on the cloud, pass its environment id as the third argument from the page: `ab eval 'window.hinacode.rpc("projects.create", {...}, "<environment id>")'`. The answer is an envelope, `{ result }` or `{ error }`.
 - **Teardown.** `source $S/proc.sh; kill $(port_holders $CPORT)`, wait until `port_in_use $CPORT` fails, then `rm -rf $CLOUD`. The card turns `Offline` before you remove it.
 

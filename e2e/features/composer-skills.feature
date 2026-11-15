@@ -6,13 +6,11 @@ Feature: Skill chips in the composer
   Background:
     Given an isolated thread with a simulated agent that has a skill
 
-  Scenario: The commands list says what each entry is and where a skill comes from
+  Scenario: A picked skill shows as a chip and starts the sent message
     When I type "/" in the message
     Then the commands list labels "/triage-issue" as "Project skill"
     And the commands list labels "/compact" as "Command"
-
-  Scenario: A picked skill shows as a chip and starts the sent message
-    When I type "/tri" in the message
+    When I type "tri" in the message
     And I pick "/triage-issue" from the commands
     Then the message starts with the skill chip "triage-issue"
     When I type "the login test fails on CI" in the message

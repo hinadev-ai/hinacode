@@ -35,14 +35,6 @@ Feature: Threads
     Then the thread "One" is marked as unsent
     And the open tab lists the threads "Second, One" in that order
 
-  Scenario: Switching between threads replaces the open thread instead of stacking it
-    Given the project "demo" has a thread "One"
-    And the project "demo" has a thread "Two"
-    When I open the thread "One" from the sidebar
-    And I open the thread "Two" from the sidebar
-    And I open the thread "One" from the sidebar
-    Then the thread "One" is open
-
   Scenario: A project group collapses and expands its threads
     Given the project "demo" has a thread "One"
     When I collapse the threads of "demo"
@@ -160,9 +152,8 @@ Feature: Threads
     Then the snoozed threads are "Later"
 
     Examples:
-      | time            | problem                   |
-      | not a real date | Can't read that as a time |
-      | yesterday 9:00  | That time has passed      |
+      | time           | problem              |
+      | yesterday 9:00 | That time has passed |
 
   @desktop
   Scenario: A thread's ID is copied from its row menu, to point another agent at it

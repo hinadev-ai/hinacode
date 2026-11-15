@@ -46,7 +46,7 @@ import {
   selectPinnedThreads,
   selectProjectThreads,
   selectSnoozedThreads,
-  selectUnpinnedProjectThreads,
+  selectProjectListThreads,
   type ThreadsState,
   useThreads,
 } from "../stores/threads.ts"
@@ -258,7 +258,7 @@ type Query = string
 const includes = (text: string, query: Query) => text.toLocaleLowerCase().includes(query)
 
 const projectThreads = (state: Pick<ThreadsState, "byId">, projects: ReadonlyArray<Project>, query: Query) =>
-  selectUnpinnedProjectThreads(...projects.map((project) => project.id))(state).filter(
+  selectProjectListThreads(...projects.map((project) => project.id))(state).filter(
     (thread) =>
       query === "" ||
       includes(thread.title, query) ||
@@ -568,7 +568,7 @@ function InboxList({ query }: { query: Query }) {
             key: READY_GROUP,
             divided: drafts.length > 0,
             group: READY_GROUP,
-            headingClassName: "sticky top-0 z-20 bg-sidebar",
+            headingClassName: "sticky top-0 z-20 bg-sidebar glass-sticky-heading",
             heading: (
               <SectionHeading
                 title={m.sidebar_ready()}

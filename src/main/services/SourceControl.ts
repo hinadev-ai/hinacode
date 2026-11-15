@@ -24,6 +24,7 @@ export class SourceControl extends Context.Service<
       url: string,
       options?: { readonly fresh?: boolean | undefined },
     ) => Effect.Effect<PullRequestDetail, SourceControlError | Schema.SchemaError>
+    readonly refresh: (url: string) => Effect.Effect<void>
     readonly merge: (
       url: string,
       method: MergeMethod,
@@ -87,6 +88,14 @@ const make = Effect.gen(function* () {
         url,
         () => github.pullRequestDetail(url, options),
         () => gitlab.pullRequestDetail(url),
+      ),
+    refresh: (url) =>
+      Effect.ignore(
+        byUrl(
+          url,
+          () => github.refresh(url),
+          () => gitlab.refresh(url),
+        ),
       ),
     merge: (url, method) =>
       byUrl(

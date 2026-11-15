@@ -14,6 +14,7 @@ const spanStyle = (kind: ComposerSpan["kind"], theme: Palette): TextStyle => {
     case "strong":
       return { color: theme.text }
     case "bullet":
+    case "quote":
     case "rule":
       return { color: theme.textMuted }
     case "code":

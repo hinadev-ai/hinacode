@@ -86,8 +86,8 @@ const fetchIcon = async (url: URL, deadline: AbortSignal) => {
   return type && `data:${type};base64,${bytes.toString("base64")}`
 }
 
-const lookup = async (origin: string) => {
-  const deadline = AbortSignal.timeout(LOOKUP_TIMEOUT_MS)
+const lookup = async (origin: string, lookupTimeoutMs: number) => {
+  const deadline = AbortSignal.timeout(lookupTimeoutMs)
   const page = await get(new URL("/", origin), deadline).catch(() => null)
   const html = page ? (await readUpTo(page.response, PAGE_LIMIT_BYTES)).bytes.toString("utf8") : ""
   const linked = page && linkedIcon(html, page.url)
@@ -117,13 +117,13 @@ class Host implements Equal.Equal {
   }
 }
 
-const make = Effect.gen(function* () {
+const make = Effect.fnUntraced(function* (lookupTimeoutMs: number) {
   const lookups = yield* Semaphore.make(MAX_CONCURRENT_LOOKUPS)
   const icons = yield* Cache.makeWith(
     (host: Host) =>
       Semaphore.withPermit(
         lookups,
-        Effect.promise(() => lookup(host.origin).catch(() => null)),
+        Effect.promise(() => lookup(host.origin, lookupTimeoutMs).catch(() => null)),
       ),
     {
       capacity: CACHE_CAPACITY,
@@ -141,4 +141,6 @@ const make = Effect.gen(function* () {
   })
 })
 
-export const layer = Layer.effect(Favicons, make)
+export const layerWithLookupTimeout = (lookupTimeoutMs: number) => Layer.effect(Favicons, make(lookupTimeoutMs))
+
+export const layer = layerWithLookupTimeout(LOOKUP_TIMEOUT_MS)

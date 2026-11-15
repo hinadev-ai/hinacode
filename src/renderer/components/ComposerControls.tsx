@@ -876,12 +876,33 @@ function ContextSwitch({
 }
 
 export function ThreadProjectSwitch({ thread }: { thread: Thread }) {
+  const navigate = useNavigate()
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
+  const [adding, setAdding] = useState(false)
   const current = projects.find((project) => project.id === thread.projectId)
   const options = projects
     .filter((project) => project.kind !== "chats" && environmentOf(project) === environmentOf(current))
     .map((project) => ({ projectId: project.id, label: project.name }))
-  return <ContextSwitch thread={thread} label={current?.name ?? ""} options={options} />
+  return (
+    <>
+      <ContextSwitch thread={thread} label={current?.name ?? ""} options={options}>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => startTransition(() => setAdding(true))}>
+          {m.project_add_existing()}
+        </DropdownMenuItem>
+      </ContextSwitch>
+      {adding && (
+        <ProjectDialog
+          open
+          onOpenChange={(open) => !open && setAdding(false)}
+          environment={environmentOf(current)}
+          onCreated={(created) =>
+            moveDraft(thread, created.id, navigate).catch((cause: unknown) => toast.error(errorMessage(cause)))
+          }
+        />
+      )}
+    </>
+  )
 }
 
 export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {

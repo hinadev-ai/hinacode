@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { afterEach, describe, expect, test } from "vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime } from "effect"
+import { TestClock } from "effect/testing"
 import type { BrowserCommand } from "../../shared/browser.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
@@ -35,7 +36,7 @@ addEventListener('scroll',()=>fetch('/events?type=scroll&y='+scrollY))
 
 const untilFirstFrame = { timeout: 6000 }
 
-const fixture = async (options: BrowserOptions = {}) => {
+const fixture = async (options: BrowserOptions = {}, clock: Layer.Layer<never> = Layer.empty) => {
   const directory = await mkdtemp(join(tmpdir(), "hinacode-browser-"))
   cleanups.push(() => rm(directory, { recursive: true, force: true }))
   const secondDirectory = join(directory, "second")
@@ -95,6 +96,7 @@ const fixture = async (options: BrowserOptions = {}) => {
     browserLayer(options).pipe(
       Layer.provideMerge(Layer.merge(Db.layer(":memory:"), Attachments.layer(join(directory, "attachments")))),
       Layer.provide(NodeServices.layer),
+      Layer.provideMerge(clock),
     ),
   )
   cleanups.push(() => runtime.dispose())
@@ -402,10 +404,10 @@ describe("host browser", () => {
   })
 
   test("expires abandoned sessions and closes sessions with the service scope", async () => {
-    const { open, runtime, browser } = await fixture({ leaseMs: 700, sweepMs: 30 })
+    const { open, runtime, browser } = await fixture({ leaseMs: 700, sweepMs: 1000 }, TestClock.layer())
     const tab = await open()
     await expect.poll(async () => (await tab.snapshot()).state.title, untilFirstFrame).toBe("Remote browser")
-    await Effect.runPromise(Effect.sleep(900))
+    await runtime.runPromise(TestClock.adjust("1 second"))
     await expect(tab.snapshot()).rejects.toThrow(/expired/)
     const replacement = await open()
     await runtime.dispose()

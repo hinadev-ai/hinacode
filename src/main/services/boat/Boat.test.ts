@@ -8,7 +8,7 @@ import { Boat, BOAT_API_KEY_SECRET, boatClient, layer as boatLayer } from "./Boa
 import { API_KEY, BIG_STDOUT, BINARY_STDOUT, type FakeBoat, TAR_BYTES, withFake } from "./testing.ts"
 
 const makeClient = (fake: FakeBoat, apiKey = API_KEY) =>
-  boatClient({ baseUrl: fake.baseUrl, apiKey: Redacted.make(apiKey) })
+  boatClient({ baseUrl: fake.baseUrl, apiKey: Redacted.make(apiKey), pollSeconds: 0, signedRetrySeconds: [0, 0, 0, 0] })
 
 const runEffect = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect)
 const runFlip = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(Effect.flip(effect))
@@ -128,7 +128,7 @@ describe("boatClient", () => {
       fake.seedSandbox("sb-1", "ready")
       fake.dropSignedFetches(1)
       const result = await runEffect(makeClient(fake).exec("sb-1", { script: "big-stdout", timeoutSeconds: 30 }))
-      expect(Buffer.from(result.stdout)).toEqual(BIG_STDOUT)
+      expect(Buffer.from(result.stdout).equals(BIG_STDOUT)).toBe(true)
     })
   }, 60000)
 

@@ -1,6 +1,6 @@
 import { collapsedParts } from "../../shared/activityFold.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { isOwnPart } from "../../shared/subagents.ts"
+import { isOwnPart } from "../../shared/compactTranscript.ts"
 import { groupToolCalls, type TranscriptBlock } from "./toolCall.ts"
 
 export interface IndexedMessagePart {

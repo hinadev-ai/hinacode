@@ -40,7 +40,10 @@ it.live("a process that ignores SIGTERM is killed anyway", () =>
     const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)
 
     yield* Effect.flip(
-      exec("sh", ["-c", "trap '' TERM; echo $$ > pid; while :; do sleep 1; done"], dir, { timeout: "500 millis" }),
+      exec("sh", ["-c", "trap '' TERM; echo $$ > pid; while :; do sleep 1; done"], dir, {
+        timeout: "500 millis",
+        forceKillAfter: "100 millis",
+      }),
     )
 
     expect(isRunning(Number(readFileSync(join(dir, "pid"), "utf8")))).toBe(false)

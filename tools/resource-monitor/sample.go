@@ -2,7 +2,8 @@ package main
 
 import "time"
 
-// Sample is one line of the log. The Electron side reads these field names, so they are a contract.
+// Sample is one line of the log. The report command reads these field names back, including from logs an
+// older build wrote, and docs/features/2026-10-22-resource-monitor.md documents them, so they are a contract.
 type Sample struct {
 	At        time.Time `json:"at"`
 	Root      int32     `json:"root"`
