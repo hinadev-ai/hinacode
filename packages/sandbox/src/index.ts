@@ -1,3 +1,4 @@
+export { type FileGrant, fileBindings } from "./files.ts"
 export {
   DEFAULT_LIMITS,
   type Globals,
