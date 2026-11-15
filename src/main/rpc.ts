@@ -343,6 +343,7 @@ const handlers: Handlers = {
   "environments.list": () => Environments.use((environments) => environments.list),
   "environments.add": (input) => Environments.use((environments) => environments.add(input)),
   "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
+  "environments.rename": ({ id, name }) => Environments.use((environments) => environments.rename(id, name)),
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
   "relayAccount.status": () => RelayAccount.use((account) => account.status),
   "relayAccount.signIn": (_, desktop) =>

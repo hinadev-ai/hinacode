@@ -64,6 +64,7 @@ export class Environments extends Context.Service<
       InvalidPairingUrl | EnvironmentUnreachable | EnvironmentUnauthorized | PersistenceError
     >
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
+    readonly rename: (id: string, name: string) => Effect.Effect<void, PersistenceError>
     readonly syncRelay: (machines: ReadonlyArray<RelayMachine>) => Effect.Effect<number, PersistenceError>
     readonly reconnect: (id: string) => Effect.Effect<void>
     readonly reconnectAll: Effect.Effect<void>
@@ -720,6 +721,16 @@ const make = Effect.gen(function* () {
       owners.forget(id)
     })
 
+  const rename = (id: string, name: string) =>
+    Effect.gen(function* () {
+      yield* sql`UPDATE environment SET name = ${name} WHERE id = ${id}`.pipe(
+        Effect.mapError(persistence("environments.rename")),
+      )
+      const cloud = clouds.get(id)
+      if (cloud !== undefined) cloud.environment = { ...cloud.environment, name }
+      yield* events.publish({ type: "environments.changed" })
+    })
+
   const syncRelay = (machines: ReadonlyArray<RelayMachine>) =>
     Effect.gen(function* () {
       const failed = persistence("environments.syncRelay")
@@ -754,28 +765,20 @@ const make = Effect.gen(function* () {
           changed = true
           continue
         }
-        const environment: Environment = {
-          ...existing,
-          name: existing.source === "relay" ? name : existing.name,
-          host,
-          port,
-          relay,
-        }
+        const environment: Environment = { ...existing, host, port, relay }
         const redial =
           host !== existing.host ||
           port !== existing.port ||
           relay !== existing.relay ||
           token !== Option.getOrNull(yield* secrets.get(tokenSecret(id)))
-        if (!redial && environment.name === existing.name) continue
-        yield* sql`UPDATE environment SET name = ${environment.name}, host = ${host}, port = ${port}, relay = ${relay} WHERE id = ${id}`.pipe(
+        if (!redial) continue
+        yield* sql`UPDATE environment SET host = ${host}, port = ${port}, relay = ${relay} WHERE id = ${id}`.pipe(
           Effect.andThen(secrets.set(tokenSecret(id), token)),
           sql.withTransaction,
           Effect.catchTag("SqlError", (error) => Effect.fail(failed(error))),
         )
         changed = true
-        const cloud = clouds.get(id)
-        if (redial || cloud === undefined) yield* start(environment)
-        else cloud.environment = environment
+        yield* start(environment)
       }
       yield* Effect.forEach(drop, (row) => remove(row.id), { discard: true })
       if (changed) yield* events.publish({ type: "environments.changed" })
@@ -861,6 +864,7 @@ const make = Effect.gen(function* () {
     list,
     add,
     remove,
+    rename,
     syncRelay,
     reconnect,
     reconnectAll,

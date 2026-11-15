@@ -75,6 +75,7 @@ export const routes: Record<RpcMethod, Route> = {
   "machines.list": all,
   "environments.add": client,
   "environments.remove": client,
+  "environments.rename": client,
   "environments.reconnect": client,
   "relayAccount.status": client,
   "relayAccount.signIn": client,
