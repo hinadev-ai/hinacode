@@ -1,5 +1,8 @@
+import { chmodSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { launchAgentPlist, serveProgram, serviceManager, systemdUnit } from "./service.ts"
+import { launchAgentPlist, prepareLog, serveProgram, serviceManager, systemdUnit } from "./service.ts"
 
 const service = {
   program: ["/opt/hinacode 1.0/hinacode", "serve"],
@@ -74,5 +77,27 @@ describe("serviceManager", () => {
 
   it("refuses a platform without a supported service manager", () => {
     expect(() => serviceManager({ platform: "win32", home: "C:\\Users\\me", uid: -1, env: {} })).toThrow(/serve/)
+  })
+})
+
+describe("prepareLog", () => {
+  const mode = (path: string) => statSync(path).mode & 0o777
+
+  it("creates the log where only the user can read it", () => {
+    const log = join(mkdtempSync(join(tmpdir(), "kk-service-log-")), "state", "hinacode", "serve.log")
+    prepareLog(log)
+    expect(mode(join(log, ".."))).toBe(0o700)
+    expect(mode(log)).toBe(0o600)
+  })
+
+  it("tightens a log an earlier connect left readable", () => {
+    const dir = join(mkdtempSync(join(tmpdir(), "kk-service-log-")), "hinacode")
+    mkdirSync(dir, { mode: 0o755 })
+    const log = join(dir, "serve.log")
+    writeFileSync(log, "earlier\n")
+    chmodSync(log, 0o644)
+    prepareLog(log)
+    expect(mode(dir)).toBe(0o700)
+    expect(mode(log)).toBe(0o600)
   })
 })
