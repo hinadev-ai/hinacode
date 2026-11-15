@@ -19,6 +19,23 @@ const saveAccount = (account: RelayAccount) => localStorage.setItem(ACCOUNT_KEY,
 
 export const forgetAccount = () => localStorage.removeItem(ACCOUNT_KEY)
 
+const MACHINE_NAMES_KEY = "hinacode.machineNames"
+
+const decodeMachineNames = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)),
+)
+
+const machineNames = (): Readonly<Record<string, string>> =>
+  Option.getOrElse(decodeMachineNames(localStorage.getItem(MACHINE_NAMES_KEY) ?? ""), () => ({}))
+
+export const renameMachine = (environmentId: string, name: string) =>
+  localStorage.setItem(MACHINE_NAMES_KEY, JSON.stringify({ ...machineNames(), [environmentId]: name }))
+
+export const withLocalNames = (machines: ReadonlyArray<RelayMachine>) => {
+  const names = machineNames()
+  return machines.map((machine) => ({ ...machine, name: names[machine.environmentId] ?? machine.name }))
+}
+
 const SIGNED_OUT_KEY = "hinacode.signedOut"
 
 export const relayEndpoint = (serviceUrl: string, path: string) => `${serviceUrl.replace(/\/+$/, "")}${path}`
