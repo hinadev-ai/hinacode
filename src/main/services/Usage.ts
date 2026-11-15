@@ -11,7 +11,7 @@ export class Usage extends Context.Service<
 >()("hinacode/Usage") {}
 
 export const usageRowsQuery = (sql: SqlClient.SqlClient, since: string | null) => sql`
-      WITH switch AS (
+      WITH switch AS MATERIALIZED (
         SELECT thread_id, created_at,
           json_extract(parts, '$[0].from') AS from_provider,
           json_extract(parts, '$[0].to') AS to_provider
