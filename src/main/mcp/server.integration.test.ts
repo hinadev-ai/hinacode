@@ -511,6 +511,9 @@ layer(testLayer)("run_script", (it) => {
       const result = yield* callAs(connection, "run_script", { code })
       expect(result.isError).toBe(true)
       expect(result.text).toMatch(/^reading\n\nScript error: Error: .+/)
+      expect(result.text).toMatch(
+        /Tool calls that finished before this took effect and were not undone\. Check which calls already ran, fix the script, and run only what is left\.$/,
+      )
     }),
   )
 })

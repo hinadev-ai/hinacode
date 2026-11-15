@@ -359,6 +359,10 @@ export const RUN_AGENT_TOOL = "run_agent"
 
 export const WAIT_AGENT_TOOL = "wait_agent"
 
+export const RUN_SCRIPT_TOOL = "run_script"
+
+export const RUN_SCRIPT_TIMEOUT_MINUTES = 4
+
 export const isRunAgentTool = (name: string) => ownToolName(name) === RUN_AGENT_TOOL
 
 export const PUBLISH_ARTIFACT_TOOL = "publish_artifact"
