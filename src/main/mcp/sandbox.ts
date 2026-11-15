@@ -1,3 +1,4 @@
+import { setImmediate as yieldToEventLoop } from "node:timers/promises"
 import variant from "@jitl/quickjs-singlefile-mjs-release-sync"
 import {
   newQuickJSWASMModuleFromVariant,
@@ -22,13 +23,6 @@ export const MAX_OUTPUT_CHARS = 40_000
 
 const WASM_PAGE_BYTES = 64 * 1024
 
-const loadQuickJs = () =>
-  newQuickJSWASMModuleFromVariant(
-    newVariant(variant, {
-      wasmMemory: new WebAssembly.Memory({ initial: 256, maximum: MEMORY_LIMIT_BYTES / WASM_PAGE_BYTES }),
-    }),
-  )
-
 const PRELUDE = `
 const describe = (value) => typeof value === "string" ? value : value instanceof Error ? String(value) : JSON.stringify(value, null, 2) ?? String(value)
 globalThis.tools = Object.freeze(Object.fromEntries(JSON.parse(__toolNames).map((name) => [name, (args = {}) =>
@@ -43,10 +37,24 @@ const wrap = (code: string) =>
   throw error instanceof Error ? [String(error), error.stack ?? ""].join("\\n").trim() : __describe(error)
 })`
 
-const truncate = (text: string) => {
-  if (text.length <= MAX_OUTPUT_CHARS) return text
+const boundedText = () => {
   const half = MAX_OUTPUT_CHARS / 2
-  return `${text.slice(0, half)}\n… ${text.length - MAX_OUTPUT_CHARS} characters omitted …\n${text.slice(-half)}`
+  let head = ""
+  let tail = ""
+  let total = 0
+  return {
+    append: (line: string) => {
+      const text = total === 0 ? line : `\n${line}`
+      total += text.length
+      const room = half - head.length
+      head += text.slice(0, Math.max(room, 0))
+      tail = (tail + text.slice(Math.max(room, 0))).slice(-half)
+    },
+    text: () => {
+      const omitted = total - head.length - tail.length
+      return omitted === 0 ? head + tail : `${head}\n… ${omitted} characters omitted …\n${tail}`
+    },
+  }
 }
 
 const errorText = (context: QuickJSContext, handle: QuickJSHandle) => {
@@ -59,15 +67,21 @@ const errorText = (context: QuickJSContext, handle: QuickJSHandle) => {
   return JSON.stringify(dumped)
 }
 
+const OUT_OF_MEMORY = "The script ran out of memory in the sandbox."
+const HEAP_SLACK_BYTES = 1024 * 1024
+
 export const runScript = async (code: string, host: ScriptHost, signal: AbortSignal): Promise<ScriptOutcome> => {
-  const runtime = (await loadQuickJs()).newRuntime()
+  const memory = new WebAssembly.Memory({ initial: 256, maximum: MEMORY_LIMIT_BYTES / WASM_PAGE_BYTES })
+  const quickJs = await newQuickJSWASMModuleFromVariant(newVariant(variant, { wasmMemory: memory }))
+  const runtime = quickJs.newRuntime()
   const context = runtime.newContext()
   const calls = new AbortController()
   const pending = new Set<Promise<void>>()
   const deferreds = new Set<QuickJSDeferredPromise>()
-  const lines: Array<string> = []
+  const output = boundedText()
   let sliceDeadline = 0
   let overran = false
+  let outOfMemory = false
   let finished = false
 
   runtime.setMaxStackSize(1024 * 1024)
@@ -80,21 +94,28 @@ export const runScript = async (code: string, host: ScriptHost, signal: AbortSig
     sliceDeadline = performance.now() + SLICE_MS
   }
 
-  const output = () => truncate(lines.join("\n"))
   const failed = (error: string): ScriptOutcome => ({
     _tag: "Failed",
-    output: output(),
+    output: output.text(),
     error: overran
       ? `The script ran for more than ${SLICE_MS} ms without waiting on a tool, so it was stopped.`
-      : error.startsWith("InternalError: out of memory")
-        ? "The script ran out of memory in the sandbox."
+      : outOfMemory || error.startsWith("InternalError: out of memory")
+        ? OUT_OF_MEMORY
         : error,
   })
 
+  const heapCanHold = (text: string) =>
+    memory.buffer.byteLength + Buffer.byteLength(text) + HEAP_SLACK_BYTES <= MEMORY_LIMIT_BYTES
+
   const settle = (deferred: QuickJSDeferredPromise, outcome: { ok: string } | { error: string }) => {
+    if (finished) return
     deferreds.delete(deferred)
-    if (finished) return deferred.dispose()
-    const value = context.newString("ok" in outcome ? outcome.ok : outcome.error)
+    const text = "ok" in outcome ? outcome.ok : outcome.error
+    if (!heapCanHold(text)) {
+      outOfMemory = true
+      return deferred.dispose()
+    }
+    const value = context.newString(text)
     if ("ok" in outcome) deferred.resolve(value)
     else deferred.reject(value)
     value.dispose()
@@ -114,12 +135,15 @@ export const runScript = async (code: string, host: ScriptHost, signal: AbortSig
         (value) => settle(deferred, { ok: JSON.stringify(value) ?? "null" }),
         (error: unknown) => settle(deferred, { error: error instanceof Error ? error.message : String(error) }),
       )
+      .catch(() => {
+        outOfMemory = true
+      })
       .finally(() => pending.delete(task))
     pending.add(task)
     return deferred.handle
   })
   const print = context.newFunction("__print", (line) => {
-    lines.push(context.getString(line))
+    output.append(context.getString(line))
   })
   const toolNames = context.newString(JSON.stringify(host.tools))
   context.setProp(context.global, "__call", call)
@@ -135,7 +159,7 @@ export const runScript = async (code: string, host: ScriptHost, signal: AbortSig
   })
 
   let script: QuickJSHandle | undefined
-  try {
+  const run = async (): Promise<ScriptOutcome> => {
     startSlice()
     context.unwrapResult(context.evalCode(PRELUDE, "prelude.js")).dispose()
     startSlice()
@@ -157,8 +181,9 @@ export const runScript = async (code: string, host: ScriptHost, signal: AbortSig
       const state = context.getPromiseState(script)
       if (state.type === "fulfilled") {
         const value = context.getString(state.value)
+        if (value !== "") output.append(value)
         state.value.dispose()
-        return { _tag: "Completed", output: truncate([...lines, value].filter((line) => line !== "").join("\n")) }
+        return { _tag: "Completed", output: output.text() }
       }
       if (state.type === "rejected") {
         const error = errorText(context, state.error)
@@ -168,13 +193,22 @@ export const runScript = async (code: string, host: ScriptHost, signal: AbortSig
       if (pending.size === 0) return failed("The script awaits a promise that can never settle.")
       if ((await Promise.race([aborted, Promise.race(pending)])) === "aborted")
         return failed("The script was cancelled.")
+      await yieldToEventLoop()
+      if (signal.aborted) return failed("The script was cancelled.")
+      if (outOfMemory) return failed(OUT_OF_MEMORY)
     }
-  } finally {
-    finished = true
-    calls.abort()
+  }
+
+  const outcome = await run().catch(() => failed(OUT_OF_MEMORY))
+  finished = true
+  calls.abort()
+  try {
     for (const deferred of deferreds) deferred.dispose()
     script?.dispose()
     context.dispose()
     runtime.dispose()
+    return outcome
+  } catch {
+    return failed(OUT_OF_MEMORY)
   }
 }
