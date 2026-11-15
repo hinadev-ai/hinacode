@@ -94,4 +94,16 @@ describe("Usage.rows", () => {
       }),
     ),
   )
+
+  it.effect("reads each message's parts once to find the agent switches", () =>
+    withUsage(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+
+        const plan = yield* sql<{ detail: string }>`EXPLAIN QUERY PLAN ${Usage.usageRowsQuery(sql, null)}`
+
+        expect(plan.map(({ detail }) => detail)).toContain("MATERIALIZE switch")
+      }),
+    ),
+  )
 })

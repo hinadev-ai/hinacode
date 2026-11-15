@@ -10,13 +10,7 @@ export class Usage extends Context.Service<
   }
 >()("hinacode/Usage") {}
 
-const make = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient
-
-  const findRows = SqlSchema.findAll({
-    Request: Schema.NullOr(Schema.String),
-    Result: UsageRow,
-    execute: (since) => sql`
+export const usageRowsQuery = (sql: SqlClient.SqlClient, since: string | null) => sql`
       WITH switch AS (
         SELECT thread_id, created_at,
           json_extract(parts, '$[0].from') AS from_provider,
@@ -51,7 +45,15 @@ const make = Effect.gen(function* () {
       JOIN thread ON thread.id = activity.thread_id
       JOIN project ON project.id = thread.project_id
       GROUP BY activity.thread_id, activity.provider
-    `,
+    `
+
+const make = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient
+
+  const findRows = SqlSchema.findAll({
+    Request: Schema.NullOr(Schema.String),
+    Result: UsageRow,
+    execute: (since) => usageRowsQuery(sql, since),
   })
 
   return Usage.of({
