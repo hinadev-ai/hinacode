@@ -1,5 +1,5 @@
 import { expect, test } from "@effect/vitest"
-import { agentInstructions } from "./instructions.ts"
+import { agentInstructions, instructionsUpdate } from "./instructions.ts"
 import { defaultSettings } from "../../shared/domain.ts"
 
 const { experimental } = defaultSettings
@@ -50,4 +50,15 @@ test("says none for a detached HEAD and a repository without an origin", () => {
   const instructions = agentInstructions(experimental, { ...environment, branch: null, remote: null }, [])
   expect(instructions).toContain("git branch: `(none)`")
   expect(instructions).toContain("remote: `(none)`")
+})
+
+test("sends only the blocks that changed since the agent last read its instructions", () => {
+  const seen = agentInstructions({ ...experimental, devices: true }, environment, [])
+  const current = agentInstructions(experimental, { ...environment, branch: "fix/y" }, [])
+
+  const update = instructionsUpdate(seen, current) ?? ""
+  expect(update).toContain("git branch: `fix/y`")
+  expect(update).toContain("<devices>\nNo longer applies.\n</devices>")
+  expect(update).not.toContain("<hinacode>")
+  expect(instructionsUpdate(current, current)).toBeNull()
 })

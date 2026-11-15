@@ -211,11 +211,13 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
   }
 
   override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-    if (event.actionMasked == MotionEvent.ACTION_DOWN && rebindStaleEditorRow()) {
-      measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY))
-      layout(left, top, right, bottom)
-    }
+    if (event.actionMasked == MotionEvent.ACTION_DOWN && rebindStaleEditorRow()) layoutNow()
     return super.dispatchTouchEvent(event)
+  }
+
+  private fun layoutNow() {
+    measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY))
+    layout(left, top, right, bottom)
   }
 
   private fun rebindStaleEditorRow(): Boolean {
@@ -422,6 +424,8 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
     adapter.notifyItemChanged(target.index)
     val shown = layoutManager.findFirstVisibleItemPosition()..layoutManager.findLastVisibleItemPosition()
     if (target.index !in shown) layoutManager.scrollToPosition(target.index)
+    layoutNow()
+    activeEditor?.let(::claimFocus)
   }
 
   private fun bound(editor: BlockEditText, styled: CharSequence) {
@@ -432,20 +436,25 @@ class DocumentView(context: Context, appContext: AppContext) : ExpoView(context,
       editor.generation = generation
     }
     activeEditor = editor
-    pendingSelection?.let { selection ->
-      pendingSelection = null
-      editor.select(selection.anchor, selection.head)
-      if (selection.report) editor.post { editorListener.selected(editor) }
-      replayTyped(editor)
-    }
-    if (editing && !editor.hasFocus()) editor.post { claimFocus(editor) }
+    if (editing && !editor.hasFocus()) editor.post { claimFocus(editor) } else placePendingSelection(editor)
   }
 
   private fun claimFocus(editor: BlockEditText) {
     if (editor !== activeEditor || !editing) return
-    editor.requestFocus()
-    showKeyboard(editor)
+    if (!editor.hasFocus()) {
+      editor.requestFocus()
+      showKeyboard(editor)
+    }
+    placePendingSelection(editor)
     post { revealCaret() }
+  }
+
+  private fun placePendingSelection(editor: BlockEditText) {
+    val selection = pendingSelection ?: return
+    pendingSelection = null
+    editor.select(selection.anchor, selection.head)
+    if (selection.report) editor.post { editorListener.selected(editor) }
+    replayTyped(editor)
   }
 
   private fun showKeyboard(editor: BlockEditText) {

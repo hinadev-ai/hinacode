@@ -118,6 +118,7 @@ function androidDevice(): Device {
     bundle: sha(run("unzip", ["-p", apk, "assets/index.android.bundle"])),
     connect: (ports) => {
       adb("install", "-r", apk)
+      adb("shell", "pm", "clear", pkg)
       adb("shell", "pm", "grant", pkg, "android.permission.POST_NOTIFICATIONS")
       for (const port of ports) adb("reverse", `tcp:${port}`, `tcp:${port}`)
     },
@@ -191,7 +192,8 @@ async function measure(runLabel: string) {
       ]),
     )
   const pairing = rpc("remote.pairing") as { port: number }
-  device.connect([port, pairing.port])
+  const target = { ...pairing, port: Number(env("PERF_REMOTE_PORT", String(pairing.port))) }
+  device.connect([port, target.port])
 
   let nextId = 1
   const queue: Record<string, unknown>[] = []
@@ -219,7 +221,11 @@ async function measure(runLabel: string) {
     const body = await read(request)
     if (request.url === "/ready") await Promise.resolve(readies.get(Number(body.id))?.()).catch(console.error)
     response.writeHead(204).end()
-    if (request.url === "/hello") onHello?.(body)
+    if (request.url === "/hello") {
+      waiting?.writeHead(204).end()
+      waiting = null
+      onHello?.(body)
+    }
     if (request.url === "/result") results.get(Number(body.id))?.(body as never)
   })
   await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve))
@@ -242,12 +248,11 @@ async function measure(runLabel: string) {
 
   let pid = 0
   const launch = async () => {
-    const hello = new Promise<Record<string, unknown>>((resolve) => (onHello = resolve))
+    const hello = new Promise<number>((resolve) => (onHello = () => resolve(Date.now())))
     device.terminate()
     const launchedAt = Date.now()
     pid = device.launch()
-    await hello
-    return launchedAt
+    return { launchedAt, helloAt: await hello }
   }
 
   const loadStart = loadavg()
@@ -267,6 +272,7 @@ async function measure(runLabel: string) {
       bundle: device.bundle,
       rounds,
       workloads: [...workloads],
+      remotePort: target.port,
       revision: run("git", ["-C", root, "rev-parse", "--short", "HEAD"]).trim(),
       date: new Date().toISOString(),
     },
@@ -280,15 +286,15 @@ async function measure(runLabel: string) {
   await launch()
   let hello = await send("hello")
   if (!hello.paired) {
-    await send("pair", { target: rpc("remote.pairing") })
+    await send("pair", { target })
     hello = await send("hello")
   }
   record.meta.longTasksObserved = hello.longTasksObserved
 
   for (let round = 0; workloads.has("cold") && round < rounds; round++) {
-    const launchedAt = await launch()
+    const { launchedAt, helloAt } = await launch()
     const result = await send("hello")
-    const sinceLaunch = (at: unknown) => round1(Number(result.epochOffset) + Number(at) - launchedAt)
+    const sinceLaunch = (at: unknown) => round1(helloAt - launchedAt + Number(at) - Number(result.firstCommit))
     const startup = result.startup as {
       startTime: number
       executeJavaScriptBundleEntryPointStart: number

@@ -10,13 +10,13 @@ import {
   type ThumbnailMark,
   thumbnailMarks,
 } from "@shared/documentThumbnail.ts"
-import { router } from "expo-router"
 import { StyleSheet, Text, View } from "react-native"
 import Svg, { Circle, Path, Rect } from "react-native-svg"
 import { Icon } from "@/components/icon"
 import { FadeIn, PressableScale, Pulse } from "@/components/motion"
 import { CalloutColors, radius } from "@/constants/theme"
 import { useScheme, useTheme } from "@/hooks/use-theme"
+import { artifactKinds, openArtifact } from "@/lib/artifact-kinds"
 import { copy } from "@/lib/copy"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
@@ -30,33 +30,24 @@ const summaryOf = (outline: DocumentOutline | null) => {
   return more > 0 ? copy("mobile_artifact_card_more_sections", { sections: listed, count: String(more) }) : listed
 }
 
-const cardCopy = {
-  page: { kind: "mobile_artifact_card_page", untitled: "mobile_artifact_untitled_page" },
-  document: { kind: "mobile_artifact_card_document", untitled: "mobile_artifact_untitled_document" },
-  whiteboard: { kind: "mobile_artifacts_whiteboard", untitled: "mobile_artifact_untitled_whiteboard" },
-} as const
-
-const openDocument = (threadId: string, artifactId: string, title: string) =>
-  router.push({ pathname: "/thread/[id]/document", params: { id: threadId, artifactId, title } })
-
 export function ArtifactCard({ part, threadId }: { part: ToolCall; threadId: string }) {
   const theme = useTheme()
-  const artifactKind = publishedKind(part.name) ?? "page"
-  const isDocument = artifactKind === "document"
+  const kind = publishedKind(part.name) ?? "page"
+  const isDocument = kind === "document"
   const preview = publishPreview(part.input)
   const published = part.output === undefined ? null : publishedArtifact(outputText(part.output))
-  const title = preview.title ?? preview.outline?.title ?? copy(cardCopy[artifactKind].untitled)
+  const title = preview.title ?? preview.outline?.title ?? artifactKinds[kind].untitled
   const summary = summaryOf(preview.outline)
-  const kind = copy(cardCopy[artifactKind].kind)
+  const label = artifactKinds[kind].label
   const publishing = part.status === "running"
-  const openable = isDocument && published !== null
+  const openable = published !== null
 
   const content = (
     <>
       <Thumbnail blocks={isDocument ? (preview.outline?.blocks ?? []) : null} />
       <View style={styles.text}>
         <View style={styles.meta}>
-          <Text style={[styles.metaText, { color: theme.textMuted }]}>{kind}</Text>
+          <Text style={[styles.metaText, { color: theme.textMuted }]}>{label}</Text>
           {publishing ? (
             <Pulse text={`· ${copy("mobile_artifact_card_publishing")}`} style={styles.metaText} />
           ) : (
@@ -88,7 +79,7 @@ export function ArtifactCard({ part, threadId }: { part: ToolCall; threadId: str
           accessibilityRole="button"
           accessibilityLabel={copy("mobile_artifact_open", { title })}
           accessibilityHint={summary ?? undefined}
-          onPress={() => openDocument(threadId, published.id, title)}
+          onPress={() => openArtifact(threadId, { id: published.id, kind, title })}
           style={[styles.card, { backgroundColor: theme.surface }]}
         >
           {content}
@@ -97,7 +88,7 @@ export function ArtifactCard({ part, threadId }: { part: ToolCall; threadId: str
         <View
           testID="artifact-card"
           accessible
-          accessibilityLabel={`${kind}, ${title}`}
+          accessibilityLabel={`${label}, ${title}`}
           style={[styles.card, { backgroundColor: theme.surface }]}
         >
           {content}

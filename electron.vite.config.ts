@@ -1,10 +1,10 @@
-import { createRequire } from "node:module"
+import { createRequire, isBuiltin } from "node:module"
 import { resolve } from "node:path"
 import tailwindcss from "@tailwindcss/vite"
-import react from "@vitejs/plugin-react"
 import { defineConfig } from "electron-vite"
 import { withoutExcalidrawMermaid } from "./vite.excalidraw.ts"
 import { lazyLocales, paraglide } from "./vite.paraglide.ts"
+import { react } from "./vite.react.ts"
 
 // FIXME: Electron 44 downloads its binary on the first require("electron"), which electron-vite 5 never calls
 process.env.ELECTRON_EXEC_PATH ??= createRequire(import.meta.url)("electron")
@@ -17,10 +17,9 @@ export default defineConfig({
       minify: "esbuild",
       rollupOptions: { input: { index: "src/main/boot.ts", main: "src/main/index.ts" } },
       // FIXME: electron-vite bundles optional dependencies, which breaks these native modules' binding lookup
-      externalizeDeps: {
-        include: ["node-mac-permissions", "electron-liquid-glass"],
-        exclude: ["effect", "@effect/platform-node", "@effect/sql-sqlite-node", "@hinacode/artifacts"],
-      },
+      externalizeDeps: { include: ["node-mac-permissions", "electron-liquid-glass"] },
+      // FIXME: the ES module bundle has no `require`, so protobufjs's try/catch require("fs") silently fails
+      commonjsOptions: { ignoreTryCatch: (id: string) => !isBuiltin(id) },
     },
   },
   preload: {
@@ -34,15 +33,6 @@ export default defineConfig({
     build: { minify: true },
     worker: { format: "es" },
     esbuild: process.env.HINACODE_KEEP_NAMES ? { keepNames: true } : undefined,
-    plugins: [
-      react({
-        exclude: [/\/node_modules\//, /\/src\/renderer\/paraglide\//],
-        babel: { plugins: ["babel-plugin-react-compiler"] },
-      }),
-      tailwindcss(),
-      paraglide(),
-      lazyLocales(),
-      withoutExcalidrawMermaid(),
-    ],
+    plugins: [react(), tailwindcss(), paraglide(), lazyLocales(), withoutExcalidrawMermaid()],
   },
 })

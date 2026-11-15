@@ -88,6 +88,7 @@ interface Probe {
   readonly turnBase: () => Promise<string | null>
   readonly storedMessages: (threadId: string) => Promise<ReadonlyArray<Message>>
   readonly failNextInsert: (matches: (message: Message) => boolean) => void
+  readonly refreshed: Array<string>
 }
 
 const streamedWords = Array.from({ length: 400 }, (_, index) => `word${index} `)
@@ -176,6 +177,7 @@ const withPreparingThread = async (
     Queue.unbounded<{ readonly threadId: string; readonly tasks: ReadonlyArray<BackgroundTask> }>(),
   )
   const transcript: Probe["transcript"] = []
+  const refreshed: Probe["refreshed"] = []
   let closeFails = false
   const wakes = {
     claude: wakeQueue(),
@@ -293,6 +295,20 @@ const withPreparingThread = async (
           return Stream.fromIterable<AgentEvent>([
             { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
             { type: "tool_call_finished", callId: "call-1", output: "README.md", isError: false },
+          ]).pipe(
+            Stream.concat(Stream.fromEffect(Effect.sync(() => streamed.resolve())).pipe(Stream.drain)),
+            Stream.concat(Stream.never),
+          )
+        }
+        if (input.prompt === "merges its pull request with gh, then waits") {
+          return Stream.fromIterable<AgentEvent>([
+            {
+              type: "tool_call_started",
+              callId: "merge-1",
+              name: "Bash",
+              input: { command: "gh pr merge 7 --squash" },
+            },
+            { type: "tool_call_finished", callId: "merge-1", output: "Merged", isError: false },
           ]).pipe(
             Stream.concat(Stream.fromEffect(Effect.sync(() => streamed.resolve())).pipe(Stream.drain)),
             Stream.concat(Stream.never),
@@ -460,6 +476,7 @@ const withPreparingThread = async (
               Layer.provideMerge(
                 Layer.mock(GitHub.GitHub, {
                   installed: Effect.succeed(true),
+                  refresh: (url: string) => Effect.sync(() => void refreshed.push(url)),
                   pullRequestDetail: (url) =>
                     Effect.succeed({
                       url,
@@ -516,6 +533,21 @@ const withPreparingThread = async (
             }),
             Layer.succeed(Worktrees.Worktrees, {
               ...worktrees,
+              pullRequest: () =>
+                Effect.succeed({
+                  url: "https://github.com/o/repo/pull/9",
+                  number: 9,
+                  title: "Branch",
+                  status: "open",
+                  checks: null,
+                  review: null,
+                  mergeable: "unknown",
+                  author: "octocat",
+                  headRefName: "fix/pending",
+                  baseRefName: "main",
+                  additions: 0,
+                  deletions: 0,
+                }),
               whenPrepared: (id) =>
                 Effect.sync(() => waiting.resolve()).pipe(
                   Effect.andThen(worktrees.whenPrepared(id)),
@@ -592,6 +624,7 @@ const withPreparingThread = async (
         failNextInsert: (matches) => {
           failingInsert = matches
         },
+        refreshed,
         turnBase: () =>
           domainRuntime.runPromise(
             sql<{
@@ -1744,6 +1777,32 @@ it("keeps the text streamed before a steer in the reply the steer closes", async
       ["assistant", []],
     ])
     await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("rereads the thread's pull requests as soon as an agent's gh command touches one", async () => {
+  await withPreparingThread(async ({ runner, thread, release, streamed, pullRequests, refreshed }) => {
+    release()
+    await Effect.runPromise(pullRequests.link(thread.id, "https://github.com/o/repo/pull/7"))
+    await Effect.runPromise(runner.send(thread.id, "merges its pull request with gh, then waits", []))
+    await streamed
+    await vi.waitFor(() =>
+      expect(refreshed.toSorted()).toStrictEqual([
+        "https://github.com/o/repo/pull/7",
+        "https://github.com/o/repo/pull/9",
+      ]),
+    )
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("rereads the thread's linked pull requests when a turn ends, and leaves a quiet tool call alone", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, pullRequests, refreshed }) => {
+    release()
+    await Effect.runPromise(pullRequests.link(thread.id, "https://github.com/o/repo/pull/7"))
+    await Effect.runPromise(runner.send(thread.id, "reads an image", []))
+    await idle
+    await vi.waitFor(() => expect(refreshed).toStrictEqual(["https://github.com/o/repo/pull/7"]))
   })
 })
 

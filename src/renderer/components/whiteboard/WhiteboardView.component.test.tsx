@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { FONT_FAMILY } from "@excalidraw/excalidraw"
-import { beforeEach, expect, test } from "vitest"
+import { beforeEach, expect, test, vi } from "vitest"
 import { cdp, page, userEvent } from "vitest/browser"
 import { StrictMode } from "react"
 import { render } from "vitest-browser-react"
@@ -123,6 +123,8 @@ const editor = () => (window as unknown as { h?: Editor }).h
 
 const sceneOnCanvas = () => (editor()?.elements ?? []).filter((element) => !element.isDeleted)
 
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
+
 beforeEach(({ task }) => {
   boardId = `board-${task.id}`
   stored = { version: 1, revision: 1, scene: { elements: AGENT_SCENE } }
@@ -164,9 +166,10 @@ test("completes an agent's skeleton scene on the canvas without saving it", asyn
 
   const labels = sceneOnCanvas().filter((element) => element.type === "text")
   expect(labels.map((label) => label.containerId).toSorted()).toEqual(["api", "db"])
-  await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 800)))
-  expect(saves).toEqual([])
+  await document.fonts.ready
+  await nextFrame()
   expect(page.getByText("Saved")).toBeInTheDocument()
+  expect(saves).toEqual([])
 })
 
 test("draws text in the app font and keeps Excalidraw's fonts off the page", async () => {
@@ -242,8 +245,14 @@ test("an edit made after reopening the board saves once the closing save lands",
 
   const reopened = await openBoard()
   await selectAll()
-  await userEvent.keyboard("{ArrowRight}")
-  await new Promise((resolve) => setTimeout(resolve, 800))
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+  try {
+    await userEvent.keyboard("{ArrowRight}")
+    await expect.element(page.getByText("Saving…")).toBeInTheDocument()
+    await vi.runOnlyPendingTimersAsync()
+  } finally {
+    vi.useRealTimers()
+  }
   release()
 
   await expect.poll(() => saves.length, { timeout: 3000 }).toBe(2)
@@ -375,7 +384,8 @@ const viewOf = () => {
 
 const viewSettled = async () => {
   const before = viewOf()
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  await nextFrame()
+  await nextFrame()
   return viewOf() === before
 }
 
@@ -401,11 +411,8 @@ test("scrolls a narrow board to a comment's elements after the comments make way
 
   await expect.element(page.getByRole("region", { name: "Comments" })).not.toBeInTheDocument()
   await expect.poll(() => Object.keys(editor()?.state.selectedElementIds ?? {})).toEqual(["db"])
-  await expect.poll(viewSettled, { timeout: 5000 }).toBe(true)
-  expect(dbOnScreen()).toBe(true)
+  await expect.poll(async () => (await viewSettled()) && dbOnScreen(), { timeout: 5000 }).toBe(true)
 })
-
-const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 
 const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
   const canvas = document.querySelector("canvas.interactive")!

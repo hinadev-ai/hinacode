@@ -1,7 +1,16 @@
 diff --git a/react.js b/react.js
-index a0f962c42b7b28a49e7480ed3e16056b9e154a4c..0b55d0d2d76758f62eaf007b96044400cd3f975b 100644
+index a0f962c42b7b28a49e7480ed3e16056b9e154a4c..c512b9f0f06c7d42426a50cec2a8c4064572de88 100644
 --- a/react.js
 +++ b/react.js
+@@ -3066,7 +3066,7 @@ function abortBootstrapInitialScroll(ctx) {
+     clearBootstrapInitialScrollSession(state);
+     dispatchInitialScroll(ctx, {
+       forceScroll: true,
+-      resolvedOffset: bootstrapInitialScroll.scroll,
++      resolvedOffset: resolveInitialScrollOffset(ctx, initialScroll),
+       target: initialScroll,
+       waitForCompletionFrame: Platform.OS === "web"
+     });
 @@ -6654,9 +6654,13 @@ var ListComponentScrollView = React3.forwardRef(function ListComponentScrollView
      const onWheel = (nativeEvent) => {
        const event = nativeEvent;
@@ -19,9 +28,18 @@ index a0f962c42b7b28a49e7480ed3e16056b9e154a4c..0b55d0d2d76758f62eaf007b96044400
          }
        }
 diff --git a/react.mjs b/react.mjs
-index 9338287159778f842fa05b5a0467336bf5f50fe8..d7147836db63a92802c846f26f70f103d2642965 100644
+index 9338287159778f842fa05b5a0467336bf5f50fe8..892a59bdbd36992d9b06633e67f77f114223212b 100644
 --- a/react.mjs
 +++ b/react.mjs
+@@ -3045,7 +3045,7 @@ function abortBootstrapInitialScroll(ctx) {
+     clearBootstrapInitialScrollSession(state);
+     dispatchInitialScroll(ctx, {
+       forceScroll: true,
+-      resolvedOffset: bootstrapInitialScroll.scroll,
++      resolvedOffset: resolveInitialScrollOffset(ctx, initialScroll),
+       target: initialScroll,
+       waitForCompletionFrame: Platform.OS === "web"
+     });
 @@ -6633,9 +6633,13 @@ var ListComponentScrollView = forwardRef(function ListComponentScrollView2({
      const onWheel = (nativeEvent) => {
        const event = nativeEvent;

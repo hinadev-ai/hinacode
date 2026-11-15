@@ -68,10 +68,10 @@ export const selectProjectThreads =
       .filter(isActive)
       .toSorted((a, b) => a.sortIndex - b.sortIndex)
 
-export const selectUnpinnedProjectThreads =
+export const selectProjectListThreads =
   (...projectIds: ReadonlyArray<string>) =>
   (state: Pick<ThreadsState, "byId">) =>
-    selectProjectThreads(...projectIds)(state).filter((thread) => !isPinned(thread))
+    selectProjectThreads(...projectIds)(state).filter((thread) => !isPinned(thread) && thread.settledAt === null)
 
 export const selectInboxThreads = (now: number) => (state: Pick<ThreadsState, "byId">) =>
   Object.values(state.byId)

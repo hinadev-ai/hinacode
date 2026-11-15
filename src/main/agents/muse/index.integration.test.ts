@@ -116,6 +116,11 @@ const eventsOf = <T extends AgentEvent["type"]>(turn: Turn, type: T) => turn.eve
 const followUp = (turn: Turn, autoCompactTokens: number | null) =>
   forkTurn({ ...turn.input, resumeSessionId: eventsOf(turn, "session_bound")[0]!.providerSessionId, autoCompactTokens })
 
+const scratchInstructions = (directory: string) =>
+  `<environment>\n  scratch directory: \`${directory}\`\n</environment>`
+
+const occurrences = (text: string, body: string) => body.split(text).length - 1
+
 const replyOf = (turn: Turn) =>
   eventsOf(turn, "text_delta")
     .map((event) => event.text)
@@ -667,6 +672,37 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           expect(compacted).toBeLessThan(next.events.findIndex(ofType("text_delta")))
           expect(replyOf(next)).toBe(REPLY)
           expect(next.events.at(-1)?.type).toBe("turn_completed")
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "sends the instructions with a session's first prompt and only what changed after that",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const base = input("supervised", "instructions-once")
+          const turn = (prompt: string, directory: string, resumeSessionId: string | null) =>
+            forkTurn({
+              ...base,
+              prompt,
+              resumeSessionId,
+              instructions: scratchInstructions(directory),
+            })
+
+          const first = yield* turn("first-prompt", "/tmp/scratch-before", null)
+          yield* Fiber.join(first.fiber)
+          const sessionId = eventsOf(first, "session_bound")[0]!.providerSessionId
+
+          yield* Fiber.join((yield* turn("second-prompt", "/tmp/scratch-before", sessionId)).fiber)
+          expect(occurrences("/tmp/scratch-before", endpoint.lastRequest("second-prompt"))).toBe(1)
+
+          yield* Fiber.join((yield* turn("third-prompt", "/tmp/scratch-after", sessionId)).fiber)
+          const third = endpoint.lastRequest("third-prompt")
+          expect(occurrences("/tmp/scratch-before", third)).toBe(1)
+          expect(occurrences("/tmp/scratch-after", third)).toBe(1)
+          expect(occurrences("HinaCode changed your instructions", third)).toBe(1)
         }),
       ),
     TURN_TIMEOUT,

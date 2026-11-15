@@ -11,15 +11,17 @@ import {
   completionAt,
   type CompletionQuery,
   continueList,
+  continueQuote,
   endsWithClosedFence,
   indentList,
   listBackspace,
+  quoteBackspace,
   type MentionableTerminal,
   type Suggestion,
   suggestionsFor,
 } from "../../shared/composerSyntax.ts"
 import { useTheme } from "../lib/appearance.ts"
-import { markdownOfClipboard } from "../lib/clipboardMarkdown.ts"
+import { inlineFormatsOfClipboard } from "../lib/clipboardMarkdown.ts"
 import { atomicBefore, composerSyntax, setComposerConfig } from "../lib/composerEditor.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { usePullRequestSearch } from "../lib/usePullRequestSearch.ts"
@@ -127,9 +129,9 @@ export function ComposerInput({
     const text = view.state.doc.toString()
     const listEdit =
       event.key === "Backspace" && main.empty
-        ? listBackspace(text, main.head)
+        ? (listBackspace(text, main.head) ?? quoteBackspace(text, main.head))
         : event.key === "Enter" && event.shiftKey
-          ? continueList(text, main.from, main.to)
+          ? (continueList(text, main.from, main.to) ?? continueQuote(text, main.from, main.to))
           : event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey
             ? indentList(text, main.head, event.shiftKey ? -1 : 1)
             : null
@@ -193,11 +195,11 @@ export function ComposerInput({
               paste: (event, editor) => {
                 pasted(event)
                 if (event.defaultPrevented) return true
-                const markdown = event.clipboardData === null ? null : markdownOfClipboard(event.clipboardData)
-                if (markdown === null) return false
+                const formatted = event.clipboardData === null ? null : inlineFormatsOfClipboard(event.clipboardData)
+                if (formatted === null) return false
                 event.preventDefault()
                 editor.dispatch({
-                  ...editor.state.replaceSelection(markdown),
+                  ...editor.state.replaceSelection(formatted),
                   scrollIntoView: true,
                   userEvent: "input.paste",
                 })

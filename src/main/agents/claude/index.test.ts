@@ -1091,6 +1091,29 @@ describe("Claude background tasks", () => {
     ),
   )
 
+  it.effect("keeps the CLI and its scheduled wakeup when only the instructions changed", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.respond = (cli) =>
+          cli.push(
+            init("session-1"),
+            ...scheduleWakeup(
+              { delaySeconds: 2400, reason: "Fallback heartbeat", prompt: "Poll" },
+              { scheduledFor: 2_400_000 },
+            ),
+            succeeded,
+          )
+        yield* runTurn()
+
+        sdk.respond = completeWith(succeeded)
+        const events = yield* runTurn(turnInput({ instructions: "Work in hinacode on fix/restart" }))
+        expect(events.map((event) => event.type)).not.toContain("turn_failed")
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().close).not.toHaveBeenCalled()
+      }),
+    ),
+  )
+
   it.effect("closes an idle CLI 60 seconds after a wakeup that never fires", () =>
     lifecycle(
       Effect.gen(function* () {

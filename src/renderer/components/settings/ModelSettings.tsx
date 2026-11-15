@@ -325,6 +325,11 @@ function ModelsSection({ provider }: { provider: ProviderId }) {
           list.length > 0 ? (
             <>
               <DefaultModelField provider={provider} models={list} current={current} onSave={saveDefault} />
+              <DefaultEffortField
+                provider={provider}
+                model={list.find((model) => model.id === current) ?? list[0]!}
+                onError={setError}
+              />
               <ModelList provider={provider} models={list} current={current} />
             </>
           ) : (
@@ -368,6 +373,67 @@ function DefaultModelField({
         items={items}
         value={current ?? AGENT_DEFAULT}
         onValueChange={(next) => next !== null && void onSave(next === AGENT_DEFAULT ? null : next)}
+      >
+        <SelectTrigger id={inputId} className="w-56 min-w-0 shrink">
+          <SelectValue className="min-w-0 truncate" />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
+  )
+}
+
+interface DefaultEffortFieldProps {
+  readonly provider: ProviderId
+  readonly model: ModelInfo
+  readonly onError: (message: string | null) => void
+}
+
+function DefaultEffortField({ provider, model, onError }: DefaultEffortFieldProps) {
+  const environment = useSettingsEnvironment()
+  const { defaultEffort } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
+  const current = defaultEffort[provider]
+  if (model.efforts.length === 0 && current === null) return null
+
+  const inputId = `default-effort-${provider}`
+  const items = [
+    {
+      value: AGENT_DEFAULT,
+      label: model.defaultEffort
+        ? m.thread_effort_default_named({ effort: effortLabel(model.defaultEffort) })
+        : m.settings_effort_model_default(),
+    },
+    ...[...new Set([...model.efforts, ...(current === null ? [] : [current])])].map((effort) => ({
+      value: effort,
+      label: effortLabel(effort),
+    })),
+  ]
+
+  const save = async (effort: string | null) => {
+    onError(null)
+    try {
+      await updateSettings({ defaultEffort: { [provider]: effort } })
+    } catch (cause) {
+      onError(errorMessage(cause))
+    }
+  }
+
+  return (
+    <Field orientation="horizontal">
+      <FieldLabel htmlFor={inputId} className="self-center">
+        {m.thread_effort_default()}
+      </FieldLabel>
+      <Select
+        items={items}
+        value={current ?? AGENT_DEFAULT}
+        onValueChange={(next) => next !== null && void save(next === AGENT_DEFAULT ? null : next)}
       >
         <SelectTrigger id={inputId} className="w-56 min-w-0 shrink">
           <SelectValue className="min-w-0 truncate" />

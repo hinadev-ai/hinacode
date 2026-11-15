@@ -185,8 +185,6 @@ async function hello() {
   return {
     paired,
     longTasksObserved,
-    // FIXME: `performance.now()` counts from boot without the time the Mac slept, so convert with the wall clock instead.
-    epochOffset: Date.now() - performance.now(),
     startup: startupTiming(),
     firstCommit,
     threadListPainted,

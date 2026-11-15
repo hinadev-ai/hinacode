@@ -9,7 +9,7 @@ import {
   spawnsSubagent,
   type Thread,
 } from "@shared/domain.ts"
-import { isOwnPart } from "@shared/subagents.ts"
+import { isOwnPart } from "@shared/compactTranscript.ts"
 import { useFocusEffect } from "expo-router"
 import { useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
