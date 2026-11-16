@@ -41,6 +41,16 @@ The `Build` workflow builds macOS on a Blacksmith macOS runner, and Linux and Wi
 
 For a local build without signing or publishing, run `CSC_IDENTITY_AUTO_DISCOVERY=false pnpm dist -c.mac.notarize=false`. It builds for the current platform, and the output lands in `dist/`.
 
+## The oxlint plugin
+
+`packages/oxlint-plugin-hinacode` ships to npm on its own version, separate from the app's tags. Bump `version` in its `package.json`, then publish with pnpm, not npm, because only pnpm applies `publishConfig.exports`:
+
+```sh
+pnpm --filter oxlint-plugin-hinacode publish
+```
+
+`prepack` builds `dist/` first. The repository itself keeps linting with `src/` through the workspace link, so a rule change takes effect here without a build. To check a release before it goes out, run `pnpm --filter oxlint-plugin-hinacode pack`, install the tarball in a project outside this checkout, and run `oxlint` there.
+
 ## If it goes wrong
 
 - **The app quits at startup with `ERR_MODULE_NOT_FOUND`.** A main-process import pulls in a package that is not packaged. electron-vite leaves every package in `dependencies` external, and electron-builder packages exactly those, so `dependencies` lists only what must load from its own files: `node-pty` and `playwright-core`, the same externals as `scripts/server-package.ts`. Every other package is a `devDependency` that Vite bundles into `out/main` or the renderer. A package in `dependencies` ships whole, with every build format and its own dependency tree, where the bundle keeps only the code main imports. That is how `app.asar` reached 92 MB. The macOS-only native addons stay in `optionalDependencies` and `externalizeDeps.include`.

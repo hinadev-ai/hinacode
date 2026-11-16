@@ -1,11 +1,46 @@
 {
   "name": "oxlint-plugin-hinacode",
-  "version": "0.0.0",
-  "private": true,
-  "description": "HinaCode's own oxlint rules.",
+  "version": "0.1.0",
+  "description": "HinaCode's oxlint rules for React and Tailwind code.",
+  "keywords": [
+    "oxlint",
+    "oxlint-plugin",
+    "react",
+    "react-compiler",
+    "tailwindcss"
+  ],
+  "homepage": "https://github.com/hinadev-ai/hinacode/tree/main/packages/oxlint-plugin-hinacode#readme",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hinadev-ai/hinacode.git",
+    "directory": "packages/oxlint-plugin-hinacode"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
+  "sideEffects": false,
   "exports": "./src/index.ts",
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm build"
+  },
   "dependencies": {
     "@oxlint/plugins": "1.87.0"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  },
+  "peerDependencies": {
+    "oxlint": ">=1.87.0"
   }
 }
