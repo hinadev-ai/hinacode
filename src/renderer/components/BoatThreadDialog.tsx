@@ -4,7 +4,7 @@ import { type FormEvent, useState, useTransition } from "react"
 import type { Project, Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { boatThreadMachineAtom } from "../lib/rpc.ts"
-import { moveDraft } from "../lib/startThread.ts"
+import { moveDraftTo } from "../lib/startThread.ts"
 import { m } from "../paraglide/messages.js"
 import { boatCreateOf, BoatSpecFields, type ConfiguredBoatOptions, newBoatSpec } from "./BoatSpecFields.tsx"
 import { BoatOptions } from "./settings/BoatMachineForm.tsx"
@@ -58,21 +58,22 @@ function BoatThreadForm({
   const [error, setError] = useState<string | null>(null)
   const [pending, startCreate] = useTransition()
   const create = boatCreateOf(spec, "")
+  const autoStopHours = create?.autoStopHours ?? null
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (create === null || project.repository === undefined) return
+    if (create === null || autoStopHours === null || project.repository === undefined) return
     const repository = project.repository
     startCreate(async () => {
       setError(null)
       try {
-        const target = await createMachine({
+        const draft = await createMachine({
           repository,
           projectName: project.name,
           setupScript: project.setupScript,
-          create,
+          create: { ...create, autoStopHours },
         })
-        await moveDraft(thread, target.id, navigate)
+        await moveDraftTo(thread, draft, navigate)
         onDone()
       } catch (cause) {
         setError(errorMessage(cause))
@@ -83,12 +84,12 @@ function BoatThreadForm({
   return (
     <form onSubmit={onSubmit} className="flex min-w-0 flex-col gap-4">
       <FieldGroup>
-        <BoatSpecFields idPrefix="boat-thread" options={options} spec={spec} onChange={setSpec} />
+        <BoatSpecFields idPrefix="boat-thread" options={options} spec={spec} onChange={setSpec} canNeverStop={false} />
       </FieldGroup>
       {error && <FieldError className="whitespace-pre-wrap">{error}</FieldError>}
       <DialogFooter>
         <DialogClose render={<Button variant="outline" disabled={pending} />}>{m.common_cancel()}</DialogClose>
-        <Button type="submit" disabled={pending || create === null}>
+        <Button type="submit" disabled={pending || autoStopHours === null}>
           {pending ? m.boat_machine_setting_up() : m.boat_machine_create()}
         </Button>
       </DialogFooter>

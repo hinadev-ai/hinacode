@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Exit, Layer, Option, Schema } from "effect"
 import type { PushEvent, RpcMethod } from "../../../shared/contract.ts"
 import {
   type BoatMachineConnect,
@@ -9,11 +9,13 @@ import {
   type BoatThreadMachine,
   type Environment,
   Project,
+  Thread,
 } from "../../../shared/domain.ts"
 import { GitHubRepository } from "../../../shared/github.ts"
 import { pairingUrl, parsePairingUrl } from "../../../shared/remote.ts"
 import {
   type EnvironmentUnauthorized,
+  type ForwardedCall,
   type EnvironmentUnreachable,
   Environments,
   type InvalidPairingUrl,
@@ -51,6 +53,7 @@ type ThreadEnd = typeof ThreadEnd.Type
 
 const decodeThreadEnds = Schema.decodeUnknownOption(Schema.Array(ThreadEnd))
 const decodeProject = Schema.decodeUnknownOption(Project)
+const decodeThread = Schema.decodeUnknownOption(Thread)
 const decodeRepository = Schema.decodeUnknownOption(GitHubRepository)
 
 const createOptions = (create: BoatMachineCreate, kind: string) => ({
@@ -99,6 +102,16 @@ const quietly =
   (effect: Effect.Effect<void, E>) =>
     effect.pipe(Effect.catchCause((cause) => Effect.logWarning(what, cause)))
 
+const removedOnFailure = <A, E, R>(acquire: Effect.Effect<A, E, R>, remove: (a: A) => Effect.Effect<void, unknown>) =>
+  Effect.acquireRelease(acquire, (a, exit) =>
+    Exit.isFailure(exit)
+      ? remove(a).pipe(quietly("could not clean up after a failed boat machine setup"))
+      : Effect.void,
+  )
+
+const createdSandbox = (client: BoatClient, create: BoatMachineCreate, kind: string) =>
+  removedOnFailure(client.createSandbox(createOptions(create, kind)), ({ id }) => client.remove(id))
+
 export const everyThreadSettled = (threads: ReadonlyArray<ThreadEnd>) =>
   threads.every(
     (thread) => thread.status === "draft" || thread.status === "archived" || (thread.settledAt ?? null) !== null,
@@ -128,7 +141,7 @@ export class BoatMachines extends Context.Service<
       BoatError | BoatNotConfiguredError | BoatSnapshotExpiredError | SandboxGoneError
     >
     readonly connect: (input: BoatMachineConnect) => Effect.Effect<Environment, ConnectError>
-    readonly forThread: (input: BoatThreadMachine) => Effect.Effect<Project, ConnectError>
+    readonly forThread: (input: BoatThreadMachine) => Effect.Effect<Thread, ConnectError>
   }
 >()("hinacode/BoatMachines") {}
 
@@ -172,15 +185,30 @@ const make = (env: Readonly<Record<string, string | undefined>>) =>
         })
       })
 
+    const pairedOnce = (client: BoatClient, id: string) =>
+      removedOnFailure(pair(client, id), (environment) => environments.remove(environment.id))
+
+    const forwarded = <A>(environmentId: string, call: ForwardedCall, decode: (u: unknown) => Option.Option<A>) =>
+      Effect.gen(function* () {
+        const envelope = yield* environments.forward(environmentId, call)
+        if ("error" in envelope) return yield* new BoatMachineError({ message: envelope.error.message })
+        const result = Option.getOrUndefined(decode(envelope.result))
+        if (result === undefined)
+          return yield* new BoatMachineError({
+            message: `The boat machine answered an unexpected ${call.method} result.`,
+          })
+        return result
+      })
+
     const connect = (input: BoatMachineConnect) =>
       Effect.gen(function* () {
         const client = yield* boat.client
         const { id } =
           "create" in input.sandbox
-            ? yield* client.createSandbox(createOptions(input.sandbox.create, "machine"))
+            ? yield* createdSandbox(client, input.sandbox.create, "machine")
             : yield* wake(client, input.sandbox.id)
         return yield* pair(client, id)
-      })
+      }).pipe(Effect.scoped)
 
     const forThread = (input: BoatThreadMachine) =>
       Effect.gen(function* () {
@@ -189,25 +217,30 @@ const make = (env: Readonly<Record<string, string | undefined>>) =>
         if (repository === undefined)
           return yield* new BoatMachineError({ message: "A boat sandbox needs a project with a GitHub repository." })
         const client = yield* boat.client
-        const { id } = yield* client.createSandbox(createOptions(input.create, THREAD_LABEL))
-        const environment = yield* pair(client, id)
-        threadSandboxes.set(environment.id, id)
-        const envelope = yield* environments.forward(environment.id, {
-          method: "projects.clone",
-          payload: {
-            cloneId: randomUUID(),
-            repository,
-            rootPath: `~/${repository.name}`,
-            name: input.projectName,
-            setupScript: input.setupScript,
+        const { id } = yield* createdSandbox(client, input.create, THREAD_LABEL)
+        const environment = yield* pairedOnce(client, id)
+        const project = yield* forwarded(
+          environment.id,
+          {
+            method: "projects.clone",
+            payload: {
+              cloneId: randomUUID(),
+              repository,
+              rootPath: `~/${repository.name}`,
+              name: input.projectName,
+              setupScript: input.setupScript,
+            },
           },
-        })
-        if ("error" in envelope) return yield* new BoatMachineError({ message: envelope.error.message })
-        const project = Option.getOrUndefined(decodeProject(envelope.result))
-        if (project === undefined)
-          return yield* new BoatMachineError({ message: "The boat machine answered an unexpected project." })
-        return project
-      })
+          decodeProject,
+        )
+        const draft = yield* forwarded(
+          environment.id,
+          { method: "threads.draft", payload: { projectId: project.id } },
+          decodeThread,
+        )
+        threadSandboxes.set(environment.id, id)
+        return draft
+      }).pipe(Effect.scoped)
 
     const threadSandbox = (client: BoatClient, environmentId: string) =>
       Effect.gen(function* () {

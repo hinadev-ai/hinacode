@@ -33,7 +33,7 @@ A sandbox for one thread:
 | ------------------------ | -------------------------------------------------------------------------------------------------------- |
 | `boatMachines.options`   | Sandboxes, environments and ready saved snapshots in the account, for the form                           |
 | `boatMachines.connect`   | `{ sandbox: { id } }` or `{ sandbox: { create } }`, answers the added `Environment`                      |
-| `boatMachines.forThread` | `{ repository, projectName, setupScript, create }`, answers the project cloned on the new thread machine |
+| `boatMachines.forThread` | `{ repository, projectName, setupScript, create }`, answers a draft thread on the project cloned on the new thread machine. `create.autoStopHours` is required |
 
 Connect converges from any state:
 
@@ -50,7 +50,7 @@ Trust. The hosted URL is public, like a Cloudflare tunnel hostname: HinaCode's p
 
 ### Thread machines
 
-`forThread` is connect with the label `hinacode=thread`, then `projects.clone` forwarded to the new machine into `~/<repository name>`. A repository a boat environment already cloned there is reused. The renderer moves the draft to the answered project with the existing `moveDraft`.
+`forThread` is connect with the label `hinacode=thread`, then `projects.clone` forwarded to the new machine into `~/<repository name>`, then `threads.draft` on that project. A repository a boat environment already cloned there is reused. The renderer moves the composer draft onto the answered thread. If any step fails, the paired environment and the sandbox are removed, so a sandbox never runs without a thread. `connect` removes a sandbox it created the same way, and leaves one it only adopted. A thread sandbox always has auto-stop hours, because the desktop stops it only while open; "never stop" is offered for Settings machines only.
 
 The desktop owns the lifecycle, because it holds the boat key and sees every machine. `Environments.hook` gives it three signals:
 

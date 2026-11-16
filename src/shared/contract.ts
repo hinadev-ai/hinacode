@@ -393,7 +393,7 @@ export const RpcMethods = {
   "environments.reconnect": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "boatMachines.options": rpc(Schema.Void, BoatMachineOptions),
   "boatMachines.connect": rpc(BoatMachineConnect, Environment),
-  "boatMachines.forThread": rpc(BoatThreadMachine, Project),
+  "boatMachines.forThread": rpc(BoatThreadMachine, Thread),
   "relayAccount.status": rpc(Schema.Void, RelayAccountStatus),
   "relayAccount.signIn": rpc(Schema.Void, RelayAccountStatus),
   "relayAccount.signOut": rpc(Schema.Void, RelayAccountStatus),

@@ -105,7 +105,7 @@ function BoatMachineFields({ options }: { options: ConfiguredBoatOptions }) {
                 className="w-64"
               />
             </Field>
-            <BoatSpecFields idPrefix="boat-machine" options={options} spec={spec} onChange={setSpec} />
+            <BoatSpecFields idPrefix="boat-machine" options={options} spec={spec} onChange={setSpec} canNeverStop />
           </>
         )}
       </FieldGroup>

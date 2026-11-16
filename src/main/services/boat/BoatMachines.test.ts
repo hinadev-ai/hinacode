@@ -21,7 +21,7 @@ const PAIR_OUTPUT = [
   "",
 ].join("\n")
 
-const create: BoatMachineCreate = {
+const create = {
   name: "agents",
   type: "small",
   from: "",
@@ -31,7 +31,7 @@ const create: BoatMachineCreate = {
   snapshots: true,
   monitoring: true,
   setupScript: "",
-}
+} satisfies BoatMachineCreate
 
 const CLOUD_ID = "cloud-1"
 

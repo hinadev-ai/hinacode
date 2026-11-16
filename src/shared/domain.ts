@@ -620,12 +620,14 @@ export const vmProviderBeforeTheChoice: VmProvider = "sbx"
 export const BoatVmSize = Schema.Literals(["small", "default", "large", "xlarge"])
 export type BoatVmSize = typeof BoatVmSize.Type
 
+const BoatAutoStopHours = Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 720 }))
+
 export const BoatMachineCreate = Schema.Struct({
   name: Schema.String,
   type: BoatVmSize,
   from: Schema.String,
   environment: Schema.String,
-  autoStopHours: Schema.NullOr(Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 720 }))),
+  autoStopHours: Schema.NullOr(BoatAutoStopHours),
   noEnv: Schema.Boolean,
   snapshots: Schema.Boolean,
   monitoring: Schema.Boolean,
@@ -642,7 +644,7 @@ export const BoatThreadMachine = Schema.Struct({
   repository: Schema.String,
   projectName: Schema.String,
   setupScript: Schema.NullOr(Schema.String),
-  create: BoatMachineCreate,
+  create: Schema.Struct({ ...BoatMachineCreate.fields, autoStopHours: BoatAutoStopHours }),
 })
 export type BoatThreadMachine = typeof BoatThreadMachine.Type
 

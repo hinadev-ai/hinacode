@@ -70,11 +70,13 @@ export function BoatSpecFields({
   options,
   spec,
   onChange,
+  canNeverStop,
 }: {
   idPrefix: string
   options: ConfiguredBoatOptions
   spec: BoatSpec
   onChange: (next: BoatSpec) => void
+  canNeverStop: boolean
 }) {
   const patch = (next: Partial<BoatSpec>) => onChange({ ...spec, ...next })
   const hoursValid = spec.neverStop || validHours(spec) !== null
@@ -146,12 +148,14 @@ export function BoatSpecFields({
           {m.boat_machine_hours()}
         </span>
       </Field>
-      <ToggleField
-        id={`${idPrefix}-never-stop`}
-        label={m.boat_machine_never_stop()}
-        checked={spec.neverStop}
-        onCheckedChange={(checked) => patch({ neverStop: checked })}
-      />
+      {canNeverStop && (
+        <ToggleField
+          id={`${idPrefix}-never-stop`}
+          label={m.boat_machine_never_stop()}
+          checked={spec.neverStop}
+          onCheckedChange={(checked) => patch({ neverStop: checked })}
+        />
+      )}
       <ToggleField
         id={`${idPrefix}-no-env`}
         label={m.boat_machine_no_env()}
