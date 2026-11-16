@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import { Clock, Context, Deferred, Effect, Fiber, FiberMap, Layer, Option, Schedule, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { type RawData, WebSocket } from "ws"
-import { methodKind, type PushEvent, type RpcEnvelope, type RpcMethod } from "../../shared/contract.ts"
+import { methodKind, type PushEvent, type RpcEnvelope, type RpcMethod, RpcMethods } from "../../shared/contract.ts"
 import { Environment, type EnvironmentStatus, type Environments as EnvironmentList } from "../../shared/domain.ts"
 import { clientProof, newNonce, serverProof } from "../../shared/proof.ts"
 import {
@@ -102,6 +102,11 @@ const unauthorized = (name: string): RpcEnvelope<never> => ({
 const incompatible = (name: string): RpcEnvelope<never> => ({
   error: { tag: "EnvironmentIncompatible", message: `${name} runs a hinacode this desktop cannot talk to` },
 })
+const versionMismatch = (name: string): RpcEnvelope<never> => ({
+  error: { tag: "EnvironmentVersionMismatch", message: name },
+})
+const fitsThisVersion = (method: RpcMethod, result: unknown) =>
+  Option.isSome(Schema.decodeUnknownOption(RpcMethods[method].response as Schema.Codec<unknown, unknown>)(result))
 const unknownEnvironment = (id: string): RpcEnvelope<never> => ({
   error: { tag: "NotFoundError", message: `No environment with id ${id}` },
 })
@@ -839,12 +844,13 @@ const make = Effect.gen(function* () {
         Effect.map((envelope) => {
           if ("error" in envelope) return envelope
           runFork(hooks.answered(environmentId, method))
-          learnFromAnswer(owners, environmentId, method, payload, envelope.result)
           const result = nameMachines(
             method,
             stampEnvironment(method, envelope.result, environmentId),
             cloud.environment.name,
           )
+          if (!fitsThisVersion(method, result)) return versionMismatch(name)
+          learnFromAnswer(owners, environmentId, method, payload, envelope.result)
           cloud.remembered.set(method, { payload: JSON.stringify(payload ?? null), result })
           return { result }
         }),
