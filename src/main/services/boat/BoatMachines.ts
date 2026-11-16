@@ -82,6 +82,8 @@ const uploadDevPackage = (client: BoatClient, id: string, path: string) =>
     catch: () => new BoatMachineError({ message: `Could not read HINACODE_BOAT_PACKAGE at ${path}.` }),
   }).pipe(Effect.flatMap((bytes) => client.writeFileBytes(id, DEV_PACKAGE_PATH, bytes)))
 
+const withoutTokens = (output: string) => output.replace(/token=[^&\s]+/g, "token=REDACTED")
+
 const install = (client: BoatClient, id: string, devPackage: string | undefined) =>
   Effect.gen(function* () {
     if (devPackage !== undefined) yield* uploadDevPackage(client, id, devPackage)
@@ -91,7 +93,7 @@ const install = (client: BoatClient, id: string, devPackage: string | undefined)
     })
     const pairing = parsePairingUrl(text.decode(result.stdout))
     if (result.exitCode === 0 && pairing !== null) return pairing
-    const output = text.decode(result.stderr).trim().slice(-OUTPUT_TAIL_CHARS)
+    const output = withoutTokens(text.decode(result.stderr)).trim().slice(-OUTPUT_TAIL_CHARS)
     return yield* new BoatMachineError({
       message: `HinaCode did not start on the boat sandbox (exit ${result.exitCode}).${output === "" ? "" : `\n${output}`}`,
     })
