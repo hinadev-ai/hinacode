@@ -23,6 +23,7 @@ const ownToolLabels = new Map<string, () => string>([
   ["search_threads", m.tool_own_search_threads],
   ["read_thread", m.tool_own_read_thread],
   ["send_to_thread", m.tool_own_send_to_thread],
+  ["wait_for_thread", m.tool_own_wait_for_thread],
   ["stop_thread", m.tool_own_stop_thread],
   ["list_terminals", m.tool_own_list_terminals],
   ["read_terminal", m.tool_own_read_terminal],
