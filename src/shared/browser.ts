@@ -8,6 +8,15 @@ const Modifiers = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 15 })
 export const BrowserViewport = Schema.Struct({ width: Dimension, height: Dimension })
 export type BrowserViewport = typeof BrowserViewport.Type
 
+const WindowCoordinate = Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 16384 }))
+
+export const BrowserTouch = Schema.Struct({
+  type: Schema.Literals(["touchStart", "touchMove", "touchEnd", "touchCancel"]),
+  x: WindowCoordinate,
+  y: WindowCoordinate,
+})
+export type BrowserTouch = typeof BrowserTouch.Type
+
 export const BrowserUrl = Schema.String.check(
   Schema.makeFilter((value) => {
     const url = URL.parse(value)

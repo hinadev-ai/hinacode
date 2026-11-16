@@ -14,6 +14,7 @@ No scenario in `e2e/features` covers remote mode. `src/main/ipc.integration.test
 - `environment-add` a `Pairing URL` from `hinacode serve` adds a cloud whose card reads `Connected`.
 - `cloud-sidebar` the cloud's projects and threads show in the sidebar with a cloud icon named `On <cloud>`; Details shows `On <cloud>` and the cloud's ports.
 - `settings-picker` once a cloud exists, `Editing settings for` shows on `Providers`, `Worktrees`, `Integrations`, `Routines` and `Experimental` and switches them to it. The Remote section on `Connections` has the same picker (`[aria-labelledby=remote-environment]`); for a cloud it shows the status lines and `Remote listener` only, with no switch, `Port`, `Pair a phone` or `Apps`.
+- `environment-rename` `Rename` on a cloud's card opens `Rename <name>`; `Save` renames it in the sidebar, the draft heading and Details at once, and the name survives a relay sync and a restart.
 - `environment-remove` `Remove` with confirmation in `Remove <name>?` forgets the cloud.
 
 ## How to get to it (user POV)

@@ -35,6 +35,10 @@ export function forgetServer(id: string) {
   void usePullRequests.getState().load()
 }
 
+export function renameServer(id: string, name: string) {
+  setServers(storedServers().map((server) => (server.id === id ? { ...server, name } : server)))
+}
+
 let started: Promise<void> | undefined
 
 export const startApp = () => (started ??= start())

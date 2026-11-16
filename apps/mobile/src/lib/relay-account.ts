@@ -156,12 +156,7 @@ export function applyRelayMachines(
       ]
       continue
     }
-    const refreshed: StoredServer = {
-      ...same,
-      ...machine.pairing,
-      environmentId: machine.environmentId,
-      name: same.source === "relay" ? machine.name : same.name,
-    }
+    const refreshed: StoredServer = { ...same, ...machine.pairing, environmentId: machine.environmentId }
     next = next.map((server) => (server === same ? refreshed : server))
   }
   return next

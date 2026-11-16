@@ -5,6 +5,8 @@ directories:
 # node-pty ships N-API prebuilds for every platform. N-API binaries load in Electron as they are, and rebuilding
 # cannot cross-compile node-pty for Windows on Linux.
 npmRebuild: false
+# Chromium ships about 50 MB of UI strings for 55 languages. Keep the ones HinaCode is translated into.
+electronLanguages: [en, ja, zh-CN, zh-TW]
 # node-pty spawns a native binary, which cannot run from inside app.asar.
 asarUnpack:
   - "**/node_modules/node-pty/**"
