@@ -29,11 +29,7 @@ export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; c
   return (
     <aside
       aria-label={m.panel_label()}
-      className={cn(
-        "flex min-h-0 min-w-0",
-        compact ? "w-full flex-1" : "border-l border-border",
-        expanded && "flex-1",
-      )}
+      className={cn("flex min-h-0 min-w-0", compact ? "w-full flex-1" : "border-l border-border", expanded && "flex-1")}
     >
       {shown && <ViewContent thread={thread} view={view} panelId={panelId} compact={compact} expanded={expanded} />}
       <ActivityBar threadId={thread.id} views={views} selected={shown ? view.id : null} panelId={panelId} />
