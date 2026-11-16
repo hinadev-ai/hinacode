@@ -343,6 +343,53 @@ describe("devices on another machine", () => {
     }
   }, 30_000)
 
+  test("the desktop points a cloud's devices at a machine the cloud paired, and runs them there", async () => {
+    await setExperimental(desktop, { devices: true })
+    const desktopPort = await unusedLoopbackPort()
+    await desktop.runPromise(
+      Settings.use((settings) => settings.set({ remote: { enabled: true, bindHost: "127.0.0.1", port: desktopPort } })),
+    )
+    await vi.waitFor(async () =>
+      expect((await desktop.runPromise(RemoteAccess.use((remote) => remote.status))).listening).toBe(true),
+    )
+    const pairing = await desktop.runPromise(RemoteAccess.use((remote) => remote.pairing))
+    const url = pairingUrl({ hosts: ["127.0.0.1"], port: pairing.port, token: pairing.token, relay: null })
+    const hub = await cloud.runPromise(
+      Environments.use((environments) => environments.add({ name: "desktop", pairingUrl: url })),
+    )
+    const cloudMachine = await cloud.runPromise(RemoteAccess.use((remote) => Effect.succeed(remote.identity)))
+    try {
+      await vi.waitFor(async () =>
+        expect(result(await invoke("devices.hubs", undefined, cloudId))).toEqual([
+          { id: hub.id, name: "desktop", status: "connected" },
+        ]),
+      )
+      expect(result(await invoke("devices.hubs", undefined))).toEqual([
+        { id: cloudId, name: "cloud", status: "connected" },
+      ])
+      expect(result(await invoke("devices.checks", { hub: hub.id }, cloudId))).toEqual(
+        result(await invoke("devices.checks", {})),
+      )
+
+      result(await invoke("settings.set", { experimental: { devices: true, devicesOn: hub.id } }, cloudId))
+      await vi.waitFor(async () => {
+        await invoke("device.attach", { threadId: cloudThread, deviceId: "android:Remote_Pixel" })
+        expect(await heldDevices(desktop, cloudThread)).toEqual([
+          { deviceId: "android:Remote_Pixel", clientId: cloudMachine.id, clientName: cloudMachine.name },
+        ])
+      })
+      expect(await heldDevices(cloud, cloudThread)).toEqual([])
+    } finally {
+      await setExperimental(cloud, { devicesOn: null })
+      await cloud.runPromise(Environments.use((environments) => environments.remove(hub.id)))
+      await desktop.runPromise(
+        Settings.use((settings) =>
+          settings.set({ remote: { enabled: false, bindHost: "127.0.0.1", port: desktopPort } }),
+        ),
+      )
+    }
+  }, 30_000)
+
   test("the hub serves a client's device calls itself even when it runs its own devices elsewhere", async () => {
     await setExperimental(cloud, { devices: true, devicesOn: "a-machine-the-hub-uses" })
     await setExperimental(desktop, { devices: true, devicesOn: cloudId })
