@@ -8,7 +8,8 @@ import Constants from "expo-constants"
 import { useState } from "react"
 import { router } from "expo-router"
 import { AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
-import { forgetServer } from "@/lib/start-app"
+import { forgetServer, renameServer } from "@/lib/start-app"
+import { RenameForm } from "@/components/rename-form"
 import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Spinner } from "@/components/motion"
 import { RelayAccountSection } from "@/components/relay-account"
@@ -527,55 +528,90 @@ function ServerRow({ server, onPress }: { server: Server; onPress: () => void })
 }
 
 function ServerSheet({ server, onClose }: { server: Server; onClose: () => void }) {
-  const theme = useTheme()
+  const [renaming, setRenaming] = useState(false)
   const forget = () => {
     onClose()
     forgetServer(server.id)
   }
+  const rename = (name: string) => {
+    const trimmed = name.trim()
+    if (trimmed === "") return
+    renameServer(server.id, trimmed)
+    setRenaming(false)
+  }
   return (
     <Sheet title={serverName(server)} open onClose={onClose} fit>
       <View style={styles.permission}>
-        <View style={styles.sheetStatus}>
-          <ConnectionBadge status={server.status} />
-          {server.source === "relay" && (
-            <Text style={[styles.source, { color: theme.textMuted }]}>{copy("mobile_relay_from_relay")}</Text>
-          )}
-        </View>
-        {server.error !== null && <Notice tone="danger" text={server.error} />}
-        {server.relay !== null && <Text style={[styles.address, { color: theme.textMuted }]}>{server.relay}</Text>}
-        {server.hosts.map((host) => (
-          <Text key={host} style={[styles.address, { color: theme.textMuted }]}>{`${host}:${server.port}`}</Text>
-        ))}
-        {server.status === "offline" && (
-          <Button
-            icon="Refresh"
-            label={copy("mobile_settings_server_reconnect")}
-            onPress={() => reconnectNow(server.id)}
+        {renaming ? (
+          <RenameForm
+            initial={serverName(server)}
+            label={copy("mobile_settings_server_name")}
+            testID="server-rename"
+            onSave={rename}
           />
-        )}
-        {server.status === "unauthorized" && (
-          <Button
-            icon="RiQrScanLine"
-            variant="primary"
-            label={copy("mobile_settings_server_pair_again")}
-            onPress={() => {
-              onClose()
-              router.push("/server/new")
-            }}
-          />
-        )}
-        {server.source === "relay" ? (
-          <Footnote text={copy("mobile_relay_forget_hint")} />
         ) : (
-          <Button
-            icon="Unlink"
-            variant="danger"
-            label={copy("mobile_settings_server_forget")}
-            onPress={() => confirmForget(serverName(server), forget)}
-          />
+          <ServerDetails server={server} onClose={onClose} onRename={() => setRenaming(true)} onForget={forget} />
         )}
       </View>
     </Sheet>
+  )
+}
+
+function ServerDetails({
+  server,
+  onClose,
+  onRename,
+  onForget,
+}: {
+  server: Server
+  onClose: () => void
+  onRename: () => void
+  onForget: () => void
+}) {
+  const theme = useTheme()
+  return (
+    <>
+      <View style={styles.sheetStatus}>
+        <ConnectionBadge status={server.status} />
+        {server.source === "relay" && (
+          <Text style={[styles.source, { color: theme.textMuted }]}>{copy("mobile_relay_from_relay")}</Text>
+        )}
+      </View>
+      {server.error !== null && <Notice tone="danger" text={server.error} />}
+      {server.relay !== null && <Text style={[styles.address, { color: theme.textMuted }]}>{server.relay}</Text>}
+      {server.hosts.map((host) => (
+        <Text key={host} style={[styles.address, { color: theme.textMuted }]}>{`${host}:${server.port}`}</Text>
+      ))}
+      {server.status === "offline" && (
+        <Button
+          icon="Refresh"
+          label={copy("mobile_settings_server_reconnect")}
+          onPress={() => reconnectNow(server.id)}
+        />
+      )}
+      {server.status === "unauthorized" && (
+        <Button
+          icon="RiQrScanLine"
+          variant="primary"
+          label={copy("mobile_settings_server_pair_again")}
+          onPress={() => {
+            onClose()
+            router.push("/server/new")
+          }}
+        />
+      )}
+      <Button testID="server-rename" icon="Pencil" label={copy("mobile_settings_server_rename")} onPress={onRename} />
+      {server.source === "relay" ? (
+        <Footnote text={copy("mobile_relay_forget_hint")} />
+      ) : (
+        <Button
+          icon="Unlink"
+          variant="danger"
+          label={copy("mobile_settings_server_forget")}
+          onPress={() => confirmForget(serverName(server), onForget)}
+        />
+      )}
+    </>
   )
 }
 

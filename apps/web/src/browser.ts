@@ -11,7 +11,7 @@ import {
 import { RelayHostList, type RelayMachine } from "../../../src/shared/relayMachines.ts"
 import { showSystemNotification } from "@/lib/notify.ts"
 import { m } from "@/paraglide/messages.js"
-import { type RelayAccount, relayEndpoint, signOutDevice } from "./account.ts"
+import { type RelayAccount, relayEndpoint, renameMachine, signOutDevice } from "./account.ts"
 
 const CLIENT_SETTINGS_KEY = "hinacode.clientSettings"
 const LINE_COMMENTS = "hinacode.lineComments"
@@ -136,6 +136,10 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
       })),
     }),
     "environments.reconnect": ({ id }: { id: string }) => context.reconnect(id),
+    "environments.rename": ({ id, name }: { id: string; name: string }) => {
+      renameMachine(id, name)
+      location.reload()
+    },
     "relayAccount.status": relayStatus,
     "relayAccount.sync": () => {
       location.reload()

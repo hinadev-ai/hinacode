@@ -194,6 +194,10 @@ export const removeEnvironmentAtom = Atom.fn((id: string) =>
   ),
 )
 
+export const renameEnvironmentAtom = Atom.fn((input: RpcRequest<"environments.rename">) =>
+  call("environments.rename", input).pipe(Effect.tap(() => Atom.refresh(environmentsAtom))),
+)
+
 export const reconnectEnvironmentAtom = Atom.fn((id: string) => call("environments.reconnect", { id }))
 
 export const relayAccountAtom = Atom.make(call("relayAccount.status", undefined))
@@ -592,6 +596,10 @@ export const vmDesktopUrlAtom = familyOf((threadId: string, _sandboxId: string) 
 )
 
 export const deviceHostAtom = Atom.family((threadId: string) => Atom.make(call("devices.list", { threadId })))
+
+export const deviceChecksAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(call("devices.checks", undefined, { environment })),
+)
 
 export const vmHostAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("vm.host", undefined, { environment })),

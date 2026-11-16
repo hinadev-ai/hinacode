@@ -118,6 +118,22 @@ const deviceScenarios: ReadonlyArray<Scenario> = [
     setup: showDevices,
   },
   {
+    name: "devices-checklist-missing-tools",
+    overrides: { "devices.list": { result: devicesHost.missingTools }, "device.get": { result: [] } },
+    setup: showDevices,
+  },
+  {
+    name: "devices-hub-offline",
+    experimental: { devicesOn: "cloud-studio" },
+    overrides: { "devices.list": { result: devicesHost.ready }, "device.get": { result: [] } },
+    setup: showDevices,
+  },
+  {
+    name: "devices-stale-holder",
+    overrides: { "devices.list": { result: devicesHost.staleHolder }, "device.get": { result: [] } },
+    setup: showDevices,
+  },
+  {
     name: "devices-list-loading",
     overrides: { "devices.list": "pending", "device.get": { result: [] } },
     setup: showDevices,
