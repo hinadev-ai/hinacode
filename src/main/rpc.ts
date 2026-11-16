@@ -416,6 +416,7 @@ const handlers: Handlers = {
   "fs.list": ({ root, path }) => Files.use((files) => files.list(root, path)),
   "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
   "fs.preview": ({ root, path }) => Files.use((files) => files.preview(root, path)),
+  "fs.readChunk": ({ root, path, offset }) => Files.use((files) => files.readChunk(root, path, offset)),
   "fs.write": ({ root, path, content, expected }) => Files.use((files) => files.write(root, path, content, expected)),
   "fs.create": ({ root, path, kind }) => Files.use((files) => files.create(root, path, kind)),
   "fs.rename": ({ root, from, to }) => Files.use((files) => files.rename(root, from, to)),

@@ -248,6 +248,7 @@ export const routes: Record<RpcMethod, Route> = {
   "fs.list": root,
   "fs.read": root,
   "fs.preview": root,
+  "fs.readChunk": root,
   "fs.write": root,
   "fs.create": root,
   "fs.rename": root,

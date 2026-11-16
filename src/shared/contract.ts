@@ -461,6 +461,14 @@ export const RpcMethods = {
     Schema.Struct({ root: Schema.String, path: Schema.String }),
     Schema.Struct({ dataUrl: Schema.String }),
   ),
+  "fs.readChunk": rpc(
+    Schema.Struct({
+      root: Schema.String,
+      path: Schema.String,
+      offset: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    }),
+    Schema.Struct({ data: Schema.String, size: Schema.Number }),
+  ),
   "fs.write": rpc(
     Schema.Struct({
       root: Schema.String,
@@ -857,6 +865,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "fs.list": "read",
   "fs.read": "read",
   "fs.preview": "read",
+  "fs.readChunk": "read",
   "fs.write": "mutation",
   "fs.create": "mutation",
   "fs.rename": "mutation",
