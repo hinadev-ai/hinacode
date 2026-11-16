@@ -1,148 +1,82 @@
-import { Effect, Layer, Schema, Stream } from "effect"
-import { SqlClient } from "effect/sql"
+import { Effect, Schema } from "effect"
 import { type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../../shared/contract.ts"
+import { RemoteAccess } from "../../remote/access.ts"
 import { Environments } from "../Environments.ts"
-import { PushBroadcast, releasedThreadOf } from "../Events.ts"
 import { Settings } from "../Settings.ts"
-import { Devices, DevicesError } from "./Devices.ts"
 
-type DeviceMethod = Extract<RpcMethod, `device.${string}` | "devices.list">
+export class DeviceHubError extends Schema.TaggedError<DeviceHubError>()("DeviceHubError", {
+  message: Schema.String,
+}) {}
 
-const withDevice = (device: string | undefined) => (device === undefined ? {} : { device })
-
-export const devicesHubLayer = Layer.effect(
-  Devices,
-  Effect.gen(function* () {
-    const local = yield* Devices
-    const environments = yield* Environments
-    const settings = yield* Settings
-    const broadcast = yield* PushBroadcast
-    const sql = yield* SqlClient.SqlClient
-    const scope = yield* Effect.scope
-    const runFork = Effect.runForkWith(yield* Effect.context<never>())
-
-    let hub = yield* settings.get.pipe(
-      Effect.map((value) => value.experimental.devicesHub),
-      Effect.orElseSucceed(() => null),
-    )
-    yield* (yield* settings.changes).pipe(
-      Stream.runForEach((value) =>
-        Effect.sync(() => {
-          hub = value.experimental.devicesHub
-        }),
-      ),
-      Effect.forkIn(scope),
-    )
-
-    const paired = (environmentId: string) =>
-      environments.list.pipe(
-        Effect.map(({ clouds }) => clouds.some((cloud) => cloud.id === environmentId)),
-        Effect.orElseSucceed(() => true),
-      )
-
-    const forward = <M extends DeviceMethod, E>(
-      environmentId: string,
-      method: M,
-      payload: RpcRequest<M>,
-      locally: Effect.Effect<RpcResponse<M>, E>,
-    ): Effect.Effect<RpcResponse<M>, E | DevicesError> =>
-      Effect.gen(function* () {
-        const envelope = yield* environments.forward(environmentId, { method, payload })
-        if (!("error" in envelope)) {
-          return yield* (
-            Schema.decodeUnknownEffect(RpcMethods[method].response)(envelope.result) as Effect.Effect<
-              RpcResponse<M>,
-              Schema.SchemaError
-            >
-          ).pipe(
-            Effect.mapError(
-              (error) => new DevicesError({ message: `Unexpected answer to ${method}: ${error.message}` }),
-            ),
-          )
-        }
-        if (envelope.error.tag === "NotFoundError" && !(yield* paired(environmentId))) return yield* locally
-        return yield* new DevicesError({ message: envelope.error.message })
-      })
-
-    const livesHere = (threadId: string) =>
-      sql`SELECT 1 FROM thread WHERE id = ${threadId}`.pipe(
-        Effect.map((rows) => rows.length > 0),
-        Effect.orElseSucceed(() => false),
-      )
-
-    const route = <M extends DeviceMethod, E>(
-      method: M,
-      payload: RpcRequest<M> & { readonly threadId: string },
-      locally: Effect.Effect<RpcResponse<M>, E>,
-    ) =>
-      Effect.suspend(() => {
-        const target = hub
-        if (target === null) return locally
-        return Effect.flatMap(livesHere(payload.threadId), (here) =>
-          here ? forward(target, method, payload, locally) : locally,
-        )
-      })
-
-    const releaseEverywhere = (threadId: string) =>
-      environments.list.pipe(
-        Effect.flatMap(({ clouds }) =>
-          Effect.forEach(
-            clouds.filter((cloud) => cloud.status === "connected"),
-            (cloud) =>
-              environments
-                .forward(cloud.id, { method: "device.release", payload: { threadId } })
-                .pipe(
-                  Effect.tap((envelope) =>
-                    "error" in envelope
-                      ? Effect.logWarning("could not release a thread's devices on a hub", envelope.error.message)
-                      : Effect.void,
-                  ),
-                ),
-            { concurrency: "unbounded", discard: true },
-          ),
-        ),
-        Effect.catchCause((cause) => Effect.logWarning("could not release a thread's devices on a hub", cause)),
-      )
-
-    yield* broadcast.subscribe((event) => {
-      const threadId = releasedThreadOf(event)
-      if (threadId !== undefined) runFork(releaseEverywhere(threadId))
-    })
-
-    return Devices.of({
-      enabled: local.enabled,
-      list: (input) => route("devices.list", input, local.list(input)),
-      get: (threadId) => route("device.get", { threadId }, local.get(threadId)),
-      attach: (threadId, deviceId) => route("device.attach", { threadId, deviceId }, local.attach(threadId, deviceId)),
-      create: (threadId, model) =>
-        route("device.create", model === undefined ? { threadId } : { threadId, model }, local.create(threadId, model)),
-      detach: (threadId, deviceId) => route("device.detach", { threadId, deviceId }, local.detach(threadId, deviceId)),
-      delete: (threadId, deviceId) => route("device.delete", { threadId, deviceId }, local.delete(threadId, deviceId)),
-      shutdown: (threadId, deviceId) =>
-        route("device.shutdown", { threadId, deviceId }, local.shutdown(threadId, deviceId)),
-      frame: (input) => route("device.frame", input, local.frame(input)),
-      command: (input) => route("device.command", input, local.command(input)),
-      control: (threadId, deviceId, control) =>
-        route("device.control", { threadId, deviceId, control }, local.control(threadId, deviceId, control)),
-      pick: (input) => route("device.pick", input, local.pick(input)),
-      act: (threadId, device, action, steps) =>
-        route(
-          "device.act",
-          { threadId, ...withDevice(device), action, ...steps },
-          local.act(threadId, device, action, steps),
-        ),
-      screenshot: (threadId, device) =>
-        route("device.screenshot", { threadId, ...withDevice(device) }, local.screenshot(threadId, device)),
-      describe: (threadId, device) =>
-        route("device.describe", { threadId, ...withDevice(device) }, local.describe(threadId, device)),
-      launch: (threadId, device, app) =>
-        route("device.launch", { threadId, ...withDevice(device), app }, local.launch(threadId, device, app)),
-      release: (threadId) =>
-        route("device.release", { threadId }, local.release(threadId)).pipe(
-          Effect.catchTag("DevicesError", (error) =>
-            Effect.logWarning("could not release a thread's devices on the hub", error.message),
-          ),
-        ),
-    })
-  }),
+export const deviceHub: Effect.Effect<string | undefined, never, Settings> = Settings.use(
+  (settings) => settings.get,
+).pipe(
+  Effect.map((value) => value.experimental.devicesOn ?? undefined),
+  Effect.orElseSucceed(() => undefined),
 )
+
+const TAKES_CLIENT: ReadonlySet<RpcMethod> = new Set([
+  "device.attach",
+  "device.create",
+  "device.act",
+  "device.look",
+  "device.describe",
+  "device.launch",
+  "device.logs",
+  "device.install.begin",
+])
+
+export const asHubClient = (method: RpcMethod, payload: unknown): Effect.Effect<unknown, never, RemoteAccess> =>
+  TAKES_CLIENT.has(method) && typeof payload === "object" && payload !== null
+    ? RemoteAccess.use(({ identity }) =>
+        Effect.succeed({ ...payload, client: { id: identity.id, name: identity.name } }),
+      )
+    : Effect.succeed(payload)
+
+export const forwardToHub = (hub: string, method: RpcMethod, payload: unknown) =>
+  asHubClient(method, payload).pipe(
+    Effect.flatMap((forwarded) =>
+      Environments.use((environments) => environments.forward(hub, { method, payload: forwarded })),
+    ),
+  )
+
+const reachable = (hub: string) =>
+  Environments.use((environments) => environments.list).pipe(
+    Effect.orElseSucceed(() => ({ clouds: [] })),
+    Effect.flatMap(({ clouds }) => {
+      const cloud = clouds.find((each) => each.id === hub)
+      if (cloud === undefined) {
+        return Effect.fail(
+          new DeviceHubError({
+            message:
+              "The machine chosen to run devices is no longer paired. Pick another in Settings > Experimental > Run devices on.",
+          }),
+        )
+      }
+      return cloud.status === "offline"
+        ? Effect.fail(
+            new DeviceHubError({ message: `${cloud.name} is offline. Devices come back when it reconnects.` }),
+          )
+        : Effect.void
+    }),
+  )
+
+export const callHub = <M extends RpcMethod>(
+  hub: string,
+  method: M,
+  payload: RpcRequest<M>,
+): Effect.Effect<RpcResponse<M>, DeviceHubError, RemoteAccess | Environments> =>
+  reachable(hub).pipe(
+    Effect.andThen(Schema.encodeUnknownEffect(RpcMethods[method].request as Schema.Top)(payload)),
+    Effect.flatMap((encoded) => forwardToHub(hub, method, encoded)),
+    Effect.flatMap((envelope): Effect.Effect<unknown, DeviceHubError | Schema.SchemaError> =>
+      "error" in envelope
+        ? Effect.fail(new DeviceHubError({ message: envelope.error.message }))
+        : Schema.decodeUnknownEffect(RpcMethods[method].response as Schema.Codec<unknown, unknown>)(envelope.result),
+    ),
+    Effect.mapError((error) =>
+      error instanceof DeviceHubError
+        ? error
+        : new DeviceHubError({ message: `The device hub answered something unexpected: ${error.message}` }),
+    ),
+  ) as Effect.Effect<RpcResponse<M>, DeviceHubError, RemoteAccess | Environments>

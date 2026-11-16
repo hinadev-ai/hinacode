@@ -125,16 +125,21 @@ import {
 } from "./browser.ts"
 import {
   AgentAction,
+  AgentInput,
   AgentOutcome,
-  AgentSteps,
-  DeviceApp,
+  Device,
+  DeviceAudio,
+  DeviceClient,
   DeviceCommand,
   DeviceElement,
-  DeviceScreenshot,
   DeviceTarget,
+  InstallKind,
+  MAX_INSTALL_BYTES,
+  Requirement,
   SimulatorModelId,
   DeviceControl,
   DeviceFrame,
+  DeviceCheck,
   DeviceHost,
   DeviceId,
   PickedDeviceElement,
@@ -174,10 +179,18 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 
 export const RpcMethods = {
   "devices.list": rpc(Schema.Struct({ threadId: Schema.String }), DeviceHost),
+  "devices.checks": rpc(Schema.Void, Schema.Array(DeviceCheck)),
   "device.get": rpc(Schema.Struct({ threadId: Schema.String }), ThreadDevices),
-  "device.attach": rpc(Schema.Struct({ threadId: Schema.String, deviceId: DeviceId }), ThreadDevice),
+  "device.attach": rpc(
+    Schema.Struct({ threadId: Schema.String, deviceId: DeviceId, client: Schema.optionalKey(DeviceClient) }),
+    ThreadDevice,
+  ),
   "device.create": rpc(
-    Schema.Struct({ threadId: Schema.String, model: Schema.optional(SimulatorModelId) }),
+    Schema.Struct({
+      threadId: Schema.String,
+      model: Schema.optional(SimulatorModelId),
+      client: Schema.optionalKey(DeviceClient),
+    }),
     ThreadDevice,
   ),
   "device.detach": rpc(Schema.Struct({ threadId: Schema.String, deviceId: Schema.NullOr(DeviceId) }), Schema.Void),
@@ -213,31 +226,102 @@ export const RpcMethods = {
     }),
     Schema.NullOr(PickedDeviceElement),
   ),
+  "device.screenshot.save": rpc(
+    Schema.Struct({ threadId: Schema.String, dataUrl: Schema.String, name: Schema.String }),
+    Attachment,
+  ),
+  "devices.claim": rpc(
+    Schema.Struct({
+      client: DeviceClient,
+      threads: Schema.Array(Schema.Struct({ id: Schema.String, title: Schema.NullOr(Schema.String) })),
+    }),
+    Schema.Void,
+  ),
+  "devices.release": rpc(Schema.Struct({ threadId: Schema.String, clientId: Schema.String }), Schema.Void),
+  "devices.setup": rpc(Schema.Struct({ threadId: Schema.String, requirement: Requirement }), DeviceHost),
   "device.act": rpc(
     Schema.Struct({
       threadId: Schema.String,
       device: Schema.optionalKey(DeviceTarget),
       action: AgentAction,
-      ...AgentSteps.fields,
+      input: AgentInput,
+      client: Schema.optionalKey(DeviceClient),
     }),
     AgentOutcome,
   ),
-  "device.screenshot": rpc(
-    Schema.Struct({ threadId: Schema.String, device: Schema.optionalKey(DeviceTarget) }),
-    DeviceScreenshot,
+  "device.look": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      client: Schema.optionalKey(DeviceClient),
+    }),
+    Schema.Struct({
+      frame: DeviceFrame,
+      device: Device,
+      screen: Schema.Struct({ width: Schema.Number, height: Schema.Number }),
+    }),
   ),
   "device.describe": rpc(
-    Schema.Struct({ threadId: Schema.String, device: Schema.optionalKey(DeviceTarget) }),
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      client: Schema.optionalKey(DeviceClient),
+    }),
     Schema.Array(DeviceElement),
   ),
   "device.launch": rpc(
-    Schema.Struct({ threadId: Schema.String, device: Schema.optionalKey(DeviceTarget), app: DeviceApp }),
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      app: Schema.String.check(Schema.isMaxLength(300)),
+      client: Schema.optionalKey(DeviceClient),
+    }),
     AgentOutcome,
   ),
-  "device.release": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
-  "device.screenshot.save": rpc(
-    Schema.Struct({ threadId: Schema.String, dataUrl: Schema.String, name: Schema.String }),
-    Attachment,
+  "device.logs": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      app: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(300))),
+      sinceSeconds: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3600 })),
+      client: Schema.optionalKey(DeviceClient),
+    }),
+    Schema.Struct({ device: Schema.String, text: Schema.String }),
+  ),
+  "device.install.begin": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      kind: InstallKind,
+      bytes: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: MAX_INSTALL_BYTES })),
+      client: Schema.optionalKey(DeviceClient),
+    }),
+    Schema.Struct({ uploadId: Schema.String }),
+  ),
+  "device.install.chunk": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      uploadId: Schema.String.check(Schema.isMaxLength(64)),
+      index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      data: Schema.String.check(Schema.isMaxLength(6 * 1024 * 1024)),
+    }),
+    Schema.Void,
+  ),
+  "device.install.end": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      uploadId: Schema.String.check(Schema.isMaxLength(64)),
+      sha256: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
+    }),
+    Schema.Struct({ device: Schema.String, app: Schema.NullOr(Schema.String) }),
+  ),
+  "device.audio": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      deviceId: DeviceId,
+      after: Schema.Int.check(Schema.isGreaterThanOrEqualTo(-1)),
+    }),
+    DeviceAudio,
   ),
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
@@ -411,6 +495,11 @@ export const RpcMethods = {
   "shell.reveal": rpc(Schema.Struct({ path: Schema.String }), Schema.Void),
   "shell.openers": rpc(Schema.Void, Schema.Array(Opener)),
   "shell.openWith": rpc(Schema.Struct({ path: Schema.String, opener: OpenerId }), Schema.Void),
+  "shell.dragFile": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Void),
+  "shell.download": rpc(
+    Schema.Struct({ root: Schema.String, path: Schema.String }),
+    Schema.Struct({ path: Schema.String }),
+  ),
 
   "settings.get": rpc(Schema.Void, Settings),
   "notifications.permission": rpc(Schema.Void, NotificationPermission),
@@ -489,6 +578,14 @@ export const RpcMethods = {
   "fs.preview": rpc(
     Schema.Struct({ root: Schema.String, path: Schema.String }),
     Schema.Struct({ dataUrl: Schema.String }),
+  ),
+  "fs.readChunk": rpc(
+    Schema.Struct({
+      root: Schema.String,
+      path: Schema.String,
+      offset: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    }),
+    Schema.Struct({ data: Schema.String, size: Schema.Number }),
   ),
   "fs.write": rpc(
     Schema.Struct({
@@ -784,6 +881,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "browser.emulateTouch": "mutation",
   "browser.touch": "mutation",
   "devices.list": "read",
+  "devices.checks": "read",
   "device.get": "read",
   "device.attach": "mutation",
   "device.create": "mutation",
@@ -794,12 +892,19 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "device.command": "mutation",
   "device.control": "mutation",
   "device.pick": "mutation",
+  "device.screenshot.save": "mutation",
+  "devices.claim": "mutation",
+  "devices.release": "mutation",
+  "devices.setup": "mutation",
   "device.act": "mutation",
-  "device.screenshot": "read",
+  "device.look": "read",
   "device.describe": "read",
   "device.launch": "mutation",
-  "device.release": "mutation",
-  "device.screenshot.save": "mutation",
+  "device.logs": "read",
+  "device.install.begin": "mutation",
+  "device.install.chunk": "mutation",
+  "device.install.end": "mutation",
+  "device.audio": "read",
   "app.ready": "mutation",
   "app.focus": "mutation",
   "windows.openPullRequest": "mutation",
@@ -850,6 +955,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "shell.reveal": "mutation",
   "shell.openers": "read",
   "shell.openWith": "mutation",
+  "shell.dragFile": "mutation",
+  "shell.download": "mutation",
   "settings.get": "read",
   "notifications.permission": "read",
   "notifications.askPermission": "mutation",
@@ -892,6 +999,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "fs.list": "read",
   "fs.read": "read",
   "fs.preview": "read",
+  "fs.readChunk": "read",
   "fs.write": "mutation",
   "fs.create": "mutation",
   "fs.rename": "mutation",
@@ -1030,6 +1138,8 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "shell.reveal",
   "shell.openers",
   "shell.openWith",
+  "shell.dragFile",
+  "shell.download",
   "notifications.permission",
   "notifications.askPermission",
   "fs.watch",

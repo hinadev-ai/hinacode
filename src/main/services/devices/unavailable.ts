@@ -1,5 +1,7 @@
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type { PlatformSupport } from "../../../shared/device.ts"
-import { type DevicesOptions, devicesLayer } from "./Devices.ts"
+import { devicesLayer } from "./Devices.ts"
 import { DeviceError, type DevicePlatformDriver } from "./platform.ts"
 
 export const unavailableDriver = (support: PlatformSupport): DevicePlatformDriver => {
@@ -15,15 +17,18 @@ export const unavailableDriver = (support: PlatformSupport): DevicePlatformDrive
     connect: refuse,
     describe: refuse,
     launch: refuse,
+    checks: () => Promise.resolve([]),
+    setup: refuse,
+    install: refuse,
+    logs: refuse,
+    audio: refuse,
   }
 }
 
-export const unavailableDevices: DevicesOptions = {
+export const unavailableDevicesLayer = devicesLayer({
   drivers: {
     ios: unavailableDriver({ kind: "missing", tool: "xcode" }),
     android: unavailableDriver({ kind: "missing", tool: "androidSdk" }),
   },
-  simslimAvailable: () => Promise.resolve(false),
-}
-
-export const unavailableDevicesLayer = devicesLayer(unavailableDevices)
+  uploadsDir: join(tmpdir(), `hinacode-device-uploads-${process.pid}`),
+})

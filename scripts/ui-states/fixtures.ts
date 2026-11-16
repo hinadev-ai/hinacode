@@ -345,21 +345,86 @@ const models: (typeof DeviceHost.Encoded)["models"] = [
   },
 ]
 
+type Check = (typeof DeviceHost.Encoded)["checks"][number]
+
+const check = (requirement: Check["requirement"], state: Check["state"] = "ready"): Check => {
+  const needed: Record<Check["requirement"], Check["needed"]> = {
+    xcode: "ios",
+    iosRuntime: "ios",
+    simslim: "recommended",
+    axe: "recommended",
+    audioCapture: "recommended",
+    androidSdk: "android",
+    androidImage: "android",
+    avd: "android",
+  }
+  const manual = requirement === "xcode" || requirement === "androidSdk" || requirement === "audioCapture"
+  return { requirement, state, needed: needed[requirement], fix: manual ? "manual" : "install" }
+}
+
+const readyChecks: ReadonlyArray<Check> = [
+  check("xcode"),
+  check("iosRuntime"),
+  check("simslim"),
+  check("axe"),
+  check("androidSdk"),
+  check("androidImage"),
+  check("avd"),
+]
+
+const staleHolder = {
+  client: "kalan-laptop",
+  clientId: "client-laptop",
+  threadId: "7d0c4f7e-1d3b-4a51-9a39-3c3d2f6c9e10",
+  threadTitle: "Fix the login screen on small phones",
+  seenAt: Date.parse("2026-11-10T09:00:00.000Z"),
+}
+
 export const devicesHost = {
-  ready: { ios: { kind: "ready" }, android: { kind: "ready" }, simslim: true, devices, models },
+  ready: { ios: { kind: "ready" }, android: { kind: "ready" }, checks: readyChecks, devices, models },
+  missingTools: {
+    ios: { kind: "ready" },
+    android: { kind: "ready" },
+    checks: readyChecks.map((each) =>
+      each.requirement === "simslim" || each.requirement === "axe" ? check(each.requirement, "missing") : each,
+    ),
+    devices,
+    models,
+  },
   missingXcode: {
     ios: { kind: "missing", tool: "xcode" },
     android: { kind: "ready" },
-    simslim: false,
+    checks: [
+      check("xcode", "missing"),
+      check("iosRuntime", "missing"),
+      check("simslim", "missing"),
+      check("axe"),
+      ...readyChecks.filter((each) => each.needed === "android"),
+    ],
     devices: devices.filter((each) => each.platform === "android"),
     models: [],
   },
   unsupported: {
     ios: { kind: "unsupported", reason: "notMac" },
     android: { kind: "missing", tool: "androidSdk" },
-    simslim: false,
+    checks: [
+      check("xcode", "unsupported"),
+      check("iosRuntime", "unsupported"),
+      check("simslim", "unsupported"),
+      check("axe", "unsupported"),
+      check("androidSdk", "missing"),
+      check("androidImage", "missing"),
+      check("avd", "missing"),
+    ],
     devices: [],
     models: [],
+  },
+  staleHolder: {
+    ios: { kind: "ready" },
+    android: { kind: "ready" },
+    checks: readyChecks,
+    devices: devices.map((each) => (each.platform === "android" ? { ...each, holders: [staleHolder] } : each)),
+    models,
   },
 } satisfies Record<string, typeof DeviceHost.Encoded>
 

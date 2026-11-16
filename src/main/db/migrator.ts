@@ -48,7 +48,8 @@ import appConnection from "./migrations/0046_app_connection.ts"
 import routines from "./migrations/0047_routines.ts"
 import dropPullRequestObservedStatus from "./migrations/0048_drop_pull_request_observed_status.ts"
 import threadDeviceGuest from "./migrations/0049_thread_device_guest.ts"
-import threadInterrupted from "./migrations/0050_thread_interrupted.ts"
+import threadDeviceClient from "./migrations/0050_thread_device_client.ts"
+import threadInterrupted from "./migrations/0051_thread_interrupted.ts"
 
 const run = Migrator.make({})
 
@@ -102,7 +103,8 @@ export const runMigrations = run({
     "47_routines": routines,
     "48_drop_pull_request_observed_status": dropPullRequestObservedStatus,
     "49_thread_device_guest": threadDeviceGuest,
-    "50_thread_interrupted": threadInterrupted,
+    "50_thread_device_client": threadDeviceClient,
+    "51_thread_interrupted": threadInterrupted,
   }),
 }).pipe(
   Effect.tap((ran) =>

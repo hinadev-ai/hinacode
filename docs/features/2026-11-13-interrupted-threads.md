@@ -32,7 +32,7 @@ The thread row gains a nullable `interrupted_at`, and the status stays `idle`. A
 
 `isInterrupted` in `domain.ts` is the one rule: the status is `idle` and `interrupted_at` is set. An archived thread keeps the timestamp until it is unarchived, and is not interrupted while archived.
 
-- **Migration 50** adds the column. Existing rows read `null`.
+- **Migration 51** adds the column. Existing rows read `null`.
 - **`Threads.write`** clears `interrupted_at` whenever the status turns busy, so any send, a resume, a scheduled message or a routine clears it. `unarchive` clears it too.
 - **`Threads.resetInterrupted`** writes `idle`, sets `interrupted_at`, and clears a snooze, as any status write through `Threads.write` does. A thread snoozed while it ran comes back in Ready.
 - **`AgentRunner` turn finish** sets `interrupted_at` when the turn fiber ended by interruption and the developer did not press Stop. A Stop ends the provider stream normally, so it writes `idle` without the mark.
@@ -70,7 +70,7 @@ The thread row gains a nullable `interrupted_at`, and the status stays `idle`. A
   - A scheduled message that came due starts its own turn on an interrupted thread at startup, and clears the mark.
   - An interrupted thread from `threads.list` and from the `thread.updated` push decodes as `idle` with the `Thread` schema from before the column.
 - Mutating the code proves the restart test bites: resetting to `idle`, dropping the shutdown flag, or forking a resume of every interrupted thread at startup (even three at a time) each fail it.
-- `src/main/db/threadInterrupted.integration.test.ts` seeds a thread in every status with a snooze, runs migration 50, and checks that the rows are unchanged and `interrupted_at` is null.
+- `src/main/db/threadInterrupted.integration.test.ts` seeds a thread in every status with a snooze, runs migration 51, and checks that the rows are unchanged and `interrupted_at` is null.
 - `InterruptedCallout.component.test.tsx` clicks Resume and checks the rpc and the refusal message. `ThreadNotices.component.test.tsx` checks the callout leaves after Resume.
 - `PullRequestWatcher.delivery.integration.test.ts` checks that a watch wake waits for an interrupted thread.
 - `pnpm check:specs ThreadLifecycle.cfg` and `ThreadLifecycle.Liveness.cfg`.

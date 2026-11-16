@@ -19,6 +19,7 @@ import type {
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
 import type { ArtifactExportRequest } from "../shared/artifact.ts"
 import type { BrowserTouch } from "../shared/browser.ts"
+import { downloadProjectFile, localFileOf } from "./projectFileCopy.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
@@ -123,6 +124,8 @@ export interface DesktopCalls {
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
+  readonly dragFile: (path: string) => Effect.Effect<void, HandlerError>
+  readonly downloadsFolder: string
   readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
@@ -342,6 +345,12 @@ const handlers: Handlers = {
   "shell.reveal": ({ path }, desktop) => desktop?.reveal(path) ?? Effect.void,
   "shell.openers": (_, desktop) => desktop?.openers ?? Effect.succeed([]),
   "shell.openWith": ({ path, opener }, desktop) => desktop?.openWith(path, opener) ?? Effect.void,
+  "shell.dragFile": ({ root, path }, desktop) =>
+    desktop ? localFileOf(root, path).pipe(Effect.flatMap(desktop.dragFile)) : Effect.void,
+  "shell.download": ({ root, path }, desktop) =>
+    desktop
+      ? Effect.map(downloadProjectFile(root, path, desktop.downloadsFolder), (saved) => ({ path: saved }))
+      : Effect.fail({ _tag: "DesktopOnly", message: "Downloads need the desktop app." }),
 
   "settings.get": () => Settings.use((settings) => settings.get),
   "settings.set": (patch) => Settings.use((settings) => settings.set(patch)),
@@ -417,6 +426,7 @@ const handlers: Handlers = {
   "fs.list": ({ root, path }) => Files.use((files) => files.list(root, path)),
   "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
   "fs.preview": ({ root, path }) => Files.use((files) => files.preview(root, path)),
+  "fs.readChunk": ({ root, path, offset }) => Files.use((files) => files.readChunk(root, path, offset)),
   "fs.write": ({ root, path, content, expected }) => Files.use((files) => files.write(root, path, content, expected)),
   "fs.create": ({ root, path, kind }) => Files.use((files) => files.create(root, path, kind)),
   "fs.rename": ({ root, from, to }) => Files.use((files) => files.rename(root, from, to)),
@@ -526,24 +536,42 @@ const handlers: Handlers = {
   "terminal.list": ({ threadId }) => Terminals.use((terminals) => terminals.list(threadId)),
   "terminal.attach": ({ id, since }) => Terminals.use((terminals) => terminals.attach(id, since)),
 
-  "devices.list": (input) => Devices.use((devices) => devices.list(input)),
+  "devices.list": () => Devices.use((devices) => devices.list()),
+  "devices.checks": () => Devices.use((devices) => devices.checks()),
   "device.get": ({ threadId }) => Devices.use((devices) => devices.get(threadId)),
-  "device.attach": ({ threadId, deviceId }) => Devices.use((devices) => devices.attach(threadId, deviceId)),
-  "device.create": ({ threadId, model }) => Devices.use((devices) => devices.create(threadId, model)),
+  "device.attach": ({ threadId, deviceId, client }) =>
+    Devices.use((devices) => devices.attach(threadId, deviceId, client)),
+  "device.create": ({ threadId, model, client }) => Devices.use((devices) => devices.create(threadId, model, client)),
   "device.detach": ({ threadId, deviceId }) => Devices.use((devices) => devices.detach(threadId, deviceId)),
   "device.delete": ({ threadId, deviceId }) => Devices.use((devices) => devices.delete(threadId, deviceId)),
-  "device.shutdown": ({ threadId, deviceId }) => Devices.use((devices) => devices.shutdown(threadId, deviceId)),
+  "device.shutdown": ({ deviceId }) => Devices.use((devices) => devices.shutdown(deviceId)),
   "device.frame": (input) => Devices.use((devices) => devices.frame(input)),
   "device.command": (input) => Devices.use((devices) => devices.command(input)),
   "device.control": ({ threadId, deviceId, control }) =>
     Devices.use((devices) => devices.control(threadId, deviceId, control)),
   "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
-  "device.act": ({ threadId, device, action, ...steps }) =>
-    Devices.use((devices) => devices.act(threadId, device, action, steps)),
-  "device.screenshot": ({ threadId, device }) => Devices.use((devices) => devices.screenshot(threadId, device)),
-  "device.describe": ({ threadId, device }) => Devices.use((devices) => devices.describe(threadId, device)),
-  "device.launch": ({ threadId, device, app }) => Devices.use((devices) => devices.launch(threadId, device, app)),
-  "device.release": ({ threadId }) => Devices.use((devices) => devices.release(threadId)),
+  "devices.claim": (input) => Devices.use((devices) => devices.claim(input)),
+  "devices.release": ({ clientId }) => Devices.use((devices) => devices.release(clientId)),
+  "devices.setup": ({ requirement }) => Devices.use((devices) => devices.setup(requirement)),
+  "device.act": ({ threadId, device, action, input, client }) =>
+    Devices.use((devices) => devices.act(threadId, device, action, input, client)),
+  "device.look": ({ threadId, device, client }) =>
+    Devices.use((devices) =>
+      Effect.map(devices.screenshot(threadId, device, client), ({ frame, state, screen }) => ({
+        frame,
+        device: state.device,
+        screen,
+      })),
+    ),
+  "device.describe": ({ threadId, device, client }) =>
+    Devices.use((devices) => devices.describe(threadId, device, client)),
+  "device.launch": ({ threadId, device, app, client }) =>
+    Devices.use((devices) => devices.launch(threadId, device, app, client)),
+  "device.logs": (input) => Devices.use((devices) => devices.logs(input)),
+  "device.install.begin": (input) => Devices.use((devices) => devices.uploadBegin(input)),
+  "device.install.chunk": (input) => Devices.use((devices) => devices.uploadChunk(input)),
+  "device.install.end": (input) => Devices.use((devices) => devices.uploadEnd(input)),
+  "device.audio": (input) => Devices.use((devices) => devices.audio(input)),
   "device.screenshot.save": ({ threadId, dataUrl, name }) =>
     Attachments.use((attachments) => attachments.stage(threadId, { dataUrl, name })),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
