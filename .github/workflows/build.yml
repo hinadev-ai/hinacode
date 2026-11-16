@@ -114,7 +114,11 @@ jobs:
       - run: pnpm build:exe
       - run: pnpm verify:exe
       - if: github.ref_type == 'tag'
-        run: gh release upload "$GITHUB_REF_NAME" "dist-exe/hinacode-${{ matrix.target }}.tar.gz" --clobber
+        working-directory: dist-exe
+        run: |
+          archive="hinacode-${{ matrix.target }}.tar.gz"
+          shasum -a 256 "$archive" > "$archive.sha256"
+          gh release upload "$GITHUB_REF_NAME" "$archive" "$archive.sha256" --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

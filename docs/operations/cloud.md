@@ -10,7 +10,7 @@ On macOS (Apple silicon) or Linux (x64, arm64), one command installs the cloud a
 curl -fsSL https://hinacode.app/install.sh | bash
 ```
 
-It downloads the executable for this machine into `~/.local/share/hinacode/versions/<version>/`, links `~/.local/bin/hinacode` to it, and runs `hinacode connect`. Connect installs `hinacode serve` as a service that starts at boot and restarts when it stops, waits until it listens, and prints the pairing block. Run the same command again to update; it restarts the service on the new release and deletes the old one.
+It downloads the executable for this machine, checks it against the `.sha256` the release publishes next to it, and installs it into `~/.local/share/hinacode/versions/<version>/`, links `~/.local/bin/hinacode` to it, and runs `hinacode connect`. Connect installs `hinacode serve` as a service that starts at boot and restarts when it stops, waits until it listens, and prints the pairing block. Run the same command again to update; it restarts the service on the new release and deletes the old one.
 
 | Platform | Service                                                                  | Log                                 |
 | -------- | ------------------------------------------------------------------------ | ----------------------------------- |
