@@ -812,6 +812,8 @@ export const Machine = Schema.Struct({
 })
 export type Machine = typeof Machine.Type
 
+export const MachineName = Schema.String.check(Schema.isTrimmed(), Schema.isNonEmpty(), Schema.isMaxLength(80))
+
 export const Environment = Schema.Struct({
   id: Schema.String,
   name: Schema.String,

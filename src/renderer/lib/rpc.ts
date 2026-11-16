@@ -175,6 +175,10 @@ export const removeEnvironmentAtom = Atom.fn((id: string) =>
   ),
 )
 
+export const renameEnvironmentAtom = Atom.fn((input: RpcRequest<"environments.rename">) =>
+  call("environments.rename", input).pipe(Effect.tap(() => Atom.refresh(environmentsAtom))),
+)
+
 export const reconnectEnvironmentAtom = Atom.fn((id: string) => call("environments.reconnect", { id }))
 
 export const relayAccountAtom = Atom.make(call("relayAccount.status", undefined))

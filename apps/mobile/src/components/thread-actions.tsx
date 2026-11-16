@@ -2,14 +2,14 @@ import type { Thread } from "@shared/domain.ts"
 import { setStringAsync } from "expo-clipboard"
 import { Link, useNavigationContainerRef } from "expo-router"
 import { type ReactNode, useEffect, useEffectEvent, useState } from "react"
-import { AccessibilityInfo, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import { AccessibilityInfo, Alert, Platform, Pressable, StyleSheet, Text } from "react-native"
 import { isIOS } from "@/components/glass"
 import { Icon } from "@/components/icon"
 import { IconSwap, Spinner } from "@/components/motion"
 import { GroupedCard } from "@/components/grouped-card"
+import { RenameForm } from "@/components/rename-form"
 import { Sheet, sheetStyles } from "@/components/sheet"
-import { Button, Notice } from "@/components/ui"
-import { HIT, radius } from "@/constants/theme"
+import { Notice } from "@/components/ui"
 import { useTheme } from "@/hooks/use-theme"
 import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
@@ -273,7 +273,9 @@ export function ThreadActionsSheet({
     <Sheet title={title} open={open} onClose={close} fit>
       {state.renaming ? (
         <RenameForm
-          thread={thread}
+          initial={thread.title}
+          label={copy("mobile_thread_rename_title")}
+          testID="thread-rename"
           busy={state.running === "rename"}
           onSave={(next) => void state.rename(next).then((done) => done && onClose())}
         />
@@ -336,44 +338,6 @@ export function ThreadActionsSheet({
   )
 }
 
-function RenameForm({ thread, busy, onSave }: { thread: Thread; busy: boolean; onSave: (title: string) => void }) {
-  const theme = useTheme()
-  const [title, setTitle] = useState(thread.title)
-  return (
-    <View style={styles.rename}>
-      <TextInput
-        testID="thread-rename-input"
-        accessibilityLabel={copy("mobile_thread_rename_title")}
-        value={title}
-        onChangeText={setTitle}
-        onSubmitEditing={() => onSave(title)}
-        autoFocus
-        selectTextOnFocus
-        returnKeyType="done"
-        style={[styles.renameInput, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
-      />
-      <Button
-        testID="thread-rename-save"
-        label={copy("mobile_thread_rename_save")}
-        variant="primary"
-        busy={busy}
-        disabled={title.trim() === ""}
-        onPress={() => onSave(title)}
-        style={styles.renameSave}
-      />
-    </View>
-  )
-}
-
 const styles = StyleSheet.create({
   actionLabel: { flex: 1, fontSize: 16 },
-  rename: { gap: 12 },
-  renameInput: {
-    minHeight: HIT + 8,
-    paddingHorizontal: 16,
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    fontSize: 16,
-  },
-  renameSave: { borderRadius: radius.full },
 })

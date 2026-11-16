@@ -191,3 +191,17 @@ test("the app shows when the machine drops and comes back", async ({ page, web }
   resources = await openMachineResources(page)
   await expect(resources.getByText(/^(Offline|Connecting)/)).toHaveCount(0, { timeout: 25_000 })
 })
+
+test("a machine renamed in Settings keeps its name after the page reloads", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  await page.getByRole("button", { name: "Account", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Connected Devices", exact: true }).click()
+  await page.getByRole("button", { name: "Rename", exact: true }).click()
+  const dialog = page.getByRole("dialog")
+  await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue(web.machine.name)
+  await dialog.getByLabel("Name", { exact: true }).fill("Studio")
+  await Promise.all([page.waitForEvent("load"), dialog.getByRole("button", { name: "Save", exact: true }).click()])
+  await expect(page.getByRole("button", { name: "Rename", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Rename", exact: true }).click()
+  await expect(page.getByRole("dialog").getByLabel("Name", { exact: true })).toHaveValue("Studio")
+})
