@@ -42,6 +42,7 @@ The thread row gains a nullable `interrupted_at`, and the status stays `idle`. A
 - **The pull request watcher** holds its wakes for an interrupted thread, as it does for `limited` and `awaiting_approval`. Otherwise CI updates on 24 linked pull requests would start 24 turns within a minute and crash the machine again. `waitsOnDeveloper` in `domain.ts` names these three.
 - **Sidebar and Inbox** treat an interrupted thread like `limited`: an attention row in Ready, never auto-settled or auto-archived by the idle timer, and settled by a merged pull request.
 - **The CLI's `inbox`** lists an interrupted thread as an `interrupted` ask.
+- **Agents** see `status: interrupted` in `read_thread`, `wait_for_thread`, `list_threads` and `search_threads`. These are text for agents, not a schema, so an orchestrating agent that waits on 24 workers can tell a restart from a finished turn.
 
 `specs/ThreadLifecycle.tla` gains an `interrupted` flag and a `Restart` action, which moves a busy thread to `idle` with the flag set. `InterruptedIsResting` checks that only a resting row carries it.
 
@@ -73,5 +74,6 @@ The thread row gains a nullable `interrupted_at`, and the status stays `idle`. A
 - `src/main/db/threadInterrupted.integration.test.ts` seeds a thread in every status with a snooze, runs migration 51, and checks that the rows are unchanged and `interrupted_at` is null.
 - `InterruptedCallout.component.test.tsx` clicks Resume and checks the rpc and the refusal message. `ThreadNotices.component.test.tsx` checks the callout leaves after Resume.
 - `PullRequestWatcher.delivery.integration.test.ts` checks that a watch wake waits for an interrupted thread.
+- `mcp/server.integration.test.ts` checks that `wait_for_thread` and `list_threads` report an interrupted thread as `interrupted`.
 - `pnpm check:specs ThreadLifecycle.cfg` and `ThreadLifecycle.Liveness.cfg`.
 - With `verify-hinacode`, kill the app during a turn, launch again, and screenshot the sidebar row and the thread view. Click Resume and watch the thread run. Repeat on the phone's web build.
