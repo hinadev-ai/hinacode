@@ -298,6 +298,26 @@ describe("fs.read", () => {
   }
 })
 
+const readChunk = (root: string, path: string, offset: number) =>
+  run(Files.use((files) => files.readChunk(root, path, offset)))
+
+describe("fs.readChunk", () => {
+  it.effect("reads the bytes from an offset and gives the whole size", () =>
+    Effect.gen(function* () {
+      const chunk = yield* readChunk(repo, "untracked/image.bin", 4)
+      expect(chunk).toStrictEqual({ data: Buffer.from([0, 1, 2]).toString("base64"), size: 7 })
+      expect(yield* readChunk(repo, "untracked/image.bin", 7)).toStrictEqual({ data: "", size: 7 })
+    }),
+  )
+
+  it.effect("refuses a symlink to a file outside the root", () =>
+    Effect.gen(function* () {
+      const error = yield* readChunk(repo, "untracked/leak.txt", 0).pipe(Effect.flip)
+      expect(error).toMatchObject({ _tag: "FsAccessError", reason: "outsideRoot" })
+    }),
+  )
+})
+
 const save = (root: string, path: string, content: string, expected: string | null) =>
   run(Files.use((files) => files.write(root, path, content, expected)))
 

@@ -1,6 +1,15 @@
 import { cn } from "cn"
 import { Schema } from "effect"
-import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react"
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
+import type { BrowserTouch } from "../../../shared/browser.ts"
 import type { Thread } from "../../../shared/domain.ts"
 import { browserUrl } from "../../lib/browserUrl.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
@@ -14,6 +23,7 @@ import {
   type WebviewElement,
 } from "../../lib/elementPicker.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
+import { callPromise } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { selectBrowserTabs, useBrowserTabs } from "../../stores/browserTabs.ts"
 import { useUi } from "../../stores/ui.ts"
@@ -64,6 +74,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
   const [announcement, setAnnouncement] = useState("")
   const [pickError, setPickError] = useState<string | null>(null)
   const [device, setDevice] = useState<Device | null>(null)
+  const [webContentsId, setWebContentsId] = useState<number | null>(null)
   const viewRef = useRef<WebviewElement | null>(null)
   const addressRef = useRef<HTMLInputElement | null>(null)
   const pick = useRef<AbortController | null>(null)
@@ -82,6 +93,11 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
   }
 
   useEffect(() => {
+    if (webContentsId === null) return
+    callPromise("browser.emulateTouch", { webContentsId, enabled: device !== null }).catch(() => {})
+  }, [webContentsId, device])
+
+  useEffect(() => {
     if (active || !pick.current) return
     viewRef.current?.executeJavaScript(CANCEL_PICK_SCRIPT).catch(() => {})
   }, [active])
@@ -98,6 +114,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
       syncHistory()
     }
     const listeners: Record<string, (event: never) => void> = {
+      "dom-ready": () => setWebContentsId(view.getWebContentsId()),
       "did-start-loading": () => setLoading(true),
       "did-stop-loading": () => {
         setLoading(false)
@@ -255,18 +272,17 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
           <BrowserStart threadId={threadId} onOpen={open} />
         ) : (
           <div className={cn("absolute inset-0 flex", device && "scrollbar-gutter-both overflow-auto bg-muted p-3")}>
-            <webview
-              ref={attachView}
-              {...ALLOW_POPUPS}
-              src={src}
-              title={m.browser_page()}
+            <div
               style={device ? { width: device.width, height: device.height } : undefined}
               className={cn(
-                "flex",
+                "relative flex",
                 device ? "m-auto max-h-full shrink-0 bg-background shadow-md" : "flex-1",
                 failure && "invisible",
               )}
-            />
+            >
+              <webview ref={attachView} {...ALLOW_POPUPS} src={src} title={m.browser_page()} className="flex flex-1" />
+              {device && !picking && <TouchLayer viewRef={viewRef} />}
+            </div>
           </div>
         )}
         {loading && (
@@ -294,5 +310,61 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
         {announcement}
       </p>
     </div>
+  )
+}
+
+function TouchLayer({ viewRef }: { viewRef: RefObject<WebviewElement | null> }) {
+  const finger = useRef<number | null>(null)
+
+  const send = (event: PointerEvent<HTMLDivElement>, type: BrowserTouch["type"]) => {
+    const view = viewRef.current
+    if (!view) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const x = Math.min(rect.right, Math.max(rect.left, event.clientX))
+    const y = Math.min(rect.bottom, Math.max(rect.top, event.clientY))
+    callPromise("browser.touch", { webContentsId: view.getWebContentsId(), type, x, y }).catch(() => {})
+  }
+
+  const lift = (event: PointerEvent<HTMLDivElement>, type: "touchEnd" | "touchCancel") => {
+    if (finger.current !== event.pointerId) return
+    finger.current = null
+    send(event, type)
+  }
+
+  const forwardWheel = (layer: HTMLDivElement) => {
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      const rect = layer.getBoundingClientRect()
+      viewRef.current?.sendInputEvent({
+        type: "mouseWheel",
+        x: Math.round(event.clientX - rect.left),
+        y: Math.round(event.clientY - rect.top),
+        deltaX: -event.deltaX,
+        deltaY: -event.deltaY,
+      })
+    }
+    layer.addEventListener("wheel", onWheel, { passive: false })
+    return () => layer.removeEventListener("wheel", onWheel)
+  }
+
+  return (
+    <div
+      ref={forwardWheel}
+      aria-hidden
+      onPointerDown={(event) => {
+        if (event.button !== 0 || finger.current !== null) return
+        finger.current = event.pointerId
+        event.currentTarget.setPointerCapture(event.pointerId)
+        viewRef.current?.focus()
+        send(event, "touchStart")
+      }}
+      onPointerMove={(event) => {
+        if (finger.current === event.pointerId) send(event, "touchMove")
+      }}
+      onPointerUp={(event) => lift(event, "touchEnd")}
+      onPointerCancel={(event) => lift(event, "touchCancel")}
+      onLostPointerCapture={(event) => lift(event, "touchCancel")}
+      className="absolute inset-0 cursor-touch touch-none"
+    />
   )
 }

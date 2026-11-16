@@ -11,6 +11,7 @@ import * as AppServer from "./apps/server.ts"
 import * as Db from "./db/client.ts"
 import { sendToWindows } from "./ipc.ts"
 import { answerAsksLayer } from "./environments/route.ts"
+import { hubClaimsLayer } from "./services/devices/hubClaims.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import * as Peers from "./remote/peers.ts"
@@ -138,7 +139,7 @@ export const makeTestAppLayer = (
     Mcp.serverLayer.pipe(Layer.provide(base)),
     AppServer.layer.pipe(Layer.provide(Layer.mergeAll(base, Secrets.layer))),
   )
-  return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
+  return Layer.mergeAll(RemoteServer.layer, answerAsksLayer, hubClaimsLayer).pipe(
     Layer.provideMerge(app),
     Layer.provideMerge(SourceControl.layer),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),

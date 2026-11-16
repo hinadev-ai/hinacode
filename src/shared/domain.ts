@@ -629,6 +629,7 @@ export const ExperimentalSettings = Schema.Struct({
   tinyVmEnv: Schema.Record(Schema.String, Schema.String),
   tinyVmSetupScript: Schema.String,
   devices: Schema.Boolean,
+  devicesOn: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -797,6 +798,7 @@ export const defaultSettings: Settings = {
     tinyVmTemplate: "default",
     tinyVmProfile: false,
     devices: false,
+    devicesOn: null,
     tinyVmEnv: {},
     tinyVmSetupScript: "",
   },
@@ -811,6 +813,8 @@ export const Machine = Schema.Struct({
   projectIds: Schema.Array(Schema.String),
 })
 export type Machine = typeof Machine.Type
+
+export const MachineName = Schema.String.check(Schema.isTrimmed(), Schema.isNonEmpty(), Schema.isMaxLength(80))
 
 export const Environment = Schema.Struct({
   id: Schema.String,
