@@ -508,7 +508,7 @@ export const makePiProvider: Effect.Effect<AgentProvider, never, Scope.Scope> = 
     }).pipe(Effect.asVoid)
 
   const probeModels = Effect.gen(function* () {
-    const client = yield* startPi({ args: ["--no-session"], cwd: homedir() })
+    const client = yield* startPi({ args: ["--no-session", "--no-tools"], cwd: homedir() })
     const state = yield* query(client, "get_state", State)
     const { models } = yield* query(client, "get_available_models", Models)
     const current = state.model
@@ -534,7 +534,7 @@ export const makePiProvider: Effect.Effect<AgentProvider, never, Scope.Scope> = 
 
   const probeCommands = (cwd: string) =>
     Effect.gen(function* () {
-      const client = yield* startPi({ args: ["--no-session"], cwd })
+      const client = yield* startPi({ args: ["--no-session", "--no-tools"], cwd })
       const { commands } = yield* query(client, "get_commands", Commands)
       return commands.map((command): AgentCommand => ({
         trigger: "/",

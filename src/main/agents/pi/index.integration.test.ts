@@ -518,8 +518,8 @@ describe("makePiProvider", () => {
           { trigger: "/", name: "skill:docs", description: "", argumentHint: "" },
         ])
         expect(starts(received).map((start) => [start.argv, start.cwd === project])).toStrictEqual([
-          [["--mode", "rpc", "--approve", "--no-session"], false],
-          [["--mode", "rpc", "--approve", "--no-session"], true],
+          [["--mode", "rpc", "--approve", "--no-session", "--no-tools"], false],
+          [["--mode", "rpc", "--approve", "--no-session", "--no-tools"], true],
         ])
       }),
     ),
