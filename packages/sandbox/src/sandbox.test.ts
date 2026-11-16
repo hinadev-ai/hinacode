@@ -214,6 +214,30 @@ describe("runScript time limits", () => {
     expect(signals[0]?.aborted).toBe(true)
   })
 
+  it("stops a script whose short computations between awaits add up past its compute budget", async () => {
+    const outcome = await runScript({
+      code: `for (;;) { const start = Date.now(); while (Date.now() - start < 200) {}; await sleep(0) }`,
+      limits: { cpuMs: 1_000, timeoutMs: 4_000 },
+    })
+    expect(outcome).toEqual({
+      _tag: "Failed",
+      reason: "computation",
+      output: "",
+      error: "The script computed for more than 1 s in total, so it was stopped.",
+    })
+  })
+
+  it("leaves the event loop idle for at least as long as the script computes", async () => {
+    const before = performance.eventLoopUtilization()
+    const outcome = await run(
+      `for (let i = 0; i < 6; i++) { const start = Date.now(); while (Date.now() - start < 200) {}; await sleep(0) }
+       return "done"`,
+    )
+    const { utilization } = performance.eventLoopUtilization(before)
+    expect(outcome).toEqual({ _tag: "Completed", output: "done" })
+    expect(utilization).toBeLessThan(0.75)
+  })
+
   it("sleeps, and refuses a sleep that is not a duration", async () => {
     expect(await run(`await sleep(5); return "woke"`)).toEqual({ _tag: "Completed", output: "woke" })
     expect(await run(`await sleep("soon")`)).toMatchObject({
