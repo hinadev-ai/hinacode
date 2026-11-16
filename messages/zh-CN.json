@@ -2259,6 +2259,7 @@
   "settings_devices_hint": "将对话所在机器上的 iOS 模拟器和 Android 模拟器投射到侧边面板。智能体通过设备工具操控它们，你直接在屏幕上操作即可接管。",
   "settings_devices_on": "在哪台机器运行设备",
   "settings_devices_on_hint": "本机对话的模拟器会在选定的机器上运行。选择一台已配对的机器，就不会占用本机资源。",
+  "settings_devices_on_hint_remote": "{name} 对话的模拟器会在选定的机器上运行。列表显示的是 {name} 配对的机器，而不是本机配对的机器。",
   "settings_devices_on_missing": "找不到的机器（{id}）",
   "devices_new_simulator": "为此对话新建模拟器",
   "devices_model_os": "iOS {version}",

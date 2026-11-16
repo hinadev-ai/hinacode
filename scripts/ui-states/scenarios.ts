@@ -67,6 +67,7 @@ const UNRESOLVED_PAGE = "http://staging.fernwood.invalid/checkout"
 
 const world: Overrides = {
   "environments.list": { result: { clouds } },
+  "devices.hubs": { result: clouds.map(({ id, name, status }) => ({ id, name, status })) },
   "agents.updates": { result: [] },
   "updates.status": { result: { current: "0.43.0", state: { type: "upToDate" } } },
   "system.resources": { result: resources(0.18, 0.52) },

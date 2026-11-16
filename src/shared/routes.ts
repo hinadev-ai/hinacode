@@ -35,6 +35,7 @@ export const routes: Record<RpcMethod, Route> = {
   "browser.touch": client,
   "devices.list": threadDevice,
   "devices.checks": named,
+  "devices.hubs": named,
   "device.get": threadDevice,
   "device.attach": threadDevice,
   "device.create": threadDevice,

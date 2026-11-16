@@ -1,7 +1,9 @@
+import { useAtomValue } from "@effect/atom-react"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { type DeviceCheck, platformReady } from "../../../../shared/device.ts"
-import { useClouds, useThreadEnvironment } from "../../../lib/environments.ts"
+import { useThreadEnvironment } from "../../../lib/environments.ts"
+import { deviceHubsAtom } from "../../../lib/rpc.ts"
 import { useSettings } from "../../../lib/settings.ts"
 import { m } from "../../../paraglide/messages.js"
 
@@ -11,12 +13,12 @@ export interface DeviceHub {
 }
 
 export function useDeviceHub(threadId: string): DeviceHub | null {
-  const local = useThreadEnvironment(threadId) === null
-  const hubId = useSettings(null).experimental.devicesOn
-  const clouds = useClouds()
-  if (!local || hubId === null) return null
-  const cloud = clouds.find((each) => each.id === hubId)
-  return { name: cloud?.name ?? hubId, offline: cloud?.status !== "connected" }
+  const environment = useThreadEnvironment(threadId)
+  const hubId = useSettings(environment).experimental.devicesOn
+  const hubs = lastValue(useAtomValue(deviceHubsAtom(environment)))
+  if (hubId === null || hubs === undefined) return null
+  const hub = hubs.find((each) => each.id === hubId)
+  return { name: hub?.name ?? hubId, offline: hub?.status !== "connected" }
 }
 
 export const lastValue = <A, E>(result: AsyncResult.AsyncResult<A, E>): A | undefined => {

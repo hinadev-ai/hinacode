@@ -2267,6 +2267,7 @@
   "settings_devices_hint": "Streams the thread machine's iOS simulators and Android emulators into the side panel. Agents drive them with the device tools, and you take over by using the screen.",
   "settings_devices_on": "Run devices on",
   "settings_devices_on_hint": "Simulators and emulators for this machine's threads run on the chosen machine. Pick a paired machine to keep them off this one.",
+  "settings_devices_on_hint_remote": "Simulators and emulators for {name}'s threads run on the chosen machine. The list shows the machines {name} has paired, not the ones paired here.",
   "settings_devices_on_missing": "Missing machine ({id})",
   "devices_new_simulator": "New simulator for this thread",
   "devices_model_os": "iOS {version}",

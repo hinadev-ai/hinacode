@@ -10,9 +10,9 @@ import type {
 } from "../../../shared/domain.ts"
 import { formatEnvLines, parseEnvLines } from "../../lib/envLines.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { deviceChecksAtom, type EnvironmentId, updateSettingsAtom, vmHostAtom } from "../../lib/rpc.ts"
+import { deviceChecksAtom, deviceHubsAtom, type EnvironmentId, updateSettingsAtom, vmHostAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
-import { useClouds, useSettingsEnvironment } from "../../lib/environments.ts"
+import { environmentName, useClouds, useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
@@ -154,7 +154,6 @@ function DevicesSettings({
   experimental: ExperimentalSettingsValue
   setExperimental: SetExperimental
 }) {
-  const editingThisMachine = useSettingsEnvironment() === null
   return (
     <>
       <VmSwitchField
@@ -164,7 +163,7 @@ function DevicesSettings({
         checked={experimental.devices}
         onCheckedChange={(checked) => void setExperimental({ devices: checked })}
       />
-      {experimental.devices && editingThisMachine && (
+      {experimental.devices && (
         <DevicesOnField value={experimental.devicesOn} onChange={(devicesOn) => void setExperimental({ devicesOn })} />
       )}
     </>
@@ -174,18 +173,24 @@ function DevicesSettings({
 const THIS_MACHINE = "this-machine"
 
 function DevicesOnField({ value, onChange }: { value: string | null; onChange: (devicesOn: string | null) => void }) {
-  const clouds = useClouds()
-  const missing = value !== null && !clouds.some((cloud) => cloud.id === value)
+  const environment = useSettingsEnvironment()
+  const machineName = environmentName(environment, useClouds())
+  const hubs = AsyncResult.getOrElse(useAtomValue(deviceHubsAtom(environment)), () => [])
+  const missing = value !== null && !hubs.some((hub) => hub.id === value)
   const items = [
-    { value: THIS_MACHINE, label: m.environment_this_machine() },
-    ...clouds.map((cloud) => ({ value: cloud.id, label: cloud.name })),
+    { value: THIS_MACHINE, label: machineName },
+    ...hubs.map((hub) => ({ value: hub.id, label: hub.name })),
     ...(missing ? [{ value, label: m.settings_devices_on_missing({ id: value }) }] : []),
   ]
   return (
     <Field orientation="horizontal">
       <FieldContent>
         <FieldLabel htmlFor="settings-experimental-devices-on">{m.settings_devices_on()}</FieldLabel>
-        <FieldDescription>{m.settings_devices_on_hint()}</FieldDescription>
+        <FieldDescription>
+          {environment === null
+            ? m.settings_devices_on_hint()
+            : m.settings_devices_on_hint_remote({ name: machineName })}
+        </FieldDescription>
       </FieldContent>
       <Select
         items={items}
@@ -197,14 +202,14 @@ function DevicesOnField({ value, onChange }: { value: string | null; onChange: (
         </SelectTrigger>
         <SelectContent alignItemWithTrigger={false} align="end" className="w-auto min-w-(--anchor-width)">
           <SelectItem value={THIS_MACHINE}>
-            <MachineReadiness name={m.environment_this_machine()} environment={null} />
+            <MachineReadiness name={machineName} environment={environment} hub={null} />
           </SelectItem>
-          {clouds.map((cloud) => (
-            <SelectItem key={cloud.id} value={cloud.id}>
-              {cloud.status === "connected" ? (
-                <MachineReadiness name={cloud.name} environment={cloud.id} />
+          {hubs.map((hub) => (
+            <SelectItem key={hub.id} value={hub.id}>
+              {hub.status === "connected" ? (
+                <MachineReadiness name={hub.name} environment={environment} hub={hub.id} />
               ) : (
-                m.settings_devices_on_option({ name: cloud.name, summary: m.devices_summary_offline() })
+                m.settings_devices_on_option({ name: hub.name, summary: m.devices_summary_offline() })
               )}
             </SelectItem>
           ))}
@@ -215,8 +220,16 @@ function DevicesOnField({ value, onChange }: { value: string | null; onChange: (
   )
 }
 
-function MachineReadiness({ name, environment }: { name: string; environment: EnvironmentId }) {
-  const checks = AsyncResult.getOrElse(useAtomValue(deviceChecksAtom(environment)), () => null)
+function MachineReadiness({
+  name,
+  environment,
+  hub,
+}: {
+  name: string
+  environment: EnvironmentId
+  hub: string | null
+}) {
+  const checks = AsyncResult.getOrElse(useAtomValue(deviceChecksAtom(environment, hub)), () => null)
   return checks === null ? name : m.settings_devices_on_option({ name, summary: readinessSummary(checks) })
 }
 

@@ -64,6 +64,7 @@ import { randomName, Threads } from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { Devices } from "./services/devices/Devices.ts"
+import { callHub } from "./services/devices/hub.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
 export type AppServices =
@@ -536,7 +537,12 @@ const handlers: Handlers = {
   "terminal.attach": ({ id, since }) => Terminals.use((terminals) => terminals.attach(id, since)),
 
   "devices.list": () => Devices.use((devices) => devices.list()),
-  "devices.checks": () => Devices.use((devices) => devices.checks()),
+  "devices.checks": ({ hub }) =>
+    hub === undefined ? Devices.use((devices) => devices.checks()) : callHub(hub, "devices.checks", {}),
+  "devices.hubs": () =>
+    Environments.use((environments) => environments.list).pipe(
+      Effect.map(({ clouds }) => clouds.map(({ id, name, status }) => ({ id, name, status }))),
+    ),
   "device.get": ({ threadId }) => Devices.use((devices) => devices.get(threadId)),
   "device.attach": ({ threadId, deviceId, client }) =>
     Devices.use((devices) => devices.attach(threadId, deviceId, client)),
