@@ -12,7 +12,7 @@ import { formatEnvLines, parseEnvLines } from "../../lib/envLines.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { updateSettingsAtom, vmHostAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
-import { useSettingsEnvironment } from "../../lib/environments.ts"
+import { useClouds, useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
@@ -153,14 +153,57 @@ function DevicesSettings({
   experimental: ExperimentalSettingsValue
   setExperimental: SetExperimental
 }) {
+  const environment = useSettingsEnvironment()
   return (
-    <VmSwitchField
-      id="settings-experimental-devices"
-      label={m.settings_devices()}
-      hint={m.settings_devices_hint()}
-      checked={experimental.devices}
-      onCheckedChange={(checked) => void setExperimental({ devices: checked })}
-    />
+    <>
+      <VmSwitchField
+        id="settings-experimental-devices"
+        label={m.settings_devices()}
+        hint={m.settings_devices_hint()}
+        checked={experimental.devices}
+        onCheckedChange={(checked) => void setExperimental({ devices: checked })}
+      />
+      {experimental.devices && environment === null && (
+        <DevicesHubField
+          value={experimental.devicesHub}
+          onChange={(devicesHub) => void setExperimental({ devicesHub })}
+        />
+      )}
+    </>
+  )
+}
+
+const THIS_MACHINE = "local"
+
+function DevicesHubField({ value, onChange }: { value: string | null; onChange: (hub: string | null) => void }) {
+  const clouds = useClouds()
+  const items = [
+    { value: THIS_MACHINE, label: m.environment_this_machine() },
+    ...clouds.map((cloud) => ({ value: cloud.id, label: cloud.name })),
+  ]
+  const selected = items.some((item) => item.value === value) ? value : THIS_MACHINE
+  return (
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor="settings-experimental-devices-hub">{m.settings_devices_hub()}</FieldLabel>
+      </FieldContent>
+      <Select
+        items={items}
+        value={selected}
+        onValueChange={(next) => typeof next === "string" && onChange(next === THIS_MACHINE ? null : next)}
+      >
+        <SelectTrigger id="settings-experimental-devices-hub">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
   )
 }
 
