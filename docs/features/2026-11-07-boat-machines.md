@@ -29,10 +29,10 @@ A sandbox for one thread:
 
 `src/main/services/boat/BoatMachines.ts` is one service behind three desktop-only rpc methods routed to the client:
 
-| rpc                      | Does                                                                                                     |
-| ------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `boatMachines.options`   | Sandboxes, environments and ready saved snapshots in the account, for the form                           |
-| `boatMachines.connect`   | `{ sandbox: { id } }` or `{ sandbox: { create } }`, answers the added `Environment`                      |
+| rpc                      | Does                                                                                                                                                           |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `boatMachines.options`   | Sandboxes, environments and ready saved snapshots in the account, for the form                                                                                 |
+| `boatMachines.connect`   | `{ sandbox: { id } }` or `{ sandbox: { create } }`, answers the added `Environment`                                                                            |
 | `boatMachines.forThread` | `{ repository, projectName, setupScript, create }`, answers a draft thread on the project cloned on the new thread machine. `create.autoStopHours` is required |
 
 Connect converges from any state:
