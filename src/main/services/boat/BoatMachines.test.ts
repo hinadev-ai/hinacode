@@ -222,6 +222,30 @@ describe("BoatMachines", () => {
     })
   })
 
+  it("keeps the pairing token out of the error when HinaCode does not start", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-live", "ready")
+      const leaked = ["pairing", "credential", "7f3a"].join("-")
+      const journal = [
+        "hinacode serve did not start",
+        "Nov 17 10:00:00 boat bash[42]: HinaCode cloud 0.3.0",
+        `Nov 17 10:00:00 boat bash[42]:   hinacode://connect?host=127.0.0.1&port=48081&token=${leaked}`,
+        `Nov 17 10:00:00 boat bash[42]:   http://127.0.0.1:48081/?token=${leaked} open in a browser`,
+        "Nov 17 10:00:01 boat systemd[1]: hinacode.service: Main process exited",
+      ].join("\n")
+      fake.setMachineOutput({ stdout: "", stderr: journal, exitCode: 1 })
+      const { result } = await runMachines(fake, (machines) =>
+        Effect.flip(machines.connect({ sandbox: { id: "sb-live" } })),
+      )
+      expect(result._tag).toBe("BoatMachineError")
+      expect(result.message).toContain("Main process exited")
+      expect(result.message).not.toContain(leaked)
+      expect(result.message).toContain("token=REDACTED")
+      const script = fake.commands.find((command) => command.includes("hinacode pair")) ?? ""
+      expect(script).toMatch(/journalctl[^\n]*\| sed /)
+    })
+  })
+
   it("removes the sandbox it created when HinaCode does not start on it", async () => {
     await withFake(async (fake) => {
       fake.setMachineOutput({ stdout: "", stderr: "npm ERR! network", exitCode: 1 })
