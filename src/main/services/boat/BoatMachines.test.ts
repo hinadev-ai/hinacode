@@ -5,7 +5,7 @@ import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 import * as Db from "../../db/client.ts"
-import { type PushEvent, RpcMethods } from "../../../shared/contract.ts"
+import { type PushEvent, type RpcMethod, RpcMethods } from "../../../shared/contract.ts"
 import type { BoatMachineCreate, Environment, Thread } from "../../../shared/domain.ts"
 import { parsePairingUrl } from "../../../shared/remote.ts"
 import { type CloudHooks, Environments, type ForwardedCall } from "../Environments.ts"
@@ -39,6 +39,8 @@ interface FakeCloud {
   readonly added: Array<{ name: string; pairingUrl: string }>
   readonly forwarded: Array<ForwardedCall>
   readonly reconnected: Array<string>
+  readonly removed: Array<string>
+  failing: RpcMethod | null
   hooks: CloudHooks | null
   threads: ReadonlyArray<Partial<Thread>>
 }
@@ -79,6 +81,9 @@ const fakeEnvironments = (fake: FakeBoat, cloud: FakeCloud) =>
       })),
       forward: (_id: string, call: ForwardedCall) => {
         cloud.forwarded.push(call)
+        if (call.method === cloud.failing) return Effect.succeed({ error: { code: "failed", message: "boom" } })
+        if (call.method === "threads.draft")
+          return Effect.succeed({ result: threadOf({ id: "draft-2", projectId: "project-2", status: "draft" }) })
         if (call.method === "threads.list") return Effect.succeed({ result: cloud.threads.map(threadOf) })
         return Effect.succeed({
           result: {
@@ -92,6 +97,7 @@ const fakeEnvironments = (fake: FakeBoat, cloud: FakeCloud) =>
           },
         })
       },
+      remove: (id: string) => Effect.sync(() => void cloud.removed.push(id)),
       reconnect: (id: string) => Effect.sync(() => void cloud.reconnected.push(id)),
       hook: (hooks: CloudHooks) =>
         Effect.sync(() => {
@@ -106,7 +112,15 @@ const runMachines = <A, E>(
   env: Readonly<Record<string, string>> = { BOAT_API_KEY: API_KEY, BOAT_API_BASE: fake.baseUrl },
   machinesEnv: Readonly<Record<string, string>> = {},
 ) => {
-  const cloud: FakeCloud = { added: [], forwarded: [], reconnected: [], hooks: null, threads: [] }
+  const cloud: FakeCloud = {
+    added: [],
+    forwarded: [],
+    reconnected: [],
+    removed: [],
+    failing: null,
+    hooks: null,
+    threads: [],
+  }
   const layer = boatMachinesLayer(machinesEnv).pipe(
     Layer.provide(Layer.mergeAll(fakeEnvironments(fake, cloud), boatLayer(env))),
     Layer.provide(Secrets.layer),
@@ -204,10 +218,57 @@ describe("BoatMachines", () => {
       )
       expect(result._tag).toBe("BoatMachineError")
       expect(result.message).toContain("npm ERR! network")
+      expect(fake.sandboxIds()).toEqual(["sb-live"])
     })
   })
 
-  it("creates a thread's sandbox, clones the repository there and answers that machine's project", async () => {
+  it("removes the sandbox it created when HinaCode does not start on it", async () => {
+    await withFake(async (fake) => {
+      fake.setMachineOutput({ stdout: "", stderr: "npm ERR! network", exitCode: 1 })
+      const { result } = await runMachines(fake, (machines) => Effect.flip(machines.connect({ sandbox: { create } })))
+      expect(result._tag).toBe("BoatMachineError")
+      expect(fake.lastCreatedId()).toBe("sb-created-1")
+      expect(fake.sandboxIds()).toEqual([])
+    })
+  })
+
+  it("removes a thread's sandbox when HinaCode does not start on it", async () => {
+    await withFake(async (fake) => {
+      fake.setMachineOutput({ stdout: "", stderr: "npm ERR! network", exitCode: 1 })
+      const { cloud } = await runMachines(fake, (machines) =>
+        Effect.flip(machines.forThread({ repository: "acme/app", projectName: "app", setupScript: null, create })),
+      )
+      expect(cloud.added).toEqual([])
+      expect(fake.sandboxIds()).toEqual([])
+    })
+  })
+
+  it.each(["projects.clone", "threads.draft"] as const)(
+    "removes a thread's sandbox and its machine when %s fails",
+    async (method) => {
+      await withFake(async (fake) => {
+        fake.setMachineOutput({ stdout: PAIR_OUTPUT, stderr: "", exitCode: 0 })
+        const { result, cloud } = await runMachines(fake, (machines, stub) => {
+          stub.failing = method
+          return Effect.flip(
+            machines.forThread({ repository: "acme/app", projectName: "app", setupScript: null, create }),
+          )
+        })
+        expect(result._tag).toBe("BoatMachineError")
+        expect(cloud.removed).toEqual([CLOUD_ID])
+        expect(fake.sandboxIds()).toEqual([])
+      })
+    },
+  )
+
+  it("refuses a thread sandbox that never stops", () => {
+    const request = { repository: "acme/app", projectName: "app", setupScript: null }
+    const decode = Schema.decodeUnknownExit(RpcMethods["boatMachines.forThread"].request)
+    expect(decode({ ...request, create })._tag).toBe("Success")
+    expect(decode({ ...request, create: { ...create, autoStopHours: null } })._tag).toBe("Failure")
+  })
+
+  it("creates a thread's sandbox, clones the repository there and answers a draft on that machine's project", async () => {
     await withFake(async (fake) => {
       fake.setMachineOutput({ stdout: PAIR_OUTPUT, stderr: "", exitCode: 0 })
       const { result, cloud } = await runMachines(fake, (machines) =>
@@ -222,7 +283,10 @@ describe("BoatMachines", () => {
         name: "app",
         setupScript: "pnpm i",
       })
-      expect(result).toMatchObject({ id: "project-2", environmentId: CLOUD_ID })
+      expect(cloud.forwarded[1]).toEqual({ method: "threads.draft", payload: { projectId: "project-2" } })
+      expect(result).toMatchObject({ id: "draft-2", projectId: "project-2" })
+      expect(cloud.removed).toEqual([])
+      expect(fake.sandboxIds()).toEqual(["sb-created-1"])
     })
   })
 

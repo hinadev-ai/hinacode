@@ -37,6 +37,7 @@ export interface FakeBoat {
   readonly failFileReads: (count: number) => void
   readonly seedSandbox: (id: string, state: string, labels?: Record<string, string>) => void
   readonly lastCreatedId: () => string | undefined
+  readonly sandboxIds: () => ReadonlyArray<string>
   readonly close: () => Promise<void>
 }
 
@@ -439,6 +440,7 @@ export const startFakeBoat = (): Promise<FakeBoat> =>
         },
         seedSandbox: (id, state, labels = {}) =>
           void sandboxes.set(id, { id, name: "seeded", state, getCount: 99, labels }),
+        sandboxIds: () => [...sandboxes.keys()],
         close: () =>
           new Promise<void>((done) => {
             sockets.forEach((socket) => socket.destroy())
