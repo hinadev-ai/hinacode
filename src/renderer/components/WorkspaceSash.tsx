@@ -85,6 +85,7 @@ function dragWorkspace(event: ReactPointerEvent<HTMLElement>, pane: WorkspacePan
   let layout: SplitLayout | undefined
   let frame = 0
   let ended = false
+  const { sidebarOpen, sidebarWidth, sidePanelOpen, sidePanelWidth } = useUi.getState()
 
   const follow = (pointer: PointerEvent) => {
     if (!shield && pointer.clientX === startX) return
@@ -108,14 +109,23 @@ function dragWorkspace(event: ReactPointerEvent<HTMLElement>, pane: WorkspacePan
     })
   }
 
-  const end = () => {
-    if (ended) return
+  const stop = () => {
+    if (ended) return false
     ended = true
     cancelAnimationFrame(frame)
     unlisten(target)
+    window.removeEventListener("resize", abort)
     shield?.remove()
-    if (layout) commitLayout(panes, layout)
     onEnd()
+    return true
+  }
+
+  const end = () => {
+    if (stop() && layout) commitLayout(panes, layout)
+  }
+
+  const abort = () => {
+    if (stop()) useUi.setState({ sidebarOpen, sidebarWidth, sidePanelOpen, sidePanelWidth })
   }
 
   const onUp = (pointer: PointerEvent) => {
@@ -138,6 +148,7 @@ function dragWorkspace(event: ReactPointerEvent<HTMLElement>, pane: WorkspacePan
   }
 
   listen(target)
+  window.addEventListener("resize", abort)
   target.setPointerCapture(pointerId)
   return true
 }
