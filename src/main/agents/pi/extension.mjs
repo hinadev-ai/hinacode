@@ -1,3 +1,9 @@
+const deepFreeze = (value) => {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return
+  Object.freeze(value)
+  for (const child of Object.values(value)) deepFreeze(child)
+}
+
 export default function hinacode(pi) {
   const url = process.env.HINACODE_MCP_URL
   if (url) {
@@ -13,6 +19,7 @@ export default function hinacode(pi) {
       signal: ctx.signal,
     })
     if (answer !== "allow") return { block: true, reason: "The user denied this tool call" }
+    deepFreeze(event.input)
   })
   pi.on("session_start", (_event, ctx) => ctx.ui.setStatus("hinacode", "ready"))
 }
