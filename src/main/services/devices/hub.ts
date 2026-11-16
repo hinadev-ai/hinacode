@@ -1,5 +1,11 @@
 import { Effect, Schema } from "effect"
-import { type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../../shared/contract.ts"
+import {
+  type RpcFailure,
+  type RpcMethod,
+  RpcMethods,
+  type RpcRequest,
+  type RpcResponse,
+} from "../../../shared/contract.ts"
 import { RemoteAccess } from "../../remote/access.ts"
 import { Environments } from "../Environments.ts"
 import { Settings } from "../Settings.ts"
@@ -61,6 +67,11 @@ const reachable = (hub: string) =>
     }),
   )
 
+const hubFailure = ({ tag, message }: RpcFailure) =>
+  tag === "EnvironmentVersionMismatch"
+    ? `${message} runs a different HinaCode version than this machine. Update both to the latest version to use its devices.`
+    : message
+
 export const callHub = <M extends RpcMethod>(
   hub: string,
   method: M,
@@ -71,7 +82,7 @@ export const callHub = <M extends RpcMethod>(
     Effect.flatMap((encoded) => forwardToHub(hub, method, encoded)),
     Effect.flatMap((envelope): Effect.Effect<unknown, DeviceHubError | Schema.SchemaError> =>
       "error" in envelope
-        ? Effect.fail(new DeviceHubError({ message: envelope.error.message }))
+        ? Effect.fail(new DeviceHubError({ message: hubFailure(envelope.error) }))
         : Schema.decodeUnknownEffect(RpcMethods[method].response as Schema.Codec<unknown, unknown>)(envelope.result),
     ),
     Effect.mapError((error) =>

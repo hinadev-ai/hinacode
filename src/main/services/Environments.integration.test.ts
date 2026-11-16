@@ -718,24 +718,24 @@ describe("desktop environments over a flaky link", () => {
 
   test("a mutation whose answer was lost is sent again once under the same key, ahead of calls made offline", async () => {
     const scripted = await pair("flaky")
-    const update = forward("flaky", { method: "threads.update", payload: { id: "t1", title: "once" } })
+    const update = forward("flaky", { method: "projects.delete", payload: { id: "p1" } })
     await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
     scripted.socket().terminate()
     await pushedEventually(statusOf("flaky", "offline"))
-    const read = forward("flaky", { method: "settings.get", payload: undefined })
+    const read = forward("flaky", { method: "projects.list", payload: undefined })
 
     await reconnectUntil(() => expect(scripted.calls).toHaveLength(3))
-    const [first, again, settings] = scripted.calls
+    const [first, again, list] = scripted.calls
     expect(first!.key).toStrictEqual(expect.any(String))
-    expect([again, settings].map((call) => [call!.method, call!.key])).toStrictEqual([
-      ["threads.update", first!.key],
-      ["settings.get", undefined],
+    expect([again, list].map((call) => [call!.method, call!.key])).toStrictEqual([
+      ["projects.delete", first!.key],
+      ["projects.list", undefined],
     ])
 
-    scripted.send({ type: "result", id: again!.id, envelope: { result: { id: "t1", title: "once" } } })
-    scripted.send({ type: "result", id: settings!.id, envelope: { result: { textGenerationModel: "m" } } })
-    expect(await update).toStrictEqual({ result: { id: "t1", title: "once" } })
-    expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+    scripted.send({ type: "result", id: again!.id, envelope: { result: null } })
+    scripted.send({ type: "result", id: list!.id, envelope: { result: [] } })
+    expect(await update).toStrictEqual({ result: null })
+    expect(await read).toStrictEqual({ result: [] })
     expect(scripted.calls.filter((call) => call.key === first!.key)).toHaveLength(2)
     await remove("flaky")
     scripted.stop()
@@ -947,13 +947,13 @@ describe("desktop environments over a flaky link", () => {
     const scripted = await pair("asleep")
     scripted.socket().terminate()
     await pushedEventually(statusOf("asleep", "offline"))
-    const read = forward("asleep", { method: "settings.get", payload: undefined })
+    const read = forward("asleep", { method: "projects.list", payload: undefined })
 
     await clocked.runPromise(Environments.use((environments) => environments.reconnectAll))
     await vi.waitFor(() => expect(electron.pushes.filter(statusOf("asleep", "connected"))).toHaveLength(2))
     await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
-    scripted.send({ type: "result", id: scripted.calls[0]!.id, envelope: { result: { textGenerationModel: "m" } } })
-    expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+    scripted.send({ type: "result", id: scripted.calls[0]!.id, envelope: { result: [] } })
+    expect(await read).toStrictEqual({ result: [] })
     await remove("asleep")
     scripted.stop()
   })
@@ -1023,10 +1023,10 @@ describe("desktop environments over a flaky link", () => {
       expect(hung.held.length).toBeGreaterThan(0)
       await vi.waitFor(() => expect(hung.held.every((socket) => socket.destroyed)).toBe(true))
 
-      const read = forward("hung-direct", { method: "settings.get", payload: undefined })
+      const read = forward("hung-direct", { method: "projects.list", payload: undefined })
       await vi.waitFor(() => expect(relay.calls).toHaveLength(1))
-      relay.send({ type: "result", id: relay.calls[0]!.id, envelope: { result: { textGenerationModel: "m" } } })
-      expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+      relay.send({ type: "result", id: relay.calls[0]!.id, envelope: { result: [] } })
+      expect(await read).toStrictEqual({ result: [] })
     } finally {
       await remove("hung-direct")
       relay.stop()
@@ -1049,10 +1049,10 @@ describe("desktop environments over a flaky link", () => {
       await vi.waitFor(() => expect(direct.auths).toStrictEqual(["token"]))
       expect(direct.connections()).toBe(3)
       await vi.waitFor(() => expect(relaySession.readyState).toBe(WebSocket.CLOSED))
-      const read = forward("to-direct", { method: "settings.get", payload: undefined })
+      const read = forward("to-direct", { method: "projects.list", payload: undefined })
       await vi.waitFor(() => expect(direct.calls).toHaveLength(1))
-      direct.send({ type: "result", id: direct.calls[0]!.id, envelope: { result: { textGenerationModel: "m" } } })
-      expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+      direct.send({ type: "result", id: direct.calls[0]!.id, envelope: { result: [] } })
+      expect(await read).toStrictEqual({ result: [] })
       expect(relay.calls).toStrictEqual([])
     } finally {
       await remove("to-direct")
