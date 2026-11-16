@@ -1,4 +1,4 @@
-import { type ChildProcess, execFileSync, spawn } from "node:child_process"
+import { type ChildProcess, execFile, execFileSync, spawn } from "node:child_process"
 import { once } from "node:events"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { randomBytes } from "node:crypto"
@@ -8,12 +8,15 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { DatabaseSync } from "node:sqlite"
+import { promisify } from "node:util"
 import { preview } from "vite"
 import type { RelayMachine } from "../../../../src/shared/relayMachines.ts"
 import { type PairingTarget, parsePairingUrl } from "../../../../src/shared/remote.ts"
 
 export const repoRoot = resolve(import.meta.dirname, "../../../..")
 export const webBuildDir = join(repoRoot, "out/web")
+
+const execFileAsync = promisify(execFile)
 
 export const freePort = () =>
   new Promise<number>((done, fail) => {
@@ -51,17 +54,30 @@ const spawnServe = async (userData: string, port: number) => {
     stdio: ["ignore", "pipe", "pipe"],
   })
   const output: Array<string> = []
-  const pairing = new Promise<PairingTarget>((done, fail) => {
+  const booted = new Promise<void>((done, fail) => {
     const read = (line: string) => {
       output.push(line)
-      const target = parsePairingUrl(line)
-      if (target !== null) done(target)
+      if (line.includes("hinacode pair")) done()
     }
     if (child.stdout) createInterface({ input: child.stdout }).on("line", read)
     if (child.stderr) createInterface({ input: child.stderr }).on("line", read)
     child.once("exit", (code) => fail(new Error(`hinacode serve exited with ${code}:\n${output.join("\n")}`)))
   })
-  return { child, pairing: await pairing }
+  await booted
+  return { child, pairing: await readPairing(userData) }
+}
+
+const readPairing = async (userData: string) => {
+  const { stdout } = await execFileAsync(process.execPath, ["bin/hinacode.mjs", "pair"], {
+    cwd: repoRoot,
+    env: serveEnv(userData),
+  })
+  const target = stdout
+    .split("\n")
+    .map(parsePairingUrl)
+    .find((line) => line !== null)
+  if (target === undefined) throw new Error(`hinacode pair printed no pairing URL:\n${stdout}`)
+  return target
 }
 
 const stopServe = async (child: ChildProcess) => {
