@@ -242,7 +242,7 @@ export const memoryGuard = (
         if (!(yield* runner.isBusy(victim.threadId))) return true
         for (const tool of victim.tools) kill(tool.pid)
         shedding.add(victim.threadId)
-        restUntil = Infinity
+        restUntil = (yield* Clock.currentTimeMillis) + STOP_SETTLE_LIMIT_MS
         const settled = Effect.gen(function* () {
           shedding.delete(victim.threadId)
           restUntil = (yield* Clock.currentTimeMillis) + STALL_HOLD_MS
