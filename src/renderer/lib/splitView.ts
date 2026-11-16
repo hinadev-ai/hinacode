@@ -27,8 +27,12 @@ export function dragSash(
   const hidden = new Set<SplitPane>()
   const snapBefore = snap ? before.find((pane) => pane.snap) : undefined
   const snapAfter = snap ? after.find((pane) => pane.snap) : undefined
-  if (snapBefore && delta < sum(before, (pane) => pane.min - pane.size) - halfMin(snapBefore)) hidden.add(snapBefore)
-  if (snapAfter && delta >= sum(after, (pane) => pane.size - pane.min) + halfMin(snapAfter)) hidden.add(snapAfter)
+  const beforeSlack = sum(before, (pane) => pane.size - pane.min)
+  const afterSlack = sum(after, (pane) => pane.size - pane.min)
+  const canPushBefore = sum(after, (pane) => pane.max - pane.size) >= beforeSlack
+  const canPushAfter = sum(before, (pane) => pane.max - pane.size) >= afterSlack
+  if (snapBefore && canPushBefore && delta < -beforeSlack - halfMin(snapBefore)) hidden.add(snapBefore)
+  if (snapAfter && canPushAfter && delta >= afterSlack + halfMin(snapAfter)) hidden.add(snapAfter)
   const min = (pane: SplitPane) => (hidden.has(pane) ? 0 : pane.min)
   const max = (pane: SplitPane) => (hidden.has(pane) ? 0 : pane.max)
 
