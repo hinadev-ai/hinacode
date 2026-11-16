@@ -9,6 +9,7 @@ const GIB = 1024 ** 3
 const MIB = 1024 ** 2
 export const STALL_LIMIT_PERCENT = 40
 export const STALL_HOLD_MS = 10_000
+export const STOP_SETTLE_LIMIT_MS = 60_000
 const CHECK_INTERVAL = "1 second"
 const REST_AFTER_NOTHING_TO_SHED_MS = 30_000
 const COMMAND_CHARS = 80

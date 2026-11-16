@@ -13,6 +13,7 @@ import {
   readMemory,
   readProcesses,
   STALL_HOLD_MS,
+  STOP_SETTLE_LIMIT_MS,
 } from "./memoryGuard.ts"
 import { registerAgentPid } from "./services/Ports.ts"
 
@@ -228,6 +229,25 @@ describe.runIf(process.platform === "linux")("memoryGuard", () => {
       yield* untilRead(5 + STALL_HOLD_MS / 1000 + 2)
       yield* Effect.promise(() => vi.waitFor(() => expect(state.aborted).toHaveLength(2), { timeout: 10_000 }))
       expect(new Set(state.aborted.map(({ threadId }) => threadId)).size).toBe(2)
+      for (const release of unregister) release()
+    }).pipe(Effect.scoped),
+  )
+
+  it.effect("stops the next thread when a stop never settles", () =>
+    Effect.gen(function* () {
+      const agents = yield* Effect.promise(() => Promise.all([0, 1, 2].map(() => startAgent(100 * MIB))))
+      const unregister = agents.map((agent, index) => registerAgentPid(`t${index}`, () => agent.process.pid))
+      const { state, guard, untilRead } = guarded(
+        { stalledPercent: 0, freeBytes: 10 * MIB, capacityBytes: 500 * MIB },
+        () => Effect.never,
+      )
+
+      yield* guard
+      yield* untilRead(5)
+      expect(state.aborted).toHaveLength(1)
+
+      yield* untilRead(5 + STOP_SETTLE_LIMIT_MS / 1000 + 2)
+      yield* Effect.promise(() => vi.waitFor(() => expect(state.aborted).toHaveLength(2), { timeout: 10_000 }))
       for (const release of unregister) release()
     }).pipe(Effect.scoped),
   )
