@@ -1160,6 +1160,21 @@ layer(testLayer)("thread controls", (it) => {
     }),
   )
 
+  it.effect("wait_for_thread and list_threads tell a thread a restart stopped from one that finished", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const child = yield* childOf(a, "Restarted child")
+      yield* threads.update({ id: child, status: "idle", interruptedAt: "2026-11-10T03:00:00.000Z" })
+
+      const waited = yield* settled(yield* Effect.forkChild(callFrom(a, "wait_for_thread", { threadId: child })))
+      expect(waited.text).not.toContain("Still running.")
+      expect(waited.text).toContain("status: interrupted\n")
+      const listed = JSON.parse((yield* callFrom(a, "list_threads")).text) as Array<{ id: string }>
+      expect(listed.find((thread) => thread.id === child)).toMatchObject({ status: "interrupted" })
+    }),
+  )
+
   it.effect("wait_for_thread returns when the thread waits on the user", () =>
     Effect.gen(function* () {
       const runner = yield* AgentRunner
