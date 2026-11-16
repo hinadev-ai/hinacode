@@ -13,6 +13,8 @@ export default defineConfig({
   main: {
     plugins: [paraglide()],
     esbuild: { minifyIdentifiers: false, minifySyntax: false },
+    // FIXME: Vite bundles ws's missing optional bufferutil and utf-8-validate as empty modules, which ws then calls
+    define: { "process.env.WS_NO_BUFFER_UTIL": '"1"', "process.env.WS_NO_UTF_8_VALIDATE": '"1"' },
     build: {
       minify: "esbuild",
       rollupOptions: { input: { index: "src/main/boot.ts", main: "src/main/index.ts" } },

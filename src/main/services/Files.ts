@@ -38,6 +38,7 @@ const reasons = {
 } as const
 
 const MAX_PREVIEW_BYTES = 6 * 1024 * 1024
+export const CHUNK_BYTES = 4 * 1024 * 1024
 
 export class FsAccessError extends Schema.TaggedError<FsAccessError>()("FsAccessError", {
   root: Schema.String,
@@ -79,6 +80,14 @@ export class Files extends Context.Service<
       root: string,
       path: string,
     ) => Effect.Effect<{ readonly dataUrl: string }, FsAccessError | FolderMissingError | PersistenceError>
+    readonly readChunk: (
+      root: string,
+      path: string,
+      offset: number,
+    ) => Effect.Effect<
+      { readonly data: string; readonly size: number },
+      FsAccessError | FolderMissingError | PersistenceError
+    >
     readonly write: (
       root: string,
       path: string,
@@ -356,6 +365,25 @@ const make = Effect.gen(function* () {
       return { dataUrl: `data:${mimeOf(path)};base64,${data.toString("base64")}` }
     })
 
+  const readChunk = (root: string, path: string, offset: number) =>
+    Effect.gen(function* () {
+      const file = yield* resolve(root, path)
+      return yield* Effect.tryPromise({
+        try: async () => {
+          const handle = await open(file, "r")
+          try {
+            const { size } = await handle.stat()
+            const buffer = Buffer.alloc(Math.max(0, Math.min(CHUNK_BYTES, size - offset)))
+            const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset)
+            return { data: buffer.subarray(0, bytesRead).toString("base64"), size }
+          } finally {
+            await handle.close()
+          }
+        },
+        catch: () => new FsAccessError({ root, path, reason: "unreadable" }),
+      })
+    })
+
   const write = (root: string, path: string, content: string, expected: string | null) =>
     Effect.gen(function* () {
       const file = yield* resolve(root, path)
@@ -459,7 +487,7 @@ const make = Effect.gen(function* () {
 
   yield* Effect.addFinalizer(() => Effect.sync(() => [...watchers.keys()].forEach(closeAll)))
 
-  return Files.of({ list, resolve, read, preview, write, create, rename, remove, watch })
+  return Files.of({ list, resolve, read, preview, readChunk, write, create, rename, remove, watch })
 })
 
 export const layer = Layer.effect(Files, make)
