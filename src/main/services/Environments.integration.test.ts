@@ -467,6 +467,40 @@ describe("desktop environments", () => {
     expect(result(await invoke("remote.status", undefined, cloudId))).toMatchObject({ listening: true, connected: 1 })
   })
 
+  test("a device hub on an older release is named as a version mismatch instead of a schema error", async () => {
+    const older = await scriptedCloud("older-hub", {})
+    result(await invoke("environments.add", { name: "", pairingUrl: older.pairingUrl }))
+    await pushedEventually(statusOf("older-hub", "connected"))
+    const setDevicesOn = (devicesOn: string | null) =>
+      desktop.runPromise(
+        Settings.use((settings) =>
+          Effect.flatMap(settings.get, ({ experimental }) =>
+            settings.set({ experimental: { ...experimental, devices: true, devicesOn } }),
+          ),
+        ),
+      )
+    await setDevicesOn("older-hub")
+    try {
+      const listed = invoke("devices.list", { threadId: localThread })
+      await vi.waitFor(() => expect(older.calls.map((call) => call.method)).toContain("devices.list"))
+      const call = older.calls.find((each) => each.method === "devices.list")!
+      const shapeBeforeChecks = {
+        ios: { kind: "ready" },
+        android: { kind: "ready" },
+        simslim: true,
+        devices: [],
+        models: [],
+      }
+      older.send({ type: "result", id: call.id, envelope: { result: shapeBeforeChecks } })
+
+      expect(failure(await listed)).toStrictEqual({ tag: "EnvironmentVersionMismatch", message: "older-hub" })
+    } finally {
+      await setDevicesOn(null)
+      await invoke("environments.remove", { id: "older-hub" })
+      older.stop()
+    }
+  })
+
   test("removing a cloud forgets it and its token", async () => {
     result(await invoke("environments.remove", { id: cloudId }))
     expect(result(await invoke("environments.list", undefined))).toStrictEqual({ clouds: [] })
