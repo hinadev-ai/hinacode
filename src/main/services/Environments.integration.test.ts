@@ -1230,6 +1230,20 @@ describe("desktop environments from the relay", () => {
     expect(electron.pushes.filter((event) => event.type === "environments.changed").length).toBeGreaterThan(changes)
   })
 
+  test("keeps the name the user gave a relay machine when the relay renames it", async () => {
+    const changes = electron.pushes.filter((event) => event.type === "environments.changed").length
+
+    await desktop.runPromise(Environments.use((environments) => environments.rename("home-server", "Studio")))
+    expect(electron.pushes.filter((event) => event.type === "environments.changed").length).toBeGreaterThan(changes)
+    await syncRelay([{ ...machine("home-server", { token: "rotated" }), name: "home-server.local" }])
+
+    expect((await listedClouds()).find((entry) => entry.id === "home-server")).toMatchObject({
+      name: "Studio",
+      source: "relay",
+    })
+    expect(await tokenOf("home-server")).toBe("rotated")
+  })
+
   test("refreshes a paired machine's address and token, and keeps its name and source", async () => {
     const scripted = await scriptedCloud("paired-laptop", {})
     await desktop.runPromise(

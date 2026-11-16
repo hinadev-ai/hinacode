@@ -63,6 +63,7 @@ import {
   CommitDiff,
   GitCommit,
   Machine,
+  MachineName,
   MergeMethod,
   NotificationPermission,
   PermissionRequestOutcome,
@@ -114,10 +115,23 @@ import {
 } from "./domain.ts"
 import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } from "./github.ts"
 import { RelayHost } from "./relayMachines.ts"
-import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
+import {
+  BrowserCommand,
+  BrowserSession,
+  BrowserSnapshot,
+  BrowserTouch,
+  BrowserUrl,
+  BrowserViewport,
+} from "./browser.ts"
 import {
   AgentAction,
+  AgentOutcome,
+  AgentSteps,
+  DeviceApp,
   DeviceCommand,
+  DeviceElement,
+  DeviceScreenshot,
+  DeviceTarget,
   SimulatorModelId,
   DeviceControl,
   DeviceFrame,
@@ -199,6 +213,28 @@ export const RpcMethods = {
     }),
     Schema.NullOr(PickedDeviceElement),
   ),
+  "device.act": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      device: Schema.optionalKey(DeviceTarget),
+      action: AgentAction,
+      ...AgentSteps.fields,
+    }),
+    AgentOutcome,
+  ),
+  "device.screenshot": rpc(
+    Schema.Struct({ threadId: Schema.String, device: Schema.optionalKey(DeviceTarget) }),
+    DeviceScreenshot,
+  ),
+  "device.describe": rpc(
+    Schema.Struct({ threadId: Schema.String, device: Schema.optionalKey(DeviceTarget) }),
+    Schema.Array(DeviceElement),
+  ),
+  "device.launch": rpc(
+    Schema.Struct({ threadId: Schema.String, device: Schema.optionalKey(DeviceTarget), app: DeviceApp }),
+    AgentOutcome,
+  ),
+  "device.release": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "device.screenshot.save": rpc(
     Schema.Struct({ threadId: Schema.String, dataUrl: Schema.String, name: Schema.String }),
     Attachment,
@@ -229,6 +265,8 @@ export const RpcMethods = {
     BrowserSnapshot,
   ),
   "browser.close": rpc(BrowserSession, Schema.Void),
+  "browser.emulateTouch": rpc(Schema.Struct({ webContentsId: Schema.Int, enabled: Schema.Boolean }), Schema.Void),
+  "browser.touch": rpc(Schema.Struct({ webContentsId: Schema.Int, ...BrowserTouch.fields }), Schema.Void),
   "projects.list": rpc(Schema.Void, Schema.Array(Project)),
   "projects.create": rpc(
     Schema.Struct({
@@ -387,6 +425,7 @@ export const RpcMethods = {
   "machines.list": rpc(Schema.Void, Schema.Array(Machine)),
   "environments.add": rpc(Schema.Struct({ name: Schema.String, pairingUrl: Schema.String }), Environment),
   "environments.remove": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "environments.rename": rpc(Schema.Struct({ id: Schema.String, name: MachineName }), Schema.Void),
   "environments.reconnect": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "relayAccount.status": rpc(Schema.Void, RelayAccountStatus),
   "relayAccount.signIn": rpc(Schema.Void, RelayAccountStatus),
@@ -741,6 +780,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "browser.command": "mutation",
   "browser.frame": "read",
   "browser.close": "mutation",
+  "browser.emulateTouch": "mutation",
+  "browser.touch": "mutation",
   "devices.list": "read",
   "device.get": "read",
   "device.attach": "mutation",
@@ -752,6 +793,11 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "device.command": "mutation",
   "device.control": "mutation",
   "device.pick": "mutation",
+  "device.act": "mutation",
+  "device.screenshot": "read",
+  "device.describe": "read",
+  "device.launch": "mutation",
+  "device.release": "mutation",
   "device.screenshot.save": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
@@ -812,6 +858,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "machines.list": "read",
   "environments.add": "mutation",
   "environments.remove": "mutation",
+  "environments.rename": "mutation",
   "environments.reconnect": "mutation",
   "relayAccount.status": "read",
   "relayAccount.signIn": "mutation",
@@ -972,6 +1019,8 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "windows.addLineComment",
   "app.setBadgeCount",
   "app.setColorScheme",
+  "browser.emulateTouch",
+  "browser.touch",
   "dialog.pickFolder",
   "dialog.pickFiles",
   "artifacts.export",
@@ -991,6 +1040,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "environments.list",
   "environments.add",
   "environments.remove",
+  "environments.rename",
   "environments.reconnect",
   "relayAccount.status",
   "relayAccount.signIn",

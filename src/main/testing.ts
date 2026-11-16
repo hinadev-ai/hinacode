@@ -50,7 +50,9 @@ import * as Terminals from "./services/Terminals.ts"
 import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
-import { unavailableDevicesLayer } from "./services/devices/unavailable.ts"
+import { type DevicesOptions, devicesLayer } from "./services/devices/Devices.ts"
+import { devicesHubLayer } from "./services/devices/hub.ts"
+import { unavailableDevices } from "./services/devices/unavailable.ts"
 import { unsupported, Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 
@@ -61,11 +63,17 @@ interface TestAppOptions {
   readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider | OpencodeProvider | MagpieProvider>
   readonly events?: Layer.Layer<Events | PushBroadcast | WindowPush>
   readonly relay?: Relay.RelayOptions
+  readonly devices?: DevicesOptions
 }
 
 export const makeTestAppLayer = (
   dbPath: string,
-  { providers, events = makeEventsLayer(sendToWindows), relay: relayOptions = {} }: TestAppOptions,
+  {
+    providers,
+    events = makeEventsLayer(sendToWindows),
+    relay: relayOptions = {},
+    devices = unavailableDevices,
+  }: TestAppOptions,
 ) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -91,8 +99,9 @@ export const makeTestAppLayer = (
     join(dirname(dbPath), "tiny-vm"),
   )
   const linear = Linear.layer.pipe(Layer.provide(Secrets.layer))
+  const environments = Environments.layer.pipe(Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)))
   const peers = Peers.layer.pipe(
-    Layer.provideMerge(Environments.layer),
+    Layer.provideMerge(environments),
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
   )
   const features = Layer.mergeAll(
@@ -106,7 +115,7 @@ export const makeTestAppLayer = (
     tinyVm,
     linear,
     peers,
-    unavailableDevicesLayer,
+    devicesHubLayer.pipe(Layer.provide(Layer.mergeAll(environments, devicesLayer(devices)))),
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(providers),
@@ -119,7 +128,7 @@ export const makeTestAppLayer = (
     Layer.provide(Layer.mergeAll(providers, agents)),
   )
   const imports = SessionImports.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
-  const environments = RelayAccount.layer({ serviceUrl: Relay.DEFAULT_RELAY_SERVICE_URL }).pipe(
+  const relayAccount = RelayAccount.layer({ serviceUrl: Relay.DEFAULT_RELAY_SERVICE_URL }).pipe(
     Layer.provide(Layer.mergeAll(Secrets.layer, agents)),
   )
   const base = Layer.mergeAll(
@@ -128,7 +137,7 @@ export const makeTestAppLayer = (
     updatesStub,
     logins,
     imports,
-    environments,
+    relayAccount,
     PullRequestGuides.idleLayer,
     Settle.layer.pipe(Layer.provide(agents)),
     ArtifactFeedback.layer.pipe(Layer.provide(agents)),
