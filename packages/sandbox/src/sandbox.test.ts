@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks"
 import { describe, expect, it } from "vitest"
 import { DEFAULT_LIMITS, type Globals, OUT_OF_MEMORY, runScript, withTimeout } from "./sandbox.ts"
 
