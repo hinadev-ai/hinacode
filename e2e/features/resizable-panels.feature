@@ -41,7 +41,7 @@ Feature: Resizable panels
     And I press "End" on "Resize thread details"
     And I compose a long draft
     Then the message field and Send action fit inside the window
-    And the resize maximum matches the displayed panel width
+    And the thread details edge has no resize maximum
 
   Scenario: Repeated arrow presses each resize by one step
     When I press "Home" on "Resize thread details"
