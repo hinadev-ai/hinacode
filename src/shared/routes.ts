@@ -30,6 +30,8 @@ export const routes: Record<RpcMethod, Route> = {
   "browser.command": thread,
   "browser.frame": thread,
   "browser.close": thread,
+  "browser.emulateTouch": client,
+  "browser.touch": client,
   "devices.list": thread,
   "device.get": thread,
   "device.attach": thread,

@@ -21,6 +21,8 @@ export interface WebviewElement extends HTMLElement {
   executeJavaScript(code: string): Promise<unknown>
   capturePage(rect?: PagePick["rect"]): Promise<{ toDataURL(): string }>
   getZoomFactor(): number
+  getWebContentsId(): number
+  sendInputEvent(event: { type: "mouseWheel"; x: number; y: number; deltaX: number; deltaY: number }): void
 }
 
 export const attachPick = async (threadId: string, view: WebviewElement, pick: PagePick, signal: AbortSignal) => {
