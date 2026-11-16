@@ -11,6 +11,7 @@ import type {
   ProviderId,
   RunTurnInput,
 } from "../../../shared/agent.ts"
+import { sessionDecision } from "../../../shared/agent.ts"
 import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { providerInfo } from "../../../shared/providers.ts"
@@ -33,7 +34,7 @@ import {
   SessionNotification,
   SessionSetup,
 } from "./protocol.ts"
-import { makeUpdateMapper, type UpdateMapper } from "./updates.ts"
+import { makeUpdateMapper, toolName, type UpdateMapper } from "./updates.ts"
 
 interface AcpAgentConfig {
   readonly id: ProviderId
@@ -304,7 +305,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
         })
         yield* Deferred.await(decision).pipe(
           Effect.flatMap((chosen) =>
-            answerPermission(run, requestId, optionFor(chosen, params.options)).pipe(
+            answerPermission(run, requestId, optionFor(sessionDecision(toolName(tool), chosen), params.options)).pipe(
               Effect.andThen(emit({ type: "approval_resolved", requestId: approvalId })),
             ),
           ),

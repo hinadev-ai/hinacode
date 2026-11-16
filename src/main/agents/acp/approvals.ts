@@ -1,8 +1,14 @@
 import { Option, Predicate, Schema } from "effect"
-import type { ApprovalDecision, ApprovalKind, ApprovalRequest, ProviderId } from "../../../shared/agent.ts"
+import {
+  type ApprovalDecision,
+  type ApprovalKind,
+  type ApprovalRequest,
+  grantsForSession,
+  type ProviderId,
+} from "../../../shared/agent.ts"
 import type { AccessMode } from "../../../shared/domain.ts"
 import type { PermissionOption, RequestPermissionParams } from "./protocol.ts"
-import { toolCommand, toolPath, type ToolState } from "./updates.ts"
+import { toolCommand, toolName, toolPath, type ToolState } from "./updates.ts"
 
 const autoAllowedKinds = new Set(["read", "search", "fetch", "think", "edit"])
 
@@ -92,4 +98,5 @@ export const toApprovalRequest = (input: {
   provider: input.provider,
   ...describe(input.tool, input.params),
   input: input.tool.rawInput ?? input.params.toolCall.rawInput,
+  ...(!grantsForSession(toolName(input.tool)) && { allowForSession: false }),
 })

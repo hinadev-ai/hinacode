@@ -146,6 +146,7 @@ export const ApprovalRequest = Schema.Struct({
   detail: Schema.String,
   input: Schema.optional(Schema.Unknown),
   sessionScope: Schema.optional(SessionScope),
+  allowForSession: Schema.optional(Schema.Boolean),
 })
 export type ApprovalRequest = typeof ApprovalRequest.Type
 
@@ -362,6 +363,11 @@ export const WAIT_AGENT_TOOL = "wait_agent"
 export const RUN_SCRIPT_TOOL = "run_script"
 
 export const RUN_SCRIPT_TIMEOUT_MINUTES = 4
+
+export const grantsForSession = (toolName: string) => ownToolName(toolName) !== RUN_SCRIPT_TOOL
+
+export const sessionDecision = (toolName: string, decision: ApprovalDecision): ApprovalDecision =>
+  decision === "allow_for_session" && !grantsForSession(toolName) ? "allow" : decision
 
 export const isRunAgentTool = (name: string) => ownToolName(name) === RUN_AGENT_TOOL
 
