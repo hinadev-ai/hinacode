@@ -114,7 +114,14 @@ import {
 } from "./domain.ts"
 import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } from "./github.ts"
 import { RelayHost } from "./relayMachines.ts"
-import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
+import {
+  BrowserCommand,
+  BrowserSession,
+  BrowserSnapshot,
+  BrowserTouch,
+  BrowserUrl,
+  BrowserViewport,
+} from "./browser.ts"
 import {
   AgentAction,
   DeviceCommand,
@@ -229,6 +236,8 @@ export const RpcMethods = {
     BrowserSnapshot,
   ),
   "browser.close": rpc(BrowserSession, Schema.Void),
+  "browser.emulateTouch": rpc(Schema.Struct({ webContentsId: Schema.Int, enabled: Schema.Boolean }), Schema.Void),
+  "browser.touch": rpc(Schema.Struct({ webContentsId: Schema.Int, ...BrowserTouch.fields }), Schema.Void),
   "projects.list": rpc(Schema.Void, Schema.Array(Project)),
   "projects.create": rpc(
     Schema.Struct({
@@ -741,6 +750,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "browser.command": "mutation",
   "browser.frame": "read",
   "browser.close": "mutation",
+  "browser.emulateTouch": "mutation",
+  "browser.touch": "mutation",
   "devices.list": "read",
   "device.get": "read",
   "device.attach": "mutation",
@@ -972,6 +983,8 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "windows.addLineComment",
   "app.setBadgeCount",
   "app.setColorScheme",
+  "browser.emulateTouch",
+  "browser.touch",
   "dialog.pickFolder",
   "dialog.pickFiles",
   "artifacts.export",
