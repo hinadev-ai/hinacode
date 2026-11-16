@@ -3,10 +3,17 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterAll, afterEach, describe, expect, it } from "@effect/vitest"
-import { Effect } from "effect"
+import { Deferred, Effect } from "effect"
 import { TestClock } from "effect/testing"
 import { vi } from "vitest"
-import { memoryGuard, type MemoryFiles, type MemoryReading, readMemory, readProcesses } from "./memoryGuard.ts"
+import {
+  memoryGuard,
+  type MemoryFiles,
+  type MemoryReading,
+  readMemory,
+  readProcesses,
+  STALL_HOLD_MS,
+} from "./memoryGuard.ts"
 import { registerAgentPid } from "./services/Ports.ts"
 
 const MIB = 1024 ** 2
@@ -194,6 +201,31 @@ describe.runIf(process.platform === "linux")("memoryGuard", () => {
       yield* Effect.promise(() => vi.waitFor(() => expect(state.aborted).toHaveLength(2), { timeout: 10_000 }))
       expect(state.aborted[1]?.threadId).toBe("light")
       expect(yield* Effect.promise(() => light!.toolExit)).toBe("SIGKILL")
+      for (const release of unregister) release()
+    }).pipe(Effect.scoped),
+  )
+
+  it.effect("stops one thread at a time and rests until that stop settles and the hold passes", () =>
+    Effect.gen(function* () {
+      const agents = yield* Effect.promise(() => Promise.all([0, 1, 2].map(() => startAgent(100 * MIB))))
+      const unregister = agents.map((agent, index) => registerAgentPid(`t${index}`, () => agent.process.pid))
+      const firstStopSettles = yield* Deferred.make<void>()
+      const { state, guard, untilRead } = guarded(
+        { stalledPercent: 0, freeBytes: 10 * MIB, capacityBytes: 500 * MIB },
+        () => Deferred.await(firstStopSettles),
+      )
+
+      yield* guard
+      yield* untilRead(5)
+      expect(state.aborted).toHaveLength(1)
+
+      Deferred.doneUnsafe(firstStopSettles, Effect.void)
+      yield* untilRead(5 + STALL_HOLD_MS / 1000 - 2)
+      expect(state.aborted).toHaveLength(1)
+
+      yield* untilRead(5 + STALL_HOLD_MS / 1000 + 2)
+      yield* Effect.promise(() => vi.waitFor(() => expect(state.aborted).toHaveLength(2), { timeout: 10_000 }))
+      expect(new Set(state.aborted.map(({ threadId }) => threadId)).size).toBe(2)
       for (const release of unregister) release()
     }).pipe(Effect.scoped),
   )
