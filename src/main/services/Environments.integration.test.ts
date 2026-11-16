@@ -501,6 +501,23 @@ describe("desktop environments", () => {
     }
   })
 
+  test("a machine on another release drops out of a merged list instead of breaking it", async () => {
+    const older = await scriptedCloud("older-desk", {})
+    result(await invoke("environments.add", { name: "", pairingUrl: older.pairingUrl }))
+    await pushedEventually(statusOf("older-desk", "connected"))
+    try {
+      const listed = invoke("projects.list", undefined)
+      await vi.waitFor(() => expect(older.calls.map((call) => call.method)).toContain("projects.list"))
+      const call = older.calls.find((each) => each.method === "projects.list")!
+      older.send({ type: "result", id: call.id, envelope: { result: [{ id: "old", title: "from another release" }] } })
+
+      expect(result(await listed).map((project) => project.name)).toStrictEqual(["here", "there"])
+    } finally {
+      await invoke("environments.remove", { id: "older-desk" })
+      older.stop()
+    }
+  })
+
   test("removing a cloud forgets it and its token", async () => {
     result(await invoke("environments.remove", { id: cloudId }))
     expect(result(await invoke("environments.list", undefined))).toStrictEqual({ clouds: [] })
