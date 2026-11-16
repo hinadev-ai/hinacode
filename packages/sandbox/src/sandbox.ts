@@ -20,6 +20,7 @@ export interface Globals {
 export interface Limits {
   readonly memoryBytes: number
   readonly sliceMs: number
+  readonly cpuMs: number
   readonly outputChars: number
   readonly timeoutMs: number
   readonly callTimeoutMs: number
@@ -42,6 +43,7 @@ export type ScriptOutcome =
 export const DEFAULT_LIMITS: Limits = {
   memoryBytes: 512 * 1024 * 1024,
   sliceMs: 500,
+  cpuMs: 10_000,
   outputChars: 40_000,
   timeoutMs: 5 * 60_000,
   callTimeoutMs: 30_000,
@@ -171,39 +173,61 @@ export const runScript = async ({
   const pending = new Set<Promise<void>>()
   const deferreds = new Set<QuickJSDeferredPromise>()
   const output = boundedText(limits.outputChars)
+  let sliceStarted = 0
   let sliceDeadline = 0
-  let overran = false
+  let computedMs = 0
+  let overran: "slice" | "budget" | undefined
   let outOfMemory = false
   let finished = false
 
   runtime.setMaxStackSize(1024 * 1024)
   runtime.setInterruptHandler(() => {
-    overran ||= performance.now() > sliceDeadline
-    return overran
+    const now = performance.now()
+    if (overran === undefined && now > sliceDeadline) {
+      overran = computedMs + (now - sliceStarted) > limits.cpuMs ? "budget" : "slice"
+    }
+    return overran !== undefined
   })
 
   const startSlice = () => {
-    sliceDeadline = performance.now() + limits.sliceMs
+    sliceStarted = performance.now()
+    sliceDeadline = sliceStarted + Math.min(limits.sliceMs, limits.cpuMs - computedMs)
   }
 
-  const messages: Record<Exclude<FailureReason, "threw">, string> = {
+  const endSlice = () => {
+    const spent = performance.now() - sliceStarted
+    computedMs += spent
+    if (computedMs > limits.cpuMs) overran ??= "budget"
+    return spent
+  }
+
+  const computationMessages = {
+    slice: `The script computed for more than ${limits.sliceMs} ms without awaiting anything, so it was stopped.`,
+    budget: `The script computed for more than ${duration(limits.cpuMs)} in total, so it was stopped.`,
+  }
+  const messages: Record<Exclude<FailureReason, "threw" | "computation">, string> = {
     deadline: `The script ran for more than ${duration(limits.timeoutMs)}, so it was stopped.`,
-    computation: `The script computed for more than ${limits.sliceMs} ms without awaiting anything, so it was stopped.`,
     memory: OUT_OF_MEMORY,
     stuck: "The script awaits a promise that can never settle.",
     cancelled: "The script was cancelled.",
   }
   const failed = (reason: FailureReason, thrown = ""): ScriptOutcome => {
-    const actual = overran
-      ? "computation"
-      : outOfMemory || thrown.startsWith("InternalError: out of memory")
-        ? "memory"
-        : reason
+    const actual =
+      overran !== undefined
+        ? "computation"
+        : outOfMemory || thrown.startsWith("InternalError: out of memory")
+          ? "memory"
+          : reason
     return {
       _tag: "Failed",
       reason: actual,
       output: output.text(),
-      error: actual === "threw" ? thrown : messages[actual],
+      error:
+        actual === "threw"
+          ? thrown
+          : actual === "computation"
+            ? computationMessages[overran ?? "slice"]
+            : messages[actual],
     }
   }
 
@@ -294,8 +318,10 @@ export const runScript = async ({
   const run = async (): Promise<ScriptOutcome> => {
     startSlice()
     context.unwrapResult(context.evalCode(PRELUDE, "prelude.js")).dispose()
+    endSlice()
     startSlice()
     const evaluated = context.evalCode(wrap(code), "script.js")
+    endSlice()
     if (evaluated.error !== undefined) {
       const error = errorText(context, evaluated.error)
       evaluated.error.dispose()
@@ -305,6 +331,7 @@ export const runScript = async ({
     for (;;) {
       startSlice()
       const jobs = runtime.executePendingJobs()
+      const spent = endSlice()
       if (jobs.error !== undefined) {
         const error = errorText(context, jobs.error)
         jobs.error.dispose()
@@ -322,11 +349,12 @@ export const runScript = async ({
         state.error.dispose()
         return failed("threw", error)
       }
+      if (overran !== undefined) return failed("computation")
       if (pending.size === 0) return failed("stuck")
       const woke = await Promise.race([aborted, expired, Promise.race(pending)])
       if (woke === "aborted") return failed("cancelled")
       if (woke === "expired") return failed("deadline")
-      await yieldToEventLoop()
+      await (spent < 1 ? yieldToEventLoop() : delay(spent))
       if (signal.aborted) return failed("cancelled")
       if (performance.now() > deadline) return failed("deadline")
       if (outOfMemory) return failed("memory")

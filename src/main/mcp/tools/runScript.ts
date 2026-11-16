@@ -14,7 +14,7 @@ export const ScriptTools = Toolkit.make(
 
 The code is the body of an async function, so \`await\` and \`return\` work at the top level. Each hinacode tool you can call is \`tools.<name>(args)\` with the same arguments. It resolves to the tool's structured content, else its text, else its content blocks, and rejects with an Error carrying the tool's message. Use \`Promise.all\` for calls that do not depend on each other. \`console.log\` lines and the returned value make up the result. \`await sleep(ms)\` waits between polls. There is no file system, network, \`setTimeout\`, \`require\` or \`process\`, and \`run_script\` cannot call itself.
 
-Calls are real and are not undone when the script fails. A tool call that takes more than ${SCRIPT_LIMITS.callTimeoutMs / 60_000} minutes rejects with a timeout Error you can catch, except ${[...WAITS_UNTIL_DEADLINE].map((name) => `\`${name}\``).join(", ")}, which may run until the script's deadline. At most ${DEFAULT_LIMITS.maxConcurrentCalls} calls run at once and the rest wait their turn. The script is stopped after ${SCRIPT_LIMITS.timeoutMs / 60_000} minutes, after computing for more than ${DEFAULT_LIMITS.sliceMs} ms between awaits, or past ${DEFAULT_LIMITS.memoryBytes / 1024 / 1024} MB.`,
+Calls are real and are not undone when the script fails. A tool call that takes more than ${SCRIPT_LIMITS.callTimeoutMs / 60_000} minutes rejects with a timeout Error you can catch, except ${[...WAITS_UNTIL_DEADLINE].map((name) => `\`${name}\``).join(", ")}, which may run until the script's deadline. At most ${DEFAULT_LIMITS.maxConcurrentCalls} calls run at once and the rest wait their turn. The script is stopped after ${SCRIPT_LIMITS.timeoutMs / 60_000} minutes, after computing for more than ${DEFAULT_LIMITS.sliceMs} ms between awaits or ${DEFAULT_LIMITS.cpuMs / 1000} s in total, or past ${DEFAULT_LIMITS.memoryBytes / 1024 / 1024} MB.`,
     parameters: Schema.Struct({
       code: Schema.String.annotate({
         description:
@@ -27,7 +27,7 @@ Calls are real and are not undone when the script fails. A tool call that takes 
 const NEXT_STEP: Record<FailureReason, string> = {
   threw: "Check which calls already ran, fix the script, and run only what is left.",
   deadline: `Split the work across scripts. Start a long sub-agent with \`${RUN_AGENT_TOOL}\` and \`background: true\`, then collect it with \`${WAIT_AGENT_TOOL}\` in a later script.`,
-  computation: "Do less between awaits: handle fewer items per script, or narrow what each tool call returns.",
+  computation: "Compute less: handle fewer items per script, or narrow what each tool call returns.",
   memory: "Keep less in memory: filter each result as it arrives instead of collecting them all first.",
   stuck: "Every promise the script awaits must come from a `tools` call or `sleep`.",
   cancelled: "The turn ended or the user stopped it, so do not run it again unless the user asks.",
