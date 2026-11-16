@@ -178,8 +178,9 @@ describe.runIf(process.platform === "linux")("memoryGuard", () => {
         registerAgentPid("heavy", () => heavy!.process.pid),
       ]
       const short = { stalledPercent: 0, freeBytes: 20 * MIB, capacityBytes: 512 * MIB }
+      const heavyStopSettles = yield* Deferred.make<void>()
       const { state, guard, untilRead } = guarded(short, (threadId) =>
-        threadId === "heavy" ? Effect.never : Effect.void,
+        threadId === "heavy" ? Deferred.await(heavyStopSettles) : Effect.void,
       )
 
       yield* guard
@@ -196,8 +197,9 @@ describe.runIf(process.platform === "linux")("memoryGuard", () => {
         lightTool: true,
       })
 
+      Deferred.doneUnsafe(heavyStopSettles, Effect.void)
       state.reading = { stalledPercent: 0, freeBytes: 10 * MIB, capacityBytes: 160 * MIB }
-      yield* untilRead(2)
+      yield* untilRead(STALL_HOLD_MS / 1000 + 3)
       yield* Effect.promise(() => vi.waitFor(() => expect(state.aborted).toHaveLength(2), { timeout: 10_000 }))
       expect(state.aborted[1]?.threadId).toBe("light")
       expect(yield* Effect.promise(() => light!.toolExit)).toBe("SIGKILL")

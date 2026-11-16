@@ -238,11 +238,15 @@ export const memoryGuard = (
           victim,
           largest === undefined ? "" : yield* Effect.promise(() => commandOf(largest.pid)),
         )
+        if (!(yield* runner.isBusy(victim.threadId))) return true
         for (const tool of victim.tools) kill(tool.pid)
         shedding.add(victim.threadId)
-        yield* runner
-          .abort(victim.threadId, message)
-          .pipe(Effect.ensuring(Effect.sync(() => shedding.delete(victim.threadId))), Effect.forkIn(scope))
+        restUntil = Infinity
+        const settled = Effect.gen(function* () {
+          shedding.delete(victim.threadId)
+          restUntil = (yield* Clock.currentTimeMillis) + STALL_HOLD_MS
+        })
+        yield* runner.abort(victim.threadId, message).pipe(Effect.ensuring(settled), Effect.forkIn(scope))
         yield* Effect.logWarning(
           `memory guard stopped thread ${victim.threadId} holding ${size(victim.bytes)}: ` +
             `${size(reading.freeBytes)} of ${size(reading.capacityBytes)} free, ${reading.stalledPercent}% stalled`,
