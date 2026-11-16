@@ -43,6 +43,7 @@ describe("dragSash", () => {
 
   it("does not snap the far pane when only the dragged pane hit its maximum", () => {
     expect(dragSash(workspace, sidebarSash, 500)).toEqual({ sizes: [480, 420, 400], visible: [true, true, true] })
+    expect(dragSash(workspace, sidebarSash, 700)).toEqual({ sizes: [480, 420, 400], visible: [true, true, true] })
   })
 
   it("clamps instead of snapping when snapping is off", () => {
