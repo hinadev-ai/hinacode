@@ -535,24 +535,42 @@ const handlers: Handlers = {
   "terminal.list": ({ threadId }) => Terminals.use((terminals) => terminals.list(threadId)),
   "terminal.attach": ({ id, since }) => Terminals.use((terminals) => terminals.attach(id, since)),
 
-  "devices.list": (input) => Devices.use((devices) => devices.list(input)),
+  "devices.list": () => Devices.use((devices) => devices.list()),
+  "devices.checks": () => Devices.use((devices) => devices.checks()),
   "device.get": ({ threadId }) => Devices.use((devices) => devices.get(threadId)),
-  "device.attach": ({ threadId, deviceId }) => Devices.use((devices) => devices.attach(threadId, deviceId)),
-  "device.create": ({ threadId, model }) => Devices.use((devices) => devices.create(threadId, model)),
+  "device.attach": ({ threadId, deviceId, client }) =>
+    Devices.use((devices) => devices.attach(threadId, deviceId, client)),
+  "device.create": ({ threadId, model, client }) => Devices.use((devices) => devices.create(threadId, model, client)),
   "device.detach": ({ threadId, deviceId }) => Devices.use((devices) => devices.detach(threadId, deviceId)),
   "device.delete": ({ threadId, deviceId }) => Devices.use((devices) => devices.delete(threadId, deviceId)),
-  "device.shutdown": ({ threadId, deviceId }) => Devices.use((devices) => devices.shutdown(threadId, deviceId)),
+  "device.shutdown": ({ deviceId }) => Devices.use((devices) => devices.shutdown(deviceId)),
   "device.frame": (input) => Devices.use((devices) => devices.frame(input)),
   "device.command": (input) => Devices.use((devices) => devices.command(input)),
   "device.control": ({ threadId, deviceId, control }) =>
     Devices.use((devices) => devices.control(threadId, deviceId, control)),
   "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
-  "device.act": ({ threadId, device, action, ...steps }) =>
-    Devices.use((devices) => devices.act(threadId, device, action, steps)),
-  "device.screenshot": ({ threadId, device }) => Devices.use((devices) => devices.screenshot(threadId, device)),
-  "device.describe": ({ threadId, device }) => Devices.use((devices) => devices.describe(threadId, device)),
-  "device.launch": ({ threadId, device, app }) => Devices.use((devices) => devices.launch(threadId, device, app)),
-  "device.release": ({ threadId }) => Devices.use((devices) => devices.release(threadId)),
+  "devices.claim": (input) => Devices.use((devices) => devices.claim(input)),
+  "devices.release": ({ clientId }) => Devices.use((devices) => devices.release(clientId)),
+  "devices.setup": ({ requirement }) => Devices.use((devices) => devices.setup(requirement)),
+  "device.act": ({ threadId, device, action, input, client }) =>
+    Devices.use((devices) => devices.act(threadId, device, action, input, client)),
+  "device.look": ({ threadId, device, client }) =>
+    Devices.use((devices) =>
+      Effect.map(devices.screenshot(threadId, device, client), ({ frame, state, screen }) => ({
+        frame,
+        device: state.device,
+        screen,
+      })),
+    ),
+  "device.describe": ({ threadId, device, client }) =>
+    Devices.use((devices) => devices.describe(threadId, device, client)),
+  "device.launch": ({ threadId, device, app, client }) =>
+    Devices.use((devices) => devices.launch(threadId, device, app, client)),
+  "device.logs": (input) => Devices.use((devices) => devices.logs(input)),
+  "device.install.begin": (input) => Devices.use((devices) => devices.uploadBegin(input)),
+  "device.install.chunk": (input) => Devices.use((devices) => devices.uploadChunk(input)),
+  "device.install.end": (input) => Devices.use((devices) => devices.uploadEnd(input)),
+  "device.audio": (input) => Devices.use((devices) => devices.audio(input)),
   "device.screenshot.save": ({ threadId, dataUrl, name }) =>
     Attachments.use((attachments) => attachments.stage(threadId, { dataUrl, name })),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),

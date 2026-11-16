@@ -58,8 +58,8 @@ describe("runMigrations", () => {
       const sql = yield* SqlClient.SqlClient
       yield* sql`ALTER TABLE thread ADD COLUMN user_skills INTEGER NOT NULL DEFAULT 1 CHECK (user_skills IN (0, 1))`
       yield* sql`DROP TABLE app_connection`
-      yield* sql`ALTER TABLE thread_device DROP COLUMN guest`
-      yield* sql`DROP TABLE released_guest`
+      for (const column of ["client_id", "client_name", "claimed_at", "thread_title"])
+        yield* sql.unsafe(`ALTER TABLE thread_device DROP COLUMN ${column}`)
       yield* restoreAutomationTables
       yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id >= 43`
 
@@ -73,9 +73,9 @@ describe("runMigrations", () => {
         [47, "routines"],
         [48, "drop_pull_request_observed_status"],
         [49, "thread_device_guest"],
+        [50, "thread_device_client"],
       ])
       expect(yield* columnsOf("pull_request_link")).not.toContain("observed_status")
-      expect(yield* columnsOf("thread_device")).toContain("guest")
       expect(yield* sql`SELECT name FROM effect_sql_migrations WHERE migration_id = 40`).toStrictEqual([
         { name: "remote_private_networks" },
       ])
@@ -103,7 +103,7 @@ describe("runMigrations", () => {
 
       expect(upgraded.thread).toStrictEqual({ title: "t", provider: "claude" })
       expect(upgraded.ids.slice(0, 4)).toStrictEqual([1, 2, 3, 4])
-      expect(upgraded.ids.at(-1)).toBe(49)
+      expect(upgraded.ids.at(-1)).toBe(50)
       expect(upgraded.projectColumns).toContain("trusted")
     }),
   )
@@ -149,7 +149,7 @@ describe("runMigrations", () => {
           const sql = yield* SqlClient.SqlClient
           const seeded = yield* seedThread({ rootPath: "/repo" })
           yield* sql`ALTER TABLE thread ADD COLUMN from_the_future TEXT NOT NULL DEFAULT 'kept'`
-          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (50, 'from_the_future')`
+          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (51, 'from_the_future')`
           return seeded
         }),
       )
@@ -169,7 +169,7 @@ describe("runMigrations", () => {
         ran: [],
         thread: { title: "t", provider: "claude" },
         future: { fromTheFuture: "kept" },
-        ids: expect.arrayContaining([49, 50]),
+        ids: expect.arrayContaining([50, 51]),
       })
     }),
   )
