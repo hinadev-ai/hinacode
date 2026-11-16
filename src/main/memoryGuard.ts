@@ -177,7 +177,14 @@ export const judge = (
 export const heaviestWorthShedding = (
   threads: ReadonlyArray<ThreadMemory>,
   capacityBytes: number,
-): ThreadMemory | undefined => (totalBytes(threads) >= reserveBytes(capacityBytes) ? threads[0] : undefined)
+  freeBytes: number,
+): ThreadMemory | undefined => {
+  const [heaviest] = threads
+  if (heaviest === undefined) return undefined
+  const agentsHoldMost = totalBytes(threads) >= (capacityBytes - freeBytes) / 2
+  const heaviestRestoresReserve = heaviest.bytes >= reserveBytes(capacityBytes)
+  return agentsHoldMost && heaviestRestoresReserve ? heaviest : undefined
+}
 
 const size = (bytes: number) =>
   bytes >= GIB ? `${(bytes / GIB).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / MIB))} MB`
@@ -224,7 +231,7 @@ export const memoryGuard = (
         const agents = yield* runningAgents
         if (agents.size === 0) return false
         const threads = memoryByThread(yield* Effect.promise(readProcesses), agents)
-        const victim = heaviestWorthShedding(threads, reading.capacityBytes)
+        const victim = heaviestWorthShedding(threads, reading.capacityBytes, reading.freeBytes)
         if (victim === undefined) return false
         const [largest] = victim.tools
         const message = shedMessage(

@@ -49,7 +49,12 @@ It takes both because the machine dies in two ways, and neither shows in the oth
 
 The guard stops only threads with a running turn. A thread's memory is the resident and swapped memory of its agent processes and of every process under them, from `/proc/<pid>/status`. Sub-agents started with `run_agent` count toward their thread. Terminals do not, because the developer started those. `services/Ports.ts` keeps agent pids apart from terminal pids for this.
 
-The guard stops the heaviest thread. When every running agent together holds less than the reserve, stopping one would not help, and the guard rests for 30 seconds.
+The reading covers the whole machine and its parent cgroups, so it includes what the guard never stops: a browser, an IDE, a `cargo build` in a terminal. Before it stops anything, the guard checks that the agents caused the shortage:
+
+- Running agent threads together hold at least half of the used memory, `capacity - free`.
+- The heaviest thread alone holds at least the reserve, so stopping it can bring free memory back above the reserve.
+
+When both hold, the guard stops the heaviest thread. Otherwise stopping a thread would not help, and the guard rests for 30 seconds. Without these checks, outside pressure would stop one idle agent thread every 10 seconds until none were left, while the process that caused it kept running.
 
 ### The stop
 
@@ -70,6 +75,7 @@ The thread keeps its `providerSessionId`, so the next message resumes it. The tr
 - Pausing a thread with `SIGSTOP` or `cgroup.freeze`. A paused process keeps its memory.
 - A cap on concurrent turns. How many turns fit depends on what their tools do, and a fixed number cannot know that.
 - Settings for the two thresholds.
+- Many small threads that only add up to the shortage. When no single thread holds the reserve, the guard leaves them to the kernel and `systemd-oomd`.
 
 ## Verification
 

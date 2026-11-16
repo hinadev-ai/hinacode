@@ -189,6 +189,7 @@ describe.runIf(process.platform === "linux")("memoryGuard", () => {
         lightTool: true,
       })
 
+      state.reading = { stalledPercent: 0, freeBytes: 10 * MIB, capacityBytes: 160 * MIB }
       yield* untilRead(2)
       yield* Effect.promise(() => vi.waitFor(() => expect(state.aborted).toHaveLength(2), { timeout: 10_000 }))
       expect(state.aborted[1]?.threadId).toBe("light")
