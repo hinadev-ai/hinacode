@@ -1,13 +1,16 @@
-import { Effect, Schema } from "effect"
+import { Duration, Effect, Option, Schema } from "effect"
 import type { RpcResponse } from "../../../shared/contract.ts"
 import type { Machine, Message, Thread, Worktree } from "../../../shared/domain.ts"
+import type { AgentRunner } from "../../services/AgentRunner.ts"
 import type { Projects } from "../../services/Projects.ts"
 import type { Search } from "../../services/Search.ts"
+import type { Threads } from "../../services/Threads.ts"
 
 export const DEFAULT_READ_LIMIT = 20
 export const MAX_READ_LIMIT = 100
 export const DEFAULT_SEARCH_LIMIT = 20
 export const MAX_SEARCH_LIMIT = 100
+const POLL_EVERY = Duration.seconds(1)
 
 const renderPart = (part: Message["parts"][number]): string | null => {
   switch (part.type) {
@@ -138,6 +141,26 @@ export const renderThread = (input: {
     messages.length === 0 ? "No messages yet." : messages.map(renderMessage).join("\n\n"),
   ].join("\n")
 }
+
+export const readWhenIdle = <E, R>(input: {
+  readonly runner: Pick<typeof AgentRunner.Service, "isBusy">
+  readonly threads: Pick<typeof Threads.Service, "get">
+  readonly threadId: string
+  readonly limit: Duration.Input
+  readonly read: Effect.Effect<string, E, R>
+}) =>
+  Effect.gen(function* () {
+    const { runner, threads, threadId } = input
+    const idle = yield* Effect.gen(function* () {
+      for (;;) {
+        if (!(yield* runner.isBusy(threadId))) return
+        if ((yield* threads.get(threadId)).status === "awaiting_approval") return
+        yield* Effect.sleep(POLL_EVERY)
+      }
+    }).pipe(Effect.timeoutOption(input.limit))
+    const view = yield* input.read
+    return Option.isSome(idle) ? view : `Still running.\n\n${view}`
+  })
 
 export const searchThreads = (
   services: {
