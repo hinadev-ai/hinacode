@@ -36,6 +36,7 @@ import {
 } from "../ui/alert-dialog.tsx"
 import { providerLabel } from "../ProviderIcon.tsx"
 import { SettingsPanelSection } from "./SettingsSection.tsx"
+import { RenameDialog } from "../RenameDialog.tsx"
 import { Button } from "../ui/button.tsx"
 import {
   Dialog,
@@ -166,7 +167,7 @@ function DefaultAccountRow({ provider }: { provider: ProviderId }) {
       <AccountActions name={name} onMenuOpenChangeComplete={onMenuOpenChangeComplete}>
         <RenameItem onClick={() => queue("rename")} />
       </AccountActions>
-      <RenameAccountDialog name={name} onRename={rename} open={dialog === "rename"} onOpenChange={onDialogOpenChange} />
+      <RenameDialog name={name} onRename={rename} open={dialog === "rename"} onOpenChange={onDialogOpenChange} />
     </li>
   )
 }
@@ -208,7 +209,7 @@ function AccountRow({ account }: { account: AgentProfile }) {
           </div>
         )}
       </div>
-      <RenameAccountDialog
+      <RenameDialog
         name={account.name}
         onRename={async (name) => {
           await renameAccount({ id: account.id, name })
@@ -445,76 +446,6 @@ function AddAccountForm({ provider, onCreated }: { provider: AccountProviderId; 
         <DialogClose render={<Button variant="outline" />}>{m.common_cancel()}</DialogClose>
         <Button type="submit" disabled={!complete || pending}>
           {m.settings_account_add()}
-        </Button>
-      </DialogFooter>
-    </form>
-  )
-}
-
-interface RenameAccountDialogProps {
-  readonly name: string
-  readonly onRename: (name: string) => Promise<void>
-  readonly open: boolean
-  readonly onOpenChange: (open: boolean) => void
-}
-
-function RenameAccountDialog({ name, onRename, open, onOpenChange }: RenameAccountDialogProps) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <RenameForm name={name} onRename={onRename} onSaved={() => onOpenChange(false)} />
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function RenameForm({
-  name: current,
-  onRename,
-  onSaved,
-}: {
-  name: string
-  onRename: (name: string) => Promise<void>
-  onSaved: () => void
-}) {
-  const [name, setName] = useState(current)
-  const [error, setError] = useState<string | null>(null)
-  const [pending, startTransition] = useTransition()
-  const inputId = useId()
-
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setError(null)
-    startTransition(async () => {
-      try {
-        await onRename(name.trim())
-        onSaved()
-      } catch (cause) {
-        setError(errorMessage(cause))
-      }
-    })
-  }
-
-  return (
-    <form onSubmit={submit} className="flex min-w-0 flex-col gap-4">
-      <DialogHeader>
-        <DialogTitle>{m.account_dialog_rename_title({ name: current })}</DialogTitle>
-      </DialogHeader>
-      <Field>
-        <FieldLabel htmlFor={inputId}>{m.account_dialog_name()}</FieldLabel>
-        <Input
-          id={inputId}
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          maxLength={80}
-          autoComplete="off"
-        />
-        {error && <FieldError>{error}</FieldError>}
-      </Field>
-      <DialogFooter>
-        <DialogClose render={<Button variant="outline" />}>{m.common_cancel()}</DialogClose>
-        <Button type="submit" disabled={name.trim() === "" || name.trim() === current || pending}>
-          {m.account_dialog_save()}
         </Button>
       </DialogFooter>
     </form>

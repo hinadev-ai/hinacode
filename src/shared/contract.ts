@@ -63,6 +63,7 @@ import {
   CommitDiff,
   GitCommit,
   Machine,
+  MachineName,
   MergeMethod,
   NotificationPermission,
   PermissionRequestOutcome,
@@ -114,7 +115,14 @@ import {
 } from "./domain.ts"
 import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } from "./github.ts"
 import { RelayHost } from "./relayMachines.ts"
-import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
+import {
+  BrowserCommand,
+  BrowserSession,
+  BrowserSnapshot,
+  BrowserTouch,
+  BrowserUrl,
+  BrowserViewport,
+} from "./browser.ts"
 import {
   AgentAction,
   AgentInput,
@@ -341,6 +349,8 @@ export const RpcMethods = {
     BrowserSnapshot,
   ),
   "browser.close": rpc(BrowserSession, Schema.Void),
+  "browser.emulateTouch": rpc(Schema.Struct({ webContentsId: Schema.Int, enabled: Schema.Boolean }), Schema.Void),
+  "browser.touch": rpc(Schema.Struct({ webContentsId: Schema.Int, ...BrowserTouch.fields }), Schema.Void),
   "projects.list": rpc(Schema.Void, Schema.Array(Project)),
   "projects.create": rpc(
     Schema.Struct({
@@ -499,6 +509,7 @@ export const RpcMethods = {
   "machines.list": rpc(Schema.Void, Schema.Array(Machine)),
   "environments.add": rpc(Schema.Struct({ name: Schema.String, pairingUrl: Schema.String }), Environment),
   "environments.remove": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "environments.rename": rpc(Schema.Struct({ id: Schema.String, name: MachineName }), Schema.Void),
   "environments.reconnect": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "relayAccount.status": rpc(Schema.Void, RelayAccountStatus),
   "relayAccount.signIn": rpc(Schema.Void, RelayAccountStatus),
@@ -853,6 +864,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "browser.command": "mutation",
   "browser.frame": "read",
   "browser.close": "mutation",
+  "browser.emulateTouch": "mutation",
+  "browser.touch": "mutation",
   "devices.list": "read",
   "devices.checks": "read",
   "device.get": "read",
@@ -937,6 +950,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "machines.list": "read",
   "environments.add": "mutation",
   "environments.remove": "mutation",
+  "environments.rename": "mutation",
   "environments.reconnect": "mutation",
   "relayAccount.status": "read",
   "relayAccount.signIn": "mutation",
@@ -1097,6 +1111,8 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "windows.addLineComment",
   "app.setBadgeCount",
   "app.setColorScheme",
+  "browser.emulateTouch",
+  "browser.touch",
   "dialog.pickFolder",
   "dialog.pickFiles",
   "artifacts.export",
@@ -1116,6 +1132,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "environments.list",
   "environments.add",
   "environments.remove",
+  "environments.rename",
   "environments.reconnect",
   "relayAccount.status",
   "relayAccount.signIn",

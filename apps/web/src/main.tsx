@@ -15,6 +15,7 @@ import {
   openSignIn,
   type RelayAccount,
   storedAccount,
+  withLocalNames,
 } from "./account.ts"
 import { connectMachines } from "./bridge.ts"
 import { readSettings } from "./browser.ts"
@@ -34,7 +35,12 @@ const transportMessages: TransportMessages = {
 }
 
 const start = async (account: RelayAccount, machines: ReadonlyArray<RelayMachine>) => {
-  const bridge = connectMachines({ account, machines, messages: transportMessages, signedOut: () => location.reload() })
+  const bridge = connectMachines({
+    account,
+    machines: withLocalNames(machines),
+    messages: transportMessages,
+    signedOut: () => location.reload(),
+  })
   Object.defineProperty(window, "hinacode", { value: bridge })
   await serveResources(bridge).catch((cause: unknown) => console.error("Attachments and previews will not load", cause))
   await import("@/main.tsx")

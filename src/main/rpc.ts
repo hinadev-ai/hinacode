@@ -18,6 +18,7 @@ import type {
 } from "../shared/domain.ts"
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
 import type { ArtifactExportRequest } from "../shared/artifact.ts"
+import type { BrowserTouch } from "../shared/browser.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
@@ -117,6 +118,8 @@ export interface DesktopCalls {
   readonly openPullRequestWindow: (threadId: string, url: string) => Effect.Effect<void>
   readonly setBadgeCount: (count: number) => Effect.Effect<void>
   readonly setColorScheme: (scheme: "dark" | "light" | "system") => Effect.Effect<void>
+  readonly emulateTouch: (webContentsId: number, enabled: boolean) => Effect.Effect<void>
+  readonly touch: (webContentsId: number, touch: BrowserTouch) => Effect.Effect<void>
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
@@ -186,6 +189,9 @@ const handlers: Handlers = {
   "browser.command": (input) => Browser.use((browser) => browser.command(input)),
   "browser.frame": (input) => Browser.use((browser) => browser.frame(input)),
   "browser.close": (input) => Browser.use((browser) => browser.close(input)),
+  "browser.emulateTouch": ({ webContentsId, enabled }, desktop) =>
+    desktop?.emulateTouch(webContentsId, enabled) ?? Effect.void,
+  "browser.touch": ({ webContentsId, ...touch }, desktop) => desktop?.touch(webContentsId, touch) ?? Effect.void,
   "app.ready": (_, desktop) => desktop?.show ?? Effect.void,
   "app.focus": (_, desktop) => desktop?.focus ?? Effect.void,
   "windows.openPullRequest": ({ threadId, url }, desktop) =>
@@ -343,6 +349,7 @@ const handlers: Handlers = {
   "environments.list": () => Environments.use((environments) => environments.list),
   "environments.add": (input) => Environments.use((environments) => environments.add(input)),
   "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
+  "environments.rename": ({ id, name }) => Environments.use((environments) => environments.rename(id, name)),
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
   "relayAccount.status": () => RelayAccount.use((account) => account.status),
   "relayAccount.signIn": (_, desktop) =>
