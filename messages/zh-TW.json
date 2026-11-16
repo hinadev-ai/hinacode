@@ -544,6 +544,8 @@
   "explorer_mention": "在訊息中提及",
   "explorer_show_changes": "顯示變更",
   "explorer_copy_path": "複製路徑",
+  "explorer_download": "下載",
+  "explorer_downloaded": "已下載 {name}",
   "explorer_mentioned": "已將 {path} 加入訊息。",
   "explorer_new_file": "新增檔案",
   "explorer_new_folder": "新增資料夾",

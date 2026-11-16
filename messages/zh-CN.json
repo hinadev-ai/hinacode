@@ -535,6 +535,8 @@
   "explorer_mention": "在消息中提及",
   "explorer_show_changes": "显示更改",
   "explorer_copy_path": "复制路径",
+  "explorer_download": "下载",
+  "explorer_downloaded": "已下载 {name}",
   "explorer_mentioned": "已将 {path} 添加到消息。",
   "explorer_new_file": "新建文件",
   "explorer_new_folder": "新建文件夹",

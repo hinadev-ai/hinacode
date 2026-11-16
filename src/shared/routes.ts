@@ -69,6 +69,8 @@ export const routes: Record<RpcMethod, Route> = {
   "shell.reveal": client,
   "shell.openers": client,
   "shell.openWith": client,
+  "shell.dragFile": client,
+  "shell.download": client,
   "notifications.permission": client,
   "notifications.askPermission": client,
   "clientSettings.get": client,

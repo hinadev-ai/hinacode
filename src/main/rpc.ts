@@ -19,6 +19,7 @@ import type {
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
 import type { ArtifactExportRequest } from "../shared/artifact.ts"
 import type { BrowserTouch } from "../shared/browser.ts"
+import { downloadProjectFile, localFileOf } from "./projectFileCopy.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
@@ -123,6 +124,8 @@ export interface DesktopCalls {
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
+  readonly dragFile: (path: string) => Effect.Effect<void, HandlerError>
+  readonly downloadsFolder: string
   readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
@@ -341,6 +344,12 @@ const handlers: Handlers = {
   "shell.reveal": ({ path }, desktop) => desktop?.reveal(path) ?? Effect.void,
   "shell.openers": (_, desktop) => desktop?.openers ?? Effect.succeed([]),
   "shell.openWith": ({ path, opener }, desktop) => desktop?.openWith(path, opener) ?? Effect.void,
+  "shell.dragFile": ({ root, path }, desktop) =>
+    desktop ? localFileOf(root, path).pipe(Effect.flatMap(desktop.dragFile)) : Effect.void,
+  "shell.download": ({ root, path }, desktop) =>
+    desktop
+      ? Effect.map(downloadProjectFile(root, path, desktop.downloadsFolder), (saved) => ({ path: saved }))
+      : Effect.fail({ _tag: "DesktopOnly", message: "Downloads need the desktop app." }),
 
   "settings.get": () => Settings.use((settings) => settings.get),
   "settings.set": (patch) => Settings.use((settings) => settings.set(patch)),
