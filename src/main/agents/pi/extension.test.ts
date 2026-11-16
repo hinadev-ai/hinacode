@@ -31,7 +31,10 @@ describe("the pi extension", () => {
   it("registers HinaCode's MCP server from the environment", () => {
     vi.stubEnv("HINACODE_MCP_URL", "http://127.0.0.1:9/mcp")
     vi.stubEnv("HINACODE_MCP_AUTHORIZATION", "Bearer test")
-    expect(load().servers).toStrictEqual([
+    const { servers } = load()
+    expect(process.env.HINACODE_MCP_URL).toBeUndefined()
+    expect(process.env.HINACODE_MCP_AUTHORIZATION).toBeUndefined()
+    expect(servers).toStrictEqual([
       [
         "hinacode",
         {

@@ -6,10 +6,13 @@ const deepFreeze = (value) => {
 
 export default function hinacode(pi) {
   const url = process.env.HINACODE_MCP_URL
+  const authorization = process.env.HINACODE_MCP_AUTHORIZATION
+  delete process.env.HINACODE_MCP_URL
+  delete process.env.HINACODE_MCP_AUTHORIZATION
   if (url) {
     pi.registerMcpServer("hinacode", {
       url,
-      headers: { authorization: process.env.HINACODE_MCP_AUTHORIZATION },
+      headers: { authorization },
       timeout: 3600,
       exposure: "direct",
     })
