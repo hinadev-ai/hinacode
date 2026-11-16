@@ -5,6 +5,7 @@ import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import {
+  type DragEvent,
   type KeyboardEvent,
   type ReactNode,
   Suspense,
@@ -14,6 +15,7 @@ import {
   useState,
   useTransition,
 } from "react"
+import { RiDownload2Line } from "react-icons/ri"
 import { toast } from "sonner"
 import { useTheme } from "../lib/appearance.ts"
 import { projectFileUrl } from "../../shared/channels.ts"
@@ -30,6 +32,7 @@ import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
 import { CloseIcon, CopyIcon, FileDiffIcon } from "@hinacode/icons"
 import { resourceUrl, servedSandbox } from "../lib/resourceUrl.ts"
+import { inBrowser } from "../lib/runtime.ts"
 import "../lib/codeThemes.ts"
 
 interface FileViewerProps {
@@ -38,6 +41,7 @@ interface FileViewerProps {
   readonly path: string
   readonly onClose: () => void
   readonly onShowChanges?: () => void
+  readonly onDownload?: (root: string, path: string) => Promise<void>
 }
 
 const createEditor = <EType extends "file" | "file-diff", LAnnotation, Caret>(
@@ -46,7 +50,7 @@ const createEditor = <EType extends "file" | "file-diff", LAnnotation, Caret>(
   editStateKey?: string,
 ) => new Editor<EType, LAnnotation, Caret>(type, options, editStateKey)
 
-export function FileViewer({ threadId, root, path, onClose, onShowChanges }: FileViewerProps) {
+export function FileViewer({ threadId, root, path, onClose, onShowChanges, onDownload }: FileViewerProps) {
   const shownPath = useDeferredValue(path)
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -68,20 +72,22 @@ export function FileViewer({ threadId, root, path, onClose, onShowChanges }: Fil
           path={shownPath}
           onClose={onClose}
           onShowChanges={shownPath === path ? onShowChanges : undefined}
+          onDownload={onDownload}
         />
       </div>
     </section>
   )
 }
 
-function FileBody({ threadId, root, path, onClose, onShowChanges }: FileViewerProps) {
+function FileBody({ threadId, root, path, onClose, onShowChanges, onDownload }: FileViewerProps) {
+  const download = onDownload && (() => onDownload(root, path))
   const preview = previewOf(path)
   const [showSource, setShowSource] = useState(false)
 
   if (preview !== null && !showSource) {
     return (
       <>
-        <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges}>
+        <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges} onDownload={download}>
           {hasSource(preview) && (
             <Button variant="ghost" size="xs" onClick={() => setShowSource(true)}>
               {m.viewer_source()}
@@ -109,7 +115,7 @@ function FileBody({ threadId, root, path, onClose, onShowChanges }: FileViewerPr
       <Suspense
         fallback={
           <>
-            <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges} />
+            <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges} onDownload={download} />
             <Note text={m.viewer_loading()} className="animate-reveal" />
           </>
         }
@@ -120,6 +126,7 @@ function FileBody({ threadId, root, path, onClose, onShowChanges }: FileViewerPr
           path={path}
           onClose={onClose}
           onShowChanges={onShowChanges}
+          onDownload={onDownload}
           headerActions={backToPreview}
         />
       </Suspense>
@@ -144,6 +151,11 @@ function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: 
   if (failed) return <Note text={m.viewer_preview_failed()} />
   const src = resourceUrl(`${projectFileUrl(root, path)}?v=${version}`)
   const fail = () => setFailed(true)
+  const dragOut = (event: DragEvent) => {
+    if (inBrowser()) return
+    event.preventDefault()
+    callPromise("shell.dragFile", { root, path }).catch(toastError)
+  }
 
   if (preview === "html") {
     return (
@@ -165,10 +177,12 @@ function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: 
         // oxlint-disable-next-line jsx-a11y/media-has-caption
         <audio src={src} controls aria-label={path} onError={fail} className="w-full max-w-md" />
       ) : (
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- dragging the image out hands its file to the OS.
         <img
           src={src}
           alt={path}
           onError={fail}
+          onDragStart={dragOut}
           className="max-h-full max-w-full bg-[repeating-conic-gradient(var(--muted)_0_25%,transparent_0_50%)] bg-size-[16px_16px] object-contain"
         />
       )}
@@ -210,10 +224,11 @@ interface ViewerHeaderProps {
   readonly path: string
   readonly onClose: () => void
   readonly onShowChanges: (() => void) | undefined
+  readonly onDownload: (() => Promise<void>) | undefined
   readonly children?: ReactNode
 }
 
-function ViewerHeader({ path, onClose, onShowChanges, children }: ViewerHeaderProps) {
+function ViewerHeader({ path, onClose, onShowChanges, onDownload, children }: ViewerHeaderProps) {
   return (
     <header className="flex h-8 shrink-0 items-center gap-1 border-b border-border pr-2 pl-3">
       <FilePath path={path} className="flex-1 text-xs" />
@@ -222,6 +237,17 @@ function ViewerHeader({ path, onClose, onShowChanges, children }: ViewerHeaderPr
         <Button variant="ghost" size="xs" onClick={onShowChanges}>
           <FileDiffIcon aria-hidden />
           {m.explorer_show_changes()}
+        </Button>
+      )}
+      {onDownload && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={m.explorer_download()}
+          title={m.explorer_download()}
+          action={onDownload}
+        >
+          <RiDownload2Line aria-hidden />
         </Button>
       )}
       <Button
@@ -263,8 +289,10 @@ function FileContent({
   path,
   onClose,
   onShowChanges,
+  onDownload,
   headerActions,
 }: FileViewerProps & { headerActions: ReactNode }) {
+  const download = onDownload && (() => onDownload(root, path))
   const contentAtom = fileContentAtom(JSON.stringify([root, path]))
   const content = useAtomSuspense(contentAtom, { includeFailure: true })
   const reload = useAtomRefresh(contentAtom)
@@ -289,7 +317,7 @@ function FileContent({
   if (AsyncResult.isFailure(content)) {
     return (
       <>
-        <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges}>
+        <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges} onDownload={download}>
           {headerActions}
         </ViewerHeader>
         <p role="alert" className="p-3 text-xs text-destructive">
@@ -302,7 +330,7 @@ function FileContent({
   if (binary) {
     return (
       <>
-        <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges}>
+        <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges} onDownload={download}>
           {headerActions}
         </ViewerHeader>
         <Note text={m.viewer_binary()} />
@@ -414,7 +442,7 @@ function FileContent({
   return (
     // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- mod+s bubbles up from the editor.
     <div onKeyDown={onKeyDown} className="flex min-h-0 flex-1 flex-col">
-      <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges}>
+      <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges} onDownload={download}>
         {headerActions}
         {base !== undefined && (
           <>

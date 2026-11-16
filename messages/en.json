@@ -545,6 +545,8 @@
   "explorer_mention": "Mention in message",
   "explorer_show_changes": "Show changes",
   "explorer_copy_path": "Copy path",
+  "explorer_download": "Download",
+  "explorer_downloaded": "Downloaded {name}",
   "explorer_mentioned": "Added {path} to the message.",
   "explorer_new_file": "New file",
   "explorer_new_folder": "New folder",

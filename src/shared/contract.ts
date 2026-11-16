@@ -410,6 +410,11 @@ export const RpcMethods = {
   "shell.reveal": rpc(Schema.Struct({ path: Schema.String }), Schema.Void),
   "shell.openers": rpc(Schema.Void, Schema.Array(Opener)),
   "shell.openWith": rpc(Schema.Struct({ path: Schema.String, opener: OpenerId }), Schema.Void),
+  "shell.dragFile": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Void),
+  "shell.download": rpc(
+    Schema.Struct({ root: Schema.String, path: Schema.String }),
+    Schema.Struct({ path: Schema.String }),
+  ),
 
   "settings.get": rpc(Schema.Void, Settings),
   "notifications.permission": rpc(Schema.Void, NotificationPermission),
@@ -488,6 +493,14 @@ export const RpcMethods = {
   "fs.preview": rpc(
     Schema.Struct({ root: Schema.String, path: Schema.String }),
     Schema.Struct({ dataUrl: Schema.String }),
+  ),
+  "fs.readChunk": rpc(
+    Schema.Struct({
+      root: Schema.String,
+      path: Schema.String,
+      offset: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    }),
+    Schema.Struct({ data: Schema.String, size: Schema.Number }),
   ),
   "fs.write": rpc(
     Schema.Struct({
@@ -848,6 +861,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "shell.reveal": "mutation",
   "shell.openers": "read",
   "shell.openWith": "mutation",
+  "shell.dragFile": "mutation",
+  "shell.download": "mutation",
   "settings.get": "read",
   "notifications.permission": "read",
   "notifications.askPermission": "mutation",
@@ -890,6 +905,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "fs.list": "read",
   "fs.read": "read",
   "fs.preview": "read",
+  "fs.readChunk": "read",
   "fs.write": "mutation",
   "fs.create": "mutation",
   "fs.rename": "mutation",
@@ -1028,6 +1044,8 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "shell.reveal",
   "shell.openers",
   "shell.openWith",
+  "shell.dragFile",
+  "shell.download",
   "notifications.permission",
   "notifications.askPermission",
   "fs.watch",

@@ -545,6 +545,8 @@
   "explorer_mention": "メッセージ内でメンション",
   "explorer_show_changes": "差分を表示",
   "explorer_copy_path": "パスをコピー",
+  "explorer_download": "ダウンロード",
+  "explorer_downloaded": "{name} をダウンロードしました",
   "explorer_mentioned": "{path} をメッセージに入力しました。",
   "explorer_new_file": "新しいファイル",
   "explorer_new_folder": "新しいフォルダ",

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
+import { randomBytes } from "node:crypto"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -30,6 +31,7 @@ import { Events, PushBroadcast, WindowPush } from "../services/Events.ts"
 import { Messages } from "../services/Messages.ts"
 import { Settings } from "../services/Settings.ts"
 import { Threads } from "../services/Threads.ts"
+import { CHUNK_BYTES } from "../services/Files.ts"
 import { makeTestAppLayer } from "../testing.ts"
 import { McpCredentials } from "./credentials.ts"
 
@@ -39,13 +41,21 @@ interface Frame {
   readonly parent: Frame | null
 }
 
-const electron = vi.hoisted(() => ({ handlers: new Map<string, IpcHandler>(), userData: "" }))
+const electron = vi.hoisted(() => ({
+  handlers: new Map<string, IpcHandler>(),
+  userData: "",
+  drags: [] as Array<{ file: string }>,
+}))
 
 vi.mock("electron", () => ({
   Notification: EventTarget,
-  app: { getPath: () => electron.userData, focus: () => {} },
+  app: { getPath: () => electron.userData, focus: () => {}, getFileIcon: async () => ({}) },
+  nativeImage: { createFromPath: () => ({ isEmpty: () => true }) },
   ipcMain: { handle: (channel: string, handler: IpcHandler) => electron.handlers.set(channel, handler) },
-  BrowserWindow: { getAllWindows: () => [], fromWebContents: () => null },
+  BrowserWindow: {
+    getAllWindows: () => [],
+    fromWebContents: () => ({ webContents: { startDrag: (item: { file: string }) => electron.drags.push(item) } }),
+  },
   dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
   shell: { showItemInFolder: () => undefined },
   safeStorage: { isEncryptionAvailable: () => false },
@@ -182,13 +192,15 @@ let otherRepoThread = ""
 let noOriginThread = ""
 let desktopProject = ""
 let cloudProject = ""
+let desktopRepo = ""
+let cloudRepo = ""
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "kk-cross-machine-test-"))
   electron.userData = dir
-  const desktopRepo = join(dir, "desktop-repo")
+  desktopRepo = join(dir, "desktop-repo")
   const otherRepo = join(dir, "other-repo")
-  const cloudRepo = join(dir, "cloud-repo")
+  cloudRepo = join(dir, "cloud-repo")
   const desktopScratch = join(dir, "desktop-scratch")
   const cloudScratch = join(dir, "cloud-scratch")
   gitRepo(desktopRepo, "git@github.com:Acme/Web.git")
@@ -248,6 +260,43 @@ afterAll(async () => {
   await desktop.dispose()
   await cloud.dispose()
   rmSync(dir, { recursive: true, force: true })
+})
+
+describe("dragging a file out of the window", () => {
+  test("hands the OS a file of a desktop project where it lies", async () => {
+    mkdirSync(join(desktopRepo, "art"), { recursive: true })
+    writeFileSync(join(desktopRepo, "art", "header.png"), "desktop pixels")
+    electron.drags.length = 0
+    result(await invoke("shell.dragFile", { root: desktopRepo, path: "art/header.png" }))
+    expect(electron.drags.map((drag) => drag.file)).toEqual([realpathSync(join(desktopRepo, "art", "header.png"))])
+  })
+
+  test("copies a file of a cloud project to this machine under its own name first", async () => {
+    mkdirSync(join(cloudRepo, "art"), { recursive: true })
+    writeFileSync(join(cloudRepo, "art", "header.png"), "cloud pixels")
+    electron.drags.length = 0
+    result(await invoke("shell.dragFile", { root: cloudRepo, path: "art/header.png" }))
+    const [drag] = electron.drags
+    expect(drag?.file).toBe(join(tmpdir(), "hinacode-drag", "header.png"))
+    expect(readFileSync(drag!.file, "utf8")).toBe("cloud pixels")
+  })
+})
+
+describe("downloading a file of a cloud project", () => {
+  test("saves it whole in Downloads, beside an earlier copy instead of over it", async () => {
+    const bytes = randomBytes(CHUNK_BYTES * 2 + 123)
+    writeFileSync(join(cloudRepo, "build.zip"), bytes)
+    const first = result(await invoke("shell.download", { root: cloudRepo, path: "build.zip" }))
+    const second = result(await invoke("shell.download", { root: cloudRepo, path: "build.zip" }))
+    expect([first.path, second.path]).toEqual([join(dir, "build.zip"), join(dir, "build (1).zip")])
+    expect(readFileSync(second.path).equals(bytes)).toBe(true)
+  })
+
+  test("leaves nothing behind when the file is gone", async () => {
+    const download = await invoke("shell.download", { root: cloudRepo, path: "missing.zip" })
+    expect("error" in download && download.error.tag).toBe("FsAccessError")
+    expect(existsSync(join(dir, "missing.zip"))).toBe(false)
+  })
 })
 
 describe("thread tools across machines", () => {

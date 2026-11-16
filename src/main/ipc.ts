@@ -3,6 +3,7 @@ import { Effect, type ManagedRuntime } from "effect"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope } from "../shared/contract.ts"
 import { exportArtifact } from "./artifactExport.ts"
+import { startFileDrag } from "./dragFile.ts"
 import { route } from "./environments/route.ts"
 import { askNotificationPermission, notificationPermission } from "./notificationPermission.ts"
 import type { AppServices, DesktopCalls } from "./rpc.ts"
@@ -55,6 +56,14 @@ const desktopCalls = (window: BrowserWindow | null, openPullRequestWindow: OpenP
   },
   openers: listOpeners,
   openWith,
+  dragFile: (path) =>
+    Effect.tryPromise({
+      try: async () => {
+        if (window) await startFileDrag(window.webContents, path)
+      },
+      catch: (cause) => ({ _tag: "DragFailed", message: cause instanceof Error ? cause.message : String(cause) }),
+    }),
+  downloadsFolder: app.getPath("downloads"),
   pickFolder: Effect.map(showOpenDialog(window, { properties: ["openDirectory", "createDirectory"] }), (result) =>
     result.canceled ? null : (result.filePaths[0] ?? null),
   ),
