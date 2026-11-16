@@ -16,6 +16,8 @@ type ReadyHistory = {
   readonly questions: ReadonlyArray<QuestionRequest>
   readonly secretRequests: ReadonlyArray<SecretRequest>
   readonly sequenceScope?: "thread"
+  readonly snapshotId: number
+  readonly missedFinishes: number
 }
 
 export type ThreadHistory =
@@ -84,6 +86,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
     leastRecentlyViewedFirst.push(threadId)
     forget(leastRecentlyViewedFirst.slice(0, -CACHED_HISTORY_LIMIT))
   }
+  let snapshots = 0
   const fetchHistory = async (threadId: string): Promise<void> => {
     takeHeld(threadId)
     receivedSeqs.delete(threadId)
@@ -97,7 +100,11 @@ export const useMessages = create<MessagesState>()((set, get) => {
       const { seq, ...snapshot } = await callPromise("threads.transcript", { threadId })
       const loading = stillLoading()
       if (loading === undefined) return
-      const settled = replayAfterSnapshot({ status: "ready", ...snapshot }, seq, loading.pending)
+      const settled = replayAfterSnapshot(
+        { status: "ready", ...snapshot, snapshotId: ++snapshots, missedFinishes: 0 },
+        seq,
+        loading.pending,
+      )
       if (settled === undefined) return await fetchHistory(threadId)
       receivedSeqs.set(threadId, settled.lastSeq)
       setHistory(threadId, () => settled.ready)
@@ -172,6 +179,9 @@ const deltaType = (push: TranscriptPush): DeltaType | undefined =>
     ? push.event.type
     : undefined
 
+const holdsCall = (messages: ReadonlyArray<Message>, callId: string) =>
+  messages.some((message) => message.parts.some((part) => part.type === "tool_call" && part.callId === callId))
+
 function applyPush(history: ReadyHistory, push: TranscriptPush): ReadyHistory {
   switch (push.type) {
     case "message.created":
@@ -181,6 +191,8 @@ function applyPush(history: ReadyHistory, push: TranscriptPush): ReadyHistory {
       return index === -1 ? history : { ...history, messages: history.messages.with(index, push.message) }
     }
     case "thread.event": {
+      if (push.event.type === "tool_call_finished" && !holdsCall(history.messages, push.event.callId))
+        return { ...history, missedFinishes: history.missedFinishes + 1 }
       const approvals = foldApprovals(history.approvals, push.event)
       const questions = foldQuestions(history.questions, push.event)
       const secretRequests = foldSecretRequests(history.secretRequests, push.event)

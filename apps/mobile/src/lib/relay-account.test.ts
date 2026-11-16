@@ -56,9 +56,9 @@ describe("applyRelayMachines", () => {
     ])
   })
 
-  it("renames a relay server the owner renamed", () => {
+  it("keeps the name of a relay server when the relay renames it", () => {
     const [refreshed] = applyRelayMachines([server({ source: "relay" })], [machine({ name: "Renamed" })], newId)
-    expect(refreshed).toMatchObject({ id: "a", name: "Renamed", source: "relay" })
+    expect(refreshed).toMatchObject({ id: "a", name: "studio", source: "relay" })
   })
 
   it("matches by relay hostname when the server's environment id is unknown", () => {

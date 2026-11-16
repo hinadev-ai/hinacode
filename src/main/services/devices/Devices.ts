@@ -3,6 +3,8 @@ import { SqlClient } from "effect/sql"
 import type { RpcRequest } from "../../../shared/contract.ts"
 import {
   type AgentAction,
+  type AgentOutcome,
+  type AgentSteps,
   devicePlatformOf,
   type Device,
   type DeviceCommand,
@@ -12,8 +14,10 @@ import {
   type DeviceHost,
   type DeviceId,
   type DevicePlatform,
+  type DeviceScreenshot,
   type PickedDeviceElement,
   type PrepareStep,
+  type ReadyThreadDevice,
   shownScreen,
   type SimulatorModelId,
   threadDeviceId,
@@ -24,29 +28,19 @@ import { Events } from "../Events.ts"
 import { Settings } from "../Settings.ts"
 import type { DeviceLink, DevicePlatformDriver, Frame } from "./platform.ts"
 
-class DevicesError extends Schema.TaggedError<DevicesError>()("DevicesError", { message: Schema.String }) {}
-
-type AgentInput = "done" | "handedBack"
-
-export type ReadyDevice = Extract<ThreadDevice, { phase: "ready" }>
-
-export interface AgentSteps {
-  readonly steps: ReadonlyArray<ReadonlyArray<DeviceCommand>>
-  readonly gapMs?: number
-  readonly release?: ReadonlyArray<DeviceCommand>
-}
+export class DevicesError extends Schema.TaggedError<DevicesError>()("DevicesError", { message: Schema.String }) {}
 
 export class Devices extends Context.Service<
   Devices,
   {
     readonly enabled: () => boolean
-    readonly list: () => Effect.Effect<DeviceHost, DevicesError>
+    readonly list: (input: RpcRequest<"devices.list">) => Effect.Effect<DeviceHost, DevicesError>
     readonly get: (threadId: string) => Effect.Effect<ThreadDevices, DevicesError>
     readonly attach: (threadId: string, deviceId: DeviceId) => Effect.Effect<ThreadDevice, DevicesError>
     readonly create: (threadId: string, model?: SimulatorModelId) => Effect.Effect<ThreadDevice, DevicesError>
     readonly detach: (threadId: string, deviceId: DeviceId | null) => Effect.Effect<void, DevicesError>
     readonly delete: (threadId: string, deviceId: DeviceId) => Effect.Effect<void, DevicesError>
-    readonly shutdown: (deviceId: DeviceId) => Effect.Effect<void, DevicesError>
+    readonly shutdown: (threadId: string, deviceId: DeviceId) => Effect.Effect<void, DevicesError>
     readonly frame: (input: RpcRequest<"device.frame">) => Effect.Effect<{ frame: DeviceFrame | null }, DevicesError>
     readonly command: (input: RpcRequest<"device.command">) => Effect.Effect<void, DevicesError>
     readonly control: (
@@ -60,14 +54,8 @@ export class Devices extends Context.Service<
       device: string | undefined,
       action: AgentAction,
       input: AgentSteps,
-    ) => Effect.Effect<AgentInput, DevicesError>
-    readonly screenshot: (
-      threadId: string,
-      device: string | undefined,
-    ) => Effect.Effect<
-      { readonly frame: DeviceFrame; readonly state: ReadyDevice; readonly screen: ReturnType<typeof shownScreen> },
-      DevicesError
-    >
+    ) => Effect.Effect<AgentOutcome, DevicesError>
+    readonly screenshot: (threadId: string, device: string | undefined) => Effect.Effect<DeviceScreenshot, DevicesError>
     readonly describe: (
       threadId: string,
       device: string | undefined,
@@ -76,11 +64,12 @@ export class Devices extends Context.Service<
       threadId: string,
       device: string | undefined,
       app: string,
-    ) => Effect.Effect<AgentInput, DevicesError>
+    ) => Effect.Effect<AgentOutcome, DevicesError>
+    readonly release: (threadId: string) => Effect.Effect<void>
   }
 >()("hinacode/Devices") {}
 
-interface DevicesOptions {
+export interface DevicesOptions {
   readonly drivers: Record<DevicePlatform, DevicePlatformDriver>
   readonly simslimAvailable: () => Promise<boolean>
   readonly leaseMs?: number
@@ -107,7 +96,7 @@ const NEW = "new"
 type Slot = DeviceId | typeof NEW
 const slotOf = (entry: ThreadDevice): Slot => threadDeviceId(entry) ?? NEW
 const keyOf = (threadId: string, slot: Slot) => `${threadId}\n${slot}`
-const describeDevice = (state: ReadyDevice) => `${state.device.name} (${state.device.id})`
+const describeDevice = (state: ReadyThreadDevice) => `${state.device.name} (${state.device.id})`
 const FRAME_WAIT_MS = 1000
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 const failure = (cause: unknown) =>
@@ -151,11 +140,13 @@ const make = (options: DevicesOptions) =>
       (await readRows(threadId)).find((row) => row.deviceId === deviceId) ?? null
     const writeRow = (threadId: string, row: Row) =>
       run(
-        sql`INSERT INTO thread_device (thread_id, device_id, owned) VALUES (${threadId}, ${row.deviceId}, ${row.owned ? 1 : 0})
+        sql`INSERT INTO thread_device (thread_id, device_id, owned, guest)
+            VALUES (${threadId}, ${row.deviceId}, ${row.owned ? 1 : 0}, NOT EXISTS (SELECT 1 FROM thread WHERE id = ${threadId}))
             ON CONFLICT (thread_id, device_id) DO NOTHING`,
       )
     const deleteRow = (threadId: string, deviceId: DeviceId) =>
       run(sql`DELETE FROM thread_device WHERE thread_id = ${threadId} AND device_id = ${deviceId}`)
+    const reactivateGuest = (threadId: string) => run(sql`DELETE FROM released_guest WHERE thread_id = ${threadId}`)
     const ownedRows = () =>
       run(sql<{ threadId: string; deviceId: string }>`SELECT thread_id, device_id FROM thread_device WHERE owned = 1`)
 
@@ -391,7 +382,7 @@ const make = (options: DevicesOptions) =>
       return listOf(threadId)
     }
 
-    const settle = async (threadId: string, state: ThreadDevice): Promise<ReadyDevice> => {
+    const settle = async (threadId: string, state: ThreadDevice): Promise<ReadyThreadDevice> => {
       const settled =
         state.phase === "preparing" ? await (preparing.get(keyOf(threadId, slotOf(state))) ?? state) : state
       if (settled.phase === "failed") throw new DevicesError({ message: settled.message })
@@ -595,7 +586,7 @@ const make = (options: DevicesOptions) =>
       commands: ReadonlyArray<DeviceCommand>,
       first: boolean,
     ) =>
-      attempt(async (signal): Promise<AgentInput> => {
+      attempt(async (signal): Promise<AgentOutcome> => {
         const { state, live } = await chosen(threadId, device)
         if (state.control === "user") {
           await waitForHandBack(threadId, state.device.id, action, signal)
@@ -657,7 +648,10 @@ const make = (options: DevicesOptions) =>
     })
     const releaseArchived = sql<{ threadId: string }>`
       SELECT DISTINCT thread_device.thread_id FROM thread_device LEFT JOIN thread ON thread.id = thread_device.thread_id
-      WHERE thread.id IS NULL OR thread.status = 'archived'
+      WHERE thread.status = 'archived' OR (
+        thread.id IS NULL
+        AND (thread_device.guest = 0 OR thread_device.thread_id IN (SELECT thread_id FROM released_guest))
+      )
     `.pipe(
       Effect.flatMap((rows) => Effect.forEach(rows, (row) => releaseThread(row.threadId), { discard: true })),
       Effect.catchCause((cause) => Effect.logWarning("device cleanup failed", cause)),
@@ -686,6 +680,7 @@ const make = (options: DevicesOptions) =>
       attach: (threadId, deviceId) =>
         attempt(async () => {
           if (deleting.has(deviceId)) throw new DevicesError({ message: "This device is being deleted." })
+          await reactivateGuest(threadId)
           attaching.set(deviceId, (attaching.get(deviceId) ?? 0) + 1)
           try {
             const existing = current(threadId, deviceId)
@@ -708,6 +703,7 @@ const make = (options: DevicesOptions) =>
       create: (threadId, model) =>
         attempt(async () => {
           if (current(threadId, NEW)?.phase === "failed") removeState(threadId, NEW)
+          await reactivateGuest(threadId)
           return createFor(threadId, model ?? null)
         }),
       detach: (threadId, deviceId) => attempt(() => detachNow(threadId, deviceId)),
@@ -732,7 +728,7 @@ const make = (options: DevicesOptions) =>
             deleting.delete(deviceId)
           }
         }),
-      shutdown: (deviceId) =>
+      shutdown: (_threadId, deviceId) =>
         attempt(async () => {
           if (deleting.has(deviceId)) throw new DevicesError({ message: "This device is being deleted." })
           const live = links.get(deviceId)
@@ -764,7 +760,7 @@ const make = (options: DevicesOptions) =>
           return driverOf(state.device.id).describe(state.device.id)
         }),
       launch: (threadId, device, app) =>
-        attempt(async (signal): Promise<AgentInput> => {
+        attempt(async (signal): Promise<AgentOutcome> => {
           const { state } = await chosen(threadId, device)
           const action: AgentAction = { kind: "launch", app }
           if (state.control === "user") {
@@ -775,6 +771,11 @@ const make = (options: DevicesOptions) =>
           await driverOf(state.device.id).launch(state.device.id, app)
           return "done"
         }),
+      release: (threadId) =>
+        sql`INSERT INTO released_guest (thread_id) VALUES (${threadId}) ON CONFLICT DO NOTHING`.pipe(
+          Effect.catchCause((cause) => Effect.logWarning("could not record a released guest thread", cause)),
+          Effect.andThen(releaseThread(threadId)),
+        ),
     })
   })
 

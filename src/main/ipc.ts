@@ -8,6 +8,7 @@ import { askNotificationPermission, notificationPermission } from "./notificatio
 import type { AppServices, DesktopCalls } from "./rpc.ts"
 import { listOpeners, openWith } from "./openers.ts"
 import { externalUrl, isTrustedSender } from "./security.ts"
+import { dispatchTouch, emulateTouch } from "./webviewTouch.ts"
 
 export const bringToFront = (window: BrowserWindow) => {
   if (window.isMinimized()) window.restore()
@@ -33,6 +34,16 @@ const desktopCalls = (window: BrowserWindow | null, openPullRequestWindow: OpenP
     Effect.sync(() => {
       nativeTheme.themeSource = scheme
     }),
+  emulateTouch: (webContentsId, enabled) =>
+    window === null
+      ? Effect.void
+      : Effect.tryPromise(() => emulateTouch(window.webContents, webContentsId, enabled)).pipe(
+          Effect.catch((error) => Effect.logWarning("could not emulate touch", error)),
+        ),
+  touch: (webContentsId, touch) =>
+    window === null
+      ? Effect.void
+      : Effect.tryPromise(() => dispatchTouch(window.webContents, webContentsId, touch)).pipe(Effect.ignore),
   reveal: (path) => Effect.sync(() => shell.showItemInFolder(path)),
   openExternal: (url) => {
     const allowed = externalUrl(url)

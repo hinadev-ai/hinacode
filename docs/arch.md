@@ -275,6 +275,7 @@ sequenceDiagram
     AR-->>R: push thread.subagents (not a transcript push)
     P-->>AR: tool_call_started { parentCallId }
     AR-->>R: thread.event (shown in the sub-agent's view, not the thread's)
+    R->>AR: rpc subagents.transcript { compact: false } for settled calls in completed messages, which threads.transcript drops
   end
   opt request_secret (MCP tool)
     AR-->>R: secret_requested, thread.updated(awaiting_approval)
@@ -478,6 +479,7 @@ erDiagram
     text thread_id PK "no FK, Devices releases rows of archived or deleted threads"
     text device_id PK
     int owned "1 = detaching deletes the device"
+    int guest "1 = written for another machine's thread, released only by device.release"
   }
   message_part {
     text message_id FK "CASCADE"

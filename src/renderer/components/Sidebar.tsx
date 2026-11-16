@@ -568,7 +568,7 @@ function InboxList({ query }: { query: Query }) {
             key: READY_GROUP,
             divided: drafts.length > 0,
             group: READY_GROUP,
-            headingClassName: "sticky top-0 z-20 bg-sidebar",
+            headingClassName: "sticky top-0 z-20 bg-sidebar glass-sticky-heading",
             heading: (
               <SectionHeading
                 title={m.sidebar_ready()}

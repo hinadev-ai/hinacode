@@ -62,6 +62,7 @@ import type { Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 import { makeAndroidDriver } from "./services/devices/android.ts"
 import { devicesLayer } from "./services/devices/Devices.ts"
+import { devicesHubLayer } from "./services/devices/hub.ts"
 import { makeIosDriver, simslimAvailable } from "./services/devices/ios.ts"
 import { simhelperSources } from "./services/devices/simhelperSources.ts"
 import { SpanLedger, traceLayer } from "./trace.ts"
@@ -196,17 +197,25 @@ export const makeAppLayer = ({
   const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"), {
     desktopRedirect: serve === undefined,
   }).pipe(Layer.provide(boat))
+  const environments = Environments.layer.pipe(Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)))
   const peers = Peers.layer.pipe(
-    Layer.provideMerge(Environments.layer),
+    Layer.provideMerge(environments),
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
   )
-  const devices = devicesLayer({
-    drivers: {
-      ios: makeIosDriver({ cacheDir: join(userData, "devices"), sources: simhelperSources }),
-      android: makeAndroidDriver(),
-    },
-    simslimAvailable: () => simslimAvailable(),
-  })
+  const devices = devicesHubLayer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        environments,
+        devicesLayer({
+          drivers: {
+            ios: makeIosDriver({ cacheDir: join(userData, "devices"), sources: simhelperSources }),
+            android: makeAndroidDriver(),
+          },
+          simslimAvailable: () => simslimAvailable(),
+        }),
+      ),
+    ),
+  )
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,

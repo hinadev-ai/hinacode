@@ -5,8 +5,8 @@ import { binaryStatuses } from "./agents/binary.ts"
 import { bindKey, keyFor, probe } from "./agents/magpie/gateway.ts"
 import { MAGPIE_KEY_SECRET } from "../shared/providers.ts"
 import { AgentError } from "./agents/provider.ts"
-import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
-import { compactSubagentWork } from "../shared/subagents.ts"
+import { compactMessage, previewTranscriptMessage, transcriptPage } from "../shared/compactTranscript.ts"
+import { compactSubagentWork, previewSubagentWork } from "../shared/subagents.ts"
 import type {
   NotificationPermission,
   Opener,
@@ -18,6 +18,7 @@ import type {
 } from "../shared/domain.ts"
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
 import type { ArtifactExportRequest } from "../shared/artifact.ts"
+import type { BrowserTouch } from "../shared/browser.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
@@ -117,6 +118,8 @@ export interface DesktopCalls {
   readonly openPullRequestWindow: (threadId: string, url: string) => Effect.Effect<void>
   readonly setBadgeCount: (count: number) => Effect.Effect<void>
   readonly setColorScheme: (scheme: "dark" | "light" | "system") => Effect.Effect<void>
+  readonly emulateTouch: (webContentsId: number, enabled: boolean) => Effect.Effect<void>
+  readonly touch: (webContentsId: number, touch: BrowserTouch) => Effect.Effect<void>
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
@@ -186,6 +189,9 @@ const handlers: Handlers = {
   "browser.command": (input) => Browser.use((browser) => browser.command(input)),
   "browser.frame": (input) => Browser.use((browser) => browser.frame(input)),
   "browser.close": (input) => Browser.use((browser) => browser.close(input)),
+  "browser.emulateTouch": ({ webContentsId, enabled }, desktop) =>
+    desktop?.emulateTouch(webContentsId, enabled) ?? Effect.void,
+  "browser.touch": ({ webContentsId, ...touch }, desktop) => desktop?.touch(webContentsId, touch) ?? Effect.void,
   "app.ready": (_, desktop) => desktop?.show ?? Effect.void,
   "app.focus": (_, desktop) => desktop?.focus ?? Effect.void,
   "windows.openPullRequest": ({ threadId, url }, desktop) =>
@@ -344,6 +350,7 @@ const handlers: Handlers = {
   "environments.list": () => Environments.use((environments) => environments.list),
   "environments.add": (input) => Environments.use((environments) => environments.add(input)),
   "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
+  "environments.rename": ({ id, name }) => Environments.use((environments) => environments.rename(id, name)),
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
   "relayAccount.status": () => RelayAccount.use((account) => account.status),
   "relayAccount.signIn": (_, desktop) =>
@@ -425,7 +432,7 @@ const handlers: Handlers = {
   "threads.transcript": ({ threadId, compact = false, page }) =>
     AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
       Effect.map((transcript) => {
-        const messages = transcript.messages.map(compact ? compactMessage : previewMessage)
+        const messages = transcript.messages.map(compact ? compactMessage : previewTranscriptMessage)
         return page === undefined
           ? { ...transcript, messages }
           : { ...transcript, ...transcriptPage(messages, page.before) }
@@ -467,9 +474,9 @@ const handlers: Handlers = {
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
   "subagents.stop": ({ threadId, subagentId }) =>
     AgentRunner.use((runner) => runner.stopSubagent(threadId, subagentId)),
-  "subagents.transcript": ({ threadId, callId }) =>
+  "subagents.transcript": ({ threadId, callId, compact = true }) =>
     AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
-      Effect.map(({ messages }) => compactSubagentWork(messages, callId)),
+      Effect.map(({ messages }) => (compact ? compactSubagentWork : previewSubagentWork)(messages, callId)),
     ),
   "backgroundTasks.list": ({ threadId }) => AgentRunner.use((runner) => runner.backgroundTasks(threadId)),
   "backgroundTasks.stop": ({ threadId, taskId }) =>
@@ -519,18 +526,24 @@ const handlers: Handlers = {
   "terminal.list": ({ threadId }) => Terminals.use((terminals) => terminals.list(threadId)),
   "terminal.attach": ({ id, since }) => Terminals.use((terminals) => terminals.attach(id, since)),
 
-  "devices.list": () => Devices.use((devices) => devices.list()),
+  "devices.list": (input) => Devices.use((devices) => devices.list(input)),
   "device.get": ({ threadId }) => Devices.use((devices) => devices.get(threadId)),
   "device.attach": ({ threadId, deviceId }) => Devices.use((devices) => devices.attach(threadId, deviceId)),
   "device.create": ({ threadId, model }) => Devices.use((devices) => devices.create(threadId, model)),
   "device.detach": ({ threadId, deviceId }) => Devices.use((devices) => devices.detach(threadId, deviceId)),
   "device.delete": ({ threadId, deviceId }) => Devices.use((devices) => devices.delete(threadId, deviceId)),
-  "device.shutdown": ({ deviceId }) => Devices.use((devices) => devices.shutdown(deviceId)),
+  "device.shutdown": ({ threadId, deviceId }) => Devices.use((devices) => devices.shutdown(threadId, deviceId)),
   "device.frame": (input) => Devices.use((devices) => devices.frame(input)),
   "device.command": (input) => Devices.use((devices) => devices.command(input)),
   "device.control": ({ threadId, deviceId, control }) =>
     Devices.use((devices) => devices.control(threadId, deviceId, control)),
   "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
+  "device.act": ({ threadId, device, action, ...steps }) =>
+    Devices.use((devices) => devices.act(threadId, device, action, steps)),
+  "device.screenshot": ({ threadId, device }) => Devices.use((devices) => devices.screenshot(threadId, device)),
+  "device.describe": ({ threadId, device }) => Devices.use((devices) => devices.describe(threadId, device)),
+  "device.launch": ({ threadId, device, app }) => Devices.use((devices) => devices.launch(threadId, device, app)),
+  "device.release": ({ threadId }) => Devices.use((devices) => devices.release(threadId)),
   "device.screenshot.save": ({ threadId, dataUrl, name }) =>
     Attachments.use((attachments) => attachments.stage(threadId, { dataUrl, name })),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
