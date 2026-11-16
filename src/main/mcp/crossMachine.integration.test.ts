@@ -1,12 +1,15 @@
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
+import { randomBytes } from "node:crypto"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { Effect, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { SqlClient } from "effect/sql"
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest"
 import { unlistedModel } from "../../shared/agent.ts"
+import type { ExperimentalSettings } from "../../shared/domain.ts"
 import { RPC_CHANNEL } from "../../shared/channels.ts"
 import {
   PushEvent,
@@ -27,10 +30,12 @@ import { registerIpc } from "../ipc.ts"
 import { RemoteAccess } from "../remote/access.ts"
 import { unusedLoopbackPort } from "../remote/testing.ts"
 import { Peers } from "../remote/peers.ts"
+import { Environments } from "../services/Environments.ts"
 import { Events, PushBroadcast, WindowPush } from "../services/Events.ts"
 import { Messages } from "../services/Messages.ts"
 import { Settings } from "../services/Settings.ts"
 import { Threads } from "../services/Threads.ts"
+import { CHUNK_BYTES } from "../services/Files.ts"
 import { makeTestAppLayer } from "../testing.ts"
 import { McpCredentials } from "./credentials.ts"
 
@@ -40,13 +45,21 @@ interface Frame {
   readonly parent: Frame | null
 }
 
-const electron = vi.hoisted(() => ({ handlers: new Map<string, IpcHandler>(), userData: "" }))
+const electron = vi.hoisted(() => ({
+  handlers: new Map<string, IpcHandler>(),
+  userData: "",
+  drags: [] as Array<{ file: string }>,
+}))
 
 vi.mock("electron", () => ({
   Notification: EventTarget,
-  app: { getPath: () => electron.userData, focus: () => {} },
+  app: { getPath: () => electron.userData, focus: () => {}, getFileIcon: async () => ({}) },
+  nativeImage: { createFromPath: () => ({ isEmpty: () => true }) },
   ipcMain: { handle: (channel: string, handler: IpcHandler) => electron.handlers.set(channel, handler) },
-  BrowserWindow: { getAllWindows: () => [], fromWebContents: () => null },
+  BrowserWindow: {
+    getAllWindows: () => [],
+    fromWebContents: () => ({ webContents: { startDrag: (item: { file: string }) => electron.drags.push(item) } }),
+  },
   dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
   shell: { showItemInFolder: () => undefined },
   safeStorage: { isEncryptionAvailable: () => false },
@@ -184,13 +197,15 @@ let otherRepoThread = ""
 let noOriginThread = ""
 let desktopProject = ""
 let cloudProject = ""
+let desktopRepo = ""
+let cloudRepo = ""
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "kk-cross-machine-test-"))
   electron.userData = dir
-  const desktopRepo = join(dir, "desktop-repo")
+  desktopRepo = join(dir, "desktop-repo")
   const otherRepo = join(dir, "other-repo")
-  const cloudRepo = join(dir, "cloud-repo")
+  cloudRepo = join(dir, "cloud-repo")
   const desktopScratch = join(dir, "desktop-scratch")
   const cloudScratch = join(dir, "cloud-scratch")
   gitRepo(desktopRepo, "git@github.com:Acme/Web.git")
@@ -250,6 +265,181 @@ afterAll(async () => {
   await desktop.dispose()
   await cloud.dispose()
   rmSync(dir, { recursive: true, force: true })
+})
+
+const setExperimental = (runtime: Runtime, patch: Partial<ExperimentalSettings>) =>
+  runtime.runPromise(
+    Settings.use((settings) =>
+      Effect.flatMap(settings.get, ({ experimental }) => settings.set({ experimental: { ...experimental, ...patch } })),
+    ),
+  )
+
+const heldDevices = (runtime: Runtime, threadId: string) =>
+  runtime.runPromise(
+    SqlClient.SqlClient.use(
+      (sql) =>
+        sql`SELECT device_id, client_id, client_name FROM thread_device WHERE thread_id = ${threadId} ORDER BY rowid`,
+    ),
+  )
+
+describe("devices on another machine", () => {
+  test("a desktop thread attaches devices on the machine chosen to run them, held in the desktop's name", async () => {
+    await setExperimental(cloud, { devices: true })
+    await setExperimental(desktop, { devices: true, devicesOn: cloudId })
+    await vi.waitFor(async () => {
+      await invoke("device.attach", { threadId: desktopThread, deviceId: "android:Hub_Pixel" })
+      expect(await heldDevices(cloud, desktopThread)).toEqual([
+        { deviceId: "android:Hub_Pixel", clientId: desktopMachine.id, clientName: desktopMachine.name },
+      ])
+    })
+    expect(await heldDevices(desktop, desktopThread)).toEqual([])
+
+    await setExperimental(desktop, { devicesOn: null })
+    await vi.waitFor(async () => {
+      await invoke("device.attach", { threadId: desktopThread, deviceId: "android:Local_Pixel" })
+      expect(await heldDevices(desktop, desktopThread)).toEqual([
+        { deviceId: "android:Local_Pixel", clientId: null, clientName: null },
+      ])
+    })
+  })
+
+  test("a device call that reaches the desktop over its remote server, as the web app's do, runs on the hub", async () => {
+    await setExperimental(cloud, { devices: true })
+    await setExperimental(desktop, { devices: true, devicesOn: cloudId })
+    const desktopPort = await unusedLoopbackPort()
+    await desktop.runPromise(
+      Settings.use((settings) => settings.set({ remote: { enabled: true, bindHost: "127.0.0.1", port: desktopPort } })),
+    )
+    await vi.waitFor(async () =>
+      expect((await desktop.runPromise(RemoteAccess.use((remote) => remote.status))).listening).toBe(true),
+    )
+    const pairing = await desktop.runPromise(RemoteAccess.use((remote) => remote.pairing))
+    const url = pairingUrl({ hosts: ["127.0.0.1"], port: pairing.port, token: pairing.token, relay: null })
+    const viewer = await cloud.runPromise(
+      Environments.use((environments) => environments.add({ name: "desktop", pairingUrl: url })),
+    )
+    try {
+      const attached = await cloud.runPromise(
+        Environments.use((environments) =>
+          environments.forward(viewer.id, {
+            method: "device.attach",
+            payload: { threadId: desktopThread, deviceId: "android:Web_Pixel" },
+          }),
+        ),
+      )
+      expect(attached).not.toHaveProperty("error")
+      expect((await heldDevices(desktop, desktopThread)).map((row) => row.deviceId)).not.toContain("android:Web_Pixel")
+      expect(await heldDevices(cloud, desktopThread)).toContainEqual({
+        deviceId: "android:Web_Pixel",
+        clientId: desktopMachine.id,
+        clientName: desktopMachine.name,
+      })
+    } finally {
+      await cloud.runPromise(Environments.use((environments) => environments.remove(viewer.id)))
+      await desktop.runPromise(
+        Settings.use((settings) =>
+          settings.set({ remote: { enabled: false, bindHost: "127.0.0.1", port: desktopPort } }),
+        ),
+      )
+      await setExperimental(desktop, { devicesOn: null })
+    }
+  }, 30_000)
+
+  test("the hub serves a client's device calls itself even when it runs its own devices elsewhere", async () => {
+    await setExperimental(cloud, { devices: true, devicesOn: "a-machine-the-hub-uses" })
+    await setExperimental(desktop, { devices: true, devicesOn: cloudId })
+    try {
+      await vi.waitFor(async () => {
+        await invoke("device.attach", { threadId: desktopThread, deviceId: "android:Hub_Watch" })
+        expect((await heldDevices(cloud, desktopThread)).map((row) => row.deviceId)).toContain("android:Hub_Watch")
+      })
+    } finally {
+      await setExperimental(cloud, { devicesOn: null })
+      await setExperimental(desktop, { devicesOn: null })
+    }
+  })
+})
+
+describe("devices held on another machine", () => {
+  test("the hub learns the thread's title, and releases its devices once the thread is archived", async () => {
+    await setExperimental(cloud, { devices: true })
+    await setExperimental(desktop, { devices: true, devicesOn: cloudId })
+    const thread = result(await invoke("threads.create", { projectId: desktopProject })).id
+    await invoke("threads.update", { id: thread, title: "Fix login screen" })
+    await vi.waitFor(async () => {
+      await invoke("device.attach", { threadId: thread, deviceId: "android:Hub_Tablet" })
+      expect(await heldDevices(cloud, thread)).toHaveLength(1)
+    })
+    await vi.waitFor(
+      async () =>
+        expect(
+          await cloud.runPromise(
+            SqlClient.SqlClient.use((sql) => sql`SELECT thread_title FROM thread_device WHERE thread_id = ${thread}`),
+          ),
+        ).toEqual([{ threadTitle: "Fix login screen" }]),
+      { timeout: 12_000 },
+    )
+
+    result(await invoke("threads.archive", { threadId: thread }))
+    await vi.waitFor(async () => expect(await heldDevices(cloud, thread)).toEqual([]), { timeout: 12_000 })
+  }, 30_000)
+
+  test("an agent hears at once that the machine chosen to run devices is gone", async () => {
+    await setExperimental(desktop, { devices: true, devicesOn: "a-machine-that-was-removed" })
+    expect(await callAs(desktop, desktopThread, "device_screenshot")).toStrictEqual({
+      isError: true,
+      text: "The machine chosen to run devices is no longer paired. Pick another in Settings > Experimental > Run devices on.",
+    })
+    await setExperimental(desktop, { devicesOn: null })
+  })
+
+  test("switching back to this machine releases what the desktop held on the hub", async () => {
+    await setExperimental(desktop, { devices: true, devicesOn: cloudId })
+    await vi.waitFor(async () => {
+      await invoke("device.attach", { threadId: desktopThread, deviceId: "android:Hub_Phone" })
+      expect((await heldDevices(cloud, desktopThread)).map((row) => row.deviceId)).toContain("android:Hub_Phone")
+    })
+
+    await setExperimental(desktop, { devicesOn: null })
+    await vi.waitFor(async () => expect(await heldDevices(cloud, desktopThread)).toEqual([]), { timeout: 12_000 })
+  }, 30_000)
+})
+
+describe("dragging a file out of the window", () => {
+  test("hands the OS a file of a desktop project where it lies", async () => {
+    mkdirSync(join(desktopRepo, "art"), { recursive: true })
+    writeFileSync(join(desktopRepo, "art", "header.png"), "desktop pixels")
+    electron.drags.length = 0
+    result(await invoke("shell.dragFile", { root: desktopRepo, path: "art/header.png" }))
+    expect(electron.drags.map((drag) => drag.file)).toEqual([realpathSync(join(desktopRepo, "art", "header.png"))])
+  })
+
+  test("copies a file of a cloud project to this machine under its own name first", async () => {
+    mkdirSync(join(cloudRepo, "art"), { recursive: true })
+    writeFileSync(join(cloudRepo, "art", "header.png"), "cloud pixels")
+    electron.drags.length = 0
+    result(await invoke("shell.dragFile", { root: cloudRepo, path: "art/header.png" }))
+    const [drag] = electron.drags
+    expect(drag?.file).toBe(join(tmpdir(), "hinacode-drag", "header.png"))
+    expect(readFileSync(drag!.file, "utf8")).toBe("cloud pixels")
+  })
+})
+
+describe("downloading a file of a cloud project", () => {
+  test("saves it whole in Downloads, beside an earlier copy instead of over it", async () => {
+    const bytes = randomBytes(CHUNK_BYTES * 2 + 123)
+    writeFileSync(join(cloudRepo, "build.zip"), bytes)
+    const first = result(await invoke("shell.download", { root: cloudRepo, path: "build.zip" }))
+    const second = result(await invoke("shell.download", { root: cloudRepo, path: "build.zip" }))
+    expect([first.path, second.path]).toEqual([join(dir, "build.zip"), join(dir, "build (1).zip")])
+    expect(readFileSync(second.path).equals(bytes)).toBe(true)
+  })
+
+  test("leaves nothing behind when the file is gone", async () => {
+    const download = await invoke("shell.download", { root: cloudRepo, path: "missing.zip" })
+    expect("error" in download && download.error.tag).toBe("FsAccessError")
+    expect(existsSync(join(dir, "missing.zip"))).toBe(false)
+  })
 })
 
 describe("thread tools across machines", () => {

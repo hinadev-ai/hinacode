@@ -95,6 +95,7 @@ import { Messages, type ToolCallRef } from "./Messages.ts"
 import { touchesPullRequest } from "./pullRequestCommand.ts"
 import { PullRequests } from "./PullRequests.ts"
 import { Attachments, extensionForMime } from "./Attachments.ts"
+import { Environments } from "./Environments.ts"
 import { Scratch } from "./Scratch.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
@@ -362,6 +363,7 @@ const make = Effect.gen(function* () {
   const push = yield* Events
   const mcp = yield* McpCredentials
   const settings = yield* Settings
+  const environments = yield* Effect.serviceOption(Environments)
   const naming = yield* ThreadNaming
   const accounts = yield* AgentAccounts
   const projects = yield* Projects
@@ -382,6 +384,14 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => null),
     )
 
+  const deviceHubName = (hub: string | null) =>
+    hub === null || Option.isNone(environments)
+      ? Effect.succeed(hub)
+      : environments.value.list.pipe(
+          Effect.map(({ clouds }) => clouds.find((each) => each.id === hub)?.name ?? hub),
+          Effect.orElseSucceed(() => hub),
+        )
+
   const subagentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment) =>
     Effect.gen(function* () {
       const settingsValue = yield* settings.get
@@ -390,7 +400,12 @@ const make = Effect.gen(function* () {
         Record.map(providers, (provider, id) => (enabled.includes(id) ? listedModels(provider) : Effect.succeed(null))),
         { concurrency: "unbounded" },
       )
-      return agentInstructions(experimental, environment, subagentChoices(listed, settingsValue.modelPresets, enabled))
+      return agentInstructions(
+        experimental,
+        environment,
+        subagentChoices(listed, settingsValue.modelPresets, enabled),
+        yield* deviceHubName(experimental.devicesOn),
+      )
     })
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">

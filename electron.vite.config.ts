@@ -1,4 +1,4 @@
-import { createRequire } from "node:module"
+import { createRequire, isBuiltin } from "node:module"
 import { resolve } from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import { defineConfig } from "electron-vite"
@@ -13,14 +13,15 @@ export default defineConfig({
   main: {
     plugins: [paraglide()],
     esbuild: { minifyIdentifiers: false, minifySyntax: false },
+    // FIXME: Vite bundles ws's missing optional bufferutil and utf-8-validate as empty modules, which ws then calls
+    define: { "process.env.WS_NO_BUFFER_UTIL": '"1"', "process.env.WS_NO_UTF_8_VALIDATE": '"1"' },
     build: {
       minify: "esbuild",
       rollupOptions: { input: { index: "src/main/boot.ts", main: "src/main/index.ts" } },
       // FIXME: electron-vite bundles optional dependencies, which breaks these native modules' binding lookup
-      externalizeDeps: {
-        include: ["node-mac-permissions", "electron-liquid-glass"],
-        exclude: ["effect", "@effect/platform-node", "@effect/sql-sqlite-node", "@hinacode/artifacts"],
-      },
+      externalizeDeps: { include: ["node-mac-permissions", "electron-liquid-glass"] },
+      // FIXME: the ES module bundle has no `require`, so protobufjs's try/catch require("fs") silently fails
+      commonjsOptions: { ignoreTryCatch: (id: string) => !isBuiltin(id) },
     },
   },
   preload: {

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import { Clock, Context, Deferred, Effect, Fiber, FiberMap, Layer, Option, Schedule, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { type RawData, WebSocket } from "ws"
-import { methodKind, type RpcEnvelope, type RpcMethod } from "../../shared/contract.ts"
+import { methodKind, type RpcEnvelope, type RpcMethod, RpcMethods } from "../../shared/contract.ts"
 import { Environment, type EnvironmentStatus, type Environments as EnvironmentList } from "../../shared/domain.ts"
 import { clientProof, newNonce, serverProof } from "../../shared/proof.ts"
 import {
@@ -64,6 +64,7 @@ export class Environments extends Context.Service<
       InvalidPairingUrl | EnvironmentUnreachable | EnvironmentUnauthorized | PersistenceError
     >
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
+    readonly rename: (id: string, name: string) => Effect.Effect<void, PersistenceError>
     readonly syncRelay: (machines: ReadonlyArray<RelayMachine>) => Effect.Effect<number, PersistenceError>
     readonly reconnect: (id: string) => Effect.Effect<void>
     readonly reconnectAll: Effect.Effect<void>
@@ -94,6 +95,11 @@ const unauthorized = (name: string): RpcEnvelope<never> => ({
 const incompatible = (name: string): RpcEnvelope<never> => ({
   error: { tag: "EnvironmentIncompatible", message: `${name} runs a hinacode this desktop cannot talk to` },
 })
+const versionMismatch = (name: string): RpcEnvelope<never> => ({
+  error: { tag: "EnvironmentVersionMismatch", message: name },
+})
+const fitsThisVersion = (method: RpcMethod, result: unknown) =>
+  Option.isSome(Schema.decodeUnknownOption(RpcMethods[method].response as Schema.Codec<unknown, unknown>)(result))
 const unknownEnvironment = (id: string): RpcEnvelope<never> => ({
   error: { tag: "NotFoundError", message: `No environment with id ${id}` },
 })
@@ -720,6 +726,16 @@ const make = Effect.gen(function* () {
       owners.forget(id)
     })
 
+  const rename = (id: string, name: string) =>
+    Effect.gen(function* () {
+      yield* sql`UPDATE environment SET name = ${name} WHERE id = ${id}`.pipe(
+        Effect.mapError(persistence("environments.rename")),
+      )
+      const cloud = clouds.get(id)
+      if (cloud !== undefined) cloud.environment = { ...cloud.environment, name }
+      yield* events.publish({ type: "environments.changed" })
+    })
+
   const syncRelay = (machines: ReadonlyArray<RelayMachine>) =>
     Effect.gen(function* () {
       const failed = persistence("environments.syncRelay")
@@ -754,28 +770,20 @@ const make = Effect.gen(function* () {
           changed = true
           continue
         }
-        const environment: Environment = {
-          ...existing,
-          name: existing.source === "relay" ? name : existing.name,
-          host,
-          port,
-          relay,
-        }
+        const environment: Environment = { ...existing, host, port, relay }
         const redial =
           host !== existing.host ||
           port !== existing.port ||
           relay !== existing.relay ||
           token !== Option.getOrNull(yield* secrets.get(tokenSecret(id)))
-        if (!redial && environment.name === existing.name) continue
-        yield* sql`UPDATE environment SET name = ${environment.name}, host = ${host}, port = ${port}, relay = ${relay} WHERE id = ${id}`.pipe(
+        if (!redial) continue
+        yield* sql`UPDATE environment SET host = ${host}, port = ${port}, relay = ${relay} WHERE id = ${id}`.pipe(
           Effect.andThen(secrets.set(tokenSecret(id), token)),
           sql.withTransaction,
           Effect.catchTag("SqlError", (error) => Effect.fail(failed(error))),
         )
         changed = true
-        const cloud = clouds.get(id)
-        if (redial || cloud === undefined) yield* start(environment)
-        else cloud.environment = environment
+        yield* start(environment)
       }
       yield* Effect.forEach(drop, (row) => remove(row.id), { discard: true })
       if (changed) yield* events.publish({ type: "environments.changed" })
@@ -823,12 +831,13 @@ const make = Effect.gen(function* () {
       }).pipe(
         Effect.map((envelope) => {
           if ("error" in envelope) return envelope
-          learnFromAnswer(owners, environmentId, method, payload, envelope.result)
           const result = nameMachines(
             method,
             stampEnvironment(method, envelope.result, environmentId),
             cloud.environment.name,
           )
+          if (!fitsThisVersion(method, result)) return versionMismatch(name)
+          learnFromAnswer(owners, environmentId, method, payload, envelope.result)
           cloud.remembered.set(method, { payload: JSON.stringify(payload ?? null), result })
           return { result }
         }),
@@ -861,6 +870,7 @@ const make = Effect.gen(function* () {
     list,
     add,
     remove,
+    rename,
     syncRelay,
     reconnect,
     reconnectAll,

@@ -26,6 +26,7 @@ import {
   relayAccountAtom,
   relayMachinesAtom,
   removeEnvironmentAtom,
+  renameEnvironmentAtom,
   removeRelayMachineAtom,
   setRelayMachineShownAtom,
   signInRelayAtom,
@@ -48,6 +49,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog.tsx"
+import { RenameDialog } from "../RenameDialog.tsx"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
@@ -353,6 +355,7 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
             </Button>
           )}
           {(cloud.status === "offline" || cloud.status === "incompatible") && <ReconnectButton cloud={cloud} />}
+          <RenameEnvironmentButton cloud={cloud} />
           {!fromRelay && <RemoveEnvironmentButton cloud={cloud} />}
         </div>
       </div>
@@ -503,6 +506,25 @@ function CloudUpdateHint({ cloud }: { cloud: Cloud }) {
   }
   if (state?.type === "failed") return <FieldError>{state.message}</FieldError>
   return null
+}
+
+function RenameEnvironmentButton({ cloud }: { cloud: Cloud }) {
+  const renameEnvironment = useAtomSet(renameEnvironmentAtom, { mode: "promise" })
+  const [open, setOpen] = useState(false)
+
+  return (
+    <>
+      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+        {m.environment_rename()}
+      </Button>
+      <RenameDialog
+        name={cloud.name}
+        onRename={(name) => renameEnvironment({ id: cloud.id, name })}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
+  )
 }
 
 function RemoveEnvironmentButton({ cloud }: { cloud: Cloud }) {
