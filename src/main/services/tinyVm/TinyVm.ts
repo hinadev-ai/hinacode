@@ -98,6 +98,7 @@ const PROFILE_SAVE_ON_STOP: Duration.Input = "60 seconds"
 const PROFILE_SAVE_ON_QUIT: Duration.Input = "2 seconds"
 const QUIT_TIMEOUT: Duration.Input = "3 seconds"
 const SETUP_SCRIPT_TIMEOUT_SECONDS = 600
+const COPY_ONLY_CLIPBOARD_SCRIPT = "vncconfig -display :0 -set SendPrimary=0"
 const SETUP_OUTPUT_TAIL = 2000
 const PROFILE_EXCLUDES = [
   "chromium/*/Cache",
@@ -504,6 +505,14 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
       Effect.gen(function* () {
         const sbx = yield* sbxClientEffect
         const sandbox = yield* sbx.create(template, configuredEnv).pipe(Effect.mapError(toVmError))
+        yield* sbx.exec(sandbox.id, { script: COPY_ONLY_CLIPBOARD_SCRIPT, timeoutSeconds: 10 }).pipe(
+          Effect.flatMap((result) =>
+            result.exitCode === 0 ? Effect.void : Effect.fail(`exit code ${result.exitCode}`),
+          ),
+          Effect.catch((cause) =>
+            Effect.logWarning("tiny vm: selected text may still reach the host clipboard", String(cause)),
+          ),
+        )
         yield* runSetupScript(sbx, sandbox.id).pipe(Effect.tapError(() => Effect.ignore(sbx.remove(sandbox.id))))
         const profile = yield* prepareProfile(threadId, sbx, sandbox.id)
         return { sandboxId: sandbox.id, profile, dispose: Effect.ignore(sbx.remove(sandbox.id)) }
