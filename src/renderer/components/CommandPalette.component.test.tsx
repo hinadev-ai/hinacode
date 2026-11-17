@@ -23,7 +23,7 @@ const bridge: HinacodeBridge = {
           {
             id: "project-1",
             name: "hinacode",
-            rootPath: "/home/dev/hinacode",
+            rootPath: "/home/dev/code/clients/acme/monorepo/packages/desktop-shell/hinacode",
             setupScript: null,
             createdAt: "2026-11-01T00:00:00.000Z",
             updatedAt: "2026-11-01T00:00:00.000Z",
@@ -65,4 +65,18 @@ test("a long thread title truncates inside the result list instead of scrolling 
 
   const list = page.getByRole("listbox").element()
   expect(list.scrollWidth).toBeLessThanOrEqual(list.clientWidth)
+})
+
+test("a short title stays whole and its long path gives way", async () => {
+  useThreads.setState({ byId: {}, drafts: {}, sidechats: {} } as never)
+  usePalette.getState().show("")
+  const rootRoute = createRootRoute({ component: CommandPalette })
+  const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory() })
+  await render(<RouterProvider router={router} />)
+
+  const title = page.getByText("New thread in hinacode", { exact: true })
+  await expect.element(title).toBeVisible()
+  const path = page.getByText("/home/dev/code/clients/acme/monorepo/packages/desktop-shell/hinacode").element()
+  expect(path.scrollWidth).toBeGreaterThan(path.clientWidth)
+  expect(title.element().scrollWidth).toBeLessThanOrEqual(title.element().clientWidth)
 })
