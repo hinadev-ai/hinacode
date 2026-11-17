@@ -1376,6 +1376,20 @@ layer(testLayer)("tiny vm tools", (it) => {
     }),
   )
 
+  it.effect("a new VM keeps text the user only selects out of this machine's clipboard", () =>
+    Effect.gen(function* () {
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      const execsBefore = fake.execs.length
+      yield* vm.start(a)
+      expect(fake.execs.slice(execsBefore).map((exec) => exec.script)).toContain(
+        "vncconfig -display :0 -set SendPrimary=0",
+      )
+    }),
+  )
+
   it.effect("vm_screenshot returns the screen as an image, and racing calls share one sandbox", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials

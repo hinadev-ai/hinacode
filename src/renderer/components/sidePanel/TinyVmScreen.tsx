@@ -53,12 +53,19 @@ export default function TinyVmScreen({
     applyControl(rfb)
     const onConnect = () => setConnection("connected")
     const onDisconnect = () => setConnection("lost")
+    const onClipboard = (event: Event) => {
+      if (!document.hasFocus() || !target.contains(document.activeElement)) return
+      const text: unknown = event instanceof CustomEvent ? Reflect.get(Object(event.detail), "text") : undefined
+      if (typeof text === "string" && text !== "") navigator.clipboard.writeText(text).catch(toastError)
+    }
     rfb.addEventListener("connect", onConnect)
     rfb.addEventListener("disconnect", onDisconnect)
+    rfb.addEventListener("clipboard", onClipboard)
     rfbRef.current = rfb
     return () => {
       rfb.removeEventListener("connect", onConnect)
       rfb.removeEventListener("disconnect", onDisconnect)
+      rfb.removeEventListener("clipboard", onClipboard)
       rfb.disconnect()
       rfbRef.current = null
     }

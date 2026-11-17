@@ -181,7 +181,10 @@ it.effect("a new VM gets the configured environment and runs the setup script be
 
       expect(vm).toMatchObject({ status: "running" })
       expect(fake.createdEnvs).toEqual([{ NODE_ENV: "development" }])
-      expect(fake.execs.map((exec) => exec.script)).toEqual(["sudo apt-get install -y jq"])
+      expect(fake.execs.map((exec) => exec.script)).toEqual([
+        "vncconfig -display :0 -set SendPrimary=0",
+        "sudo apt-get install -y jq",
+      ])
     }),
   ),
 )
