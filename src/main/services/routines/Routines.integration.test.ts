@@ -238,7 +238,7 @@ describe("routine scheduling", () => {
     ),
   )
 
-  it.effect("rejects an empty name, model or prompt and an unknown project", () =>
+  it.effect("rejects an empty name or prompt and an unknown project", () =>
     withApp(({ projectId }) =>
       Effect.gen(function* () {
         const routine = yield* createRoutine(projectId)

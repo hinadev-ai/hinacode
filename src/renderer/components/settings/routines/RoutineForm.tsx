@@ -36,6 +36,7 @@ const ComposerInput = lazy(() =>
 )
 
 const DEFAULT_EFFORT = "default"
+const AGENT_DEFAULT_MODEL = ""
 const noCommands: ReadonlyArray<AgentCommand> = []
 const noThreads = { sameMachine: [], otherMachines: [] }
 const pillClass =
@@ -60,7 +61,7 @@ const emptyDraft = (projectId: string): Draft => ({
   schedule: defaultScheduleDraft,
   prompt: "",
   provider: null,
-  model: "",
+  model: AGENT_DEFAULT_MODEL,
   effort: null,
   workspace: "local",
   enabled: true,
@@ -121,7 +122,6 @@ function RoutineForm({ state, projects, onDone }: RoutineFormProps) {
   const settings = useSettings(environment)
   const installed = useInstalledProviders(environment)
   const provider = draft.provider ?? startingProvider(settings, installed)
-  const model = draft.model || (settings.defaultModel[provider] ?? "")
   const commandsResult = useAtomValue(projectCommandsAtom(draft.projectId, provider))
   const commands = AsyncResult.getOrElse(commandsResult, () => noCommands)
   const cron = toCron(draft.schedule)
@@ -134,7 +134,7 @@ function RoutineForm({ state, projects, onDone }: RoutineFormProps) {
       enabled: input.enabled,
       prompt: input.prompt,
       provider,
-      model: model.trim(),
+      model: input.model.trim(),
       effort: input.effort,
       workspace: input.workspace,
       schedule: cron === null ? null : { cron, timezone },
@@ -209,7 +209,8 @@ function RoutineForm({ state, projects, onDone }: RoutineFormProps) {
             environment={environment}
             providers={enabledProviders(settings, installed)}
             provider={provider}
-            model={model}
+            defaultModel={settings.defaultModel[provider]}
+            model={draft.model}
             effort={draft.effort}
             onChange={patch}
           />
@@ -235,7 +236,7 @@ function RoutineForm({ state, projects, onDone }: RoutineFormProps) {
           {m.routines_enabled_label()}
         </Label>
         <DialogClose render={<Button type="button" variant="outline" />}>{m.common_cancel()}</DialogClose>
-        <Button type="submit" disabled={isPending || invalidSchedule || project === undefined || model.trim() === ""}>
+        <Button type="submit" disabled={isPending || invalidSchedule || project === undefined}>
           {editing ? m.settings_save() : m.routines_create()}
         </Button>
       </DialogFooter>
@@ -247,12 +248,13 @@ interface AgentFieldsProps {
   readonly environment: EnvironmentId
   readonly providers: ReadonlyArray<ProviderId>
   readonly provider: ProviderId
+  readonly defaultModel: string | null
   readonly model: string
   readonly effort: string | null
   readonly onChange: (next: Partial<Pick<Draft, "provider" | "model" | "effort">>) => void
 }
 
-function AgentFields({ environment, providers, provider, model, effort, onChange }: AgentFieldsProps) {
+function AgentFields({ environment, providers, provider, defaultModel, model, effort, onChange }: AgentFieldsProps) {
   const models = useAtomValue(modelsAtom(environment, provider))
   const listed = AsyncResult.getOrElse(models, () => [])
   const current = listed.find((candidate) => candidate.id === model)
@@ -260,8 +262,17 @@ function AgentFields({ environment, providers, provider, model, effort, onChange
     value: id,
     label: providerLabel[id](),
   }))
-  const modelItems = listed.map((candidate) => ({ value: candidate.id, label: candidate.label }))
-  if (model !== "" && current === undefined) modelItems.push({ value: model, label: model })
+  const defaultLabel =
+    defaultModel === null
+      ? m.settings_model_agent_default()
+      : m.routines_model_default_named({
+          model: listed.find((candidate) => candidate.id === defaultModel)?.label ?? defaultModel,
+        })
+  const modelItems = [
+    { value: AGENT_DEFAULT_MODEL, label: defaultLabel },
+    ...listed.map((candidate) => ({ value: candidate.id, label: candidate.label })),
+  ]
+  if (model !== AGENT_DEFAULT_MODEL && current === undefined) modelItems.push({ value: model, label: model })
   const efforts = current?.efforts ?? []
   const effortItems = [
     {
@@ -282,7 +293,9 @@ function AgentFields({ environment, providers, provider, model, effort, onChange
       <Select
         items={providerItems}
         value={provider}
-        onValueChange={(next) => isProviderId(next) && onChange({ provider: next, model: "", effort: null })}
+        onValueChange={(next) =>
+          isProviderId(next) && onChange({ provider: next, model: AGENT_DEFAULT_MODEL, effort: null })
+        }
       >
         <SelectTrigger size="sm" aria-label={m.thread_provider_label()} className={pillClass}>
           <ProviderIcon provider={provider} />
@@ -300,7 +313,7 @@ function AgentFields({ environment, providers, provider, model, effort, onChange
       {listed.length > 0 ? (
         <Select items={modelItems} value={model} onValueChange={(next) => typeof next === "string" && pickModel(next)}>
           <SelectTrigger size="sm" aria-label={m.thread_model_label()} className={cn(pillClass, "max-w-48")}>
-            <SelectValue placeholder={m.settings_models_pick()} className="truncate" />
+            <SelectValue className="truncate" />
           </SelectTrigger>
           <SelectContent>
             {modelItems.map((item) => (
@@ -313,10 +326,9 @@ function AgentFields({ environment, providers, provider, model, effort, onChange
       ) : (
         <Input
           aria-label={m.thread_model_label()}
-          required
           value={model}
           onChange={(event) => onChange({ model: event.target.value })}
-          placeholder={AsyncResult.isInitial(models) ? m.settings_models_loading() : m.thread_model_placeholder()}
+          placeholder={AsyncResult.isInitial(models) ? m.settings_models_loading() : defaultLabel}
           spellCheck={false}
           className="h-7 w-44 font-mono text-xs"
         />

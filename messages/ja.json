@@ -682,6 +682,7 @@
   "routines_prompt_required": "先にプロンプトを入力してください。",
   "routines_enabled_label": "有効",
   "routines_create": "ルーティンを作成",
+  "routines_model_default_named": "デフォルト ({model})",
   "routines_webhook_url_label": "Webhook URL",
   "routines_listen_failed": "リスナーが動作していません: {message}",
   "routines_copy_url": "Webhook URL をコピー",
