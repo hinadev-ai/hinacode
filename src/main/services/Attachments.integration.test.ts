@@ -14,11 +14,14 @@ import { Messages, layer as messagesLayer } from "./Messages.ts"
 const roots = mkdtempSync(join(tmpdir(), "kk-attachments-"))
 afterAll(() => rmSync(roots, { recursive: true, force: true }))
 
-const inFreshRoot = <A, E, R>(test: (root: string) => Effect.Effect<A, E, R>) => {
+const inFreshRoot = <A, E, R>(test: (root: string, artifactsRoot: string) => Effect.Effect<A, E, R>) => {
   const root = mkdtempSync(join(roots, "root-"))
-  return test(root).pipe(
+  const artifactsRoot = mkdtempSync(join(roots, "artifacts-"))
+  return test(root, artifactsRoot).pipe(
     Effect.provide(
-      Layer.mergeAll(attachmentsLayer(root), messagesLayer).pipe(Layer.provideMerge(Db.layer(":memory:"))),
+      Layer.mergeAll(attachmentsLayer(root, { artifactsRoot }), messagesLayer).pipe(
+        Layer.provideMerge(Db.layer(":memory:")),
+      ),
     ),
   )
 }
@@ -102,6 +105,23 @@ describe("Attachments", () => {
         yield* deleteThread(deleted)
 
         expect(existsSync(queued.path)).toBe(true)
+      }),
+    ),
+  )
+
+  it.effect("keeps a file that an artifact comment embeds", () =>
+    inFreshRoot((_root, artifactsRoot) =>
+      Effect.gen(function* () {
+        const { threadId } = yield* seedThread({ rootPath: "/repo" })
+        const screenshot = yield* stagePng(threadId, "vm-screenshot.png")
+        const comments = join(artifactsRoot, "a1")
+        mkdirSync(comments)
+        const body = `Broken here: ![VM screenshot](<${screenshot.path}>)`
+        writeFileSync(join(comments, "feedback.json"), JSON.stringify({ comments: [{ messages: [{ body }] }] }))
+
+        yield* deleteThread(threadId)
+
+        expect(existsSync(screenshot.path)).toBe(true)
       }),
     ),
   )
