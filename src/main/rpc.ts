@@ -300,8 +300,8 @@ const handlers: Handlers = {
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
   "threads.undoTurn": ({ threadId }) => Threads.use((threads) => threads.undoTurn(threadId)),
-  "threads.archive": ({ threadId }) =>
-    Threads.use((threads) => threads.archive(threadId)).pipe(Effect.tap(announceThread)),
+  "threads.archive": ({ threadId, discardChanges }) =>
+    Threads.use((threads) => threads.archive(threadId, { discardChanges })).pipe(Effect.tap(announceThread)),
   "threads.unarchive": ({ threadId }) =>
     Threads.use((threads) => threads.unarchive(threadId)).pipe(Effect.tap(announceThread)),
   "threads.settle": ({ threadId }) => Settle.use((settle) => settle.settle(threadId)).pipe(Effect.tap(announceThread)),

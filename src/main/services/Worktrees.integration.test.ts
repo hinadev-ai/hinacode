@@ -146,12 +146,12 @@ const createThread = (projectId: string, title: string, branch?: string) =>
     }),
   )
 
-const archiveRemovingWorktree = (threadId: string) =>
+const archiveRemovingWorktree = (threadId: string, options?: { readonly discardChanges?: boolean }) =>
   Settings.use((settings) =>
     settings.set({
       archive: { whenMerged: false, removeWorktree: true, settleAfterIdleDays: null, archiveAfterSettledDays: null },
     }),
-  ).pipe(Effect.andThen(Threads.use((threads) => threads.archive(threadId))))
+  ).pipe(Effect.andThen(Threads.use((threads) => threads.archive(threadId, options))))
 
 const forkThread = (threadId: string) =>
   Effect.gen(function* () {
@@ -341,6 +341,26 @@ describe("background setup", () => {
     ),
   )
 
+  it.live("archiving stops a setup script that never finishes even when it keeps the dirty checkout", () =>
+    withRepo(
+      ({ root, projectId }) =>
+        Effect.gen(function* () {
+          const pidPath = join(root, "setup.pid")
+          yield* startHangingSetup(projectId, pidPath)
+          const thread = yield* createThread(projectId, "hung", "kk/hung")
+          yield* waitForSetupOutput(thread.worktreeId)
+          const { path } = yield* worktreeOf(thread.worktreeId)
+          writeFileSync(join(path, "draft.txt"), "unsaved")
+
+          expect((yield* archiveRemovingWorktree(thread.id)).status).toBe("archived")
+          expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
+          expect(readFileSync(join(path, "draft.txt"), "utf8")).toBe("unsaved")
+          expect((yield* worktreeOf(thread.worktreeId)).status).not.toBe("removed")
+        }),
+      { setupTiming: quickForceKill },
+    ),
+  )
+
   it.live("stopping a setup script that never finishes fails the worktree and releases a send waiting on it", () =>
     withRepo(
       ({ root, projectId }) =>
@@ -491,7 +511,7 @@ describe("worktree ownership", () => {
         expect((yield* archiveRemovingWorktree(first.id)).status).toBe("archived")
         expect(existsSync(join(worktree.path, "sentinel"))).toBe(true)
 
-        yield* archiveRemovingWorktree(second.id)
+        yield* archiveRemovingWorktree(second.id, { discardChanges: true })
         yield* waitUntilDeleted(worktree.path)
       }),
     ),
@@ -573,8 +593,8 @@ describe("worktree ownership", () => {
         const forkCheckout = yield* worktreeOf(fork.worktreeId)
         expect(readFileSync(join(forkCheckout.path, "draft.txt"), "utf8")).toBe("uncommitted\n")
 
-        yield* archiveRemovingWorktree(fork.id)
-        yield* archiveRemovingWorktree(source.id)
+        yield* archiveRemovingWorktree(fork.id, { discardChanges: true })
+        yield* archiveRemovingWorktree(source.id, { discardChanges: true })
         expect((yield* worktreeOf(fork.worktreeId)).status).toBe("removed")
         expect((yield* worktreeOf(source.worktreeId)).status).toBe("removed")
       }),
@@ -610,6 +630,29 @@ describe("worktree ownership", () => {
         const worktree = yield* worktreeOf(thread.worktreeId)
         expect(worktree.status).toBe("removed")
         yield* waitUntilDeleted(worktree.path)
+      }),
+    ),
+  )
+
+  it.live("archiving keeps a checkout with uncommitted changes unless the caller confirmed losing them", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const kept = yield* createThread(projectId, "from the phone", "kk/from-the-phone")
+        const discarded = yield* createThread(projectId, "confirmed", "kk/confirmed")
+        yield* waitUntilSetUp(kept.worktreeId)
+        yield* waitUntilSetUp(discarded.worktreeId)
+        const keptCheckout = yield* worktreeOf(kept.worktreeId)
+        const discardedCheckout = yield* worktreeOf(discarded.worktreeId)
+        writeFileSync(join(keptCheckout.path, "draft.txt"), "unsaved")
+        writeFileSync(join(discardedCheckout.path, "draft.txt"), "unsaved")
+
+        expect((yield* archiveRemovingWorktree(kept.id)).status).toBe("archived")
+        expect((yield* worktreeOf(kept.worktreeId)).status).toBe("ready")
+        expect(readFileSync(join(keptCheckout.path, "draft.txt"), "utf8")).toBe("unsaved")
+
+        expect((yield* archiveRemovingWorktree(discarded.id, { discardChanges: true })).status).toBe("archived")
+        expect((yield* worktreeOf(discarded.worktreeId)).status).toBe("removed")
+        yield* waitUntilDeleted(discardedCheckout.path)
       }),
     ),
   )
@@ -938,7 +981,7 @@ describe("thread changes", () => {
         expect(changes?.patch).toContain("diff --git a/new.txt b/new.txt")
         expect(changes?.patch).toContain("+fresh")
 
-        yield* archiveRemovingWorktree(thread.id)
+        yield* archiveRemovingWorktree(thread.id, { discardChanges: true })
         expect(yield* Threads.use((threads) => threads.changes(thread.id, "worktree"))).toBeNull()
       }),
     ),

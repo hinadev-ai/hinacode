@@ -84,6 +84,10 @@ interface CreateThread {
 
 type DraftThread = Omit<CreateThread, "accessMode" | "worktree" | "createdBy" | "parentId">
 
+export interface ArchiveOptions {
+  readonly discardChanges?: boolean
+}
+
 export interface UpdateThread {
   readonly id: string
   readonly title?: string | undefined
@@ -174,10 +178,12 @@ export class Threads extends Context.Service<
     >
     readonly archive: (
       id: string,
+      options?: ArchiveOptions,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeBusyError | ThreadBusyError>
     readonly archiveIf: <E>(
       id: string,
       stillDue: (thread: Thread) => Effect.Effect<boolean, E>,
+      options?: ArchiveOptions,
     ) => Effect.Effect<
       Option.Option<Thread>,
       E | PersistenceError | NotFoundError | CommandError | WorktreeBusyError | ThreadBusyError
@@ -792,24 +798,30 @@ const make = Effect.gen(function* () {
   const removeOwnWorktree = (thread: Thread) =>
     thread.worktreeId ? worktrees.remove(thread.worktreeId, "ifMerged", thread.id) : Effect.void
 
-  const removeWorktreeIfSet = (thread: Thread) =>
+  const removeWorktreeIfSet = (thread: Thread, { discardChanges = false }: ArchiveOptions = {}) =>
     Effect.gen(function* () {
       if (!(yield* settings.get).archive.removeWorktree || !thread.worktreeId) return
-      yield* worktrees.removeWhileExclusive(thread.worktreeId, "ifMerged", thread.id).pipe(
-        Effect.catchIf(
-          (error) => error._tag === "WorktreeBusyError" && error.reason === "shared",
-          () => Effect.void,
-        ),
-      )
+      yield* worktrees
+        .removeWhileExclusive(thread.worktreeId, "ifMerged", thread.id, { keepChanges: !discardChanges })
+        .pipe(
+          Effect.catchIf(
+            (error) => error._tag === "WorktreeBusyError" && error.reason === "shared",
+            () => Effect.void,
+          ),
+        )
     })
 
-  const archiveIf = <E>(id: string, stillDue: (thread: Thread) => Effect.Effect<boolean, E>) =>
+  const archiveIf = <E>(
+    id: string,
+    stillDue: (thread: Thread) => Effect.Effect<boolean, E>,
+    options?: ArchiveOptions,
+  ) =>
     worktrees.exclusive(
       Effect.gen(function* () {
         const thread = yield* get(id)
         if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
         if (!(yield* stillDue(thread))) return Option.none<Thread>()
-        yield* removeWorktreeIfSet(thread)
+        yield* removeWorktreeIfSet(thread, options)
         yield* terminals.closeThread(id)
         yield* sql`
           UPDATE thread SET status = 'archived', usage_limit = NULL, updated_at = ${yield* nowIso} WHERE id = ${id}
@@ -821,7 +833,8 @@ const make = Effect.gen(function* () {
       }),
     )
 
-  const archive = (id: string) => archiveIf(id, () => Effect.succeed(true)).pipe(Effect.map(Option.getOrThrow))
+  const archive = (id: string, options?: ArchiveOptions) =>
+    archiveIf(id, () => Effect.succeed(true), options).pipe(Effect.map(Option.getOrThrow))
 
   const unarchive = (id: string) =>
     Effect.gen(function* () {
