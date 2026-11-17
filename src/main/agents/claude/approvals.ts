@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto"
 import type { CanUseTool, PermissionResult } from "@anthropic-ai/claude-agent-sdk"
 import { Deferred, Effect } from "effect"
-import type { AgentEvent, ApprovalDecision, ApprovalKind, ProviderId, SessionScope } from "../../../shared/agent.ts"
+import {
+  type AgentEvent,
+  type ApprovalDecision,
+  type ApprovalKind,
+  grantsForSession,
+  type ProviderId,
+  type SessionScope,
+  sessionDecision,
+} from "../../../shared/agent.ts"
 import { FILE_EDIT_TOOLS } from "./mapMessage.ts"
 
 export interface ApprovalSession {
@@ -74,7 +82,7 @@ export function makeApprovals<S extends ApprovalSession>(
         title: options.title ?? options.displayName ?? toolName,
         detail: options.description ?? approvalDetail(input),
         input,
-        sessionScope: scope,
+        ...(grantsForSession(toolName) ? { sessionScope: scope } : { allowForSession: false }),
       },
     })
 
@@ -94,7 +102,9 @@ export function makeApprovals<S extends ApprovalSession>(
     Effect.suspend(() => {
       const approval = pending.get(requestId)
       if (approval === undefined) return Effect.succeed(false)
-      if (decision === "allow_for_session") approval.session.sessionGrants.add(grantKey(approval.scope))
+      if (sessionDecision(approval.scope.tool, decision) === "allow_for_session") {
+        approval.session.sessionGrants.add(grantKey(approval.scope))
+      }
       const delivered = decision === "deny" && note !== undefined
       return Deferred.succeed(approval.deferred, delivered ? { decision, note } : { decision }).pipe(
         Effect.as(delivered),

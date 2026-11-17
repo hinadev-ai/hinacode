@@ -58,9 +58,11 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
         <Button size="sm" disabled={isPending} onClick={choose("allow")}>
           {m.approval_allow()}
         </Button>
-        <Button size="sm" variant="outline" disabled={isPending} onClick={choose("allow_for_session")}>
-          {m.approval_allow_session()}
-        </Button>
+        {request.allowForSession !== false && (
+          <Button size="sm" variant="outline" disabled={isPending} onClick={choose("allow_for_session")}>
+            {m.approval_allow_session()}
+          </Button>
+        )}
         <Button size="sm" variant="destructive" disabled={isPending} onClick={choose("deny")}>
           {m.approval_deny()}
         </Button>

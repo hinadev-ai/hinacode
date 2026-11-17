@@ -8,6 +8,7 @@ import { DeviceTools, deviceToolsLayer } from "./devices.ts"
 import { LinearTools, linearToolsLayer } from "./linear.ts"
 import { PullRequestTools, pullRequestToolsLayer } from "./pullRequests.ts"
 import { ReviewTools, reviewToolsLayer } from "./reviewChanges.ts"
+import { ScriptTools, scriptToolsLayer } from "./runScript.ts"
 import { SecretTools, secretToolsLayer } from "./secrets.ts"
 import { TerminalTools, terminalToolsLayer } from "./terminals.ts"
 import { ThreadTools, threadToolsLayer } from "./threads.ts"
@@ -19,7 +20,16 @@ export const layer = Layer.effectDiscard(
     const tinyVm = yield* TinyVm
     const devices = yield* Devices
     yield* McpTool.register(
-      Toolkit.merge(SecretTools, ThreadTools, AgentTools, ReviewTools, PullRequestTools, LinearTools, TerminalTools),
+      Toolkit.merge(
+        SecretTools,
+        ThreadTools,
+        AgentTools,
+        ReviewTools,
+        PullRequestTools,
+        LinearTools,
+        TerminalTools,
+        ScriptTools,
+      ),
     )
     yield* registerArtifactTools
     yield* McpTool.register(
@@ -43,6 +53,7 @@ export const layer = Layer.effectDiscard(
       terminalToolsLayer,
       vmToolsLayer,
       deviceToolsLayer,
+      scriptToolsLayer,
     ),
   ),
 )

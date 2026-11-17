@@ -11,6 +11,7 @@ import {
   publishedArtifactId,
   publishedKind,
   publishedTitle,
+  sessionDecision,
 } from "./agent.ts"
 
 describe("publishedArtifactId", () => {
@@ -87,5 +88,15 @@ describe("opencode tool names", () => {
     expect(isRunAgentTool("hinacode_run_agent")).toBe(true)
     expect(isCreateThreadTool("hinacode_create_thread")).toBe(true)
     expect(isRunAgentTool("mcp__other__run_agent")).toBe(false)
+  })
+})
+
+describe("sessionDecision", () => {
+  test("never grants run_script for the session under any provider's name, so each script is approved", () => {
+    for (const name of ["mcp__hinacode__run_script", "hinacode_run_script", "hinacode/run_script", "run_script"]) {
+      expect(sessionDecision(name, "allow_for_session")).toBe("allow")
+    }
+    expect(sessionDecision("mcp__hinacode__list_threads", "allow_for_session")).toBe("allow_for_session")
+    expect(sessionDecision("mcp__hinacode__run_script", "deny")).toBe("deny")
   })
 })

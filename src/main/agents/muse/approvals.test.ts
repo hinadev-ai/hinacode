@@ -147,3 +147,16 @@ describe("toApprovalRequest", () => {
     })
   })
 })
+
+describe("run_script approvals", () => {
+  test("offer no allow for session, because a later script could call any hinacode tool", () => {
+    const script = request({
+      toolName: "mcp__hinacode__run_script",
+      rawArgs: '{"code":"return 1"}',
+      subject: { kind: "tool" },
+    })
+    const approval = toApprovalRequest(script, "a1", "t1")
+    expect(approval.allowForSession).toBe(false)
+    expect(approval.sessionScope).toBeUndefined()
+  })
+})
