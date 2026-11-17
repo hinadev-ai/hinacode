@@ -164,7 +164,7 @@ const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-auto-archive-")))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
 
 const domain = threadsLayer.pipe(
-  Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
+  Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")), { tmpRoot: join(base, "tmp") })),
   Layer.provideMerge(Terminals.layer),
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
@@ -208,6 +208,14 @@ const threadWithPullRequests = (name: string, prStatuses: ReadonlyArray<PullRequ
     return threadId
   })
 
+const tmpWithFile = (threadId: string) =>
+  Effect.gen(function* () {
+    const folder = yield* Scratch.Scratch.use((scratch) => scratch.ensureTmp(threadId))
+    if (folder === null) return yield* Effect.die("the thread tmp folder was skipped")
+    writeFileSync(join(folder, "build.log"), "")
+    return folder
+  })
+
 const statusOf = (id: string) => Threads.use((threads) => threads.get(id)).pipe(Effect.map((thread) => thread.status))
 const isSettled = (id: string) =>
   Threads.use((threads) => threads.get(id)).pipe(Effect.map((thread) => thread.settledAt !== null))
@@ -249,8 +257,13 @@ describe("Settle", () => {
         const closed = yield* threadWithPullRequests("closed", ["closed"])
         const running = yield* threadWithPullRequests("running", ["merged"], "running")
         const unlinked = (yield* seedThread({ rootPath: "/unlinked" })).threadId
+        const settledTmp = yield* tmpWithFile(allMerged)
+        const openTmp = yield* tmpWithFile(oneOpen)
 
         yield* Settle.use((settle) => settle.sweep)
+
+        expect(existsSync(settledTmp)).toBe(false)
+        expect(existsSync(openTmp)).toBe(true)
 
         expect(yield* statusOf(allMerged)).toBe("idle")
         expect(yield* isSettled(allMerged)).toBe(true)
@@ -429,11 +442,13 @@ describe("Settle", () => {
         const threadId = yield* threadWithPullRequests("manual", ["open"])
         const listener = yield* listenIn(join(base, "manual"))
         yield* Terminals.Terminals.use((terminals) => terminals.open({ threadId, cols: 80, rows: 24 }))
+        const tmp = yield* tmpWithFile(threadId)
 
         const settled = yield* Settle.use((settle) => settle.settle(threadId))
 
         expect(settled.settledAt).not.toBeNull()
         expect(released).toContain(threadId)
+        expect(existsSync(tmp)).toBe(false)
         expect(yield* Terminals.Terminals.use((terminals) => terminals.list(threadId))).toStrictEqual([])
         yield* listener.exited
       }),
@@ -442,11 +457,13 @@ describe("Settle", () => {
     it.effect("refuses to settle a thread mid-turn and leaves its work running", () =>
       Effect.gen(function* () {
         const threadId = yield* threadWithPullRequests("manual-busy", ["open"], "running")
+        const tmp = yield* tmpWithFile(threadId)
 
         const error = yield* Settle.use((settle) => settle.settle(threadId)).pipe(Effect.flip)
 
         expect(error._tag).toBe("ThreadBusyError")
         expect(released).not.toContain(threadId)
+        expect(existsSync(join(tmp, "build.log"))).toBe(true)
       }),
     )
 
@@ -482,6 +499,8 @@ describe("Settle", () => {
         yield* Settings.use((settings) => settings.set({ archive: archiveSettings({ settleAfterIdleDays: 7 }) }))
         const quiet = (yield* seedThread({ rootPath: "/idle-quiet" })).threadId
         const reviewing = yield* threadWithPullRequests("idle-reviewing", ["open"])
+        const quietTmp = yield* tmpWithFile(quiet)
+        const reviewingTmp = yield* tmpWithFile(reviewing)
         yield* TestClock.setTime(Date.parse((yield* Threads.use((threads) => threads.get(reviewing))).updatedAt))
 
         yield* TestClock.adjust("6 days")
@@ -492,7 +511,9 @@ describe("Settle", () => {
         yield* Settle.use((settle) => settle.sweep)
         expect(yield* isSettled(quiet)).toBe(true)
         expect(released).toContain(quiet)
+        expect(existsSync(quietTmp)).toBe(false)
         expect(yield* isSettled(reviewing)).toBe(false)
+        expect(existsSync(reviewingTmp)).toBe(true)
       }),
     )
 

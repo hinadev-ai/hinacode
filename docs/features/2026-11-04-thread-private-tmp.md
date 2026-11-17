@@ -16,7 +16,8 @@ Borrow systemd's `PrivateTmp`. Each thread gets its own temp folder before its a
 - The root is created with mode `0700`, then checked with `lstat`. It must be a real directory, owned by this user and not writable by group or others (Windows skips the owner and mode checks). Otherwise another user on a shared `/tmp` could pre-create it, or a symlink, and catch the agent's files. When the check fails, HinaCode logs a warning and spawns the agent with the inherited temp directory, rather than failing the turn.
 - The path stays short on purpose. A Unix domain socket path must fit in 108 bytes, and tools put sockets under `TMPDIR`. The scratch folder's path is around 100 characters, so a `TMPDIR` inside it broke Chromium and other socket users.
 - `Scratch` owns both folders, so one service owns a thread's disk state. `ensureTmp` creates the tmp folder when `AgentRunner` builds a session, and `remove` deletes both folders on archive and delete, in the background. A missing folder is not an error.
-- Unarchiving needs nothing. The folder is created again on the next spawn.
+- Settling a thread deletes its tmp folder too, manually or by the merged and idle sweeps. Settle has already closed the agent session, its terminals and its listeners, so nothing still writes there. Archive can be days away or switched off, and a pile of settled threads would otherwise hold `/tmp` the same way busy ones do. The scratch folder stays until archive, because files there are meant to outlive a session.
+- Unarchiving and unsettling need nothing. The folder is created again on the next spawn.
 
 ## Providers
 
@@ -36,4 +37,4 @@ Terminals keep the shared `/tmp`. They are the user's shells, not the agent's.
 
 ## Verify
 
-Start a Claude thread in an isolated instance, ask it to print `os.tmpdir()` and create a file there, then archive the thread and check that the thread's folder under `<os.tmpdir()>/hc-<hash>/` is gone.
+Start a Claude thread in an isolated instance, ask it to print `os.tmpdir()` and create a file there, then settle the thread and check that the thread's folder under `<os.tmpdir()>/hc-<hash>/` is gone.
