@@ -146,12 +146,12 @@ const createThread = (projectId: string, title: string, branch?: string) =>
     }),
   )
 
-const archiveRemovingWorktree = (threadId: string) =>
+const archiveRemovingWorktree = (threadId: string, options?: { readonly discardChanges?: boolean }) =>
   Settings.use((settings) =>
     settings.set({
       archive: { whenMerged: false, removeWorktree: true, settleAfterIdleDays: null, archiveAfterSettledDays: null },
     }),
-  ).pipe(Effect.andThen(Threads.use((threads) => threads.archive(threadId))))
+  ).pipe(Effect.andThen(Threads.use((threads) => threads.archive(threadId, options))))
 
 const forkThread = (threadId: string) =>
   Effect.gen(function* () {
@@ -610,6 +610,29 @@ describe("worktree ownership", () => {
         const worktree = yield* worktreeOf(thread.worktreeId)
         expect(worktree.status).toBe("removed")
         yield* waitUntilDeleted(worktree.path)
+      }),
+    ),
+  )
+
+  it.live("archiving keeps a checkout with uncommitted changes unless the caller confirmed losing them", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const kept = yield* createThread(projectId, "from the phone", "kk/from-the-phone")
+        const discarded = yield* createThread(projectId, "confirmed", "kk/confirmed")
+        yield* waitUntilSetUp(kept.worktreeId)
+        yield* waitUntilSetUp(discarded.worktreeId)
+        const keptCheckout = yield* worktreeOf(kept.worktreeId)
+        const discardedCheckout = yield* worktreeOf(discarded.worktreeId)
+        writeFileSync(join(keptCheckout.path, "draft.txt"), "unsaved")
+        writeFileSync(join(discardedCheckout.path, "draft.txt"), "unsaved")
+
+        expect((yield* archiveRemovingWorktree(kept.id)).status).toBe("archived")
+        expect((yield* worktreeOf(kept.worktreeId)).status).toBe("ready")
+        expect(readFileSync(join(keptCheckout.path, "draft.txt"), "utf8")).toBe("unsaved")
+
+        expect((yield* archiveRemovingWorktree(discarded.id, { discardChanges: true })).status).toBe("archived")
+        expect((yield* worktreeOf(discarded.worktreeId)).status).toBe("removed")
+        yield* waitUntilDeleted(discardedCheckout.path)
       }),
     ),
   )
