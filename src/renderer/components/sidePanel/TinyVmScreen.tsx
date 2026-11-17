@@ -105,7 +105,7 @@ export default function TinyVmScreen({
         !bare && control === "user" && "outline-2 outline-offset-2 outline-working",
       )}
     >
-      <div ref={targetRef} className="absolute inset-0" />
+      <div ref={targetRef} className={cn("absolute inset-0", control !== "user" && "[&_canvas]:cursor-default!")} />
       {fullscreen && (
         <div className="absolute top-3 right-3 flex items-center gap-2 rounded-[12px] bg-background/90 p-1 shadow-md">
           {fullscreenControls}
