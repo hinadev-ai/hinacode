@@ -469,7 +469,10 @@ export const RpcMethods = {
     }),
     Thread,
   ),
-  "threads.archive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
+  "threads.archive": rpc(
+    Schema.Struct({ threadId: Schema.String, discardChanges: Schema.optional(Schema.Boolean) }),
+    Thread,
+  ),
   "threads.unarchive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "threads.settle": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "threads.unsettle": rpc(Schema.Struct({ threadId: Schema.String }), Thread),

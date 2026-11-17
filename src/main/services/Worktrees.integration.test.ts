@@ -341,6 +341,26 @@ describe("background setup", () => {
     ),
   )
 
+  it.live("archiving stops a setup script that never finishes even when it keeps the dirty checkout", () =>
+    withRepo(
+      ({ root, projectId }) =>
+        Effect.gen(function* () {
+          const pidPath = join(root, "setup.pid")
+          yield* startHangingSetup(projectId, pidPath)
+          const thread = yield* createThread(projectId, "hung", "kk/hung")
+          yield* waitForSetupOutput(thread.worktreeId)
+          const { path } = yield* worktreeOf(thread.worktreeId)
+          writeFileSync(join(path, "draft.txt"), "unsaved")
+
+          expect((yield* archiveRemovingWorktree(thread.id)).status).toBe("archived")
+          expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
+          expect(readFileSync(join(path, "draft.txt"), "utf8")).toBe("unsaved")
+          expect((yield* worktreeOf(thread.worktreeId)).status).not.toBe("removed")
+        }),
+      { setupTiming: quickForceKill },
+    ),
+  )
+
   it.live("stopping a setup script that never finishes fails the worktree and releases a send waiting on it", () =>
     withRepo(
       ({ root, projectId }) =>
@@ -491,7 +511,7 @@ describe("worktree ownership", () => {
         expect((yield* archiveRemovingWorktree(first.id)).status).toBe("archived")
         expect(existsSync(join(worktree.path, "sentinel"))).toBe(true)
 
-        yield* archiveRemovingWorktree(second.id)
+        yield* archiveRemovingWorktree(second.id, { discardChanges: true })
         yield* waitUntilDeleted(worktree.path)
       }),
     ),
@@ -573,8 +593,8 @@ describe("worktree ownership", () => {
         const forkCheckout = yield* worktreeOf(fork.worktreeId)
         expect(readFileSync(join(forkCheckout.path, "draft.txt"), "utf8")).toBe("uncommitted\n")
 
-        yield* archiveRemovingWorktree(fork.id)
-        yield* archiveRemovingWorktree(source.id)
+        yield* archiveRemovingWorktree(fork.id, { discardChanges: true })
+        yield* archiveRemovingWorktree(source.id, { discardChanges: true })
         expect((yield* worktreeOf(fork.worktreeId)).status).toBe("removed")
         expect((yield* worktreeOf(source.worktreeId)).status).toBe("removed")
       }),
@@ -961,7 +981,7 @@ describe("thread changes", () => {
         expect(changes?.patch).toContain("diff --git a/new.txt b/new.txt")
         expect(changes?.patch).toContain("+fresh")
 
-        yield* archiveRemovingWorktree(thread.id)
+        yield* archiveRemovingWorktree(thread.id, { discardChanges: true })
         expect(yield* Threads.use((threads) => threads.changes(thread.id, "worktree"))).toBeNull()
       }),
     ),

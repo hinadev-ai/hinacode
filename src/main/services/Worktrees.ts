@@ -102,6 +102,7 @@ export class Worktrees extends Context.Service<
       id: string,
       deleteBranch: DeleteBranch,
       owner?: string,
+      options?: { readonly keepChanges?: boolean },
     ) => Effect.Effect<Worktree, Failure | WorktreeBusyError>
     readonly exclusive: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
     readonly renameBranch: (id: string, branch: string) => Effect.Effect<Worktree, Failure>
@@ -527,13 +528,20 @@ const make = Effect.fnUntraced(function* (setupTiming: SetupTiming) {
       Effect.ensuring(Effect.sync(() => removals.delete(removalKey(worktree.projectId, worktree.branch)))),
     )
 
-  const removeWhileExclusive = (id: string, deleteBranch: DeleteBranch, owner?: string) =>
+  const removeWhileExclusive = (
+    id: string,
+    deleteBranch: DeleteBranch,
+    owner?: string,
+    { keepChanges = false }: { readonly keepChanges?: boolean } = {},
+  ) =>
     Effect.gen(function* () {
       const worktree = yield* get(id)
       if (worktree.status === "removed") return worktree
       yield* ensureRemovable(worktree, owner)
       yield* stopSetup(id)
       const stopped = yield* get(id)
+      if (keepChanges && (yield* stateOf(stopped).pipe(Effect.orElseSucceed(() => "dirty" as const))) === "dirty")
+        return stopped
       const { rootPath } = yield* projects.get(worktree.projectId)
       const removed = yield* setStatus(id, "removed")
       const deletion = yield* Effect.forkDetach(deleteFiles(rootPath, stopped, deleteBranch))
