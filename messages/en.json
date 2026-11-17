@@ -131,6 +131,8 @@
   "thread_model_picker": "Model",
   "thread_model_search": "Search models",
   "thread_model_no_match": "No matching models",
+  "thread_model_none": "This agent listed no models",
+  "thread_model_list_failed": "Could not list models: {message}",
   "message_you": "You",
   "message_thinking": "Thinking…",
   "markdown_attachment": "GitHub attachment",
