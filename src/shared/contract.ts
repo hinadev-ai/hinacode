@@ -179,7 +179,11 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 
 export const RpcMethods = {
   "devices.list": rpc(Schema.Struct({ threadId: Schema.String }), DeviceHost),
-  "devices.checks": rpc(Schema.Void, Schema.Array(DeviceCheck)),
+  "devices.checks": rpc(Schema.Struct({ hub: Schema.optionalKey(Schema.String) }), Schema.Array(DeviceCheck)),
+  "devices.hubs": rpc(
+    Schema.Void,
+    Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, status: EnvironmentStatus })),
+  ),
   "device.get": rpc(Schema.Struct({ threadId: Schema.String }), ThreadDevices),
   "device.attach": rpc(
     Schema.Struct({ threadId: Schema.String, deviceId: DeviceId, client: Schema.optionalKey(DeviceClient) }),
@@ -882,6 +886,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "browser.touch": "mutation",
   "devices.list": "read",
   "devices.checks": "read",
+  "devices.hubs": "read",
   "device.get": "read",
   "device.attach": "mutation",
   "device.create": "mutation",

@@ -1,6 +1,12 @@
 import { isDeepStrictEqual } from "node:util"
 import { Context, Effect, Layer, Schedule, Semaphore } from "effect"
-import { isInterrupted, type PullRequestLink, type PullRequestWatch, waitsOnDeveloper } from "../../shared/domain.ts"
+import {
+  isInterrupted,
+  type PullRequestLink,
+  type PullRequestWatch,
+  waitsOnDeveloper,
+  type Thread,
+} from "../../shared/domain.ts"
 import { AgentRunner } from "./AgentRunner.ts"
 import { nowIso } from "./clock.ts"
 import { SourceControl } from "./SourceControl.ts"
@@ -11,6 +17,8 @@ import { Threads } from "./Threads.ts"
 const POLL_INTERVAL = "1 minute"
 const MAX_WAKES = 25
 const MAX_FAILURES = 15
+
+const isPutAway = (thread: Thread) => thread.status === "archived" || thread.settledAt !== null
 
 export class PullRequestWatcher extends Context.Service<PullRequestWatcher, { readonly sweep: Effect.Effect<void> }>()(
   "hinacode/PullRequestWatcher",
@@ -29,7 +37,7 @@ const make = Effect.gen(function* () {
   const canDeliver = (link: PullRequestLink, generation: PullRequestWatch["generation"]) =>
     threads.get(link.threadId).pipe(
       Effect.flatMap((thread) =>
-        (thread.status === "idle" && !isInterrupted(thread)) || thread.status === "running"
+        ((thread.status === "idle" && !isInterrupted(thread)) || thread.status === "running") && !isPutAway(thread)
           ? stillCurrent(link.id, generation)
           : Effect.succeed(false),
       ),
@@ -62,7 +70,7 @@ const make = Effect.gen(function* () {
   const stopWithWake = (link: PullRequestLink, watch: PullRequestWatch, reason: string) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(link.threadId)
-      if (thread.status !== "archived" && !waitsOnDeveloper(thread)) {
+      if (!isPutAway(thread) && !waitsOnDeveloper(thread)) {
         if (yield* stillCurrent(link.id, watch.generation)) {
           yield* wake(link, watch.generation, watchStoppedMessage(link.url, reason))
         }
@@ -74,6 +82,10 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const watch = link.watch
       if (watch === null) return
+      if (isPutAway(yield* threads.get(link.threadId))) {
+        yield* pullRequests.updateWatch(link.id, watch.generation, null)
+        return
+      }
       const now = yield* nowIso
       const read = yield* Effect.result(sourceControl.pullRequestDetail(link.url))
 
@@ -97,10 +109,6 @@ const make = Effect.gen(function* () {
       const terminal = detail.status === "merged" || detail.status === "closed"
       const thread = yield* threads.get(link.threadId)
 
-      if (thread.status === "archived") {
-        yield* pullRequests.updateWatch(link.id, watch.generation, null)
-        return
-      }
       if (events.length === 0) {
         yield* terminal
           ? pullRequests.updateWatch(link.id, watch.generation, null)

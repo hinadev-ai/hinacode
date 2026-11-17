@@ -594,6 +594,13 @@ importers:
       '@oxlint/plugins':
         specifier: 1.87.0
         version: 1.87.0
+      oxlint:
+        specifier: '>=1.87.0'
+        version: 1.87.0
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
 
   packages/perf-frames: {}
 
