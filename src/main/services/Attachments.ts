@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { copyFile, mkdir, readdir, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, extname, join, sep } from "node:path"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, Schema, Semaphore } from "effect"
 import { SqlClient } from "effect/sql"
 import type { Attachment } from "../../shared/domain.ts"
 import { isInside } from "../security.ts"
@@ -141,6 +141,9 @@ const namesIn = (folder: string, kind: "files" | "folders") =>
     ),
   )
 
+const filesIn = (folder: string) =>
+  Effect.map(namesIn(folder, "files"), (names) => names.map((name) => join(folder, name)))
+
 const asJsonText = (text: string) => JSON.stringify(text).slice(1, -1)
 
 const mentions = (text: string, path: string) => text.includes(path) || text.includes(asJsonText(path))
@@ -197,47 +200,46 @@ export const layer = (root: string, { artifactsRoot }: { readonly artifactsRoot?
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient
 
-      const textsMentioning = (needle: string) =>
-        sql<{ readonly text: string }>`
-          SELECT parts AS text FROM message WHERE instr(parts, ${needle}) > 0
-          UNION ALL SELECT part FROM message_part WHERE instr(part, ${needle}) > 0
-          UNION ALL SELECT queue FROM thread WHERE instr(queue, ${needle}) > 0
-          UNION ALL SELECT scheduled FROM thread WHERE instr(scheduled, ${needle}) > 0
-          UNION ALL SELECT prompt FROM routine WHERE instr(prompt, ${needle}) > 0
-        `.pipe(
-          Effect.map((rows) => rows.map((row) => row.text)),
-          Effect.mapError(failure("Cannot look up attachment references")),
-        )
+      const rootPrefix = root + sep
+      const rootAsJson = asJsonText(rootPrefix)
+      const textsMentioningRoot = sql<{ readonly text: string }>`
+        SELECT parts AS text FROM message WHERE instr(parts, ${rootAsJson}) > 0 OR instr(parts, ${rootPrefix}) > 0
+        UNION ALL SELECT part FROM message_part WHERE instr(part, ${rootAsJson}) > 0 OR instr(part, ${rootPrefix}) > 0
+        UNION ALL SELECT queue FROM thread WHERE instr(queue, ${rootAsJson}) > 0 OR instr(queue, ${rootPrefix}) > 0
+        UNION ALL SELECT scheduled FROM thread
+          WHERE instr(scheduled, ${rootAsJson}) > 0 OR instr(scheduled, ${rootPrefix}) > 0
+        UNION ALL SELECT prompt FROM routine WHERE instr(prompt, ${rootAsJson}) > 0 OR instr(prompt, ${rootPrefix}) > 0
+      `.pipe(
+        Effect.map((rows) => rows.map((row) => row.text)),
+        Effect.mapError(failure("Cannot look up attachment references")),
+      )
 
-      const release = (folder: string, artifacts: ReadonlyArray<string>) =>
-        Effect.gen(function* () {
-          const names = yield* namesIn(folder, "files")
-          if (names.length === 0) return yield* removeIfEmpty(folder)
-          const texts = [...(yield* textsMentioning(asJsonText(folder + sep))), ...artifacts]
-          const unreferenced = names
-            .map((name) => join(folder, name))
-            .filter((path) => !texts.some((text) => mentions(text, path)))
-          yield* Effect.forEach(
-            unreferenced,
-            (path) =>
-              Effect.tryPromise({ try: () => rm(path, { force: true }), catch: failure(`Cannot delete ${path}`) }),
-            { discard: true },
-          )
-          yield* removeIfEmpty(folder)
-        })
+      const deleteFile = (path: string) =>
+        Effect.tryPromise({ try: () => rm(path, { force: true }), catch: failure(`Cannot delete ${path}`) })
 
-      const prune = Effect.gen(function* () {
+      const pruneOnce = Effect.gen(function* () {
         const folders = yield* namesIn(root, "folders")
         const threads = yield* sql<{ readonly id: string }>`SELECT id FROM thread`.pipe(
           Effect.mapError(failure("Cannot list threads")),
         )
         const live = new Set(threads.map((thread) => safeName(thread.id)))
-        const orphans = folders.filter((folder) => !live.has(folder))
-        if (orphans.length === 0) return
-        const paths = orphans.map((folder) => join(root, folder) + sep)
-        const artifacts = yield* artifactTextsMentioning(artifactsRoot, paths)
-        yield* Effect.forEach(orphans, (folder) => release(join(root, folder), artifacts), { discard: true })
+        const orphans = folders.filter((folder) => !live.has(folder)).map((folder) => join(root, folder))
+        const files = (yield* Effect.forEach(orphans, filesIn)).flat()
+        if (files.length > 0) {
+          const orphanPrefixes = orphans.map((folder) => folder + sep)
+          const mentionsOrphan = (text: string) => orphanPrefixes.some((prefix) => mentions(text, prefix))
+          const texts = [
+            ...(yield* textsMentioningRoot).filter(mentionsOrphan),
+            ...(yield* artifactTextsMentioning(artifactsRoot, orphanPrefixes)),
+          ]
+          const unreferenced = files.filter((path) => !texts.some((text) => mentions(text, path)))
+          yield* Effect.forEach(unreferenced, deleteFile, { discard: true })
+        }
+        yield* Effect.forEach(orphans, removeIfEmpty, { discard: true })
       })
+
+      const pruneLock = yield* Semaphore.make(1)
+      const prune = Semaphore.withPermit(pruneLock, pruneOnce)
 
       yield* prune.pipe(
         Effect.catchCause((cause) => Effect.logWarning("attachment sweep failed", cause)),
