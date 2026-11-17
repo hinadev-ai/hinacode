@@ -250,6 +250,32 @@ describe("routine scheduling", () => {
     ),
   )
 
+  it.effect("runs a routine without a model on the agent's default model at run time", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const routine = yield* Routines.use((routines) =>
+          routines.create({
+            projectId,
+            name: "Nightly sweep",
+            enabled: true,
+            prompt: "Sweep",
+            provider: "claude",
+            model: "",
+            effort: null,
+            workspace: "local",
+            schedule: null,
+          }),
+        )
+        expect(routine.model).toBe("")
+        yield* Settings.Settings.use((settings) => settings.set({ defaultModel: { claude: "provider-default" } }))
+
+        const run = yield* Routines.use((routines) => routines.run(routine.id, "manual", null))
+        const thread = yield* settled(run.threadId)
+        expect(thread.model).toBe("provider-default")
+      }),
+    ),
+  )
+
   it.effect("refuses a routine past the per-machine limit", () =>
     withApp(({ projectId }) =>
       Effect.gen(function* () {
