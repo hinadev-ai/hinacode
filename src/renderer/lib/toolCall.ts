@@ -138,8 +138,7 @@ export type TranscriptBlock =
   | { readonly type: "tools"; readonly parts: ReadonlyArray<ActivityPart>; readonly index: number }
 
 const isFoldable = (part: MessagePart): part is ActivityPart =>
-  part.type === "reasoning" ||
-  (part.type === "tool_call" && !spawnsSubagent(part) && !rendersAsCard(part))
+  part.type === "reasoning" || (part.type === "tool_call" && !spawnsSubagent(part) && !rendersAsCard(part))
 
 export function groupToolCalls(parts: ReadonlyArray<MessagePart>, startIndex = 0): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []
