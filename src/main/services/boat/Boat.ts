@@ -533,7 +533,9 @@ export const boatClient = (input: {
       headers: { "Idempotency-Key": randomUUID() },
     }).pipe(
       within(REQUEST_TIMEOUT_SECONDS),
-      Effect.flatMap(({ sandbox }) => waitReady(sandbox.id)),
+      Effect.flatMap(({ sandbox }) =>
+        waitReady(sandbox.id).pipe(Effect.onError(() => remove(sandbox.id).pipe(Effect.ignore))),
+      ),
     )
   }
 
