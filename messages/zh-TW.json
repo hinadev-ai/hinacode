@@ -19,6 +19,7 @@
   "project_name_placeholder": "my-app",
   "project_root_label": "根目錄路徑",
   "project_root_placeholder": "~/code/my-app",
+  "project_root_create_hint": "資料夾不存在時，HinaCode 會建立它。",
   "project_root_browse": "瀏覽…",
   "path_input_suggestions": "資料夾建議",
   "path_input_repository": "Git 儲存庫",
