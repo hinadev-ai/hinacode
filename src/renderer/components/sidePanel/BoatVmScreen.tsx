@@ -17,6 +17,7 @@ interface BoatVmScreenProps {
   readonly sandboxId: string
   readonly control: VmControl
   readonly bare?: boolean
+  readonly screenId?: string
   readonly fullscreenControls?: ReactNode
   readonly onHandBack: () => void
   readonly onReconnect: () => void
@@ -28,12 +29,13 @@ export default function BoatVmScreen({
   sandboxId,
   control,
   bare = false,
+  screenId,
   fullscreenControls,
   onHandBack,
   onReconnect,
   drop,
 }: BoatVmScreenProps) {
-  const id = vmScreenId(threadId)
+  const id = screenId ?? vmScreenId(threadId)
   const desktop = useAtomValue(vmDesktopUrlAtom(threadId, sandboxId))
   const refreshDesktop = useAtomRefresh(vmDesktopUrlAtom(threadId, sandboxId))
   const url = AsyncResult.isSuccess(desktop) ? desktop.value.url : null

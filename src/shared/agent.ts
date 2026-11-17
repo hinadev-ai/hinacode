@@ -409,6 +409,10 @@ export const outputText = (output: unknown): string => {
 
 const CREATE_THREAD_TOOL = "create_thread"
 
+const VM_HAND_OVER_TOOL = "vm_hand_over"
+
+export const isVmHandOverTool = (name: string) => ownToolName(name) === VM_HAND_OVER_TOOL
+
 export const isCreateThreadTool = (name: string) => ownToolName(name) === CREATE_THREAD_TOOL
 
 export const createdThreadId = (result: string) => /^Created thread ([\w-]+)/.exec(result)?.[1] ?? null

@@ -1,9 +1,9 @@
-import { createsThread, type MessagePart, publishesArtifact } from "./domain.ts"
+import { type MessagePart, rendersAsCard } from "./domain.ts"
 
 export const isActivity = (part: MessagePart) =>
   part.type === "reasoning" ||
   part.type === "file_change" ||
-  (part.type === "tool_call" && !publishesArtifact(part) && !createsThread(part))
+  (part.type === "tool_call" && !rendersAsCard(part))
 
 export function collapsedParts<T extends { readonly part: MessagePart }>(parts: ReadonlyArray<T>): ReadonlyArray<T> {
   const lastActivity = parts.findLastIndex(({ part }) => isActivity(part))

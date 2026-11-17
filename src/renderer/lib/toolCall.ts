@@ -1,7 +1,7 @@
 import { Schema } from "effect"
 import { type AgentCommand, outputBlocks } from "../../shared/agent.ts"
 import { TOOL_SUMMARY_KEYS } from "../../shared/compactTranscript.ts"
-import { Attachment, type MessagePart, createsThread, publishesArtifact, spawnsSubagent } from "../../shared/domain.ts"
+import { Attachment, type MessagePart, rendersAsCard, spawnsSubagent } from "../../shared/domain.ts"
 import { type Todo, todosInCall } from "../../shared/todos.ts"
 import { ownToolName, unwrapShell } from "../../shared/toolNames.ts"
 import { m } from "../paraglide/messages.js"
@@ -57,6 +57,7 @@ const ownToolLabels = new Map<string, () => string>([
   ["vm_exec", m.tool_own_vm_exec],
   ["vm_stop", m.tool_own_vm_stop],
   ["vm_pull_file", m.tool_own_vm_pull_file],
+  ["vm_hand_over", m.tool_own_vm_hand_over],
   ["device_screenshot", m.tool_own_device_screenshot],
   ["device_tap", m.tool_own_device_tap],
   ["device_swipe", m.tool_own_device_swipe],
@@ -138,7 +139,7 @@ export type TranscriptBlock =
 
 const isFoldable = (part: MessagePart): part is ActivityPart =>
   part.type === "reasoning" ||
-  (part.type === "tool_call" && !spawnsSubagent(part) && !publishesArtifact(part) && !createsThread(part))
+  (part.type === "tool_call" && !spawnsSubagent(part) && !rendersAsCard(part))
 
 export function groupToolCalls(parts: ReadonlyArray<MessagePart>, startIndex = 0): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []

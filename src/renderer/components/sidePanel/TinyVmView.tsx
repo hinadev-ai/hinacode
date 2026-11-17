@@ -37,6 +37,7 @@ interface VmScreenProps {
   readonly threadId: string
   readonly vm: RunningVm
   readonly bare?: boolean
+  readonly screenId?: string
   readonly fullscreenControls?: ReactNode
   readonly onHandBack: () => void
   readonly onReconnect: () => void
@@ -373,7 +374,11 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
 
 export function ControlStatus({ vm }: { vm: RunningVm }) {
   const waiting = vm.control === "user" && vm.agentWaiting
-  const label = waiting ? m.vm_agent_waiting() : vm.control === "user" ? m.vm_control_user() : m.vm_control_agent()
+  const label = waiting
+    ? (vm.request ?? m.vm_agent_waiting())
+    : vm.control === "user"
+      ? m.vm_control_user()
+      : m.vm_control_agent()
   return (
     <p
       aria-live="polite"

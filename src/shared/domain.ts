@@ -8,6 +8,7 @@ import {
   isCreateThreadTool,
   isPublishArtifactTool,
   isRunAgentTool,
+  isVmHandOverTool,
   ProviderId,
   Question,
   TokenUsage,
@@ -538,6 +539,12 @@ export const publishesArtifact = (call: { readonly name: string; readonly status
 export const createsThread = (call: { readonly name: string; readonly status: ToolCallStatus }) =>
   isCreateThreadTool(call.name) && call.status !== "error"
 
+export const handsOverVm = (call: { readonly name: string; readonly status: ToolCallStatus }) =>
+  isVmHandOverTool(call.name) && call.status !== "error"
+
+export const rendersAsCard = (call: { readonly name: string; readonly status: ToolCallStatus }) =>
+  publishesArtifact(call) || createsThread(call) || handsOverVm(call)
+
 const MessageRole = Schema.Literals(["user", "assistant"])
 type MessageRole = typeof MessageRole.Type
 
@@ -883,6 +890,7 @@ export const ThreadVm = Schema.Union([
     profile: VmProfile,
     control: Schema.Literal("user"),
     agentWaiting: Schema.Boolean,
+    request: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({ status: Schema.Literal("failed"), message: Schema.String }),
 ])
