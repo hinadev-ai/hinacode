@@ -79,7 +79,7 @@ export const makeTestAppLayer = (
     ),
     ClientSettings.layer(dirname(dbPath)),
     Messages.layer,
-    Attachments.layer(join(dirname(dbPath), "attachments")),
+    Attachments.layer(join(dirname(dbPath), "attachments"), { artifactsRoot: join(dirname(dbPath), "artifacts") }),
     Artifacts.layer(join(dirname(dbPath), "artifacts")),
     ArtifactInspector.unavailable,
     Search.layer,

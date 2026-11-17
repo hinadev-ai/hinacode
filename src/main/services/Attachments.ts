@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { copyFile, mkdir, readdir, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises"
-import { basename, extname, join, sep } from "node:path"
+import { basename, dirname, extname, join, sep } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient } from "effect/sql"
 import type { Attachment } from "../../shared/domain.ts"
@@ -63,6 +63,10 @@ export class Attachments extends Context.Service<
       source: AttachmentSource,
     ) => Effect.Effect<Attachment, AttachmentError | AttachmentTooLargeError>
     readonly read: (path: string) => Effect.Effect<{ readonly dataUrl: string }, AttachmentError>
+    readonly copyInto: (
+      threadId: string,
+      attachment: Attachment,
+    ) => Effect.Effect<Attachment, AttachmentError | AttachmentTooLargeError>
     readonly prune: Effect.Effect<void, AttachmentError>
   }
 >()("hinacode/Attachments") {}
@@ -139,6 +143,28 @@ const namesIn = (folder: string, kind: "files" | "folders") =>
 
 const asJsonText = (text: string) => JSON.stringify(text).slice(1, -1)
 
+const mentions = (texts: ReadonlyArray<string>, path: string) =>
+  texts.some((text) => text.includes(path) || text.includes(asJsonText(path)))
+
+const ARTIFACT_TEXT_EXTENSIONS = new Set([".json", ".md", ".html", ".excalidraw", ".svg", ".txt", ".js", ".css"])
+
+const artifactTexts = (artifactsRoot: string | undefined) =>
+  artifactsRoot === undefined
+    ? Effect.succeed([])
+    : Effect.tryPromise({
+        try: async () => {
+          const entries = await readdir(artifactsRoot, { recursive: true, withFileTypes: true }).catch(
+            (cause: unknown) => {
+              if (errorCode(cause) === "ENOENT") return []
+              throw cause
+            },
+          )
+          const files = entries.filter((entry) => entry.isFile() && ARTIFACT_TEXT_EXTENSIONS.has(extname(entry.name)))
+          return Promise.all(files.map((entry) => readFile(join(entry.parentPath, entry.name), "utf8")))
+        },
+        catch: failure("Cannot read artifacts"),
+      })
+
 const removeIfEmpty = (folder: string) =>
   Effect.tryPromise({ try: () => rmdir(folder), catch: (cause) => cause }).pipe(
     Effect.catchIf(
@@ -148,7 +174,7 @@ const removeIfEmpty = (folder: string) =>
     Effect.mapError(failure(`Cannot remove ${folder}`)),
   )
 
-export const layer = (root: string) =>
+export const layer = (root: string, { artifactsRoot }: { readonly artifactsRoot?: string } = {}) =>
   Layer.effect(
     Attachments,
     Effect.gen(function* () {
@@ -165,14 +191,12 @@ export const layer = (root: string) =>
           Effect.mapError(failure("Cannot look up attachment references")),
         )
 
-      const release = (folder: string) =>
+      const release = (folder: string, artifacts: ReadonlyArray<string>) =>
         Effect.gen(function* () {
           const names = yield* namesIn(folder, "files")
           if (names.length === 0) return yield* removeIfEmpty(folder)
-          const texts = yield* textsMentioning(asJsonText(folder + sep))
-          const unreferenced = names
-            .map((name) => join(folder, name))
-            .filter((path) => !texts.some((text) => text.includes(asJsonText(path))))
+          const texts = [...(yield* textsMentioning(asJsonText(folder + sep))), ...artifacts]
+          const unreferenced = names.map((name) => join(folder, name)).filter((path) => !mentions(texts, path))
           yield* Effect.forEach(
             unreferenced,
             (path) =>
@@ -188,11 +212,10 @@ export const layer = (root: string) =>
           Effect.mapError(failure("Cannot list threads")),
         )
         const live = new Set(threads.map((thread) => safeName(thread.id)))
-        yield* Effect.forEach(
-          folders.filter((folder) => !live.has(folder)),
-          (folder) => release(join(root, folder)),
-          { discard: true },
-        )
+        const orphans = folders.filter((folder) => !live.has(folder))
+        if (orphans.length === 0) return
+        const artifacts = yield* artifactTexts(artifactsRoot)
+        yield* Effect.forEach(orphans, (folder) => release(join(root, folder), artifacts), { discard: true })
       })
 
       yield* prune.pipe(
@@ -200,6 +223,16 @@ export const layer = (root: string) =>
         Effect.forkScoped,
       )
 
-      return Attachments.of({ stage: stage(root), read: read(root), prune })
+      const copyInto = (threadId: string, original: Attachment) =>
+        dirname(original.path) === join(root, safeName(threadId))
+          ? Effect.succeed(original)
+          : Effect.map(stage(root)(threadId, { path: original.path }), ({ id, path, bytes }) => ({
+              ...original,
+              id,
+              path,
+              bytes,
+            }))
+
+      return Attachments.of({ stage: stage(root), read: read(root), copyInto, prune })
     }),
   )
