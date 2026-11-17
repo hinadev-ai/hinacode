@@ -734,6 +734,7 @@
       }
     }
   ],
+  "project_delete_body_empty": "The folder on disk stays. This cannot be undone.",
   "project_delete_worktrees": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

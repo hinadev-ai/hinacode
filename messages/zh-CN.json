@@ -725,6 +725,7 @@
       }
     }
   ],
+  "project_delete_body_empty": "磁盘上的文件夹会保留。此操作无法撤销。",
   "project_delete_worktrees": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

@@ -734,6 +734,7 @@
       }
     }
   ],
+  "project_delete_body_empty": "ディスク上のフォルダ自体は保持されます。この操作は取り消せません。",
   "project_delete_worktrees": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
