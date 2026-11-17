@@ -18,6 +18,7 @@ import { useTerminals } from "../stores/terminals.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
+import { ArchivedCallout } from "./ArchivedCallout.tsx"
 import { CloudNotice } from "./CloudNotice.tsx"
 import { Composer, ComposerNotices } from "./Composer.tsx"
 import { ThreadEnvironmentSwitch, ThreadProjectSwitch } from "./ComposerControls.tsx"
@@ -31,6 +32,7 @@ import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
 import { AccountLimitNotice } from "./AccountSwitch.tsx"
 import { WorktreePreparation } from "./WorktreePreparation.tsx"
+import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 
 const FIND_DEBOUNCE_MS = 100
@@ -63,11 +65,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   const notices = (
     <>
       <PendingRequests thread={thread} />
-      {thread.status === "limited" && thread.usageLimit !== null ? (
-        <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
-      ) : (
-        <AccountLimitNotice key={thread.id} thread={thread} />
-      )}
+      <ThreadStateNotice key={thread.id} thread={thread} />
       <CloudNotice threadId={thread.id} />
     </>
   )
@@ -121,6 +119,13 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   )
 }
 
+function ThreadStateNotice({ thread }: { thread: Thread }) {
+  if (thread.status === "archived") return <ArchivedCallout threadId={thread.id} />
+  if (thread.status === "limited" && thread.usageLimit !== null)
+    return <UsageLimitCallout thread={thread} limit={thread.usageLimit} />
+  return <AccountLimitNotice thread={thread} />
+}
+
 function ThreadBreadcrumb({ thread, agent }: { thread: Thread; agent: string | undefined }) {
   const project = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []).find(
     (candidate) => candidate.id === thread.projectId,
@@ -142,6 +147,7 @@ function ThreadBreadcrumb({ thread, agent }: { thread: Thread; agent: string | u
           <h1 dir="auto" className="truncate text-base font-semibold" title={thread.title}>
             {thread.status === "draft" ? m.thread_draft_title() : thread.title}
           </h1>
+          {thread.status === "archived" && <Badge variant="secondary">{m.thread_status_archived()}</Badge>}
         </li>
         {agent !== undefined && <SubagentCrumb threadId={thread.id} callId={agent} />}
       </ol>

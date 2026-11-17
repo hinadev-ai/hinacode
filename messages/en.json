@@ -48,6 +48,8 @@
   "thread_status_background": "Working in the background",
   "thread_status_awaiting_approval": "Awaiting approval",
   "thread_status_limited": "Limited",
+  "thread_status_archived": "Archived",
+  "thread_archived_notice": "Sending a message reopens this thread.",
   "thread_status_unseen_completed": "Finished, not yet opened",
   "thread_status_unseen_failed": "Failed, not yet opened",
   "thread_status_pr_conflicting": "Pull request has merge conflicts",
