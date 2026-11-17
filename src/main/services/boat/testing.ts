@@ -35,6 +35,7 @@ export interface FakeBoat {
   readonly desktopCalls: () => number
   readonly dropSignedFetches: (count: number) => void
   readonly failFileReads: (count: number) => void
+  readonly breakNewSandboxes: () => void
   readonly seedSandbox: (id: string, state: string, labels?: Record<string, string>) => void
   readonly lastCreatedId: () => string | undefined
   readonly sandboxIds: () => ReadonlyArray<string>
@@ -92,6 +93,7 @@ export const startFakeBoat = (): Promise<FakeBoat> =>
     let signedDrops = 0
     let failedFileReads = 0
     let createdCount = 0
+    let newSandboxState = "provisioning"
     let origin = ""
 
     const handleCommand = (sandboxId: string, body: Record<string, unknown>, response: ServerResponse) => {
@@ -249,7 +251,7 @@ export const startFakeBoat = (): Promise<FakeBoat> =>
         const header = request.headers["idempotency-key"]
         createIdempotencyKeys.push(Array.isArray(header) ? header[0] : header)
         const labels = (jsonBody["labels"] ?? {}) as Record<string, string>
-        sandboxes.set(id, { id, name: "created", state: "provisioning", getCount: 0, labels })
+        sandboxes.set(id, { id, name: "created", state: newSandboxState, getCount: 0, labels })
         return sendJson(response, 202, {
           ok: true,
           type: "sandbox.created",
@@ -435,6 +437,9 @@ export const startFakeBoat = (): Promise<FakeBoat> =>
           signedDrops = count
         },
         lastCreatedId: () => (createdCount === 0 ? undefined : `sb-created-${createdCount}`),
+        breakNewSandboxes: () => {
+          newSandboxState = "error"
+        },
         failFileReads: (count) => {
           failedFileReads = count
         },

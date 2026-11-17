@@ -273,6 +273,17 @@ describe("boatClient", () => {
     })
   }, 15000)
 
+  it("removes a sandbox that never becomes ready", async () => {
+    await withFake(async (fake) => {
+      fake.breakNewSandboxes()
+      const client = makeClient(fake)
+      const error = await runFlip(client.createSandbox({ type: "small" }))
+      expect(error.message).toContain("entered state error")
+      expect(fake.deletedConfirmHeaders).toEqual([fake.lastCreatedId()])
+      expect(fake.sandboxIds()).toEqual([])
+    })
+  })
+
   it("lists environments and saved snapshots, and creates with every machine option", async () => {
     await withFake(async (fake) => {
       fake.seedSandbox("sb-1", "archived")
