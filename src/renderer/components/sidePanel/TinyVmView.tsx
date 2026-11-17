@@ -52,7 +52,7 @@ function DesktopOnlyVmScreen() {
   )
 }
 
-const vmScreenKind = (vm: RunningVm) => (vm.provider === "boat" ? "boat" : inBrowser() ? "desktopOnly" : "noVnc")
+export const vmScreenKind = (vm: RunningVm) => (vm.provider === "boat" ? "boat" : inBrowser() ? "desktopOnly" : "noVnc")
 
 export function VmScreen({ vm, ...rest }: VmScreenProps) {
   switch (vmScreenKind(vm)) {

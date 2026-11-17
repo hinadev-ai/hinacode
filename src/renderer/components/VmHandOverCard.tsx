@@ -19,6 +19,7 @@ import {
   useVmDrop,
   VmScreen,
   vmScreenId,
+  vmScreenKind,
 } from "./sidePanel/TinyVmView.tsx"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
@@ -30,7 +31,12 @@ export function VmHandOverCard({ threadId, call }: { threadId: string; call: Too
   const argument = toolArgument(call.input, "request")
   const request = typeof argument === "string" ? argument : ""
   const waiting = call.status === "running"
-  const live = waiting && AsyncResult.isSuccess(vm) && vm.value.status === "running" && vm.value.control === "user"
+  const live =
+    waiting &&
+    AsyncResult.isSuccess(vm) &&
+    vm.value.status === "running" &&
+    vm.value.control === "user" &&
+    vmScreenKind(vm.value) === "noVnc"
 
   if (live) return <LiveHandOver threadId={threadId} vm={vm.value} />
   return (
