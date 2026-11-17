@@ -147,6 +147,19 @@ describe("setting files", () => {
     }),
   )
 
+  it.effect("keeps auto archive off for archive settings saved before it existed", () =>
+    withDataDir((dir) => {
+      const path = join(dir, "settings.json")
+      writeFileSync(path, JSON.stringify({ archive: { whenMerged: true, removeWorktree: true } }))
+      return Effect.gen(function* () {
+        expect((yield* Settings.Settings.use((settings) => settings.get)).archive.archiveAfterSettledDays).toBeNull()
+        expect(readJson(path)).toEqual({
+          archive: { whenMerged: true, removeWorktree: true, archiveAfterSettledDays: null },
+        })
+      })
+    }),
+  )
+
   it.effect("keeps keybindings in keybindings.json as a bare record", () =>
     withDataDir((dir) =>
       Effect.gen(function* () {
