@@ -32,6 +32,18 @@ export const advertisedHosts = (bindHost: string): NonEmptyReadonlyArray<string>
 
 export const relayHostname = (relay: RelayStatus) => ("hostname" in relay ? relay.hostname : null)
 
+export const storedPairing = Effect.gen(function* () {
+  const token = yield* Secrets.use((secrets) => secrets.get(REMOTE_TOKEN_SECRET))
+  if (Option.isNone(token)) return Option.none<RemotePairing>()
+  const { remote } = yield* Settings.use((settings) => settings.get)
+  return Option.some<RemotePairing>({
+    hosts: advertisedHosts(remote.bindHost),
+    port: remote.port,
+    token: token.value,
+    relay: null,
+  })
+})
+
 export class RemoteAccess extends Context.Service<
   RemoteAccess,
   {

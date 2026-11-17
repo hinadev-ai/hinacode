@@ -4,7 +4,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { isSea } from "node:sea"
 import { fileURLToPath } from "node:url"
-import { Effect, Layer, ManagedRuntime, References } from "effect"
+import { Effect, Layer, ManagedRuntime, Option, References } from "effect"
 import QRCode from "qrcode"
 import packageJson from "../../package.json" with { type: "json" }
 import type { RemotePairing } from "../shared/domain.ts"
@@ -13,7 +13,7 @@ import { makeAppLayer } from "./app.ts"
 import * as CloudUpdater from "./cloudUpdater.ts"
 import { chromiumDir, desktopPid, isAlive } from "./dataDir.ts"
 import * as Db from "./db/client.ts"
-import { layer as RemoteAccessLayer, RemoteAccess } from "./remote/access.ts"
+import { RemoteAccess, storedPairing } from "./remote/access.ts"
 import { storedTunnel } from "./remote/relay.ts"
 import {
   applyServeRelay,
@@ -79,6 +79,9 @@ const pairingText = async (userData: string, pairing: RemotePairing) => {
     "",
   ].join("\n")
 }
+
+export const serveOutput = async (userData: string, pairing: RemotePairing, terminal: boolean) =>
+  terminal ? await pairingText(userData, pairing) : "Run `hinacode pair` to print the pairing URLs.\n"
 
 const openInBrowser = (url: string) => {
   const command = process.stdout.isTTY ? browserCommand(url, process.platform, process.env) : null
@@ -166,30 +169,34 @@ export const serve = async (flags: ServeFlags, userData: string) => {
     throw error
   }
   const pairing = await runtime.runPromise(RemoteAccess.use((remote) => remote.pairing))
-  process.stdout.write(await pairingText(userData, pairing))
+  process.stdout.write(await serveOutput(userData, pairing, process.stdout.isTTY === true))
 }
 
-export const pair = async (userData: string) => {
+export const readPairingText = async (userData: string): Promise<string | undefined> => {
   const database = join(userData, "hinacode.sqlite")
-  const noCloud = () => {
-    process.stderr.write(`No cloud in ${userData} yet. Start one with \`hinacode serve\`.\n`)
-    process.exitCode = 1
-  }
-  if (!existsSync(database)) return noCloud()
+  if (!existsSync(database)) return undefined
   const runtime = ManagedRuntime.make(
-    RemoteAccessLayer.pipe(
-      Layer.provideMerge(Layer.mergeAll(SettingsLayer(userData), SecretsLayer)),
+    Layer.mergeAll(SettingsLayer(userData), SecretsLayer).pipe(
       Layer.provideMerge(Layer.mergeAll(Db.layer(database), noKeyring)),
       Layer.provide(Layer.succeed(References.MinimumLogLevel, "Warn")),
     ),
   )
   try {
     const { remote } = await runtime.runPromise(Settings.use((settings) => settings.get))
-    if (!remote.enabled) return noCloud()
-    const pairing = await runtime.runPromise(RemoteAccess.use((access) => access.pairing))
+    if (!remote.enabled) return undefined
+    const stored = await runtime.runPromise(storedPairing)
+    if (Option.isNone(stored)) return undefined
+    const pairing = stored.value
     const tunnel = await runtime.runPromise(storedTunnel)
-    process.stdout.write(await pairingText(userData, { ...pairing, relay: tunnel?.hostname ?? null }))
+    return await pairingText(userData, { ...pairing, relay: tunnel?.hostname ?? null })
   } finally {
     await runtime.dispose()
   }
+}
+
+export const pair = async (userData: string) => {
+  const text = await readPairingText(userData)
+  if (text !== undefined) return void process.stdout.write(text)
+  process.stderr.write(`No cloud in ${userData} yet. Start one with \`hinacode serve\`.\n`)
+  process.exitCode = 1
 }

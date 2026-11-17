@@ -4,13 +4,28 @@ A cloud is `hinacode serve`: the app's services as a plain Node program, with no
 
 ## Start it
 
-Node 24.22.1 or newer (26.12.1 or newer on Node 26):
+On macOS (Apple silicon) or Linux (x64, arm64), one command installs the cloud and keeps it running:
+
+```sh
+curl -fsSL https://hinacode.app/install.sh | bash
+```
+
+It downloads the executable for this machine, checks it against the `.sha256` the release publishes next to it, and installs it into `~/.local/share/hinacode/versions/<version>/`, links `~/.local/bin/hinacode` to it, and runs `hinacode connect`. Connect installs `hinacode serve` as a service that starts at boot and restarts when it stops, waits until it listens, and prints the pairing block. Run the same command again to update; it restarts the service on the new release and deletes the old one.
+
+| Platform | Service                                                                  | Log                                 |
+| -------- | ------------------------------------------------------------------------ | ----------------------------------- |
+| macOS    | launchd agent `~/Library/LaunchAgents/ai.hinacode.serve.plist`           | `~/Library/Logs/hinacode/serve.log` |
+| Linux    | systemd user unit `~/.config/systemd/user/hinacode.service`, with linger | `~/.local/state/hinacode/serve.log` |
+
+The service keeps the `PATH` of the shell that ran connect, so it finds the same `claude`, `codex` and `gh`. Run `hinacode connect` again after installing an agent CLI somewhere new. `hinacode disconnect` stops the service and removes it, and keeps the data. On Linux, connect runs `loginctl enable-linger` so the service starts at boot without a login; where that needs root, it says so and the service starts at login instead.
+
+With Node 24.22.1 or newer (26.12.1 or newer on Node 26), run it in the foreground instead:
 
 ```sh
 npx hinacode serve
 ```
 
-Without Node, download `hinacode-<platform>-<arch>.tar.gz` for `linux-x64`, `linux-arm64` or `darwin-arm64` from the [latest release](https://github.com/hinadev-ai/hinacode/releases/latest), unpack it anywhere and run the executable inside. Keep `node_modules/` next to it. On Linux it needs glibc 2.28 and `libatomic.so.1` (`apt install libatomic1` in a minimal image), the same as Node. It does not update itself; unpack the next release over it and restart.
+Or download `hinacode-<platform>-<arch>.tar.gz` for `linux-x64`, `linux-arm64` or `darwin-arm64` from the [latest release](https://github.com/hinadev-ai/hinacode/releases/latest), unpack it anywhere and run the executable inside. Keep `node_modules/` next to it. On Linux it needs glibc 2.28 and `libatomic.so.1` (`apt install libatomic1` in a minimal image), the same as Node. It does not update itself; unpack the next release over it and restart.
 
 ```sh
 tar -xzf hinacode-linux-x64.tar.gz && ./hinacode/hinacode serve
@@ -18,7 +33,7 @@ tar -xzf hinacode-linux-x64.tar.gz && ./hinacode/hinacode serve
 
 From a checkout, `pnpm serve` builds and runs the same daemon, and `pnpm build:exe` builds the archive for this machine into `dist-exe/`.
 
-The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, and prints the pairing block: a phone URL for its address and a QR code to scan in the mobile app, then the URL to add under Settings > Connections on the desktop. It listens on `--host`, else the address it used last, else `private`. `private` answers on the LAN and Tailscale and closes any connection with a public address on either end, so a phone at home connects with no flags. Anyone on the same network can reach the port, and only the pairing token keeps them out. Pass one address, such as a Tailscale address, to keep other networks out entirely, or `--host 127.0.0.1 --relay` to be reached only through the relay. A machine that already stored an address keeps it until you pass `--host private`. `0.0.0.0` and `::` are refused. `hinacode pair` prints the same block again, whether the daemon runs or not. The data directory holds `hinacode.sqlite`, attachments, and the pairing token inside the database. A desktop app and a cloud refuse to share one directory, and so do two clouds. The daemon spots a desktop by the `SingletonLock` in the directory's `chromium/`.
+The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, and prints the pairing block: a phone URL for its address and a QR code to scan in the mobile app, then the URL to add under Settings > Connections on the desktop. It listens on `--host`, else the address it used last, else `private`. `private` answers on the LAN and Tailscale and closes any connection with a public address on either end, so a phone at home connects with no flags. Anyone on the same network can reach the port, and only the pairing token keeps them out. Pass one address, such as a Tailscale address, to keep other networks out entirely, or `--host 127.0.0.1 --relay` to be reached only through the relay. A machine that already stored an address keeps it until you pass `--host private`. `0.0.0.0` and `::` are refused. It prints the block only to a terminal. Under a service or with its output redirected, it prints a pointer to `hinacode pair` instead, so the token never lands in a log. `hinacode pair` prints the same block again, whether the daemon runs or not. The data directory holds `hinacode.sqlite`, attachments, and the pairing token inside the database. A desktop app and a cloud refuse to share one directory, and so do two clouds. The daemon spots a desktop by the `SingletonLock` in the directory's `chromium/`.
 
 Options, flags first, then environment, then stored settings:
 
@@ -65,15 +80,17 @@ The cloud then prints the pairing block with its relay hostname in every URL, an
 
 ## Keep it running
 
-- Install it once instead of resolving it on every boot: `npm install -g --allow-scripts=node-pty hinacode`, then run `hinacode serve`. npm 11 skips node-pty's install script without that flag, and the terminal then fails to start.
+- `hinacode connect` is the supported way. It works from the installer and from `npm install -g --allow-scripts=node-pty hinacode`, and refuses under `npx`, whose cache npm may clear under a running service. npm 11 skips node-pty's install script without that flag, and the terminal then fails to start.
 - A cloud installed with `npm install -g` updates itself: it checks npm every 4 hours and installs a new release once no turn, queued message, setup script or terminal is running. To update right away, use Settings, Connections, `Update all` on the desktop. The cloud installs the release into the same npm prefix and restarts itself under the same pid, so a systemd or launchd service keeps running it. A cloud started with `npx` or from a checkout does not update itself. By hand, run `npm install -g --allow-scripts=node-pty hinacode@latest` and restart.
-- systemd user unit: `ExecStart=/usr/bin/env hinacode serve`, `Environment=PATH=...` with the directories of `node`, `claude`, `codex` and `gh`, `Restart=on-failure`, `StandardOutput=append:%h/.hinacode-cloud/serve.log`. Run `loginctl enable-linger $USER` so it starts at boot without a login. `SIGTERM` is handled: running turns persist before exit, at most 5 seconds.
-- launchd: `hinacode serve`, `KeepAlive` true, stdout to a log file so the pairing URL survives the boot.
+- `SIGTERM` is handled: running turns persist before exit, at most 5 seconds.
 - Agent logins belong to the cloud: run `claude login`, `codex login`, `muse login` and `gh auth login` in a shell on that machine, once. hinacode never signs in for you.
 - A firewall must let the listener port in. With `ufw`, open it on the Tailscale interface only: `sudo ufw allow in on tailscale0 to any port 48081 proto tcp`.
 
 ## Troubleshooting
 
+- `hinacode connect: the cloud did not start in 30 seconds`: it prints the end of the service log. The usual causes are below.
+- `hinacode connect: another hinacode serve (pid N) uses ...`: a cloud started by hand holds the data directory. Stop it, then connect again.
+- `systemctl --user ... failed: Failed to connect to bus`: the shell has no systemd user session, as in a container or `su`. Log in as that user over SSH or at the console, or run `hinacode serve` under your own supervisor.
 - `hinacode serve: another hinacode serve (pid N) uses ...` or `the HinaCode app (pid N) uses ...`: give this cloud its own `HINACODE_USER_DATA`.
 - `hinacode serve: port 48081 is in use ...`: another cloud, or the desktop app's Settings > Connections, holds the port. Pick another with `--port`.
 - `remote address is not up yet, retrying ... EADDRNOTAVAIL`: the `--host` address is not on any interface yet, as when the cloud starts at boot before Tailscale. The cloud keeps running and binds once the address comes up, retrying every 30 seconds at most.

@@ -1,8 +1,10 @@
-import { homedir } from "node:os"
+import { homedir, userInfo } from "node:os"
 import { join } from "node:path"
+import { isSea } from "node:sea"
 import { Effect, Option } from "effect"
 import { Command, Flag } from "effect/cli"
 import { CliFailure, EXIT } from "./exit.ts"
+import { connect, disconnect, serveProgram, type ServiceHost } from "./service.ts"
 import { DataDir } from "./session.ts"
 
 const cloudData = Effect.gen(function* () {
@@ -10,14 +12,23 @@ const cloudData = Effect.gen(function* () {
   return flag ?? (process.env["HINACODE_USER_DATA"] || join(homedir(), ".hinacode-cloud"))
 })
 
+const failure = (command: string) => (error: unknown) =>
+  new CliFailure({
+    code: EXIT.failed,
+    message: `${command}: ${error instanceof Error ? error.message : String(error)}`,
+  })
+
+const serviceHost = (): ServiceHost => ({
+  platform: process.platform,
+  home: homedir(),
+  uid: userInfo().uid,
+  env: process.env,
+})
+
 const runDaemon = (command: string, start: (daemon: typeof import("../main/daemon.ts")) => Promise<void>) =>
   Effect.tryPromise({
     try: () => import("../main/daemon.ts").then(start),
-    catch: (error) =>
-      new CliFailure({
-        code: EXIT.failed,
-        message: `${command}: ${error instanceof Error ? error.message : String(error)}`,
-      }),
+    catch: failure(command),
   })
 
 const serve = Command.make(
@@ -71,4 +82,31 @@ const pair = Command.make("pair", {}, () =>
   Effect.flatMap(cloudData, (userData) => runDaemon("pair", (daemon) => daemon.pair(userData))),
 ).pipe(Command.withDescription("Print the pairing URLs and QR code of the cloud again, without restarting it."))
 
-export const cloudCommands = [serve, pair] as const
+const connectCommand = Command.make("connect", {}, () =>
+  Effect.gen(function* () {
+    const customDataDir = Option.isSome(yield* DataDir) || Boolean(process.env["HINACODE_USER_DATA"])
+    const userData = yield* cloudData
+    yield* Effect.tryPromise({
+      try: async () =>
+        connect({
+          host: serviceHost(),
+          program: serveProgram(process, isSea()),
+          userData,
+          customDataDir,
+          pairingText: (await import("../main/daemon.ts")).readPairingText,
+        }),
+      catch: failure("connect"),
+    })
+  }),
+).pipe(
+  Command.withShortDescription("Keep a HinaCode cloud running on this machine."),
+  Command.withDescription(
+    "Run hinacode serve as a launchd agent on macOS or a systemd user service on Linux, so it starts at boot and restarts if it stops, then print its pairing URLs. Run it again after an update to restart the service.",
+  ),
+)
+
+const disconnectCommand = Command.make("disconnect", {}, () =>
+  Effect.try({ try: () => disconnect(serviceHost()), catch: failure("disconnect") }),
+).pipe(Command.withDescription("Stop the service hinacode connect installed and remove it. The cloud's data stays."))
+
+export const cloudCommands = [serve, pair, connectCommand, disconnectCommand] as const
