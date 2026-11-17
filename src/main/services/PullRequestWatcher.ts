@@ -1,6 +1,12 @@
 import { isDeepStrictEqual } from "node:util"
 import { Context, Effect, Layer, Schedule, Semaphore } from "effect"
-import type { PullRequestLink, PullRequestWatch, Thread } from "../../shared/domain.ts"
+import {
+  isInterrupted,
+  type PullRequestLink,
+  type PullRequestWatch,
+  waitsOnDeveloper,
+  type Thread,
+} from "../../shared/domain.ts"
 import { AgentRunner } from "./AgentRunner.ts"
 import { nowIso } from "./clock.ts"
 import { SourceControl } from "./SourceControl.ts"
@@ -31,7 +37,7 @@ const make = Effect.gen(function* () {
   const canDeliver = (link: PullRequestLink, generation: PullRequestWatch["generation"]) =>
     threads.get(link.threadId).pipe(
       Effect.flatMap((thread) =>
-        (thread.status === "idle" || thread.status === "running") && !isPutAway(thread)
+        ((thread.status === "idle" && !isInterrupted(thread)) || thread.status === "running") && !isPutAway(thread)
           ? stillCurrent(link.id, generation)
           : Effect.succeed(false),
       ),
@@ -64,7 +70,7 @@ const make = Effect.gen(function* () {
   const stopWithWake = (link: PullRequestLink, watch: PullRequestWatch, reason: string) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(link.threadId)
-      if (!isPutAway(thread) && thread.status !== "awaiting_approval" && thread.status !== "limited") {
+      if (!isPutAway(thread) && !waitsOnDeveloper(thread)) {
         if (yield* stillCurrent(link.id, watch.generation)) {
           yield* wake(link, watch.generation, watchStoppedMessage(link.url, reason))
         }
@@ -109,7 +115,7 @@ const make = Effect.gen(function* () {
           : record(link, watch, { snapshot, failures: 0, lastPolledAt: now })
         return
       }
-      if (thread.status === "awaiting_approval" || thread.status === "limited") {
+      if (waitsOnDeveloper(thread)) {
         yield* record(link, watch, { failures: 0, lastPolledAt: now })
         return
       }

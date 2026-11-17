@@ -47,6 +47,7 @@ const statusLabel: Record<IndicatedState, string> = {
   background: copy("mobile_status_background"),
   awaiting_approval: copy("mobile_status_awaiting"),
   limited: copy("mobile_status_limited"),
+  interrupted: copy("mobile_status_interrupted"),
   unseen_completed: copy("mobile_status_unseen_completed"),
   unseen_failed: copy("mobile_status_unseen_failed"),
   pr_conflicting: copy("mobile_status_pr_conflicting"),
@@ -79,7 +80,7 @@ export function ThreadRow({
   const branch = threadBranch(worktree, rootBranch)
   const links = usePullRequests((pullRequests) => pullRequests.linksByThread[thread.id]) ?? noLinks
   const state = rowState(
-    thread.status,
+    thread,
     PHONE_RECEIVES_BACKGROUND_TASKS,
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
     usePullRequestAttention(links),

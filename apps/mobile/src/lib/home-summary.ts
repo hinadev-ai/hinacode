@@ -42,7 +42,8 @@ export function homeSummary(threads: readonly Thread[], requesting: string, now:
     waiting,
     running: threads.filter((thread) => thread.status === "running" && !waitingIds.has(thread.id)).sort(newestFirst),
     doneToday: threads.filter(
-      (thread) => thread.status === "idle" && sameLocalDay(new Date(thread.updatedAt), today),
+      (thread) =>
+        thread.status === "idle" && thread.interruptedAt === null && sameLocalDay(new Date(thread.updatedAt), today),
     ).length,
   }
 }

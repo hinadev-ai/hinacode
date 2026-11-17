@@ -13,6 +13,7 @@ import {
   type IconComponent,
   PulseIcon,
   QuestionFillIcon,
+  RestartFillIcon,
   WarningFillIcon,
   XCircleFillIcon,
 } from "@hinacode/icons"
@@ -31,6 +32,7 @@ const icons = {
   RiHourglassFill: HourglassFillIcon,
   RiPulseLine: PulseIcon,
   RiQuestionFill: QuestionFillIcon,
+  RiRestartFill: RestartFillIcon,
   RiTimeLine: ClockIcon,
 } satisfies Record<string, IconComponent>
 

@@ -45,6 +45,7 @@ export function rowDetail({
 }): RowDetail | null {
   if (state === "awaiting_approval") return line?.kind === "ask" ? line : words(m.thread_status_awaiting_approval())
   if (state === "limited") return limitDetail(limit, now, locale)
+  if (state === "interrupted") return words(m.sidebar_detail_interrupted())
   if (state === "unseen_failed") return line?.kind === "failure" ? line : words(m.sidebar_detail_failed())
   if (showActivity && (state === "running" || state === "background") && line?.kind === "activity") return line
   return pullRequestDetail(attention)

@@ -446,7 +446,7 @@ function useInboxGroups(threads: ReadonlyArray<Thread>) {
   const attentions = useAtomValue(pullRequestAttentionsAtom(lookups))
   const entries = threads.map((thread, index) => {
     const state = rowState(
-      thread.status,
+      thread,
       (background[thread.id]?.length ?? 0) > 0 || sending.has(thread.id),
       unseen[thread.id],
       attentions[index],

@@ -63,6 +63,7 @@ import {
   QuestionFillIcon,
   QuestionIcon,
   RefreshIcon,
+  RestartFillIcon,
   SearchIcon,
   SettingsIcon,
   ShieldIcon,
@@ -186,6 +187,7 @@ const threadStatus = {
   RiHourglassFill: HourglassFillIcon,
   RiPulseLine: PulseIcon,
   RiQuestionFill: QuestionFillIcon,
+  RiRestartFill: RestartFillIcon,
   RiTimeLine: ClockIcon,
 } satisfies Record<string, IconComponent>
 

@@ -78,7 +78,7 @@ export const ThreadTools = Toolkit.make(
   }),
   McpTool.make("read_thread", {
     description:
-      "Read another thread, of any project on this machine or of this project on another of the user's machines: its status, agent and model, project and workspace, linked pull requests, whether it is waiting on the user, and its latest messages.",
+      "Read another thread, of any project on this machine or of this project on another of the user's machines: its status, agent and model, project and workspace, linked pull requests, whether it is waiting on the user, and its latest messages. `status: interrupted` means a HinaCode restart stopped its last turn partway and nothing resumes it: send_to_thread to continue.",
     parameters: Schema.Struct({
       threadId: AnyThreadId,
       limit: Schema.optionalKey(ReadLimit),

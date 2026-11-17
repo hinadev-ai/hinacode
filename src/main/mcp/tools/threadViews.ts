@@ -1,6 +1,6 @@
 import { Duration, Effect, Option, Schema } from "effect"
 import type { RpcResponse } from "../../../shared/contract.ts"
-import type { Machine, Message, Thread, Worktree } from "../../../shared/domain.ts"
+import { isInterrupted, type Machine, type Message, type Thread, type Worktree } from "../../../shared/domain.ts"
 import type { AgentRunner } from "../../services/AgentRunner.ts"
 import type { Projects } from "../../services/Projects.ts"
 import type { Search } from "../../services/Search.ts"
@@ -10,6 +10,8 @@ export const DEFAULT_READ_LIMIT = 20
 export const MAX_READ_LIMIT = 100
 export const DEFAULT_SEARCH_LIMIT = 20
 export const MAX_SEARCH_LIMIT = 100
+
+const statusForAgents = (thread: Thread) => (isInterrupted(thread) ? "interrupted" : thread.status)
 const POLL_EVERY = Duration.seconds(1)
 
 const renderPart = (part: Message["parts"][number]): string | null => {
@@ -48,7 +50,7 @@ export const renderMetadata = (thread: Thread, pullRequestUrls: ReadonlyArray<st
     "<metadata>",
     `thread_id: ${thread.id}`,
     `title: ${thread.title}`,
-    `status: ${thread.status}`,
+    `status: ${statusForAgents(thread)}`,
     `provider: ${thread.provider}`,
     `model: ${thread.model}`,
     `effort: ${thread.effort ?? "default"}`,
@@ -109,7 +111,7 @@ export const projectLabels = (projects: typeof Projects.Service) =>
 export const listedThread = (thread: Thread, branch: string | null | undefined) => ({
   id: thread.id,
   title: thread.title,
-  status: thread.status,
+  status: statusForAgents(thread),
   provider: thread.provider,
   model: thread.model,
   createdBy: thread.createdBy,
@@ -191,7 +193,7 @@ export const searchThreads = (
       found.map((thread) => ({
         id: thread.id,
         title: thread.title,
-        status: thread.status,
+        status: statusForAgents(thread),
         project: services.labels.get(thread.projectId) ?? thread.projectId,
         ...(snippets.has(thread.id) ? { snippet: snippets.get(thread.id) } : {}),
         ...(thread.id === options.self ? { self: true } : {}),

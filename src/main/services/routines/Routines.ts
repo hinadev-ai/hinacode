@@ -118,7 +118,7 @@ export const promptWithPayload = (prompt: string, payload: string | null) =>
   payload === null ? prompt : `${prompt}\n\n${fenced(payload)}`
 
 const isUnrepliedRun = (thread: Thread) =>
-  thread.status === "idle" && thread.settledAt === null && thread.pinnedAt === null
+  thread.status === "idle" && thread.interruptedAt === null && thread.settledAt === null && thread.pinnedAt === null
 
 const cronOf = (schedule: RoutineSchedule) => Cron.parseUnsafe(schedule.cron, schedule.timezone)
 

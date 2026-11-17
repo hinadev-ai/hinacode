@@ -130,7 +130,7 @@ export const pinnedThreads = (threads: readonly Thread[]) =>
     .filter((thread) => thread.pinnedAt !== null && thread.status !== "archived")
     .sort((a, b) => (a.pinnedAt ?? "").localeCompare(b.pinnedAt ?? ""))
 
-const inboxGroupOf = (thread: Thread) => inboxGroup(rowState(thread.status, false, undefined, undefined), thread.settledAt)
+const inboxGroupOf = (thread: Thread) => inboxGroup(rowState(thread, false, undefined, undefined), thread.settledAt)
 
 export const inboxThreads = (threads: readonly Thread[]) =>
   threads.filter((thread) => thread.pinnedAt === null && inboxGroupOf(thread) === "ready").sort(newestFirst)

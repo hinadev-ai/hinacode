@@ -982,6 +982,11 @@ const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconCom
     className: `${awaiting.className} after:absolute after:inset-0.5 after:animate-attention after:rounded-full after:border after:border-current after:[animation-fill-mode:forwards] motion-reduce:after:hidden`,
   },
   limited: { label: m.thread_status_limited, ...toIcon(rowStatusIndicator.limited), Icon: HourglassIcon },
+  interrupted: {
+    label: m.thread_status_interrupted,
+    ...toIcon(rowStatusIndicator.interrupted),
+    Icon: RefreshIcon,
+  },
   unseen_completed: {
     label: m.thread_status_unseen_completed,
     ...toIcon(rowStatusIndicator.unseen_completed),
@@ -1022,7 +1027,7 @@ const usePullRequestAttention = (thread: Thread) => {
 
 export function useThreadRowState(thread: Thread): RowState {
   return rowState(
-    thread.status,
+    thread,
     useBackgroundTasks((state) => (state.byThreadId[thread.id]?.length ?? 0) > 0),
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
     usePullRequestAttention(thread),
