@@ -2,6 +2,7 @@ import { useAtomSet } from "@effect/atom-react"
 import { type FormEvent, useState } from "react"
 import { type ArchiveSettings as Archive, DAYS_RANGE } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
+import { cn } from "../../lib/utils.ts"
 import { updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
@@ -140,7 +141,9 @@ function DaysInput({
         onBlur={commit}
         className="w-20 tabular-nums"
       />
-      <span className="text-sm text-muted-foreground">{m.settings_archive_days_unit()}</span>
+      <span className={cn("text-sm text-muted-foreground", draft === "" && "invisible")}>
+        {m.settings_archive_days_unit()}
+      </span>
     </form>
   )
 }
