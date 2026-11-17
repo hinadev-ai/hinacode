@@ -283,6 +283,13 @@ const handlers: Handlers = {
       Effect.andThen(closeTerminals(id)),
       Effect.andThen(Threads.use((threads) => threads.remove(id, { removeWorktree }))),
       Effect.andThen(Events.use((events) => events.publish({ type: "thread.removed", id }))),
+      Effect.andThen(
+        Attachments.use((attachments) => attachments.prune).pipe(
+          Effect.catchCause((cause) => Effect.logWarning("attachment prune failed", cause)),
+          Effect.forkDetach,
+        ),
+      ),
+      Effect.asVoid,
     ),
 
   "threads.resumeAtReset": ({ id, enabled }) => AgentRunner.use((runner) => runner.resumeAtReset(id, enabled)),

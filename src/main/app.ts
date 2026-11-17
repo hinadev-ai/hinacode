@@ -173,7 +173,7 @@ export const makeAppLayer = ({
     ),
     ClientSettings.layer(userData),
     Messages.layer,
-    Attachments.layer(join(userData, "attachments")),
+    Attachments.layer(join(userData, "attachments"), { artifactsRoot: join(userData, "artifacts") }),
     Artifacts.layer(join(userData, "artifacts")),
     artifactInspector,
     Search.layer,
