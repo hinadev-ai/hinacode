@@ -143,27 +143,44 @@ const namesIn = (folder: string, kind: "files" | "folders") =>
 
 const asJsonText = (text: string) => JSON.stringify(text).slice(1, -1)
 
-const mentions = (texts: ReadonlyArray<string>, path: string) =>
-  texts.some((text) => text.includes(path) || text.includes(asJsonText(path)))
+const mentions = (text: string, path: string) => text.includes(path) || text.includes(asJsonText(path))
 
 const ARTIFACT_TEXT_EXTENSIONS = new Set([".json", ".md", ".html", ".excalidraw", ".svg", ".txt", ".js", ".css"])
 
-const artifactTexts = (artifactsRoot: string | undefined) =>
-  artifactsRoot === undefined
-    ? Effect.succeed([])
-    : Effect.tryPromise({
-        try: async () => {
-          const entries = await readdir(artifactsRoot, { recursive: true, withFileTypes: true }).catch(
-            (cause: unknown) => {
-              if (errorCode(cause) === "ENOENT") return []
-              throw cause
-            },
-          )
-          const files = entries.filter((entry) => entry.isFile() && ARTIFACT_TEXT_EXTENSIONS.has(extname(entry.name)))
-          return Promise.all(files.map((entry) => readFile(join(entry.parentPath, entry.name), "utf8")))
-        },
-        catch: failure("Cannot read artifacts"),
-      })
+const artifactTextsMentioning = (artifactsRoot: string | undefined, folders: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    if (artifactsRoot === undefined) return []
+    const exists = yield* Effect.tryPromise({ try: () => stat(artifactsRoot), catch: (cause) => cause }).pipe(
+      Effect.as(true),
+      Effect.catchIf(
+        (cause) => errorCode(cause) === "ENOENT",
+        () => Effect.succeed(false),
+      ),
+      Effect.mapError(failure(`Cannot read ${artifactsRoot}`)),
+    )
+    if (!exists) return []
+    const entries = yield* Effect.tryPromise({
+      try: () => readdir(artifactsRoot, { recursive: true, withFileTypes: true }),
+      catch: failure(`Cannot list ${artifactsRoot}`),
+    })
+    const files = entries
+      .filter((entry) => entry.isFile() && ARTIFACT_TEXT_EXTENSIONS.has(extname(entry.name)))
+      .map((entry) => join(entry.parentPath, entry.name))
+    const texts = yield* Effect.forEach(
+      files,
+      (file) =>
+        Effect.tryPromise({ try: () => readFile(file, "utf8"), catch: (cause) => cause }).pipe(
+          Effect.map((text) => (folders.some((folder) => mentions(text, folder)) ? [text] : [])),
+          Effect.catchIf(
+            (cause) => errorCode(cause) === "ENOENT",
+            () => Effect.succeed([]),
+          ),
+          Effect.mapError(failure(`Cannot read ${file}`)),
+        ),
+      { concurrency: 4 },
+    )
+    return texts.flat()
+  })
 
 const removeIfEmpty = (folder: string) =>
   Effect.tryPromise({ try: () => rmdir(folder), catch: (cause) => cause }).pipe(
@@ -186,6 +203,7 @@ export const layer = (root: string, { artifactsRoot }: { readonly artifactsRoot?
           UNION ALL SELECT part FROM message_part WHERE instr(part, ${needle}) > 0
           UNION ALL SELECT queue FROM thread WHERE instr(queue, ${needle}) > 0
           UNION ALL SELECT scheduled FROM thread WHERE instr(scheduled, ${needle}) > 0
+          UNION ALL SELECT prompt FROM routine WHERE instr(prompt, ${needle}) > 0
         `.pipe(
           Effect.map((rows) => rows.map((row) => row.text)),
           Effect.mapError(failure("Cannot look up attachment references")),
@@ -196,7 +214,9 @@ export const layer = (root: string, { artifactsRoot }: { readonly artifactsRoot?
           const names = yield* namesIn(folder, "files")
           if (names.length === 0) return yield* removeIfEmpty(folder)
           const texts = [...(yield* textsMentioning(asJsonText(folder + sep))), ...artifacts]
-          const unreferenced = names.map((name) => join(folder, name)).filter((path) => !mentions(texts, path))
+          const unreferenced = names
+            .map((name) => join(folder, name))
+            .filter((path) => !texts.some((text) => mentions(text, path)))
           yield* Effect.forEach(
             unreferenced,
             (path) =>
@@ -214,7 +234,8 @@ export const layer = (root: string, { artifactsRoot }: { readonly artifactsRoot?
         const live = new Set(threads.map((thread) => safeName(thread.id)))
         const orphans = folders.filter((folder) => !live.has(folder))
         if (orphans.length === 0) return
-        const artifacts = yield* artifactTexts(artifactsRoot)
+        const paths = orphans.map((folder) => join(root, folder) + sep)
+        const artifacts = yield* artifactTextsMentioning(artifactsRoot, paths)
         yield* Effect.forEach(orphans, (folder) => release(join(root, folder), artifacts), { discard: true })
       })
 

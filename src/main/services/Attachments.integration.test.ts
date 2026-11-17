@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, describe, expect, it } from "@effect/vitest"
@@ -122,6 +122,50 @@ describe("Attachments", () => {
         yield* deleteThread(threadId)
 
         expect(existsSync(screenshot.path)).toBe(true)
+      }),
+    ),
+  )
+
+  it.effect("keeps a file that a saved routine prompt mentions", () =>
+    inFreshRoot(() =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const { threadId, projectId } = yield* seedThread({ rootPath: "/repo" })
+        const mockup = yield* stagePng(threadId, "mockup.png")
+        yield* sql`INSERT INTO routine ${sql.insert({
+          id: "r1",
+          projectId,
+          name: "nightly",
+          enabled: 1,
+          prompt: `Compare the page with ${mockup.path}`,
+          provider: "claude",
+          model: "m",
+          workspace: "local",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        })}`
+
+        yield* deleteThread(threadId)
+
+        expect(existsSync(mockup.path)).toBe(true)
+      }),
+    ),
+  )
+
+  it.effect("deletes nothing while an artifact file cannot be read", () =>
+    inFreshRoot((_root, artifactsRoot) =>
+      Effect.gen(function* () {
+        const { threadId } = yield* seedThread({ rootPath: "/repo" })
+        const unsent = yield* stagePng(threadId, "unsent.png")
+        const locked = join(artifactsRoot, "feedback.json")
+        writeFileSync(locked, "{}")
+        chmodSync(locked, 0o000)
+
+        const failed = yield* Effect.flip(deleteThread(threadId))
+
+        expect(failed.message).toContain(locked)
+        expect(existsSync(unsent.path)).toBe(true)
+        chmodSync(locked, 0o600)
       }),
     ),
   )

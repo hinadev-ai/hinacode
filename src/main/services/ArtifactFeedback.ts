@@ -133,11 +133,7 @@ const make = Effect.gen(function* () {
     const when = Effect.map(handedOver(threadId, messageId), (done) => !done)
     return threads.get(threadId).pipe(
       Effect.flatMap(reopenArchived),
-      Effect.andThen(
-        Effect.forEach(attachments, (attachment) =>
-          attachmentFiles.copyInto(threadId, attachment).pipe(Effect.orElseSucceed(() => attachment)),
-        ),
-      ),
+      Effect.andThen(Effect.forEach(attachments, (attachment) => attachmentFiles.copyInto(threadId, attachment))),
       Effect.flatMap((owned) =>
         runner
           .steerWhen({ threadId, text: prompt, attachments: owned, messageId, when })
