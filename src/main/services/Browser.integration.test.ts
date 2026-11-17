@@ -94,7 +94,9 @@ const fixture = async (options: BrowserOptions = {}, clock: Layer.Layer<never> =
   const origin = `http://127.0.0.1:${address.port}`
   const runtime = ManagedRuntime.make(
     browserLayer(options).pipe(
-      Layer.provideMerge(Layer.merge(Db.layer(":memory:"), Attachments.layer(join(directory, "attachments")))),
+      Layer.provideMerge(
+        Attachments.layer(join(directory, "attachments")).pipe(Layer.provideMerge(Db.layer(":memory:"))),
+      ),
       Layer.provide(NodeServices.layer),
       Layer.provideMerge(clock),
     ),

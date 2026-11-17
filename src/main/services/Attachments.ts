@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises"
-import { basename, extname, join } from "node:path"
+import { copyFile, mkdir, readdir, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises"
+import { basename, extname, join, sep } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
+import { SqlClient } from "effect/sql"
 import type { Attachment } from "../../shared/domain.ts"
 import { isInside } from "../security.ts"
 
@@ -62,6 +63,7 @@ export class Attachments extends Context.Service<
       source: AttachmentSource,
     ) => Effect.Effect<Attachment, AttachmentError | AttachmentTooLargeError>
     readonly read: (path: string) => Effect.Effect<{ readonly dataUrl: string }, AttachmentError>
+    readonly prune: Effect.Effect<void, AttachmentError>
   }
 >()("hinacode/Attachments") {}
 
@@ -121,5 +123,83 @@ const attachment = (id: string, name: string, path: string, mime: string, bytes:
   bytes,
 })
 
+const errorCode = (cause: unknown) => (cause as NodeJS.ErrnoException).code
+
+const namesIn = (folder: string, kind: "files" | "folders") =>
+  Effect.tryPromise({ try: () => readdir(folder, { withFileTypes: true }), catch: (cause) => cause }).pipe(
+    Effect.catchIf(
+      (cause) => errorCode(cause) === "ENOENT",
+      () => Effect.succeed([]),
+    ),
+    Effect.mapError(failure(`Cannot list ${folder}`)),
+    Effect.map((entries) =>
+      entries.filter((entry) => (kind === "files" ? entry.isFile() : entry.isDirectory())).map((entry) => entry.name),
+    ),
+  )
+
+const asJsonText = (text: string) => JSON.stringify(text).slice(1, -1)
+
+const removeIfEmpty = (folder: string) =>
+  Effect.tryPromise({ try: () => rmdir(folder), catch: (cause) => cause }).pipe(
+    Effect.catchIf(
+      (cause) => errorCode(cause) === "ENOTEMPTY" || errorCode(cause) === "ENOENT",
+      () => Effect.void,
+    ),
+    Effect.mapError(failure(`Cannot remove ${folder}`)),
+  )
+
 export const layer = (root: string) =>
-  Layer.succeed(Attachments, Attachments.of({ stage: stage(root), read: read(root) }))
+  Layer.effect(
+    Attachments,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+
+      const textsMentioning = (needle: string) =>
+        sql<{ readonly text: string }>`
+          SELECT parts AS text FROM message WHERE instr(parts, ${needle}) > 0
+          UNION ALL SELECT part FROM message_part WHERE instr(part, ${needle}) > 0
+          UNION ALL SELECT queue FROM thread WHERE instr(queue, ${needle}) > 0
+          UNION ALL SELECT scheduled FROM thread WHERE instr(scheduled, ${needle}) > 0
+        `.pipe(
+          Effect.map((rows) => rows.map((row) => row.text)),
+          Effect.mapError(failure("Cannot look up attachment references")),
+        )
+
+      const release = (folder: string) =>
+        Effect.gen(function* () {
+          const names = yield* namesIn(folder, "files")
+          if (names.length === 0) return yield* removeIfEmpty(folder)
+          const texts = yield* textsMentioning(asJsonText(folder + sep))
+          const unreferenced = names
+            .map((name) => join(folder, name))
+            .filter((path) => !texts.some((text) => text.includes(asJsonText(path))))
+          yield* Effect.forEach(
+            unreferenced,
+            (path) =>
+              Effect.tryPromise({ try: () => rm(path, { force: true }), catch: failure(`Cannot delete ${path}`) }),
+            { discard: true },
+          )
+          yield* removeIfEmpty(folder)
+        })
+
+      const prune = Effect.gen(function* () {
+        const folders = yield* namesIn(root, "folders")
+        const threads = yield* sql<{ readonly id: string }>`SELECT id FROM thread`.pipe(
+          Effect.mapError(failure("Cannot list threads")),
+        )
+        const live = new Set(threads.map((thread) => safeName(thread.id)))
+        yield* Effect.forEach(
+          folders.filter((folder) => !live.has(folder)),
+          (folder) => release(join(root, folder)),
+          { discard: true },
+        )
+      })
+
+      yield* prune.pipe(
+        Effect.catchCause((cause) => Effect.logWarning("attachment sweep failed", cause)),
+        Effect.forkScoped,
+      )
+
+      return Attachments.of({ stage: stage(root), read: read(root), prune })
+    }),
+  )
