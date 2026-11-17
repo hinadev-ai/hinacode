@@ -7,13 +7,23 @@ import { makeSettingStore, type SettingStore } from "./settingStore.ts"
 
 export class Settings extends Context.Service<Settings, SettingStore<SettingsSchema>>()("hinacode/Settings") {}
 
-const stampLegacyVmProvider = (path: string) => {
+const valuesBeforeTheirDefault = [
+  { group: "experimental", key: "tinyVmProvider", value: vmProviderBeforeTheChoice },
+  { group: "archive", key: "archiveAfterSettledDays", value: null },
+] as const
+
+const stampLegacyValues = (path: string) => {
   try {
     if (!existsSync(path)) return
     const stored: unknown = JSON.parse(readFileSync(path, "utf8"))
-    if (!Predicate.isObject(stored) || !Predicate.isObject(stored.experimental)) return
-    if (stored.experimental.tinyVmProvider !== undefined) return
-    const next = { ...stored, experimental: { ...stored.experimental, tinyVmProvider: vmProviderBeforeTheChoice } }
+    if (!Predicate.isObject(stored)) return
+    const missing = valuesBeforeTheirDefault.filter(({ group, key }) => {
+      const saved = stored[group]
+      return Predicate.isObject(saved) && saved[key] === undefined
+    })
+    if (missing.length === 0) return
+    const next: Record<PropertyKey, unknown> = { ...stored }
+    for (const { group, key, value } of missing) next[group] = { ...(next[group] as object), [key]: value }
     const temp = `${path}.${randomUUID()}.tmp`
     writeFileSync(temp, `${JSON.stringify(next, null, 2)}\n`)
     renameSync(temp, path)
@@ -27,7 +37,7 @@ export const layer = (dataDir: string) =>
     Settings,
     Effect.gen(function* () {
       const path = join(dataDir, "settings.json")
-      yield* Effect.sync(() => stampLegacyVmProvider(path))
+      yield* Effect.sync(() => stampLegacyValues(path))
       return yield* makeSettingStore(SettingsSchema, defaultSettings, { path })
     }),
   )
