@@ -620,6 +620,53 @@ export const vmProviderBeforeTheChoice: VmProvider = "sbx"
 export const BoatVmSize = Schema.Literals(["small", "default", "large", "xlarge"])
 export type BoatVmSize = typeof BoatVmSize.Type
 
+const BoatAutoStopHours = Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 720 }))
+
+export const BoatMachineCreate = Schema.Struct({
+  name: Schema.String,
+  type: BoatVmSize,
+  from: Schema.String,
+  environment: Schema.String,
+  autoStopHours: Schema.NullOr(BoatAutoStopHours),
+  noEnv: Schema.Boolean,
+  snapshots: Schema.Boolean,
+  monitoring: Schema.Boolean,
+  setupScript: Schema.String,
+})
+export type BoatMachineCreate = typeof BoatMachineCreate.Type
+
+export const BoatMachineConnect = Schema.Struct({
+  sandbox: Schema.Union([Schema.Struct({ id: Schema.String }), Schema.Struct({ create: BoatMachineCreate })]),
+})
+export type BoatMachineConnect = typeof BoatMachineConnect.Type
+
+export const BoatThreadMachine = Schema.Struct({
+  repository: Schema.String,
+  projectName: Schema.String,
+  setupScript: Schema.NullOr(Schema.String),
+  create: Schema.Struct({ ...BoatMachineCreate.fields, autoStopHours: BoatAutoStopHours }),
+})
+export type BoatThreadMachine = typeof BoatThreadMachine.Type
+
+export const BoatSandboxSummary = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  state: Schema.String,
+  type: Schema.String,
+})
+export type BoatSandboxSummary = typeof BoatSandboxSummary.Type
+
+export const BoatMachineOptions = Schema.Union([
+  Schema.Struct({ configured: Schema.Literal(false) }),
+  Schema.Struct({
+    configured: Schema.Literal(true),
+    sandboxes: Schema.Array(BoatSandboxSummary),
+    environments: Schema.Array(Schema.Struct({ name: Schema.String, isDefault: Schema.Boolean })),
+    snapshots: Schema.Array(Schema.String),
+  }),
+])
+export type BoatMachineOptions = typeof BoatMachineOptions.Type
+
 export const ExperimentalSettings = Schema.Struct({
   tinyVm: Schema.Boolean,
   tinyVmProvider: VmProvider.pipe(Schema.withDecodingDefaultKey(Effect.succeed(vmProviderBeforeTheChoice))),
