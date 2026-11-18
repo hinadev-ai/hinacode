@@ -16,6 +16,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { PiProvider } from "../agents/pi/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { seedThread } from "../db/testing.ts"
 import { RemoteAccess } from "../remote/access.ts"
@@ -92,6 +93,7 @@ const providers = Layer.mergeAll(
   Layer.succeed(MuseProvider, replyingProvider("muse")),
   Layer.succeed(OpencodeProvider, replyingProvider("opencode")),
   Layer.succeed(MagpieProvider, replyingProvider("magpie")),
+  Layer.succeed(PiProvider, replyingProvider("pi")),
 )
 
 const HOST_CREDENTIAL = "host-credential"

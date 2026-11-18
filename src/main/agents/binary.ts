@@ -72,6 +72,7 @@ export const binaryStatuses = Effect.gen(function* () {
       muse: binaryStatus("muse", simulated),
       opencode: binaryStatus("opencode", simulated),
       magpie: binaryStatus("magpie", simulated),
+      pi: binaryStatus("pi", simulated),
     } satisfies Record<ProviderId, Effect.Effect<AgentBinaryStatus>>,
     { concurrency: "unbounded" },
   )

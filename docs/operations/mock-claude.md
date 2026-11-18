@@ -10,7 +10,7 @@ Use the mock Claude to see any transcript state in the real app without spending
    HINACODE_USER_DATA=/tmp/kk-mock HINACODE_MOCK_CLAUDE=everything pnpm dev
    ```
 
-   `HINACODE_MOCK_AGENTS=<scenario>` serves Codex, Muse Code and opencode threads from the same mock.
+   `HINACODE_MOCK_AGENTS=<scenario>` serves Codex, Muse Code, opencode, magpie and pi threads from the same mock.
 
 2. Send `/mock-<scenario>` in any Claude thread to run that scenario instead. Type `/mock-` to pick one from the command list.
 

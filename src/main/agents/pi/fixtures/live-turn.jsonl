@@ -1,0 +1,115 @@
+{"type":"agent_start"}
+{"type":"turn_start"}
+{"type":"message_start","message":{"role":"assistant","api":"anthropic-messages","provider":"openrouter","model":"anthropic/claude-haiku-4.5","usage":{"input":10,"output":8,"cacheRead":0,"cacheWrite":12654,"totalTokens":12672,"cost":{"input":9.999999999999999e-06,"output":4e-05,"cacheRead":0,"cacheWrite":0.0158175,"total":0.015867500000000003,"totalFromProvider":false},"cacheWrite1h":0},"stopReason":"pending","timestamp":1794728913157,"responseId":"msg_011Ch4M1imsjM5Dh1fwH6XrL","content":[]}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_start","contentIndex":0}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"The user wants me to:\n1"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":". Edit a.txt to change \""}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"hello\" to \"goodbye\"\n2"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":". Run `cat a.txt`"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" with bash"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"\n3. Reply"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" DONE\n\nFirst"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":", let me check"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" if"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" a.txt exists and"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" what's"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" in it. I'll need"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" to read"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" it"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" first to understand"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" what"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" to"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" change"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"."}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" Let"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" me use the edit tool to replace"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" \"hello\" with \"goodbye\"."}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"\n\nActually"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":", I"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" should first"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" read"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" the file to see what's"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" in it and"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" make"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" sure I can"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" match"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" it properly for"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" the edit."}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_end","contentIndex":0,"content":"The user wants me to:\n1. Edit a.txt to change \"hello\" to \"goodbye\"\n2. Run `cat a.txt` with bash\n3. Reply DONE\n\nFirst, let me check if a.txt exists and what's in it. I'll need to read it first to understand what to change. Let me use the edit tool to replace \"hello\" with \"goodbye\".\n\nActually, I should first read the file to see what's in it and make sure I can match it properly for the edit."}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_start","contentIndex":1,"id":"toolu_015q911EQ2iYVaiLaTTZZmx6","toolName":"read"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"{\"path\": \"a.txt"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\"}"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_end","contentIndex":1,"toolCall":{"type":"toolCall","id":"toolu_015q911EQ2iYVaiLaTTZZmx6","name":"read","arguments":{"path":"a.txt"}}}}
+{"type":"message_end","message":{"role":"assistant","api":"anthropic-messages","provider":"openrouter","model":"anthropic/claude-haiku-4.5","usage":{"input":10,"output":173,"cacheRead":0,"cacheWrite":12654,"totalTokens":12837,"cost":{"input":9.999999999999999e-06,"output":0.0008650000000000001,"cacheRead":0,"cacheWrite":0.0158175,"total":0.0166925,"totalFromProvider":true},"cacheWrite1h":0,"reasoning":117},"stopReason":"toolUse","timestamp":1794728913157,"responseId":"msg_011Ch4M1imsjM5Dh1fwH6XrL","rawStopReason":"tool_use","durationMs":2232,"thinkingLevel":"low","content":[]}}
+{"type":"tool_execution_start","toolCallId":"toolu_015q911EQ2iYVaiLaTTZZmx6","toolName":"read","args":{"path":"a.txt"}}
+{"type":"extension_ui_request","id":"1e4a0f03-78ff-4c3c-86fa-6606e257df78","method":"select","title":"hinacode:approve toolu_015q911EQ2iYVaiLaTTZZmx6","options":["allow","deny"]}
+{"type":"tool_execution_end","toolCallId":"toolu_015q911EQ2iYVaiLaTTZZmx6","toolName":"read","result":{"content":[{"type":"text","text":"hello\n"}],"structuredContent":"hello\n"},"isError":false,"durationMs":2}
+{"type":"turn_start"}
+{"type":"message_start","message":{"role":"assistant","api":"anthropic-messages","provider":"openrouter","model":"anthropic/claude-haiku-4.5","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"pending","timestamp":1794728915395,"content":[]}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_start","contentIndex":0}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"Good, a.txt contains"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" \"hello\" ("}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"with a new"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"line)."}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" Now I'll edit it to replace"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" \"hello\" with \"goodbye\","}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" then run cat to show"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" it"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":","}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" then"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" reply DONE."}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_end","contentIndex":0,"content":"Good, a.txt contains \"hello\" (with a newline). Now I'll edit it to replace \"hello\" with \"goodbye\", then run cat to show it, then reply DONE."}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_start","contentIndex":1,"id":"toolu_014J3Dvpjh5LmkA3kqFpo6Lu","toolName":"edit"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"{\"path\": \"a.txt"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\", \"edits\": [{\"old"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"Text\": \"hello\", \"newText"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\": \"goodbye\"}]"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"}"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_end","contentIndex":1,"toolCall":{"type":"toolCall","id":"toolu_014J3Dvpjh5LmkA3kqFpo6Lu","name":"edit","arguments":{"path":"a.txt","edits":[{"oldText":"hello","newText":"goodbye"}]}}}}
+{"type":"message_end","message":{"role":"assistant","api":"anthropic-messages","provider":"openrouter","model":"anthropic/claude-haiku-4.5","usage":{"input":13,"output":135,"cacheRead":12654,"cacheWrite":191,"totalTokens":12993,"cost":{"input":1.3e-05,"output":0.000675,"cacheRead":0.0012654,"cacheWrite":0.00023875,"total":0.00219215,"totalFromProvider":true},"cacheWrite1h":0,"reasoning":46},"stopReason":"toolUse","timestamp":1794728915395,"responseId":"msg_011Ch4M1roZXcYo3XgCgKgxs","rawStopReason":"tool_use","durationMs":1353,"thinkingLevel":"low","content":[]}}
+{"type":"tool_execution_start","toolCallId":"toolu_014J3Dvpjh5LmkA3kqFpo6Lu","toolName":"edit","args":{"path":"a.txt","edits":[{"oldText":"hello","newText":"goodbye"}]}}
+{"type":"extension_ui_request","id":"5e2783cf-3cb4-481f-b232-d0f0d3c6f6e0","method":"select","title":"hinacode:approve toolu_014J3Dvpjh5LmkA3kqFpo6Lu","options":["allow","deny"]}
+{"type":"tool_execution_end","toolCallId":"toolu_014J3Dvpjh5LmkA3kqFpo6Lu","toolName":"edit","result":{"content":[{"type":"text","text":"Successfully replaced 1 block(s) in a.txt."}],"details":{"diff":"-1 hello\n+1 goodbye","patch":"--- a.txt\n+++ a.txt\n@@ -1,1 +1,1 @@\n-hello\n+goodbye\n","firstChangedLine":1}},"isError":false,"durationMs":1}
+{"type":"turn_start"}
+{"type":"message_start","message":{"role":"assistant","api":"anthropic-messages","provider":"openrouter","model":"anthropic/claude-haiku-4.5","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"pending","timestamp":1794728916752,"content":[]}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_start","contentIndex":0}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"Great,"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" the"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" edit was"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" successful. Now let"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" me run `cat a.txt`"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" to"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" show the"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" result"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"."}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_end","contentIndex":0,"content":"Great, the edit was successful. Now let me run `cat a.txt` to show the result."}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_start","contentIndex":1,"id":"toolu_01ABANb1cLMMeM68hkSL5YPv","toolName":"bash"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"{\"command\": \"cat a.txt"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\"}"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_end","contentIndex":1,"toolCall":{"type":"toolCall","id":"toolu_01ABANb1cLMMeM68hkSL5YPv","name":"bash","arguments":{"command":"cat a.txt"}}}}
+{"type":"message_end","message":{"role":"assistant","api":"anthropic-messages","provider":"openrouter","model":"anthropic/claude-haiku-4.5","usage":{"input":12,"output":84,"cacheRead":12845,"cacheWrite":168,"totalTokens":13109,"cost":{"input":1.2e-05,"output":0.00042,"cacheRead":0.0012845,"cacheWrite":0.00021,"total":0.0019265,"totalFromProvider":true},"cacheWrite1h":0,"reasoning":27},"stopReason":"toolUse","timestamp":1794728916752,"responseId":"msg_011Ch4M1xQfdN7vPEvBVX3Wz","rawStopReason":"tool_use","durationMs":1090,"thinkingLevel":"low","content":[]}}
+{"type":"tool_execution_start","toolCallId":"toolu_01ABANb1cLMMeM68hkSL5YPv","toolName":"bash","args":{"command":"cat a.txt"}}
+{"type":"extension_ui_request","id":"24eae76b-207a-499e-9b1c-ce2f393d4724","method":"select","title":"hinacode:approve toolu_01ABANb1cLMMeM68hkSL5YPv","options":["allow","deny"]}
+{"type":"tool_execution_update","toolCallId":"toolu_01ABANb1cLMMeM68hkSL5YPv","toolName":"bash","args":{"command":"cat a.txt"},"partialResult":{"content":[]}}
+{"type":"tool_execution_update","toolCallId":"toolu_01ABANb1cLMMeM68hkSL5YPv","toolName":"bash","args":{"command":"cat a.txt"},"partialResult":{"content":[{"type":"text","text":"goodbye\n"}],"details":{}}}
+{"type":"tool_execution_end","toolCallId":"toolu_01ABANb1cLMMeM68hkSL5YPv","toolName":"bash","result":{"content":[{"type":"text","text":"goodbye\n"}],"structuredContent":{"output":"goodbye\n","truncated":false,"exit_code":0,"wall_time_seconds":0}},"isError":false,"durationMs":4}
+{"type":"turn_start"}
+{"type":"message_start","message":{"role":"assistant","api":"anthropic-messages","provider":"openrouter","model":"anthropic/claude-haiku-4.5","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"pending","timestamp":1794728917847,"content":[]}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_start","contentIndex":0}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"Perfect."}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" All"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" steps"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" completed successfully. The file has been changed"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" from \"hello\" to \"goodbye\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" and cat"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" confirms"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" it"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"."}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" Now"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" I'll reply DONE."}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_end","contentIndex":0,"content":"Perfect. All steps completed successfully. The file has been changed from \"hello\" to \"goodbye\" and cat confirms it. Now I'll reply DONE."}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_start","contentIndex":1}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":1,"delta":"DONE"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_end","contentIndex":1,"content":"DONE"}}
+{"type":"message_end","message":{"role":"assistant","api":"anthropic-messages","provider":"openrouter","model":"anthropic/claude-haiku-4.5","usage":{"input":13,"output":45,"cacheRead":13013,"cacheWrite":104,"totalTokens":13175,"cost":{"input":1.3e-05,"output":0.00022500000000000002,"cacheRead":0.0013013,"cacheWrite":0.00013,"total":0.0016693,"totalFromProvider":true},"cacheWrite1h":0,"reasoning":37},"stopReason":"stop","timestamp":1794728917847,"responseId":"msg_011Ch4M23MaKjHWZ36pcHEoZ","rawStopReason":"end_turn","durationMs":1010,"thinkingLevel":"low","content":[]}}
+{"type":"agent_settled","aborted":false}

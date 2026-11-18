@@ -25,6 +25,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { DOCUMENT_COMMAND, expandDocumentCommand } from "../agents/document.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { PiProvider } from "../agents/pi/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import { AgentError, type AgentProvider, type SessionInput, type SteerPriority, type Wake } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
@@ -184,6 +185,7 @@ const withPreparingThread = async (
     muse: wakeQueue(),
     opencode: wakeQueue(),
     magpie: wakeQueue(),
+    pi: wakeQueue(),
   }
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -452,6 +454,7 @@ const withPreparingThread = async (
             Layer.succeed(MuseProvider, provider("muse")),
             Layer.succeed(OpencodeProvider, provider("opencode")),
             Layer.succeed(MagpieProvider, provider("magpie")),
+            Layer.succeed(PiProvider, provider("pi")),
             Layer.succeed(Secrets, {
               get: () => Effect.succeed(Option.none()),
               has: () => Effect.succeed(false),

@@ -11,6 +11,7 @@ import { ClaudeProvider } from "../main/agents/claude/index.ts"
 import { CodexProvider } from "../main/agents/codex/index.ts"
 import { MuseProvider } from "../main/agents/muse/index.ts"
 import { OpencodeProvider } from "../main/agents/opencode/index.ts"
+import { PiProvider } from "../main/agents/pi/index.ts"
 import { MagpieProvider } from "../main/agents/magpie/index.ts"
 import type { AgentProvider } from "../main/agents/provider.ts"
 import * as CliSocket from "../main/remote/cliSocket.ts"
@@ -89,6 +90,7 @@ const providers = Layer.mergeAll(
   Layer.succeed(MuseProvider, scripted("muse")),
   Layer.succeed(OpencodeProvider, scripted("opencode")),
   Layer.succeed(MagpieProvider, scripted("magpie")),
+  Layer.succeed(PiProvider, scripted("pi")),
 )
 
 const makeApp = (dataDir: string) => {

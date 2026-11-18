@@ -1,6 +1,6 @@
 # Architecture
 
-hinacode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex, Muse Code and opencode over child processes and to Claude through the Agent SDK. magpie runs Claude Code through its gateway on the same harness. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-hinacode-foundation.md`](features/2026-10-11-hinacode-foundation.md).
+hinacode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex, Muse Code, opencode and pi over child processes and to Claude through the Agent SDK. magpie runs Claude Code through its gateway on the same harness. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-hinacode-foundation.md`](features/2026-10-11-hinacode-foundation.md).
 
 ## System overview
 
@@ -200,11 +200,17 @@ classDiagram
     one ACP session per thread, session/load to resume
     hinacode answers session/request_permission from the access mode
   }
+  class PiProvider {
+    one pi --mode rpc process per turn, --session to resume
+    hinacode's extension adds the MCP server and asks before each tool call
+    the provider answers from the access mode, read at each tool call
+  }
   AgentProvider <|.. ClaudeProvider
   AgentProvider <|.. CodexProvider
   AgentProvider <|.. MuseProvider
   AgentProvider <|.. AcpProvider
   AgentProvider <|.. MagpieProvider
+  AgentProvider <|.. PiProvider
 ```
 
 An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the login and the transcripts. A thread with `account_id` null runs on the CLI's own login; otherwise its turns get `home = { dir, binary }`, the config directory and CLI the user gave when adding the account. hinacode never signs in or out: the user runs the CLI's login in a terminal, and `AgentLogins` only probes who each home is signed in as. Token usage and plan limits are read from the same home, so `threads.usage` and `limits.list` follow the account. `threads.switchAccount` moves a started thread by copying its session files into the new home with `AgentProvider.copySession`, then resuming the same session id there. It is refused while a turn runs, because the transcript is still being written. `SessionImports` reads the other direction: it lists the sessions every home recorded in a project's folder, including ones a terminal started, and adopts one as a thread on the account whose home holds it, with its history replayed and a `session_import` rule after it. Muse Code has no home variable, so it runs on its CLI login only, and `AccountProviderId` leaves it out of added accounts. [`muse-integration-guide.md`](muse-integration-guide.md) explains how the Muse provider speaks MSP.
@@ -219,7 +225,7 @@ Adding a backend touches, besides its `AgentProvider` in `src/main/agents/`:
 
 - `ProviderId`, and `AccountProviderId` if it can have added accounts.
 - The `providers` records in `AgentRunner.ts`, `AgentLogins.ts` and, for an agent with a home, `SessionImports.ts`, the layer in `src/main/app.ts`, and the fake providers of the integration tests that build those layers.
-- A migration widening the `provider` CHECK on `thread`, as `0045_magpie_provider` does.
+- A migration widening the `provider` CHECK on `thread`, as `0052_pi_provider` does.
 - The per-agent keys of `Settings.defaultModel` and `defaultAccount`.
 - `ProviderIcon.tsx` for the icon and `providerLabel`, the access hints in `ComposerControls.tsx`, `signedOutHint` in `AccountSettings.tsx`, and their messages in both catalogs.
 - The capability checklist in [`agent-providers.md`](agent-providers.md), so no harness feature is silently missing.
@@ -452,7 +458,7 @@ erDiagram
   thread {
     text id PK
     text worktree_id FK "SET NULL"
-    text provider "claude|codex|muse|opencode|magpie"
+    text provider "claude|codex|muse|opencode|magpie|pi"
     text account_id FK "null = CLI login, delete refused"
     text model
     text provider_session_id
@@ -688,6 +694,7 @@ How each agent gets its credential ([ADR 0007](adr/0007-per-thread-mcp-credentia
 - **Muse Code** receives it as a header in the session's `config.mcpServers` over stdin, which needs the `sessionMcp` capability. Muse treats the server as required and fails the turn if it cannot reach it.
 - **opencode** receives it as a header of the `http` entry in ACP `session/new` and `session/load`.
 - **magpie** runs the Claude harness, so it connects through the same forwarder.
+- **pi** gets the URL and header in `HINACODE_MCP_URL` and `HINACODE_MCP_AUTHORIZATION`, which HinaCode's pi extension passes to `pi.registerMcpServer`, so the credential stays out of argv.
 
 ## App MCP server
 
