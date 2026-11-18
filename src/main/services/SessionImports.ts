@@ -8,7 +8,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { AgentError, type AgentProvider, type ImportedMessage } from "../agents/provider.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import { Attachments } from "./Attachments.ts"
-import { type NotFoundError, type PersistenceError, persistence, type WorktreeTakenError } from "./errors.ts"
+import { type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
 import { Messages } from "./Messages.ts"
 import { Projects } from "./Projects.ts"
 import { Settings } from "./Settings.ts"
@@ -46,7 +46,7 @@ export class SessionImports extends Context.Service<
     readonly list: (projectId: string) => Effect.Effect<ExternalSessionList, PersistenceError | NotFoundError>
     readonly import: (
       input: ImportSession,
-    ) => Effect.Effect<Thread, AgentError | PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
+    ) => Effect.Effect<Thread, AgentError | PersistenceError | NotFoundError | CommandError>
   }
 >()("hinacode/SessionImports") {}
 

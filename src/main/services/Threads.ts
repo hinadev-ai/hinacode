@@ -42,7 +42,6 @@ import {
   ThreadBusyError,
   ThreadStartedError,
   type WorktreeBusyError,
-  type WorktreeTakenError,
 } from "./errors.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import { Events } from "./Events.ts"
@@ -137,7 +136,7 @@ export class Threads extends Context.Service<
     readonly get: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly create: (
       input: CreateThread,
-    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError>
     readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly writes: Effect.Effect<Stream.Stream<Thread>, never, Scope.Scope>
     readonly fork: (
@@ -145,7 +144,7 @@ export class Threads extends Context.Service<
       messageId?: string,
     ) => Effect.Effect<
       Thread,
-      PersistenceError | NotFoundError | CommandError | WorktreeTakenError | PlatformError.PlatformError
+      PersistenceError | NotFoundError | CommandError | PlatformError.PlatformError
     >
     readonly sidechat: (threadId: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly sidechatOf: (threadId: string) => Effect.Effect<Option.Option<Thread>, PersistenceError>
@@ -160,7 +159,7 @@ export class Threads extends Context.Service<
     readonly started: (id: string) => Effect.Effect<boolean, PersistenceError>
     readonly draft: (
       input: DraftThread,
-    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError>
     readonly promoteDraft: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly prepareWorkspace: (
       id: string,
@@ -170,7 +169,6 @@ export class Threads extends Context.Service<
       | PersistenceError
       | NotFoundError
       | CommandError
-      | WorktreeTakenError
       | ThreadStartedError
       | GitHubError
       | Schema.SchemaError

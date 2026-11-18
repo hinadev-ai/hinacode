@@ -32,14 +32,7 @@ import {
 } from "../../shared/domain.ts"
 import { scriptShell } from "../scriptShell.ts"
 import { nowIso } from "./clock.ts"
-import {
-  NotFoundError,
-  type PersistenceError,
-  persistence,
-  RootBusyError,
-  WorktreeBusyError,
-  WorktreeTakenError,
-} from "./errors.ts"
+import { NotFoundError, type PersistenceError, persistence, RootBusyError, WorktreeBusyError } from "./errors.ts"
 import { Events } from "./Events.ts"
 import { type CommandError, Git, LONG_TIMEOUT } from "./Git.ts"
 import type { PullRequestHead } from "./GitHub.ts"
@@ -82,11 +75,8 @@ export class Worktrees extends Context.Service<
     readonly checkouts: Effect.Effect<ReadonlyArray<WorktreeCheckout>, PersistenceError>
     readonly checkoutState: (id: string) => Effect.Effect<CheckoutState, Failure | PlatformError.PlatformError>
     readonly get: (id: string) => Effect.Effect<Worktree, PersistenceError | NotFoundError>
-    readonly create: (input: CreateWorktree) => Effect.Effect<Worktree, Failure | WorktreeTakenError>
-    readonly createFromPullRequest: (
-      projectId: string,
-      head: PullRequestHead,
-    ) => Effect.Effect<Worktree, Failure | WorktreeTakenError>
+    readonly create: (input: CreateWorktree) => Effect.Effect<Worktree, Failure>
+    readonly createFromPullRequest: (projectId: string, head: PullRequestHead) => Effect.Effect<Worktree, Failure>
     readonly checkout: (projectId: string, ref: string, owner: string) => Effect.Effect<void, Failure | RootBusyError>
     readonly checkoutPullRequest: (
       projectId: string,
@@ -164,12 +154,6 @@ const make = Effect.fnUntraced(function* (setupTiming: SetupTiming) {
     Request: Schema.String,
     Result: Worktree,
     execute: (id) => sql`SELECT * FROM worktree WHERE id = ${id}`,
-  })
-  const findLive = SqlSchema.findOneOption({
-    Request: Schema.Struct({ projectId: Schema.String, branch: Schema.String }),
-    Result: Worktree,
-    execute: ({ projectId, branch }) =>
-      sql`SELECT * FROM worktree WHERE project_id = ${projectId} AND branch = ${branch} AND status != 'removed'`,
   })
   const findByPath = SqlSchema.findOneOption({
     Request: Schema.String,
@@ -359,13 +343,6 @@ const make = Effect.fnUntraced(function* (setupTiming: SetupTiming) {
       const project = yield* projects.get(input.projectId)
       const removal = removals.get(removalKey(project.id, input.branch))
       if (removal) yield* Fiber.await(removal)
-      const live = yield* findLive({ projectId: project.id, branch: input.branch }).pipe(
-        Effect.mapError(persistence("worktrees.create")),
-      )
-      if (Option.isSome(live)) {
-        return yield* new WorktreeTakenError({ branch: input.branch, path: live.value.path })
-      }
-
       // FIXME: git reports checkouts by their resolved path
       const rootPath = yield* resolve(project.rootPath)
       const { worktreeRoot } = yield* settings.get
@@ -375,7 +352,7 @@ const make = Effect.fnUntraced(function* (setupTiming: SetupTiming) {
       const branch = checkout._tag === "taken" ? `${input.branch}-${id.slice(0, 5)}` : input.branch
       const path = checkout._tag === "orphan" ? checkout.path : checkoutPath(checkouts, branch, id)
       if (checkout._tag !== "orphan") {
-        const startPoint = checkout._tag === "taken" ? input.branch : input.startPoint
+        const startPoint = checkout._tag === "taken" ? (input.startPoint ?? input.branch) : input.startPoint
         yield* git.run(rootPath, yield* worktreeAddArgs(rootPath, path, { ...input, branch, startPoint }), {
           timeout: LONG_TIMEOUT,
         })
