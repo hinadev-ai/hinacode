@@ -26,6 +26,7 @@ const ownTools = [
   "linear_search_issues",
   "linear_create_comment",
   "linear_update_issue_state",
+  "slack_reply",
   "publish_artifact",
   "publish_document",
   "publish_whiteboard",

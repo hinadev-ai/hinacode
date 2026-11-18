@@ -187,6 +187,7 @@
   "tool_own_linear_search_issues": "搜尋 Linear 議題",
   "tool_own_linear_create_comment": "留言到 Linear 議題",
   "tool_own_linear_update_issue_state": "更新 Linear 議題狀態",
+  "tool_own_slack_reply": "在 Slack 回覆",
   "tool_own_publish_artifact": "發布成品",
   "tool_own_publish_document": "發布文件",
   "tool_own_publish_whiteboard": "發布白板",
