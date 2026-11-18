@@ -12,7 +12,7 @@ A thread in the project root ran on whatever branch the root had checked out. Th
 1. A thread that has not started shows the workspace pill under the composer: a branch field and a Worktree checkbox.
 2. With Worktree unticked, the field holds the root's current branch. Focusing it suggests open pull requests and branches, including `origin/*` branches that have no local copy. Typing `#123`, `123` or a pull request URL picks that pull request.
 3. Sending the first message switches the project root to the pick. An `origin/x` pick gets a local `x` that tracks it. A pull request is fetched and checked out the same way a pull request worktree is, and linked to the thread. Leaving the current branch in the field changes nothing.
-4. Ticking Worktree fills the field with `origin/main`, or whatever `origin/HEAD` names. The new `kk/<title>` branch forks from it and has no upstream, so the agent's first `git push -u origin HEAD` creates its own branch.
+4. Ticking Worktree fills the field with `origin/main`, or whatever `origin/HEAD` names. The new `hinacode/<title>` branch forks from it and has no upstream, so the agent's first `git push -u origin HEAD` creates its own branch.
 5. While the pill shows, hinacode fetches `origin` in the background, and again when the window comes back if the last fetch is more than five minutes old. The branch list refreshes when a fetch lands, so `origin/main` is at most a few minutes behind when the message is sent.
 
 ## Design
@@ -33,6 +33,6 @@ A thread in the project root ran on whatever branch the root had checked out. Th
 
 ## Verification
 
-- `Worktrees.integration.test.ts`, against a real bare `origin`, covers these cases. The root switches to a fetched `origin/*` branch and tracks it. A fork's pull request lands on `kk/pr-<n>` in the root. A switch is refused while another root thread runs. A new worktree forks from what `origin/main` has after a fetch, with no upstream. A second fetch inside `FETCH_INTERVAL` leaves the refs alone, and one after it updates them. A fetch fast-forwards local `main` whether or not the root has it checked out, and leaves it alone when it has unpushed commits, when the root is dirty, or while a root thread runs.
+- `Worktrees.integration.test.ts`, against a real bare `origin`, covers these cases. The root switches to a fetched `origin/*` branch and tracks it. A fork's pull request lands on `hinacode/pr-<n>` in the root. A switch is refused while another root thread runs. A new worktree forks from what `origin/main` has after a fetch, with no upstream. A second fetch inside `FETCH_INTERVAL` leaves the refs alone, and one after it updates them. A fetch fast-forwards local `main` whether or not the root has it checked out, and leaves it alone when it has unpushed commits, when the root is dirty, or while a root thread runs.
 - `ThreadNaming.integration.test.ts` sends first messages through `workspace`.
 - `verify-hinacode` covers the real app, with a fixture `origin` and a `gh` shim. It picks `origin/feature/login` in Local mode, then `#7`, then a worktree that defaults to a freshly pushed `origin/main`.
