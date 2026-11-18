@@ -1999,6 +1999,36 @@ layer(testLayer)("slack_reply", (it) => {
     }),
   )
 
+  it.effect("reports a reply as posted when Slack will not say where it is", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const fake = yield* FakeSlackServer
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const link = {
+        channelId: "C2",
+        threadTs: "1700000000.000100",
+        permalink: "https://acme.slack.com/archives/C2/p1700000000000100",
+        deliveredTs: "1700000000.000100",
+      }
+      yield* connectSlack
+      yield* fake.post({ channel: "C2", ts: link.threadTs, user: "U2", text: "is it fixed?" })
+      yield* threads.linkSlack(a, link)
+      yield* fake.fail("chat.getPermalink")
+
+      const posted = yield* callAs(yield* mcp.connectionFor(a), "slack_reply", { text: "Yes." }).pipe(
+        Effect.ensuring(fake.fail(null)),
+      )
+
+      expect(posted).toMatchObject({
+        text: `Posted to the Slack thread ${link.permalink}. Slack did not return a link to the reply itself.`,
+        isError: false,
+      })
+      expect(yield* Queue.take(fake.posts)).toMatchObject({ channel: "C2", text: "Yes." })
+      expect(yield* Queue.size(fake.posts)).toBe(0)
+    }),
+  )
+
   it.effect("returns Slack's refusal as an error result", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials

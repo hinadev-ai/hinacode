@@ -82,6 +82,7 @@ describe("slack", () => {
       Effect.gen(function* () {
         const slack = yield* Slack
         expect(yield* slack.connect(tokens)).toEqual({ type: "disconnected" })
+        expect(slack.enabled()).toBe(false)
         yield* experimentOn
         expect(yield* current.until(connected)).toEqual({
           type: "connected",
@@ -148,10 +149,13 @@ describe("slack", () => {
   it.live("fails with Slack's reason when the app token is revoked while connected", () =>
     stage((current) =>
       Effect.gen(function* () {
+        const slack = yield* Slack
         yield* linked(current)
+        expect(slack.enabled()).toBe(true)
         yield* current.fake.revokeAppToken
         yield* current.fake.drop
         expect(yield* current.until(failed)).toEqual({ type: "failed", reason: "invalid_auth" })
+        expect(slack.enabled()).toBe(false)
       }),
     ),
   )
