@@ -20,6 +20,7 @@ Settings > Experimental > Slack connects this machine to a Slack app over Socket
 - `start` the paired user's mention starts a thread from that routine with the Slack thread quoted, and the bot adds an eyes reaction.
 - `refuse` anyone else, a missing routine or a Slack thread that already has a thread gets a note only the sender sees, and nothing starts.
 - `link` the thread shows a Slack link that opens the Slack thread, with Unlink.
+- `reply` the agent answers in the Slack thread with `slack_reply`. A Supervised thread shows the reply text in its approval card first.
 
 ## How to get to it (user POV)
 
@@ -30,7 +31,7 @@ Settings > Experimental > Slack connects this machine to a Slack app over Socket
 A real workspace is not needed. `fake-slack.ts` serves the Slack Web API and a Socket Mode socket on loopback, with a control port that plays Slack's side.
 
 ```sh
-$S/fake-slack.ts 47911 >"$SHOTS/slack-fake.txt" 2>&1 &     # prints `api <url>`, `tokens <app> <bot>`, then every link, reaction and note
+$S/fake-slack.ts 47911 >"$SHOTS/slack-fake.txt" 2>&1 &     # prints `api <url>`, `tokens <app> <bot>`, then every link, reaction, note and post
 HINACODE_SLACK_API_URL=<api url> $S/launch.sh $PORT $DATA
 curl "http://127.0.0.1:47911/dm?user=U1&text=<code>"       # U1 and U2 are workspace members, U9 belongs to another workspace
 curl "http://127.0.0.1:47911/say?user=U2&text=<text>"      # a message in C1 that reaches nobody, prints its ts
@@ -46,6 +47,7 @@ Checks:
 - **Pair.** `Pair`, read the code with `ab eval 'document.getElementById("settings-slack-pairing-code").value'`, send it as `U9` and see `Pair` come back with no owner, then pair again and send it as `U1`. `$S/rpc.ts $PORT slack.status null` shows the owner, and the fake logs the reaction.
 - **Secrets stay in main.** `grep -c <token> $DATA/settings.json $DATA/electron.log` prints 0 for both.
 - **Generic secrets.** `$S/rpc.ts $PORT secrets.clear '{"name":"slack.botToken"}'` shows `Not connected` and the fake logs `link closed`. `secrets.set` with the same token connects again and keeps the paired user.
+- **Reply.** This one needs a real agent, so launch without the mock and give the routine `claude-sonnet-5-5` and a prompt such as `Answer the developer's Slack request in one short sentence. Run no command and read no file.` Set `defaultAccessMode` to `supervised` with `settings.set`, `/say` a question as `U2`, `/mention` as `U1` in its thread, open the new thread and wait for the card `Reply in Slack` with the text. The fake logs no `post` until `Allow`, then one in that thread. `mcp/server.integration.test.ts` covers a thread without a link, a reply that is too long and Slack's refusal.
 - **Revoked.** `/revoke`, then `/drop`. The status line turns red, and `grep -ci "unhandled\|uncaught" $DATA/electron.log` prints 0.
 
 ## Gotchas

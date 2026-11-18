@@ -238,7 +238,7 @@ export const makeAppLayer = ({
     PullRequestWatcher.layer,
     providers.simulated ? PullRequestGuides.idleLayer : PullRequestGuides.layer,
     updates,
-    Mcp.serverLayer,
+    Mcp.serverLayer.pipe(Layer.provide(slack)),
     AgentLogins.layer(join(userData, "cache")),
     SessionImports.layer,
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),

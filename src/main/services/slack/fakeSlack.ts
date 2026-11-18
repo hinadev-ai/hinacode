@@ -46,13 +46,16 @@ const start = (workspace: FakeWorkspace) =>
     const acks = Effect.runSync(Queue.unbounded<string>())
     const reactions = Effect.runSync(Queue.unbounded<FakeReaction>())
     const notes = Effect.runSync(Queue.unbounded<FakeNote>())
+    const posts = Effect.runSync(Queue.unbounded<FakeMessage>())
     const threads = new Map<string, Array<FakeMessage>>()
     const held = Effect.runSync(Queue.unbounded<() => void>())
     let holding: string | null = null
+    let failing: string | null = null
     const open = new Set<WebSocket>()
     let appTokenRevoked = false
 
     const answer = (method: string, token: string, params: URLSearchParams): object => {
+      if (method === failing) return { ok: false, error: "internal_error" }
       switch (method) {
         case "auth.test":
           return token === workspace.botToken
@@ -88,6 +91,21 @@ const start = (workspace: FakeWorkspace) =>
             ok: true,
             permalink: `https://acme.slack.com/archives/${params.get("channel")}/p${(params.get("message_ts") ?? "").replace(".", "")}`,
           }
+        case "chat.postMessage": {
+          const root = `${params.get("channel")}:${params.get("thread_ts")}`
+          const replies = threads.get(root)
+          if (replies === undefined) return { ok: false, error: "thread_not_found" }
+          const ts = `${1800000000 + replies.length}.000100`
+          replies.push({
+            channel: params.get("channel") ?? "",
+            ts,
+            thread_ts: params.get("thread_ts") ?? "",
+            user: FAKE_BOT_USER_ID,
+            text: params.get("markdown_text") ?? "",
+          })
+          Queue.offerUnsafe(posts, replies.at(-1)!)
+          return { ok: true, ts }
+        }
         case "chat.postEphemeral":
           Queue.offerUnsafe(notes, {
             channel: params.get("channel") ?? "",
@@ -134,10 +152,15 @@ const start = (workspace: FakeWorkspace) =>
           acks,
           reactions,
           notes,
+          posts,
           held,
           hold: (method: string | null) =>
             Effect.sync(() => {
               holding = method
+            }),
+          fail: (method: string | null) =>
+            Effect.sync(() => {
+              failing = method
             }),
           post: (message: FakeMessage) =>
             Effect.sync(() => {
@@ -177,8 +200,10 @@ export interface FakeSlack {
   readonly acks: Queue.Queue<string>
   readonly reactions: Queue.Queue<FakeReaction>
   readonly notes: Queue.Queue<FakeNote>
+  readonly posts: Queue.Queue<FakeMessage>
   readonly held: Queue.Queue<() => void>
   readonly hold: (method: string | null) => Effect.Effect<void>
+  readonly fail: (method: string | null) => Effect.Effect<void>
   readonly post: (message: FakeMessage) => Effect.Effect<void>
   readonly deliver: (payload: unknown) => Effect.Effect<string>
   readonly askToRefresh: Effect.Effect<void>

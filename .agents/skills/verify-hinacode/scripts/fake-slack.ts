@@ -54,6 +54,9 @@ await Effect.runPromise(
       yield* Effect.forkScoped(
         Effect.forever(Effect.map(Queue.take(fake.notes), (note) => console.log("note", JSON.stringify(note)))),
       )
+      yield* Effect.forkScoped(
+        Effect.forever(Effect.map(Queue.take(fake.posts), (post) => console.log("post", JSON.stringify(post)))),
+      )
       createServer((request, response) => {
         const url = new URL(request.url ?? "/", "http://control")
         const done = (text: string) => response.end(`${text}\n`)
