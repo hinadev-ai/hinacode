@@ -23,6 +23,7 @@ import { readinessSummary } from "../sidePanel/devices/deviceHub.ts"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { SecretField } from "./IntegrationSettings.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
+import { SlackSettings } from "./SlackSettings.tsx"
 import { CheckCircleFillIcon } from "@hinacode/icons"
 import { withCode } from "../withCode.tsx"
 
@@ -52,6 +53,7 @@ export function ExperimentalSettings() {
       <SettingsGroup>
         <TinyVmSettings experimental={experimental} setExperimental={setExperimental} />
         <DevicesSettings experimental={experimental} setExperimental={setExperimental} />
+        <SlackSettings experimental={experimental} setExperimental={setExperimental} />
       </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
     </SettingsSection>
