@@ -174,6 +174,7 @@
   "tool_own_linear_search_issues": "搜索 Linear 议题",
   "tool_own_linear_create_comment": "评论 Linear 议题",
   "tool_own_linear_update_issue_state": "更新 Linear 议题状态",
+  "tool_own_slack_reply": "在 Slack 回复",
   "tool_own_publish_artifact": "发布成品",
   "tool_own_publish_document": "发布文档",
   "tool_own_publish_whiteboard": "发布白板",

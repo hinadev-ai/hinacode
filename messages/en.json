@@ -183,6 +183,7 @@
   "tool_own_linear_search_issues": "Search Linear issues",
   "tool_own_linear_create_comment": "Comment on Linear issue",
   "tool_own_linear_update_issue_state": "Update Linear issue state",
+  "tool_own_slack_reply": "Reply in Slack",
   "tool_own_publish_artifact": "Publish artifact",
   "tool_own_publish_document": "Publish document",
   "tool_own_publish_whiteboard": "Publish whiteboard",
