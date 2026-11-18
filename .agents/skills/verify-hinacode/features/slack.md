@@ -1,10 +1,10 @@
 # Slack
 
-Settings > Experimental > Slack connects this machine to a Slack app over Socket Mode and pairs the Slack user who may hand work over. The design is `docs/features/2026-11-17-slack-conversations.md`. Nothing here costs an agent turn.
+Settings > Experimental > Slack connects this machine to a Slack app over Socket Mode and pairs the Slack user who may hand work over. That user's mention or direct message then starts a run of the routine picked there. The design is `docs/features/2026-11-17-slack-conversations.md`. Connecting and pairing cost no agent turn. A mention starts one, so launch with `HINACODE_MOCK_CLAUDE=markdown` and give the routine a Claude model unless the check needs a real agent.
 
 ## Automated coverage
 
-`src/main/services/slack/Slack.integration.test.ts` and `socket.integration.test.ts` run the real service against `fakeSlack.ts`: connect, a refused token, a revoked token, the replacement after a `disconnect` frame, a dropped or silent socket, pairing and Disconnect. `SlackSettings.component.test.tsx` covers the settings group. No e2e scenario.
+`src/main/services/slack/Slack.integration.test.ts` and `socket.integration.test.ts` run the real service against `fakeSlack.ts`: connect, a refused token, a revoked token, the replacement after a `disconnect` frame, a dropped or silent socket, pairing and Disconnect. `SlackAsks.integration.test.ts` runs a mention through the real `Routines`, `Threads` and agent runner: one run with the Slack thread quoted, the link, the reaction, a redelivered mention, another user, a linked thread, a direct message, no routine and a Slack refusal. `slackInbound.test.ts` and `slackPrompt.test.ts` hold the decision table and the transcript. `SlackSettings.component.test.tsx` covers the settings group and `ThreadOverview.component.test.tsx` the Slack link. No e2e scenario.
 
 ## Sub-features
 
@@ -16,6 +16,10 @@ Settings > Experimental > Slack connects this machine to a Slack app over Socket
 - `restart` a relaunch connects with the stored tokens and keeps the paired user.
 - `revoked` an app token revoked while connected shows `Could not connect: invalid_auth`, and the app keeps running.
 - `disconnect` forgets both tokens and the paired user.
+- `routine` the `Routine` select picks what a mention runs.
+- `start` the paired user's mention starts a thread from that routine with the Slack thread quoted, and the bot adds an eyes reaction.
+- `refuse` anyone else, a missing routine or a Slack thread that already has a thread gets a note only the sender sees, and nothing starts.
+- `link` the thread shows a Slack link that opens the Slack thread, with Unlink.
 
 ## How to get to it (user POV)
 
@@ -26,9 +30,11 @@ Settings > Experimental > Slack connects this machine to a Slack app over Socket
 A real workspace is not needed. `fake-slack.ts` serves the Slack Web API and a Socket Mode socket on loopback, with a control port that plays Slack's side.
 
 ```sh
-$S/fake-slack.ts 47911 >"$SHOTS/slack-fake.txt" 2>&1 &     # prints `api <url>`, `tokens <app> <bot>`, then every link and reaction
+$S/fake-slack.ts 47911 >"$SHOTS/slack-fake.txt" 2>&1 &     # prints `api <url>`, `tokens <app> <bot>`, then every link, reaction and note
 HINACODE_SLACK_API_URL=<api url> $S/launch.sh $PORT $DATA
-curl "http://127.0.0.1:47911/dm?user=U1&text=<code>"       # U1 is a workspace member, U9 belongs to another workspace
+curl "http://127.0.0.1:47911/dm?user=U1&text=<code>"       # U1 and U2 are workspace members, U9 belongs to another workspace
+curl "http://127.0.0.1:47911/say?user=U2&text=<text>"      # a message in C1 that reaches nobody, prints its ts
+curl "http://127.0.0.1:47911/mention?user=U1&thread=<ts>&text=<text>"   # a mention in that message's thread
 curl http://127.0.0.1:47911/refresh                        # Slack asks for a new connection
 curl http://127.0.0.1:47911/drop                           # every socket closes
 curl http://127.0.0.1:47911/revoke                         # apps.connections.open answers invalid_auth from now on
