@@ -644,6 +644,7 @@
   "routines_source_schedule": "计划",
   "routines_source_webhook": "Webhook",
   "routines_source_manual": "立即运行",
+  "routines_source_slack": "Slack",
   "routines_enable_for": "启用 {name}",
   "routines_run_now": "立即运行",
   "routines_run_now_for": "立即运行 {name}",

@@ -19,6 +19,7 @@ export const runSourceLabel = {
   schedule: m.routines_source_schedule,
   webhook: m.routines_source_webhook,
   manual: m.routines_source_manual,
+  slack: m.routines_source_slack,
 } satisfies Record<RoutineRunSource, () => string>
 
 export function RunStatusBadge({ status }: { status: RoutineRunStatus }) {

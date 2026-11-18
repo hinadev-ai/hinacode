@@ -653,6 +653,7 @@
   "routines_source_schedule": "Schedule",
   "routines_source_webhook": "Webhook",
   "routines_source_manual": "Run now",
+  "routines_source_slack": "Slack",
   "routines_enable_for": "Enable {name}",
   "routines_run_now": "Run now",
   "routines_run_now_for": "Run {name} now",

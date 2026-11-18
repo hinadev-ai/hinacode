@@ -29,6 +29,7 @@ const thread = (id: string, patch: Partial<Thread>): Thread => ({
   parentId: null,
   status: "idle",
   usageLimit: null,
+  slack: null,
   sortIndex: 0,
   pinnedAt: null,
   settledAt: null,

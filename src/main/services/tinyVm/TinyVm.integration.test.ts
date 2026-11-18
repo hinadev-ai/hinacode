@@ -222,6 +222,7 @@ const archivedThread = (id: string) =>
     providerSessionId: null,
     status: "archived",
     usageLimit: null,
+    slack: null,
     sortIndex: 0,
     pinnedAt: null,
     queue: [],

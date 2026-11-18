@@ -8,7 +8,9 @@ import {
   FiberSet,
   Layer,
   Option,
+  PubSub,
   Schema,
+  type Scope,
   Semaphore,
   Stream,
 } from "effect"
@@ -17,7 +19,14 @@ import type { PersistenceError } from "../errors.ts"
 import { Events } from "../Events.ts"
 import { Secrets } from "../Secrets.ts"
 import { Settings } from "../Settings.ts"
-import { makeSlackApi, retryWhileRecoverable, type SlackUser } from "./api.ts"
+import {
+  displayName,
+  makeSlackApi,
+  retryWhileRecoverable,
+  SlackApiError,
+  type SlackMessage,
+  type SlackPlace,
+} from "./api.ts"
 import { decide, DirectMessage } from "./slackInbound.ts"
 import { listen, type SlackEnvelope } from "./socket.ts"
 
@@ -29,6 +38,25 @@ export const PAIRED_REACTION = "white_check_mark"
 const PAIRING_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
 const PAIRING_LENGTH = 8
 
+export interface SlackBot {
+  readonly teamId: string
+  readonly team: string
+  readonly user: string
+  readonly userId: string
+}
+
+export interface SlackEvent {
+  readonly bot: SlackBot
+  readonly payload: unknown
+}
+
+export interface SlackNote {
+  readonly channel: string
+  readonly user: string
+  readonly text: string
+  readonly threadTs: string | null
+}
+
 export class Slack extends Context.Service<
   Slack,
   {
@@ -37,23 +65,30 @@ export class Slack extends Context.Service<
     readonly disconnect: Effect.Effect<SlackStatus, PersistenceError>
     readonly pair: Effect.Effect<SlackStatus, PersistenceError>
     readonly sync: Effect.Effect<void>
+    readonly inbound: Effect.Effect<Stream.Stream<SlackEvent>, never, Scope.Scope>
+    readonly thread: (root: SlackPlace) => Effect.Effect<ReadonlyArray<SlackMessage>, SlackApiError>
+    readonly permalink: (message: SlackPlace) => Effect.Effect<string, SlackApiError>
+    readonly userName: (userId: string) => Effect.Effect<string, SlackApiError>
+    readonly whisper: (note: SlackNote) => Effect.Effect<void, SlackApiError>
+    readonly react: (message: SlackPlace, name: string) => Effect.Effect<void, SlackApiError>
   }
 >()("hinacode/Slack") {}
 
-interface Bot {
-  readonly teamId: string
-  readonly team: string
-  readonly user: string
-}
-
-type Link = Exclude<SlackStatus, { readonly type: "connected" }> | { readonly type: "connected"; readonly bot: Bot }
+type Link =
+  | Exclude<SlackStatus, { readonly type: "connected" }>
+  | { readonly type: "connected"; readonly bot: SlackBot }
 
 const decodeDirectMessage = Schema.decodeUnknownOption(DirectMessage)
 
 const newPairingCode = () =>
   Array.from({ length: PAIRING_LENGTH }, () => PAIRING_ALPHABET[randomInt(PAIRING_ALPHABET.length)]).join("")
 
-const displayName = (user: SlackUser) => user.profile?.display_name || user.real_name || user.name
+const notConnected = new SlackApiError({
+  method: "slack",
+  reason: "not connected",
+  recoverable: false,
+  retryAfterMs: null,
+})
 
 const make = ({ apiUrl }: { readonly apiUrl: string }) =>
   Effect.gen(function* () {
@@ -65,6 +100,7 @@ const make = ({ apiUrl }: { readonly apiUrl: string }) =>
     const expiry = yield* FiberHandle.make<void>()
     const notify = yield* FiberSet.makeRuntime<never, void, never>()
     const reconciling = yield* Semaphore.make(1)
+    const heard = yield* PubSub.unbounded<SlackEvent>()
 
     let link: Link = { type: "disconnected" }
     let listening: SlackTokens | null = null
@@ -89,13 +125,15 @@ const make = ({ apiUrl }: { readonly apiUrl: string }) =>
       }
     })
 
-    const receive = (tokens: SlackTokens, bot: Bot, envelope: SlackEnvelope) =>
+    const receive = (tokens: SlackTokens, bot: SlackBot, envelope: SlackEnvelope) =>
       Effect.gen(function* () {
         if (envelope.type !== "events_api" || listening !== tokens) return
         const message = decodeDirectMessage(envelope.payload)
-        if (Option.isNone(message)) return
-        const decision = decide(message.value, { pairingCode: yield* pairingCode })
-        if (decision.type === "ignore") return
+        const decision = Option.isSome(message) ? decide(message.value, { pairingCode: yield* pairingCode }) : undefined
+        if (decision?.type !== "pair") {
+          yield* PubSub.publish(heard, { bot, payload: envelope.payload })
+          return
+        }
         pairing = null
         yield* FiberHandle.clear(expiry)
         yield* Effect.gen(function* () {
@@ -110,7 +148,7 @@ const make = ({ apiUrl }: { readonly apiUrl: string }) =>
     const session = (tokens: SlackTokens) =>
       Effect.gen(function* () {
         const auth = yield* retryWhileRecoverable(api.authTest(tokens.botToken))
-        const bot = { teamId: auth.team_id, team: auth.team, user: auth.user }
+        const bot = { teamId: auth.team_id, team: auth.team, user: auth.user, userId: auth.user_id }
         return yield* listen({
           open: api.openConnection(tokens.appToken),
           onLive: (live) => {
@@ -169,6 +207,9 @@ const make = ({ apiUrl }: { readonly apiUrl: string }) =>
       return yield* status
     })
 
+    const withBot = <A>(use: (botToken: string) => Effect.Effect<A, SlackApiError>) =>
+      Effect.suspend(() => (listening === null ? Effect.fail(notConnected) : use(listening.botToken)))
+
     const follow = reconcile(false).pipe(
       Effect.catch((error) => Effect.logWarning("could not follow the Slack settings", error.message)),
     )
@@ -196,6 +237,12 @@ const make = ({ apiUrl }: { readonly apiUrl: string }) =>
       }),
       pair,
       sync: follow,
+      inbound: Effect.map(PubSub.subscribe(heard), Stream.fromSubscription),
+      thread: (root) => withBot((botToken) => api.replies(botToken, root)),
+      permalink: (message) => withBot((botToken) => api.permalink(botToken, message)),
+      userName: (userId) => withBot((botToken) => Effect.map(api.userInfo(botToken, userId), displayName)),
+      whisper: (note) => withBot((botToken) => Effect.asVoid(api.postEphemeral(botToken, note))),
+      react: (message, name) => withBot((botToken) => Effect.asVoid(api.addReaction(botToken, message, name))),
     })
   })
 
