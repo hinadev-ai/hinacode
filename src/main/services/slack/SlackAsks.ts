@@ -98,19 +98,15 @@ const make = Effect.gen(function* () {
       if (thread.slack !== null) yield* heard(ask)
     })
 
-  const sameCursor = (threadId: string, cursor: SlackLink) =>
-    threads.get(threadId).pipe(
+  const stillContinues = (bot: SlackBot, ask: SlackAsk, threadId: string, cursor: SlackLink) =>
+    judge(bot, ask).pipe(
       Effect.map(
-        ({ status, slack: link }) =>
-          (status === "idle" || status === "running") &&
-          link?.channelId === cursor.channelId &&
-          link.threadTs === cursor.threadTs &&
-          link.deliveredTs === cursor.deliveredTs,
+        ({ decision, link }) =>
+          decision.type === "continue" && decision.threadId === threadId && link?.deliveredTs === cursor.deliveredTs,
       ),
-      Effect.catchTag("NotFoundError", () => Effect.succeed(false)),
     )
 
-  const resume = (bot: SlackBot, ask: SlackAsk, cursor: SlackLink) =>
+  const resume = (bot: SlackBot, ask: SlackAsk, threadId: string, cursor: SlackLink) =>
     Effect.gen(function* () {
       const messages = yield* slack.thread({ channel: ask.channel, ts: ask.threadTs })
       const { transcript, newestTs } = yield* quote(
@@ -119,17 +115,18 @@ const make = Effect.gen(function* () {
         cursor.permalink,
         messages.filter((message) => isAfter(message.ts, cursor.deliveredTs)),
       )
-      const { decision, owner } = yield* judge(bot, ask)
-      if (decision.type === "refuse") return yield* whisper(ask, refusalText(decision.reason, owner))
-      if (decision.type !== "continue") return
       const delivered = yield* runner.steerWhen({
-        threadId: decision.threadId,
+        threadId,
         text: promptWithPayload(FOLLOW_UP, transcript),
         attachments: [],
-        when: sameCursor(decision.threadId, cursor),
+        when: stillContinues(bot, ask, threadId, cursor),
       })
-      if (!delivered) return yield* whisper(ask, refusalText("threadWaiting", owner))
-      const thread = yield* threads.deliveredSlack(decision.threadId, newestTs)
+      if (!delivered) {
+        const { decision, owner } = yield* judge(bot, ask)
+        if (decision.type === "refuse") yield* whisper(ask, refusalText(decision.reason, owner))
+        return
+      }
+      const thread = yield* threads.deliveredSlack(threadId, newestTs)
       yield* events.publish({ type: "thread.updated", thread })
       yield* heard(ask)
     })
@@ -142,7 +139,8 @@ const make = Effect.gen(function* () {
       const { decision, owner, link } = yield* judge(bot, ask)
       if (decision.type === "refuse") return yield* whisper(ask, refusalText(decision.reason, owner))
       if (decision.type === "ignore") return
-      const act = decision.type === "start" || link === null ? start(bot, ask) : resume(bot, ask, link)
+      const act =
+        decision.type === "start" || link === null ? start(bot, ask) : resume(bot, ask, decision.threadId, link)
       return yield* act.pipe(Effect.catch((error) => whisper(ask, failureText(error.message))))
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("could not handle a Slack request", cause)))
 

@@ -279,6 +279,31 @@ describe("slack asks", () => {
     ),
   )
 
+  it.live("delivers nothing when the developer is unpaired while the new messages are being read", () =>
+    stage(({ fake, routineId }) =>
+      Effect.gen(function* () {
+        const settings = yield* Settings
+        yield* fake.post(report)
+        yield* say(fake, handover)
+        yield* Queue.take(fake.reactions)
+        const threadId = (yield* runsOf(routineId))[0]!.threadId ?? ""
+        yield* finished(threadId)
+
+        yield* fake.hold("users.info")
+        yield* say(fake, { ...handover, ts: "1700000200.000300", text: "<@UBOT> any news?" })
+        const answerName = yield* Queue.take(fake.held)
+        yield* settings.set({ slack: { owner: null } })
+        yield* fake.hold(null)
+        answerName()
+
+        expect((yield* Queue.take(fake.notes)).text).toBe("This HinaCode is not paired with a Slack user yet.")
+        expect(yield* prompts(threadId)).toHaveLength(1)
+        expect((yield* Threads.use((threads) => threads.get(threadId))).slack?.deliveredTs).toBe(handover.ts)
+        expect(yield* Queue.size(fake.reactions)).toBe(0)
+      }),
+    ),
+  )
+
   it.live("a direct message from the developer starts a run", () =>
     stage(({ fake, routineId }) =>
       Effect.gen(function* () {
