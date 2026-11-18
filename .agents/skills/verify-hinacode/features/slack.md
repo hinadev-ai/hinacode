@@ -4,7 +4,7 @@ Settings > Experimental > Slack connects this machine to a Slack app over Socket
 
 ## Automated coverage
 
-`src/main/services/slack/Slack.integration.test.ts` and `socket.integration.test.ts` run the real service against `fakeSlack.ts`: connect, a refused token, a revoked token, the replacement after a `disconnect` frame, a dropped or silent socket, pairing and Disconnect. `SlackAsks.integration.test.ts` runs a mention through the real `Routines`, `Threads` and agent runner: one run with the Slack thread quoted, the link, the reaction, a redelivered mention, another user, a linked thread, a direct message, no routine and a Slack refusal. `slackInbound.test.ts` and `slackPrompt.test.ts` hold the decision table and the transcript. `SlackSettings.component.test.tsx` covers the settings group and `ThreadOverview.component.test.tsx` the Slack link. No e2e scenario.
+`src/main/services/slack/Slack.integration.test.ts` and `socket.integration.test.ts` run the real service against `fakeSlack.ts`: connect, a refused token, a revoked token, the replacement after a `disconnect` frame, a dropped or silent socket, pairing and Disconnect. `SlackAsks.integration.test.ts` runs a mention through the real `Routines`, `Threads` and agent runner: one run with the Slack thread quoted, the link, the reaction, a redelivered mention, another user, a later mention that continues the thread, a waiting thread, a direct message, no routine and a Slack refusal. `slackInbound.test.ts` and `slackPrompt.test.ts` hold the decision table and the transcript. `SlackSettings.component.test.tsx` covers the settings group and `ThreadOverview.component.test.tsx` the Slack link. No e2e scenario.
 
 ## Sub-features
 
@@ -18,7 +18,8 @@ Settings > Experimental > Slack connects this machine to a Slack app over Socket
 - `disconnect` forgets both tokens and the paired user.
 - `routine` the `Routine` select picks what a mention runs.
 - `start` the paired user's mention starts a thread from that routine with the Slack thread quoted, and the bot adds an eyes reaction.
-- `refuse` anyone else, a missing routine or a Slack thread that already has a thread gets a note only the sender sees, and nothing starts.
+- `refuse` anyone else or a missing routine gets a note only the sender sees, and nothing starts.
+- `continue` a later mention in that Slack thread gives the same HinaCode thread the messages since the last one. While that thread waits on an approval, the mention gets a note instead.
 - `link` the thread shows a Slack link that opens the Slack thread, with Unlink.
 - `reply` the agent answers in the Slack thread with `slack_reply`. A Supervised thread shows the reply text in its approval card first.
 
