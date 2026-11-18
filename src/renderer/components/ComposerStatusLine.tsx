@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
+import { RiSlackFill } from "react-icons/ri"
 import { pullRequestNumberLabelOfUrl } from "../../shared/codeHost.ts"
 import type { PullRequest, PullRequestStatus, Thread } from "../../shared/domain.ts"
 import { environmentName, useClouds, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
@@ -68,6 +69,17 @@ export function ComposerStatusLine({ thread, folderMissing = false }: { thread: 
               <span className="sr-only">{m.sidebar_pull_request_stack({ count: String(urls.length) })}</span>
             </button>
           )
+        )}
+        {thread.slack && (
+          <a
+            href={thread.slack.permalink}
+            target="_blank"
+            rel="noreferrer"
+            className="flex shrink-0 items-center gap-1 rounded-sm underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <RiSlackFill aria-hidden className="size-3" />
+            {m.overview_slack()}
+          </a>
         )}
       </div>
     </div>

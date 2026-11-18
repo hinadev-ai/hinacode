@@ -1,21 +1,25 @@
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { CheckCircleFillIcon } from "@hinacode/icons"
 import { Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, type ReactNode, useState, useTransition } from "react"
 import {
   type ExperimentalSettings as ExperimentalSettingsValue,
+  type Project,
+  type Routine,
   type SlackStatus,
   SlackTokens,
 } from "../../../shared/domain.ts"
 import { slackAppManifestUrl } from "../../../shared/slack.ts"
-import { useSettingsEnvironment } from "../../lib/environments.ts"
+import { environmentOf, useSettingsEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { callPromise, slackStatusAtom } from "../../lib/rpc.ts"
+import { callPromise, projectsAtom, routinesAtom, slackStatusAtom, updateSettingsAtom } from "../../lib/rpc.ts"
+import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button, buttonVariants } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { Switch } from "../ui/switch.tsx"
 import { CopyField } from "./CopyField.tsx"
 
@@ -100,7 +104,10 @@ function SlackConnection() {
               </>
             )}
             {slack.type === "connected" && (
-              <Pairing status={slack} pair={() => run(() => callPromise("slack.pair", undefined, { environment }))} />
+              <>
+                <Pairing status={slack} pair={() => run(() => callPromise("slack.pair", undefined, { environment }))} />
+                <RoutineField run={run} />
+              </>
             )}
           </>
         ))
@@ -217,5 +224,56 @@ function Pairing({ status, pair }: { status: Extract<SlackStatus, { type: "conne
         {status.owner ? m.settings_slack_pair_again() : m.settings_slack_pair()}
       </Button>
     </div>
+  )
+}
+
+const NO_ROUTINE = "none"
+
+function RoutineField({ run }: { run: Run }) {
+  const environment = useSettingsEnvironment()
+  const { slack } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
+  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
+  const routines = AsyncResult.getOrElse(useAtomValue(routinesAtom), (): ReadonlyArray<Routine> => []).filter(
+    (routine) => environmentOf(projects.find((project) => project.id === routine.projectId)) === environment,
+  )
+  const items = [
+    { value: NO_ROUTINE, label: m.settings_slack_routine_none() },
+    ...routines.map((routine) => ({ value: routine.id, label: routine.name })),
+  ]
+  const value = routines.some((routine) => routine.id === slack.routineId) ? slack.routineId : NO_ROUTINE
+
+  return (
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor="settings-slack-routine">{m.settings_slack_routine()}</FieldLabel>
+      </FieldContent>
+      <Select
+        items={items}
+        value={value}
+        disabled={routines.length === 0}
+        onValueChange={(next) =>
+          typeof next === "string" &&
+          void run(() => updateSettings({ slack: { routineId: next === NO_ROUTINE ? null : next } }))
+        }
+      >
+        <SelectTrigger id="settings-slack-routine" className="w-56 max-w-full">
+          <SelectValue>
+            {(selected: string) =>
+              routines.length === 0
+                ? m.settings_slack_no_routines()
+                : items.find((item) => item.value === selected)?.label
+            }
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false} align="end">
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
   )
 }
