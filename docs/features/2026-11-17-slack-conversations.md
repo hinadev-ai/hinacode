@@ -56,11 +56,11 @@ sequenceDiagram
 
 A Slack message becomes a prompt for an agent that runs code on the developer's machine. Three checks stand between Slack and that agent.
 
-| Gate                             | Rule                                                                                                                                                                                                 | Enforced by                               |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Who may start or continue a turn | Only the paired developer, matched on workspace id and user id. Both are fields Slack sets on the event, apart from the message text. Messages with a `bot_id` and everyone else never qualify.      | `decide` in `slackInbound.ts`             |
-| What the turn may do             | Whatever the thread's access mode allows, as for any thread. Approvals, questions and secret requests stay in HinaCode. Nobody can answer them from Slack.                                           | Existing `AgentRunner`                    |
-| What leaves the machine          | `slack_reply` posts only into the Slack thread linked to the calling HinaCode thread. It takes no channel argument. A channel shared with another organization (`is_ext_shared_channel`) is refused. | Thread MCP credential plus `thread.slack` |
+| Gate                             | Rule                                                                                                                                                                                                                                                                                 | Enforced by                               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| Who may start or continue a turn | Only the paired developer, matched on the user id Slack sets on the event, apart from the message text. The owner has to belong to the bot's workspace, and an event that names another workspace for its sender (`user_team`) never qualifies. Neither do messages with a `bot_id`. | `decideAsk` in `slackInbound.ts`          |
+| What the turn may do             | Whatever the thread's access mode allows, as for any thread. Approvals, questions and secret requests stay in HinaCode. Nobody can answer them from Slack.                                                                                                                           | Existing `AgentRunner`                    |
+| What leaves the machine          | `slack_reply` posts only into the Slack thread linked to the calling HinaCode thread. It takes no channel argument. A channel shared with another organization (`is_ext_shared_channel`) is refused, and a mention there starts nothing.                                             | Thread MCP credential plus `thread.slack` |
 
 Other people's messages reach the agent only as quoted data, and only when the developer mentions the bot. That is the same trust as the developer pasting the Slack thread into the composer.
 
@@ -140,12 +140,16 @@ type Decision =
   | { type: "continue"; threadId: string } // a thread is linked
 ```
 
+As built, the decision is two pure functions in that file, because two layers call it. `decide` answers `pair` for `Slack.ts`, which owns the connection and the pairing code. Every other event goes out on `Slack.inbound`, and `SlackAsks.ts` reads it one event at a time: `askOf` places the message in its Slack thread, and `decideAsk` answers `ignore`, `refuse` or `start` from the owner, the picked routine and the link's `deliveredTs`. The split keeps `Routines`, `Threads` and the agent runner out of the connection service and its tests. Until slice 4, a new mention in a linked Slack thread is refused with `threadLinked`.
+
 - `pair` spends the code, then asks `users.info` about the sender. A member of the bot's own workspace who is not a bot becomes the owner. Anyone else leaves the owner as it was.
-- `start` reads the Slack thread, runs the routine with the transcript as its payload through `Routines.run(id, "slack", payload, eventKey)`, stores the link on the new thread and adds the reaction.
+- `start` reads the Slack thread, runs the routine with the transcript as its payload through `Routines.run(id, "slack", payload, eventKey)`, stores the link on the new thread and adds the reaction. When Slack or the routine refuses, the developer gets the reason in a note only they can see.
 - `continue` reads the messages after `deliveredTs` and hands them to `AgentRunner.steerWhen`. A running turn is steered and an idle thread starts a turn. The `when` check accepts only an idle or running thread whose link still matches. When it accepts, `deliveredTs` moves and the reaction is added.
 - `refuse` posts the reason to the sender alone. A linked thread that waits on an approval or a usage limit refuses with `threadWaiting`, and the next mention delivers everything since `deliveredTs`.
 
-`slackPrompt.ts` renders the transcript and the wake message, as `pullRequestWatch.ts` does for pull request news. Each line carries the time and the author's name from `users.info`. The developer's lines are marked as the developer. The text says that every other line was written by other people and is information, not instruction.
+`slackPrompt.ts` renders the transcript and the wake message, as `pullRequestWatch.ts` does for pull request news. Each message carries the time and the author's name from `users.info`. The developer's messages are marked as the developer's. The text says that every other message was written by other people and is information, not instruction.
+
+The transcript is JSON, which `Routines` already appends to the prompt inside a fence longer than any run of backticks in it. A co-worker's text or display name is a JSON string, so it cannot close the block or pass for a developer's message. A long thread keeps its first message and the newest 99 and says how many it left out, and one message is cut at 4,000 characters.
 
 ### Tool and instructions
 
