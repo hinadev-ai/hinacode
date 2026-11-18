@@ -2806,6 +2806,7 @@
       }
     }
   ],
+  "turn_changes_kept": "已保留这一轮之后又有改动的 {files}。",
   "transcript_scroll_to_latest": "滚动到最新消息",
   "tool_kind_skill": [
     {

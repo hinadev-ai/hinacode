@@ -281,6 +281,13 @@ const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
       : Effect.andThen(TestClock.withLive(Effect.sleep("20 millis")), until(check)),
   )
 
+const interruptTurn = (threadId: string) =>
+  Effect.gen(function* () {
+    const runner = yield* AgentRunner
+    yield* runner.interrupt(threadId)
+    yield* until(runner.isBusy(threadId).pipe(Effect.map((busy) => (busy ? Option.none() : Option.some(busy)))))
+  })
+
 const advanceUntil = <A>(step: Duration.Input, check: Effect.Effect<Option.Option<A>>) =>
   until(Effect.andThen(TestClock.adjust(step), check))
 
@@ -623,7 +630,7 @@ layer(testLayer)("request_secret", (it) => {
       expect(pushes.map((push) => (push.type === "thread.event" ? push.event.type : push.type))).toEqual(
         expect.arrayContaining(["secret_requested", "secret_resolved"]),
       )
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -642,7 +649,7 @@ layer(testLayer)("request_secret", (it) => {
       expect(result.isError).toBe(true)
       expect(result.text).toContain("declined")
       expect(existsSync(yield* secretPath(a, "declined.token"))).toBe(false)
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -656,7 +663,7 @@ layer(testLayer)("request_secret", (it) => {
         callAs(yield* mcp.connectionFor(a), "request_secret", { name: "late.token", description: "x" }),
       )
       yield* pendingSecretRequest(a)
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
       const result = yield* Fiber.join(call)
       expect(result.isError).toBe(true)
       expect(result.text).toContain("turn ended")
@@ -695,7 +702,7 @@ layer(testLayer)("run_agent", (it) => {
       expect(parts).toContainEqual(
         expect.objectContaining({ type: "tool_call", callId: "agent-call-1", parentCallId: subagent?.callId }),
       )
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -718,7 +725,7 @@ layer(testLayer)("run_agent", (it) => {
       expect(approvalDecisions).toStrictEqual([{ requestId: "sub-approval", decision: "allow" }])
       const shown = pushes.filter((push) => push.type === "thread.event" && push.event.type === "approval_requested")
       expect(shown).toStrictEqual([])
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
       yield* threads.update({ id: a, accessMode })
     }),
   )
@@ -749,7 +756,7 @@ layer(testLayer)("run_agent", (it) => {
       expect(result).toMatchObject({ isError: true, text: "The user stopped this agent." })
       expect((yield* runner.subagents(a)).find((subagent) => subagent.id === running.id)?.status).toBe("stopped")
       expect((yield* runner.transcript(a)).messages.at(-1)?.completedAt).toBeNull()
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -784,7 +791,7 @@ layer(testLayer)("run_agent", (it) => {
         isError: true,
         text: "No agent not-an-agent runs in this thread's turn.",
       })
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -812,7 +819,7 @@ layer(testLayer)("run_agent", (it) => {
         yield* Effect.forkChild(callAs(connection, "wait_agent", { agentId: running?.id })),
       )
       expect(finished).toMatchObject({ isError: false, text: "Looks good." })
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -847,7 +854,7 @@ layer(testLayer)("run_agent", (it) => {
       expect(yield* ask()).toMatchObject({ isError: false })
       expect(turnInputs.at(-1)).toMatchObject({ model: "openrouter/a" })
       yield* settings.set({ modelPresets: defaultSettings.modelPresets })
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 

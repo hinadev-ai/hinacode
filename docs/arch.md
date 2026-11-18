@@ -248,7 +248,7 @@ sequenceDiagram
   Note over R,AR: Stop cancels the pending send; the setup script continues
   AR->>WT: exclusive(re-read thread, check cancellation, resolve cwd)
   Note over AR,WT: Resolving the cwd and marking the thread running happen in one critical section, so a worktree removal can't delete the directory mid-start
-  AR->>G: captureTurnBase(cwd)
+  AR->>G: captureWorkingTree(cwd)
   AR->>AR: recheck Stop and guarded delivery
   AR->>DB: recordTurnBase + insert user message + open assistant message
   AR-->>R: push message.created, thread.updated(running)
@@ -296,7 +296,8 @@ sequenceDiagram
     AR->>DB: close assistant msg, insert user msg, open new assistant msg
   end
   P-->>AR: turn_completed or turn_failed
-  AR->>DB: final persist
+  AR->>G: captureWorkingTree(cwd)
+  AR->>DB: recordTurnEnd + final persist
   AR-->>R: thread.updated(idle)
   opt turn completed, not stopped, queue not empty
     AR->>AR: pick the oldest queued message, keep the busyThreads claim
@@ -531,7 +532,7 @@ erDiagram
 - Settings are JSON files in the data dir, not rows: `settings.json` holds `Settings` (the environment: models, archive, worktree root, ...), `client-settings.json` holds `ClientSettings` (this desktop: locale, appearance, notifications), and `keybindings.json` holds its keybindings as a bare `{ commandId: chord }` record. Each file holds only the keys that were set, laid over the defaults on every read, so a hand edit applies on the next read. A cloud only reads `Settings`. Migration 0027 moved the old rows into the files.
 - `app_connection` (migration `0046_app_connection`) lists the outside apps that hold an access token for the app MCP server. Only the token's hash is stored. The waiting window, the requests waiting for an answer and the authorization codes waiting to be exchanged live in memory, so a restart drops them. Registered OAuth clients have no table: a `client_id` is the client's name and redirect URIs signed with the secret `apps.clientKey`.
 - `environment` (migration `0015_environments`) lists the clouds this desktop paired with. It is unrelated to the other tables: a cloud's projects and threads stay in the cloud's database.
-- `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
+- `Threads.captureWorkingTree` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null. `recordTurnBase` also clears `turn_end_tree`, which `finish` sets from a second snapshot. The latest turn's changes are the diff between the two trees, so edits made after the turn are not the turn's. While the turn runs they diff against the live working tree. An idle thread with no end tree, such as one whose turn the app quit in the middle of, has no turn changes.
 - `project.kind` is `chats` for exactly one row per machine (a partial unique index), made at startup in `<dataDir>/chats` by `Projects.ensureChats`. Each of its threads works in `<rootPath>/<threadId>`, which `makeActiveWorkspace` derives rather than stores. `Threads` makes that folder on create and unarchive, and deletes it on archive and delete. Chats start in conversation mode, and their composer shows only the machine picker.
 - A removed worktree keeps its row, and `thread.worktree_id` keeps pointing at it so history shows where the thread ran. Always resolve the working directory through `makeActiveWorkspace` (`services/workspace.ts`), which falls back to the project root.
 
