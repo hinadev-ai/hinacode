@@ -30,7 +30,7 @@ flowchart LR
   codex["codex app-server<br/>JSON-RPC over stdio"]
   muse["muse serve<br/>MSP over stdio"]
   git["git / gh CLIs"]
-  ext["GitHub, Linear"]
+  ext["GitHub, Linear, Slack"]
 
   ui <--> stores
   stores -- "rpc (request/response)" --> preload --> ipc
@@ -58,6 +58,7 @@ flowchart LR
 - **Outside apps get a second MCP server.** A chat app or agent harness the developer connected reaches the app server through the relay hostname, with an OAuth token and a tool list of its own. See [App MCP server](#app-mcp-server).
 - **Git and GitHub go through the CLIs** (`git`, `gh`), so hinacode uses the user's existing auth and config.
 - **Linear goes through one service.** `services/Linear.ts` reads the machine's `linear.apiKey` from `Secrets` and loads the SDK on first use. The MCP tools and the `linear.issues` rpc both use it, and the key never leaves the main process. `HINACODE_MOCK_LINEAR=1` answers demo tickets.
+- **Slack is a socket the machine dials.** `services/slack/Slack.ts` opens a Socket Mode connection with the developer's own Slack app while `experimental.slack` is on and both tokens are in `Secrets`, so Slack needs no relay and no listening port. Only the Slack user paired by a one-time code may hand work over. See [Slack conversations](features/2026-11-17-slack-conversations.md).
 
 ## IPC contract
 
@@ -752,6 +753,7 @@ flowchart TB
   renderer["Renderer<br/>sandbox, contextIsolation"] -- "rpc from top frame only,<br/>schema-decoded" --> main
   agents["Agent processes<br/>run user-approved code"] -- "MCP: loopback,<br/>per-thread bearer" --> main
   net["Internet"] -- "webhook: HMAC + dedup" --> main
+  slack["Slack"] -- "Socket Mode, dialed by main:<br/>schema-decoded, paired user only" --> main
   outside["Connected apps<br/>through the relay hostname"] -- "app MCP server: OAuth token,<br/>project and thread tools only" --> main
   main -- "openExternal: http(s) only" --> browser["System browser"]
   page["In-app browser page<br/>webview: sandbox, no preload,<br/>persist:browser session"] -- "picked element,<br/>schema-decoded" --> renderer
@@ -784,6 +786,7 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | MCP server and tools                      | `src/main/mcp/`                                            |
 | App connections, OAuth, app MCP server    | `src/main/apps/`                                           |
 | Routines and their scheduler              | `src/main/services/routines/`, `Scheduler.ts`              |
+| Slack connection and pairing              | `src/main/services/slack/`                                 |
 | Contracts                                 | `src/shared/contract.ts`, `domain.ts`, `agent.ts`          |
 | Renderer state                            | `src/renderer/stores/`                                     |
 | Side panel views and activity bar         | `src/renderer/components/sidePanel/`                       |
