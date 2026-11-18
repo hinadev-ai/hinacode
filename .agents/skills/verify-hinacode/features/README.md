@@ -46,4 +46,5 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Settings](./settings.md): ten pages; automated except the Codex default model and the theme read-back, which share code with the automated cases.
 - [Ports](./ports.md): automated except listeners spawned from the thread's terminal or its Claude Code CLI.
 - [Routines](./routines.md): creation, disable, Run now and webhook auth automated; scheduled runs, the `/` skill list, HMAC, idempotency, worktree runs, the CLI and the listener port by hand.
+- [Slack](./slack.md): integration and component tests only; the settings group against `fake-slack.ts` by hand, with no agent turn and no Slack workspace.
 - [Remote mode](./remote.md): integration tests only; the remote listener and pairing on Settings > Connections, a paired `hinacode serve` cloud, its projects in the sidebar and the settings picker by hand, with no agent turn.
