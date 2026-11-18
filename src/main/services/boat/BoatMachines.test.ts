@@ -59,6 +59,7 @@ const threadOf = (fields: Partial<Thread>) => ({
   providerSessionId: null,
   status: "idle",
   usageLimit: null,
+  slack: null,
   sortIndex: 0,
   pinnedAt: null,
   queue: [],

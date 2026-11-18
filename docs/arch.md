@@ -58,7 +58,7 @@ flowchart LR
 - **Outside apps get a second MCP server.** A chat app or agent harness the developer connected reaches the app server through the relay hostname, with an OAuth token and a tool list of its own. See [App MCP server](#app-mcp-server).
 - **Git and GitHub go through the CLIs** (`git`, `gh`), so hinacode uses the user's existing auth and config.
 - **Linear goes through one service.** `services/Linear.ts` reads the machine's `linear.apiKey` from `Secrets` and loads the SDK on first use. The MCP tools and the `linear.issues` rpc both use it, and the key never leaves the main process. `HINACODE_MOCK_LINEAR=1` answers demo tickets.
-- **Slack is a socket the machine dials.** `services/slack/Slack.ts` opens a Socket Mode connection with the developer's own Slack app while `experimental.slack` is on and both tokens are in `Secrets`, so Slack needs no relay and no listening port. Only the Slack user paired by a one-time code may hand work over. See [Slack conversations](features/2026-11-17-slack-conversations.md).
+- **Slack is a socket the machine dials.** `services/slack/Slack.ts` opens a Socket Mode connection with the developer's own Slack app while `experimental.slack` is on and both tokens are in `Secrets`, so Slack needs no relay and no listening port. Only the Slack user paired by a one-time code may hand work over. `SlackAsks.ts` turns that user's mention or direct message into a run of the routine picked in Settings, with the Slack thread quoted as the run's payload, and stores the link on the new thread. See [Slack conversations](features/2026-11-17-slack-conversations.md).
 
 ## IPC contract
 
@@ -464,6 +464,7 @@ erDiagram
     text turn_base_tree "git tree at latest turn start"
     text side_of FK "CASCADE, unique, set = side chat of that thread"
     text parent_id FK "SET NULL, one level deep, cleared when the parent is archived"
+    text slack "JSON SlackLink, unique per Slack thread, cleared when archived"
   }
   message {
     text id PK
@@ -504,7 +505,7 @@ erDiagram
   }
   routine_run {
     text id PK
-    text source "schedule|webhook|manual"
+    text source "schedule|webhook|manual|slack"
     text event_key "unique per routine among started runs"
     text status "started|skipped|failed"
   }
@@ -726,6 +727,7 @@ flowchart LR
   dedup -- yes --> skipped
   dedup -- no --> start
   manual["routines.run"] --> start
+  slack["Slack mention or DM<br/>from the paired developer"] -- "event key slack:channel:ts" --> dedup
   start["Threads.create<br/>createdBy routine:id"] --> send["AgentRunner.send<br/>local or worktree"] --> started["routine_run: started"]
 ```
 
@@ -777,7 +779,7 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | MCP server and tools                      | `src/main/mcp/`                                            |
 | App connections, OAuth, app MCP server    | `src/main/apps/`                                           |
 | Routines and their scheduler              | `src/main/services/routines/`, `Scheduler.ts`              |
-| Slack connection and pairing              | `src/main/services/slack/`                                 |
+| Slack connection, pairing and requests    | `src/main/services/slack/`                                 |
 | Contracts                                 | `src/shared/contract.ts`, `domain.ts`, `agent.ts`          |
 | Renderer state                            | `src/renderer/stores/`                                     |
 | Side panel views and activity bar         | `src/renderer/components/sidePanel/`                       |

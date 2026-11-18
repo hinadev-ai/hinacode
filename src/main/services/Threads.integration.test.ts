@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeFileSystem, NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, it } from "@effect/vitest"
-import { Context, Deferred, Effect, FileSystem, Fiber, Layer } from "effect"
+import { Context, Deferred, Effect, FileSystem, Fiber, Layer, Option } from "effect"
 import { SqlClient } from "effect/sql"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
@@ -532,6 +532,33 @@ describe("Threads", () => {
         ),
       ),
     ),
+  )
+
+  it.effect("links one Slack thread to one thread, until it is unlinked or archived", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const first = (yield* seedThread({ rootPath: "/slack-first" })).threadId
+      const second = (yield* seedThread({ rootPath: "/slack-second" })).threadId
+      const link = {
+        channelId: "C1",
+        threadTs: "1700000000.000100",
+        permalink: "https://acme.slack.com/archives/C1/p1700000000000100",
+        deliveredTs: "1700000100.000200",
+      }
+
+      expect((yield* threads.linkSlack(first, link)).slack).toStrictEqual(link)
+      expect(Option.getOrThrow(yield* threads.bySlack("C1", link.threadTs)).id).toBe(first)
+      expect(Option.isNone(yield* threads.bySlack("C2", link.threadTs))).toBe(true)
+      expect((yield* Effect.flip(threads.linkSlack(second, link)))._tag).toBe("PersistenceError")
+      expect((yield* threads.update({ id: first, title: "renamed" })).slack).toStrictEqual(link)
+
+      expect((yield* threads.linkSlack(first, null)).slack).toBeNull()
+      yield* threads.linkSlack(second, link)
+      expect((yield* threads.archive(second)).slack).toBeNull()
+      expect(Option.isNone(yield* threads.bySlack("C1", link.threadTs))).toBe(true)
+      expect((yield* threads.linkSlack(second, link)).slack).toBeNull()
+      expect((yield* threads.unarchive(second)).slack).toBeNull()
+    }).pipe(Effect.provide(threadsLayer)),
   )
 
   it.effect("a draft takes the next place in its project when it is sent", () =>

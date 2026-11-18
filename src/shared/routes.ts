@@ -145,6 +145,7 @@ export const routes: Record<RpcMethod, Route> = {
   "slack.connect": named,
   "slack.disconnect": named,
   "slack.pair": named,
+  "slack.unlink": thread,
   "github.auth": named,
   "github.pullRequest": named,
   "github.issue": named,

@@ -46,3 +46,16 @@ test("a removed worktree falls back to the project's branch", async () => {
   expect(page.getByText("feat/gone").query()).toBeNull()
   expect(document.querySelector('[title="/worktrees/gone"]')).toBeNull()
 })
+
+test("a thread linked to a Slack thread links to it", async () => {
+  const slack = {
+    channelId: "C1",
+    threadTs: "1700000000.000100",
+    permalink: "https://acme.slack.com/archives/C1/p1700000000000100",
+    deliveredTs: "1700000100.000200",
+  }
+
+  const screen = await render(<ComposerStatusLine thread={{ ...threadOf("slack", null), slack }} />)
+
+  await expect.element(screen.getByRole("link", { name: "Slack" })).toHaveAttribute("href", slack.permalink)
+})

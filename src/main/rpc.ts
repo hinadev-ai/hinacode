@@ -406,6 +406,8 @@ const handlers: Handlers = {
   "slack.connect": (tokens) => Slack.use((slack) => slack.connect(tokens)),
   "slack.disconnect": () => Slack.use((slack) => slack.disconnect),
   "slack.pair": () => Slack.use((slack) => slack.pair),
+  "slack.unlink": ({ threadId }) =>
+    Threads.use((threads) => threads.linkSlack(threadId, null)).pipe(Effect.tap(announceThread)),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),
