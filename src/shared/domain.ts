@@ -684,8 +684,32 @@ export const ExperimentalSettings = Schema.Struct({
   tinyVmSetupScript: Schema.String,
   devices: Schema.Boolean,
   devicesOn: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  slack: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
+
+export const SlackOwner = Schema.Struct({ teamId: Schema.String, userId: Schema.String, name: Schema.String })
+export type SlackOwner = typeof SlackOwner.Type
+
+export const SlackTokens = Schema.Struct({
+  appToken: Schema.String.check(Schema.isPattern(/^xapp-\S+$/)),
+  botToken: Schema.String.check(Schema.isPattern(/^xoxb-\S+$/)),
+})
+export type SlackTokens = typeof SlackTokens.Type
+
+export const SlackStatus = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("disconnected") }),
+  Schema.Struct({ type: Schema.Literal("connecting") }),
+  Schema.Struct({ type: Schema.Literal("failed"), reason: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("connected"),
+    team: Schema.String,
+    botUser: Schema.String,
+    owner: Schema.NullOr(SlackOwner),
+    pairingCode: Schema.NullOr(Schema.String),
+  }),
+])
+export type SlackStatus = typeof SlackStatus.Type
 
 export const OpenerId = Schema.Literals([
   "vscode",
@@ -809,6 +833,9 @@ export const Settings = Schema.Struct({
   magpieEndpoint: Schema.NullOr(Schema.String.check(Schema.isPattern(/^https?:\/\/\S+$/))).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(null)),
   ),
+  slack: Schema.Struct({ owner: Schema.NullOr(SlackOwner) }).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed({ owner: null })),
+  ),
 })
 export type Settings = typeof Settings.Type
 
@@ -853,12 +880,14 @@ export const defaultSettings: Settings = {
     tinyVmProfile: false,
     devices: false,
     devicesOn: null,
+    slack: false,
     tinyVmEnv: {},
     tinyVmSetupScript: "",
   },
   worktreeRoot: null,
   actions: [],
   magpieEndpoint: null,
+  slack: { owner: null },
 }
 
 export const Machine = Schema.Struct({

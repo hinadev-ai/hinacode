@@ -1,6 +1,6 @@
 # Slack conversations
 
-Status: Draft
+Status: Building
 Date: 2026-11-17
 
 ## Problem
@@ -13,10 +13,10 @@ HinaCode had a Slack trigger before. It polled `search.messages` with a user tok
 
 Setup, once, on the machine that should answer:
 
-1. Settings > Integrations > Slack. **Create Slack app** opens Slack's new app page with the manifest filled in. The developer creates the app and installs it in their workspace.
+1. Settings > Experimental > Slack. **Create Slack app** opens Slack's new app page with the manifest filled in. The developer creates the app and installs it in their workspace.
 2. In the app's Basic Information they generate an app token with `connections:write`. Slack has no manifest key for that token, so this step stays manual.
 3. They paste the app token and the bot token into HinaCode. It shows `Connected to <workspace> as @HinaCode`.
-4. HinaCode shows a pairing code. The developer sends it to the bot in a DM. HinaCode now knows which Slack user is the developer, and the DM proves the listener works.
+4. **Pair** shows a code that works for ten minutes. The developer sends it to the bot in a DM, and the bot marks the message with a check. HinaCode now knows which Slack user is the developer, and the DM proves the listener works.
 5. They pick the routine that runs when the bot is asked. The routine already holds the project, the standing prompt, the agent and the workspace.
 
 Day to day:
@@ -73,18 +73,20 @@ Someone else who mentions the bot gets a note only they can see, `Only <develope
 "slack.appToken"   // xapp-, opens the socket
 "slack.botToken"   // xoxb-, reads and posts
 
-// Settings.slack, in settings.json on the machine
-type SlackSettings = {
-  routineId: string | null                           // the routine a mention runs
-  owner: { teamId: string; userId: string } | null   // the Slack user paired by DM
+// Settings, in settings.json on the machine
+experimental.slack: boolean
+type SlackOwner = { teamId: string; userId: string; name: string }
+slack: {
+  owner: SlackOwner | null      // the Slack user paired by DM
+  routineId: string | null      // the routine a mention runs, added with slice 2
 }
 
 // src/shared/domain.ts
 type SlackStatus =
-  | { type: "disconnected" }
+  | { type: "disconnected" }                // the experiment is off or a token is missing
   | { type: "connecting" }
-  | { type: "connected"; team: string; botUser: string }
-  | { type: "failed"; reason: string }
+  | { type: "failed"; reason: string }      // Slack's error code, such as invalid_auth
+  | { type: "connected"; team: string; botUser: string; owner: SlackOwner | null; pairingCode: string | null }
 
 type SlackLink = {
   channelId: string
@@ -110,25 +112,35 @@ What the shape rules out:
 - A mention handled twice. A start claims `routine_run.event_key = slack:<channel>:<ts>`, which the existing unique index guards. A continue with `ts <= deliveredTs` is a duplicate.
 - A queue of Slack messages inside HinaCode. Slack keeps the messages and `deliveredTs` is the cursor. It moves only when a delivery is accepted, the same rule as the pull request watch snapshot.
 
+- A pairing code or a paired developer without a live connection. Both exist only on the `connected` variant, and an owner from another workspace than the bot's reads as null.
+
 The link rides on `Thread`, so the header, the sidebar and the phone learn about it through the existing `thread.updated` push.
 
 ### Listener
 
-`services/slack/Slack.ts` is one Effect service. While both tokens are stored it keeps a Socket Mode connection open, publishes `SlackStatus`, and wraps the Web API calls this feature uses: `auth.test`, `conversations.replies`, `users.info`, `chat.postMessage`, `chat.postEphemeral`, `reactions.add` and `chat.getPermalink`. Every response is decoded with a schema.
+`services/slack/Slack.ts` is one Effect service. It converges on one rule whenever a setting or a token changes: listen while `experimental.slack` is on and both tokens are stored. `api.ts` wraps the Web API calls this feature uses: `auth.test`, `apps.connections.open`, `users.info`, `reactions.add`, and later `conversations.replies`, `chat.postMessage`, `chat.postEphemeral` and `chat.getPermalink`. Every response is decoded with a schema.
 
-It uses Slack's own `@slack/socket-mode` and `@slack/web-api`, imported on connect as the Linear SDK is. The client already handles the parts that hand-written sockets get wrong: the `disconnect` frame Slack sends every few hours, a fresh `apps.connections.open` for each reconnect, and ping timeouts. Slice 1 measures the memory it adds. If it costs what the Linear SDK does, `ws` and `fetch` replace it behind the same service.
+`socket.ts` speaks Socket Mode with `ws` and `fetch`, both already in the app. Slack's own `@slack/socket-mode` 3.2.0 was tried first and dropped after a probe. When a token is revoked while it is connected, its reconnect rejects inside an event listener. That is an unhandled rejection, which ends `hinacode serve` and never reaches the caller as an error. Importing it with `@slack/web-api` also added 15 MB to the process.
+
+The listener does what that client did:
+
+- A `disconnect` frame, which Slack sends every few hours, opens the replacement before the old socket closes, so no event falls between two connections.
+- A socket that closes on its own is replaced after one second, doubling to thirty while Slack stays unreachable.
+- A socket with no ping from Slack for thirty seconds is closed and replaced. So is a handshake Slack has not finished in fifteen.
+- An error Slack gives for the token ends the listener with `failed` and Slack's code. A network error, a 429 and a 5xx are retried, after the `Retry-After` Slack sent when there is one.
 
 Each envelope is acknowledged on receipt, then handled in a forked fiber. `slackInbound.ts` holds one pure function that turns an event and the current state into a decision:
 
 ```ts
 type Decision =
   | { type: "ignore" } // bot message, duplicate
-  | { type: "pair" } // DM that carries the pairing code
+  | { type: "pair"; userId: string } // DM that carries the pairing code
   | { type: "refuse"; reason: "notOwner" | "noRoutine" | "routineDisabled" | "externalChannel" | "threadWaiting" }
   | { type: "start"; routineId: string } // no HinaCode thread is linked
   | { type: "continue"; threadId: string } // a thread is linked
 ```
 
+- `pair` spends the code, then asks `users.info` about the sender. A member of the bot's own workspace who is not a bot becomes the owner. Anyone else leaves the owner as it was.
 - `start` reads the Slack thread, runs the routine with the transcript as its payload through `Routines.run(id, "slack", payload, eventKey)`, stores the link on the new thread and adds the reaction.
 - `continue` reads the messages after `deliveredTs` and hands them to `AgentRunner.steerWhen`. A running turn is steered and an idle thread starts a turn. The `when` check accepts only an idle or running thread whose link still matches. When it accepts, `deliveredTs` moves and the reaction is added.
 - `refuse` posts the reason to the sender alone. A linked thread that waits on an approval or a usage limit refuses with `threadWaiting`, and the next mention delivers everything since `deliveredTs`.
@@ -145,8 +157,9 @@ type Decision =
 
 ### rpc and UI
 
-- `slack.status`, `slack.connect({ appToken, botToken })`, `slack.disconnect`, `slack.pair` (returns a code that works for ten minutes) and `slack.unlink({ threadId })`. One event, `slack.changed`, carries the status.
-- Settings > Integrations gains a Slack group with the status, Create Slack app, the two token fields, the pairing code and the routine picker.
+- `slack.status`, `slack.connect({ appToken, botToken })`, `slack.disconnect` (forgets the tokens and the owner), `slack.pair` (returns a code that works for ten minutes) and, with slice 2, `slack.unlink({ threadId })`. Each answers the machine it is sent to, as `secrets.set` does. One event, `slack.changed`, tells clients to read the status again.
+- `secrets.set` and `secrets.clear` ask the service to converge again, so a token cleared through the generic call stops the listener too.
+- Settings > Experimental gains a Slack switch. Turned on, it shows the status, Create Slack app, the two token fields, the pairing code and, with slice 2, the routine picker. The group moves to Integrations when the feature leaves Experimental.
 - The thread header shows a Slack link beside the pull request links, with Open in Slack and Unlink.
 - The routine run history labels the source Slack.
 - Strings go into all four catalogs.
@@ -193,18 +206,19 @@ A developer who writes the app for their own workspace is the internal case and 
 
 ## Slices
 
-| Slice       | Builds                                                                                  | Check                                                                                                                                                                                                                             |
-| ----------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Connect  | `Slack` service, tokens, status, pairing, the Settings group                            | An integration test against a local fake Slack (http and WebSocket) covers hello, acknowledgement, reconnect after a disconnect frame and a bad token. In the real app, pasting the tokens shows Connected and the DM code pairs. |
-| 2. Start    | `decide`, `slackPrompt`, migration 0051, the routine run, the reaction, the header link | The developer's mention starts one run. A redelivered envelope starts none. Another user's mention starts none. In the real app, a mention in a test workspace starts a thread.                                                   |
-| 3. Reply    | `slack_reply` and the instructions                                                      | The MCP integration test posts into the linked thread and fails for a thread without a link. In the real app, the agent's answer appears in Slack.                                                                                |
-| 4. Continue | Mentions in a linked thread                                                             | A second mention steers the same thread with only the new messages. A thread waiting on an approval refuses, and the next mention delivers both. In the real app, a second mention continues the thread.                          |
+| Slice       | Builds                                                                                  | Check                                                                                                                                                                                                                                                                               |
+| ----------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Connect  | `Slack` service, tokens, status, pairing, the Settings group                            | An integration test against a local fake Slack (http and WebSocket) covers hello, acknowledgement, the replacement after a disconnect frame, a dropped socket, a revoked token, a bad token and pairing. In the real app, pasting the tokens shows Connected and the DM code pairs. |
+| 2. Start    | `decide`, `slackPrompt`, migration 0051, the routine run, the reaction, the header link | The developer's mention starts one run. A redelivered envelope starts none. Another user's mention starts none. In the real app, a mention in a test workspace starts a thread.                                                                                                     |
+| 3. Reply    | `slack_reply` and the instructions                                                      | The MCP integration test posts into the linked thread and fails for a thread without a link. In the real app, the agent's answer appears in Slack.                                                                                                                                  |
+| 4. Continue | Mentions in a linked thread                                                             | A second mention steers the same thread with only the new messages. A thread waiting on an approval refuses, and the next mention delivers both. In the real app, a second mention continues the thread.                                                                            |
 
 Slack's docs leave three facts open, and the slice that depends on each one observes it in a test workspace:
 
 - Whether `app_mention` carries `thread_ts` for a mention inside a thread (slice 2).
 - Whether `reactions.add` needs channel membership beyond what `app_mention` already implies (slice 2).
 - What Slack does with events sent while no socket is open (slice 1).
+- How often Slack pings a socket. The listener replaces one that is silent for thirty seconds, the limit Slack's own client uses (slice 1).
 
 ## Out of scope
 
@@ -226,6 +240,8 @@ Slack's docs leave three facts open, and the slice that depends on each one obse
 - `pnpm typecheck && pnpm lint && pnpm test`.
 
 ## Open decisions
+
+The slices are built on the recommended answers.
 
 1. **Who may ask.** Recommended: only the developer in this version. The alternative is an allow list of co-workers from the start, which lets each of them run an agent on this machine.
 2. **How the developer hands a request over.** Recommended: mention the bot in the thread. The alternative is a user token that hears the developer's own DMs and mentions, at the cost of read access to all of them.

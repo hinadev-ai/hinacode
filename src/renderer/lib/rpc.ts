@@ -220,6 +220,13 @@ export const appConnectionsAtom = Atom.make((get) => {
   return call("appConnections.status", undefined)
 })
 
+export const slackStatusAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make((get) => {
+    get.addFinalizer(onPushEvent((event) => event.type === "slack.changed" && get.refreshSelf()))
+    return call("slack.status", undefined, { environment })
+  }),
+)
+
 export const relayMachinesAtom = Atom.make(call("relayAccount.machines", undefined))
 
 const relayMachinesAction = <A>(effect: Effect.Effect<A, RpcError>) =>
