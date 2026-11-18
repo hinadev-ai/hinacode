@@ -46,6 +46,15 @@ describe("select", () => {
     expect(select(thread.slice(0, 1), ask).kept.at(-1)).toEqual({ ts: ask.ts, user: "U1", text: ask.text })
   })
 
+  it("puts a missing mention before the messages posted after it", () => {
+    const later = { ts: "1700000200.000300", user: "U2", text: "only with expired cards" }
+    expect(select([thread[0]!, later], ask).kept).toEqual([
+      thread[0],
+      { ts: ask.ts, user: "U1", text: ask.text },
+      later,
+    ])
+  })
+
   it("keeps the first message and the newest ones of a long thread", () => {
     const long = Array.from({ length: MAX_MESSAGES + 5 }, (_, index) => ({ ts: `17000000${index + 10}.000000` }))
     const { kept, omitted } = select([...long, { ts: ask.ts }], ask)
