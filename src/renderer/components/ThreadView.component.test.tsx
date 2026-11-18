@@ -36,6 +36,8 @@ const archived: Thread = {
   updatedAt: "2026-11-01T00:00:00.000Z",
 }
 
+const settled: Thread = { ...archived, id: "t-settled", status: "idle", settledAt: "2026-11-02T00:00:00.000Z" }
+
 const calls: Array<{ method: string; payload: unknown }> = []
 
 const bridge: HinacodeBridge = {
@@ -46,6 +48,7 @@ const bridge: HinacodeBridge = {
     if (method === "threads.transcript")
       return { result: { messages: [], approvals: [], questions: [], secretRequests: [], seq: 0 } }
     if (method === "threads.unarchive") return { result: Schema.encodeSync(Thread)({ ...archived, status: "idle" }) }
+    if (method === "threads.unsettle") return { result: Schema.encodeSync(Thread)({ ...settled, settledAt: null }) }
     return { error: { tag: "NotStubbed", message: method } }
   },
   onEvent: () => () => {},
@@ -60,16 +63,22 @@ function OpenThread({ id }: { id: string }) {
   return <div className="flex h-[720px] w-[960px]">{thread && <ThreadView thread={thread} />}</div>
 }
 
-test("an archived thread says so, warns that sending reopens it, and reopens from the view", async () => {
-  useThreads.getState().upsert(archived)
-  await render(<OpenThread id={archived.id} />)
+test.each([
+  { thread: archived, badge: "Archived", reopen: "threads.unarchive" },
+  { thread: settled, badge: "Settled", reopen: "threads.unsettle" },
+])(
+  "a $badge thread says so, warns that sending reopens it, and reopens from the view",
+  async ({ thread, badge, reopen }) => {
+    useThreads.getState().upsert(thread)
+    await render(<OpenThread id={thread.id} />)
 
-  await expect.element(page.getByRole("banner").getByText("Archived", { exact: true })).toBeVisible()
-  await expect.element(page.getByText("Sending a message reopens this thread.")).toBeVisible()
+    await expect.element(page.getByRole("banner").getByText(badge, { exact: true })).toBeVisible()
+    await expect.element(page.getByText("Sending a message reopens this thread.")).toBeVisible()
 
-  await page.getByRole("button", { name: "Reopen", exact: true }).click()
+    await page.getByRole("button", { name: "Reopen", exact: true }).click()
 
-  expect(calls).toContainEqual({ method: "threads.unarchive", payload: { threadId: archived.id } })
-  await expect.element(page.getByRole("banner").getByText("Archived", { exact: true })).not.toBeInTheDocument()
-  await expect.element(page.getByRole("button", { name: "Reopen", exact: true })).not.toBeInTheDocument()
-})
+    expect(calls).toContainEqual({ method: reopen, payload: { threadId: thread.id } })
+    await expect.element(page.getByRole("banner").getByText(badge, { exact: true })).not.toBeInTheDocument()
+    await expect.element(page.getByRole("button", { name: "Reopen", exact: true })).not.toBeInTheDocument()
+  },
+)
