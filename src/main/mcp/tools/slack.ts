@@ -32,7 +32,9 @@ export const slackToolsLayer = SlackTools.toLayer(
             })
           }
           const permalink = yield* slack.reply({ channel: link.channelId, ts: link.threadTs }, text)
-          return `Posted to the Slack thread: ${permalink}`
+          return permalink === null
+            ? `Posted to the Slack thread ${link.permalink}. Slack did not return a link to the reply itself.`
+            : `Posted to the Slack thread: ${permalink}`
         }),
     })
   }),

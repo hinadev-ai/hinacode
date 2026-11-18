@@ -72,7 +72,7 @@ export class Slack extends Context.Service<
     readonly whisper: (note: SlackNote) => Effect.Effect<void, SlackApiError>
     readonly react: (message: SlackPlace, name: string) => Effect.Effect<void, SlackApiError>
     readonly enabled: () => boolean
-    readonly reply: (thread: SlackPlace, markdown: string) => Effect.Effect<string, SlackApiError>
+    readonly reply: (thread: SlackPlace, markdown: string) => Effect.Effect<string | null, SlackApiError>
   }
 >()("hinacode/Slack") {}
 
@@ -245,11 +245,11 @@ const make = ({ apiUrl }: { readonly apiUrl: string }) =>
       userName: (userId) => withBot((botToken) => Effect.map(api.userInfo(botToken, userId), displayName)),
       whisper: (note) => withBot((botToken) => Effect.asVoid(api.postEphemeral(botToken, note))),
       react: (message, name) => withBot((botToken) => Effect.asVoid(api.addReaction(botToken, message, name))),
-      enabled: () => listening !== null,
+      enabled: () => link.type === "connected" || link.type === "connecting",
       reply: (thread, markdown) =>
         withBot((botToken) =>
           Effect.flatMap(api.postMessage(botToken, thread, markdown), (ts) =>
-            api.permalink(botToken, { channel: thread.channel, ts }),
+            api.permalink(botToken, { channel: thread.channel, ts }).pipe(Effect.orElseSucceed(() => null)),
           ),
         ),
     })

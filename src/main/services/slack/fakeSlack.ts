@@ -50,10 +50,12 @@ const start = (workspace: FakeWorkspace) =>
     const threads = new Map<string, Array<FakeMessage>>()
     const held = Effect.runSync(Queue.unbounded<() => void>())
     let holding: string | null = null
+    let failing: string | null = null
     const open = new Set<WebSocket>()
     let appTokenRevoked = false
 
     const answer = (method: string, token: string, params: URLSearchParams): object => {
+      if (method === failing) return { ok: false, error: "internal_error" }
       switch (method) {
         case "auth.test":
           return token === workspace.botToken
@@ -156,6 +158,10 @@ const start = (workspace: FakeWorkspace) =>
             Effect.sync(() => {
               holding = method
             }),
+          fail: (method: string | null) =>
+            Effect.sync(() => {
+              failing = method
+            }),
           post: (message: FakeMessage) =>
             Effect.sync(() => {
               const root = `${message.channel}:${message.thread_ts ?? message.ts}`
@@ -197,6 +203,7 @@ export interface FakeSlack {
   readonly posts: Queue.Queue<FakeMessage>
   readonly held: Queue.Queue<() => void>
   readonly hold: (method: string | null) => Effect.Effect<void>
+  readonly fail: (method: string | null) => Effect.Effect<void>
   readonly post: (message: FakeMessage) => Effect.Effect<void>
   readonly deliver: (payload: unknown) => Effect.Effect<string>
   readonly askToRefresh: Effect.Effect<void>
