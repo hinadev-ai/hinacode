@@ -5,7 +5,7 @@ import { Command, Flag } from "effect/cli"
 import { CliFailure, EXIT } from "./exit.ts"
 import { DataDir } from "./session.ts"
 
-const cloudData = Effect.gen(function* () {
+export const cloudData = Effect.gen(function* () {
   const flag = Option.getOrUndefined(yield* DataDir)
   return flag ?? (process.env["HINACODE_USER_DATA"] || join(homedir(), ".hinacode-cloud"))
 })
