@@ -7,6 +7,8 @@ import type { HinacodeBridge } from "../../../shared/contract.ts"
 import {
   defaultSettings,
   type ExperimentalSettings,
+  type Routine,
+  type Settings,
   type SlackStatus,
   type SlackTokens,
 } from "../../../shared/domain.ts"
@@ -17,6 +19,23 @@ const disconnected: SlackStatus = { type: "disconnected" }
 const rejected: SlackStatus = { type: "failed", reason: "invalid_auth" }
 const connected: SlackStatus = { type: "connected", team: "Acme", botUser: "hina", owner: null, pairingCode: null }
 const mei = { teamId: "T1", userId: "U1", name: "Mei" }
+const at = "2026-01-01T00:00:00.000Z"
+const routineNamed = (id: string, name: string): Routine => ({
+  id,
+  projectId: "project",
+  name,
+  enabled: true,
+  prompt: "Answer the thread",
+  provider: "claude",
+  model: "claude-opus-5-5",
+  effort: null,
+  workspace: "worktree",
+  schedule: null,
+  nextRunAt: null,
+  lastRun: null,
+  createdAt: at,
+  updatedAt: at,
+})
 
 let status: SlackStatus = disconnected
 let afterConnect: SlackStatus = { type: "connecting" }
@@ -24,6 +43,9 @@ let connectRefusal: string | null = null
 let calls: Array<string> = []
 let connects: Array<SlackTokens> = []
 let patches: Array<Partial<ExperimentalSettings>> = []
+let settings: Settings = defaultSettings
+let settingsPatches: Array<unknown> = []
+let routines: Array<Routine> = []
 let pushListeners: Array<Parameters<HinacodeBridge["onEvent"]>[0]> = []
 
 const bridge: HinacodeBridge = {
@@ -44,6 +66,19 @@ const bridge: HinacodeBridge = {
       if (status.type === "connected") status = { ...status, pairingCode: "K7QM2XPD" }
       return { result: status }
     }
+    if (method === "settings.get") return { result: settings }
+    if (method === "settings.set") {
+      const patch = payload as { slack: Settings["slack"] }
+      settingsPatches.push(patch)
+      settings = { ...settings, slack: { ...settings.slack, ...patch.slack } }
+      return { result: settings }
+    }
+    if (method === "projects.list") {
+      return {
+        result: [{ id: "project", name: "app", rootPath: "/app", setupScript: null, createdAt: at, updatedAt: at }],
+      } as never
+    }
+    if (method === "routines.list") return { result: routines }
     return { error: { tag: "NotStubbed", message: method } }
   },
   onEvent: (listener) => {
@@ -65,6 +100,9 @@ beforeEach(() => {
   calls = []
   connects = []
   patches = []
+  settings = defaultSettings
+  settingsPatches = []
+  routines = []
 })
 
 const renderSettings = async ({ slack = true }: { slack?: boolean } = {}) => {
@@ -185,4 +223,40 @@ test("a slack.changed push refetches the status", async () => {
   await expect.element(page.getByText("Connected to Acme as @hina")).toBeVisible()
   await expect.element(page.getByText("Paired with Mei")).toBeVisible()
   expect(page.getByLabelText("App token").query()).toBeNull()
+})
+
+const routinePicker = () => page.getByRole("combobox", { name: "Routine" })
+
+test("the routine picker lists the machine's routines and stores the choice", async () => {
+  status = connected
+  routines = [routineNamed("triage", "Triage"), routineNamed("deploy", "Deploy")]
+  await renderSettings()
+  await expect.element(routinePicker()).toHaveTextContent("None")
+
+  await routinePicker().click()
+  await expect.element(page.getByRole("option", { name: "Triage", exact: true })).toBeVisible()
+  await page.getByRole("option", { name: "Deploy", exact: true }).click()
+  await expect.poll(() => settingsPatches).toEqual([{ slack: { routineId: "deploy" } }])
+  await expect.element(routinePicker()).toHaveTextContent("Deploy")
+
+  await routinePicker().click()
+  await page.getByRole("option", { name: "None", exact: true }).click()
+  await expect.poll(() => settingsPatches.at(-1)).toEqual({ slack: { routineId: null } })
+  await expect.element(routinePicker()).toHaveTextContent("None")
+})
+
+test("a stored routine that no longer exists reads as None", async () => {
+  status = connected
+  routines = [routineNamed("triage", "Triage")]
+  settings = { ...defaultSettings, slack: { owner: null, routineId: "deleted" } }
+  await renderSettings()
+  await expect.element(routinePicker()).toHaveTextContent("None")
+  await expect.element(routinePicker()).toBeEnabled()
+})
+
+test("without routines the picker is disabled", async () => {
+  status = connected
+  await renderSettings()
+  await expect.element(routinePicker()).toHaveTextContent("No routines")
+  await expect.element(routinePicker()).toBeDisabled()
 })

@@ -1,10 +1,10 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, type RefObject, startTransition, useRef, useState } from "react"
-import { RiGitPullRequestLine, RiGithubFill, RiGitlabFill } from "react-icons/ri"
+import { RiGitPullRequestLine, RiGithubFill, RiGitlabFill, RiSlackFill } from "react-icons/ri"
 import { toast } from "sonner"
 import { codeHostOfUrl, parseGitLabMergeRequestUrl, pullRequestNumberLabel } from "../../shared/codeHost.ts"
-import type { ChecksStatus, Project, PullRequest, Thread, Worktree } from "../../shared/domain.ts"
+import type { ChecksStatus, Project, PullRequest, SlackLink, Thread, Worktree } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { useOpenSubagent } from "../lib/subagents.ts"
 import { environmentName, useCloud, useClouds, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
@@ -142,6 +142,7 @@ export function ThreadOverview({ thread }: { thread: Thread }) {
       <div className="flex flex-col gap-0.5 rounded-2xl border border-border bg-background/95 p-1.5 shadow-sm backdrop-blur">
         <Environment thread={thread} project={project} worktree={live} />
         <PullRequests thread={thread} worktree={live} />
+        {thread.slack && <SlackConversation threadId={thread.id} link={thread.slack} />}
         {project.kind === "folder" && <SetupScript thread={thread} project={project} worktree={live} onRun={run} />}
         <Actions thread={thread} project={project} onRun={run} />
         <Subagents thread={thread} />
@@ -384,7 +385,7 @@ function PullRequestRow({ thread, url, linked }: PullRequestRowProps) {
   const rowRef = useRef<HTMLDivElement>(null)
 
   return (
-    <div ref={rowRef} className="group/pr flex items-center rounded-lg hover:bg-muted has-data-popup-open:bg-muted">
+    <div ref={rowRef} className="group/row flex items-center rounded-lg hover:bg-muted has-data-popup-open:bg-muted">
       <button
         type="button"
         title={url}
@@ -403,7 +404,7 @@ function PullRequestRow({ thread, url, linked }: PullRequestRowProps) {
         pullRequest={pullRequest}
         linked={linked}
         anchor={rowRef}
-        className="mr-1 opacity-0 group-hover/pr:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100"
+        className={rowActionsClassName}
       />
     </div>
   )
@@ -451,25 +452,7 @@ function PullRequestMenu({ thread, url, pullRequest, linked, anchor, className }
 
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={m.overview_pr_actions()}
-                  className={cn("text-muted-foreground", className)}
-                />
-              }
-            />
-          }
-        >
-          <MoreIcon aria-hidden />
-        </TooltipTrigger>
-        <TooltipContent>{m.overview_pr_actions()}</TooltipContent>
-      </Tooltip>
+      <RowActionsTrigger label={m.overview_pr_actions()} className={className} />
       <DropdownMenuContent anchor={anchor} side="left" align="start" sideOffset={12} className="w-64">
         <div className="flex items-center">
           <DropdownMenuItem className="flex-1" onClick={() => openPullRequest(thread.id, url)}>
@@ -527,6 +510,73 @@ function PullRequestMenu({ thread, url, pullRequest, linked, anchor, className }
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+const rowActionsClassName =
+  "mr-1 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100"
+
+function RowActionsTrigger({ label, className }: { label: string; className?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={label}
+                className={cn("text-muted-foreground", className)}
+              />
+            }
+          />
+        }
+      >
+        <MoreIcon aria-hidden />
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function SlackConversation({ threadId, link }: { threadId: string; link: SlackLink }) {
+  const rowRef = useRef<HTMLDivElement>(null)
+  const unlink = () =>
+    callPromise("slack.unlink", { threadId }).catch((cause: unknown) =>
+      toast.error(m.overview_slack_unlink_failed({ message: errorMessage(cause) })),
+    )
+
+  return (
+    <section aria-label={m.overview_slack()} className="flex flex-col gap-0.5">
+      <hr aria-hidden className="mx-2 my-1 border-border" />
+      <div ref={rowRef} className="group/row flex items-center rounded-lg hover:bg-muted has-data-popup-open:bg-muted">
+        <a
+          href={link.permalink}
+          target="_blank"
+          rel="noreferrer"
+          title={link.permalink}
+          className={cn(rowClassName, "flex-1")}
+        >
+          <RiSlackFill aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate">{m.overview_slack()}</span>
+        </a>
+        <DropdownMenu>
+          <RowActionsTrigger label={m.overview_slack_actions()} className={rowActionsClassName} />
+          <DropdownMenuContent anchor={rowRef} side="left" align="start" sideOffset={12} className="w-64">
+            <DropdownMenuLinkItem href={link.permalink} target="_blank" rel="noreferrer" closeOnClick>
+              <RiSlackFill aria-hidden />
+              {m.overview_slack_open()}
+            </DropdownMenuLinkItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={() => void unlink()}>
+              <UnlinkIcon aria-hidden />
+              {m.overview_pr_unlink()}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </section>
   )
 }
 
