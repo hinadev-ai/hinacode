@@ -1344,6 +1344,7 @@ const VM_TOOLS = [
   "vm_exec",
   "vm_stop",
   "vm_pull_file",
+  "vm_hand_over",
 ]
 
 layer(testLayer)("tiny vm tools while the toggle is off", (it) => {
@@ -1696,6 +1697,78 @@ layer(testLayer)("tiny vm tools", (it) => {
       expect(result.text).toContain("handed it back")
       expect(result.images).toHaveLength(1)
       expect(fake.inputs).toStrictEqual([])
+    }),
+  )
+
+  it.effect("vm_hand_over gives the user control with the request and returns the screen on hand back", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      fake.inputs.length = 0
+      const call = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(a), "vm_hand_over", { request: "Sign in to GitHub" }),
+      )
+      yield* until(
+        Effect.map(vm.get(a), (current) =>
+          current.status === "running" && current.control === "user" && current.agentWaiting
+            ? Option.some(current)
+            : Option.none(),
+        ),
+      )
+      expect(yield* vm.get(a)).toMatchObject({ control: "user", agentWaiting: true, request: "Sign in to GitHub" })
+      expect(call.pollUnsafe()).toBeUndefined()
+
+      yield* vm.setControl(a, "agent")
+      const result = yield* Fiber.join(call)
+      expect(result.isError).toBe(false)
+      expect(result.text).toContain("handed control back")
+      expect(result.images).toHaveLength(1)
+      expect(fake.inputs).toStrictEqual([])
+
+      const taken = yield* vm.setControl(a, "user")
+      expect(taken).toMatchObject({ control: "user" })
+      expect(taken).not.toHaveProperty("request")
+    }),
+  )
+
+  it.effect("closing the last screen during a hand over keeps control with the user", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      yield* vm.start(a)
+      const owner = new EventEmitter()
+      yield* vm.openScreen(a, "stream-hand-over", owner)
+      const call = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(a), "vm_hand_over", { request: "Solve the CAPTCHA" }),
+      )
+      yield* until(
+        Effect.map(vm.get(a), (current) =>
+          current.status === "running" && current.control === "user" && current.agentWaiting
+            ? Option.some(true)
+            : Option.none(),
+        ),
+      )
+      owner.emit("destroyed")
+      yield* until(
+        Effect.sync(() =>
+          pushes.some((push) => push.type === "vm.screen.closed" && push.streamId === "stream-hand-over")
+            ? Option.some(true)
+            : Option.none(),
+        ),
+      )
+      yield* TestClock.withLive(Effect.sleep("20 millis"))
+      yield* TestClock.adjust(HAND_BACK_GRACE)
+      yield* TestClock.withLive(Effect.sleep("20 millis"))
+      expect(yield* vm.get(a)).toMatchObject({ control: "user", request: "Solve the CAPTCHA" })
+      expect(call.pollUnsafe()).toBeUndefined()
+
+      yield* vm.setControl(a, "agent")
+      expect((yield* Fiber.join(call)).isError).toBe(false)
     }),
   )
 

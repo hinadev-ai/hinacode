@@ -16,6 +16,7 @@ interface TinyVmScreenProps {
   readonly threadId: string
   readonly control: VmControl
   readonly bare?: boolean
+  readonly screenId?: string
   readonly fullscreenControls?: ReactNode
   readonly onHandBack: () => void
   readonly onReconnect: () => void
@@ -26,12 +27,13 @@ export default function TinyVmScreen({
   threadId,
   control,
   bare = false,
+  screenId,
   fullscreenControls,
   onHandBack,
   onReconnect,
   drop,
 }: TinyVmScreenProps) {
-  const id = vmScreenId(threadId)
+  const id = screenId ?? vmScreenId(threadId)
   const targetRef = useRef<HTMLDivElement>(null)
   const rfbRef = useRef<RFB | null>(null)
   const controlRef = useRef(control)

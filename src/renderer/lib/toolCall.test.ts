@@ -56,6 +56,12 @@ describe("groupToolCalls", () => {
     expect(groupToolCalls(parts).map((block) => block.type)).toStrictEqual(["part", "part", "tools", "part", "part"])
   })
 
+  test("leaves a VM hand over out of the fold so its live screen stays in sight", () => {
+    const handOver = { ...bash("h"), name: "mcp__hinacode__vm_hand_over", input: { request: "Sign in" } }
+    const parts = [bash("a"), handOver, bash("b")]
+    expect(groupToolCalls(parts).map((block) => block.type)).toStrictEqual(["part", "part", "part"])
+  })
+
   test("folds thinking between tool calls into the same block until the agent writes text", () => {
     const parts = [thinking("t1"), bash("a"), thinking("t2"), bash("b"), thinking("t3"), text("done")]
     expect(groupToolCalls(parts)).toStrictEqual([

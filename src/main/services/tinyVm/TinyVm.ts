@@ -75,6 +75,7 @@ export class TinyVm extends Context.Service<
     readonly desktopUrl: (threadId: string) => Effect.Effect<string, VmError>
     readonly screenshot: (threadId: string) => Effect.Effect<Uint8Array, VmError>
     readonly act: (threadId: string, actions: ReadonlyArray<VmAction>) => Effect.Effect<"done" | "handedBack", VmError>
+    readonly handOver: (threadId: string, request: string) => Effect.Effect<void, VmError>
     readonly exec: (threadId: string, input: VmExec) => Effect.Effect<ExecResult, VmError>
     readonly dropFiles: (
       threadId: string,
@@ -90,6 +91,7 @@ export class TinyVm extends Context.Service<
 >()("hinacode/TinyVm") {}
 
 const VNC_PORT = 5900
+const STOPPED_BY_USER = "The user stopped the VM. Call the tool again to start a fresh one."
 const PROFILE_GUEST_ARCHIVE = "hinacode-chromium-profile.tgz"
 const PROFILE_STORE = "chromium-profile.tgz"
 const PROFILE_META = "chromium-profile.json"
@@ -671,10 +673,11 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         )
       })
 
-    const setControl = (threadId: string, control: VmControl) =>
+    const setControl = (threadId: string, control: VmControl, request?: string) =>
       Effect.suspend((): Effect.Effect<ThreadVm> => {
         const vm = current(threadId)
         if (vm.status !== "running") return Effect.succeed(vm)
+        const keptRequest = request ?? (vm.control === "user" ? vm.request : undefined)
         const next: ThreadVm =
           control === "user"
             ? {
@@ -685,6 +688,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
                 profile: vm.profile,
                 control: "user",
                 agentWaiting: (waiting.get(threadId) ?? 0) > 0,
+                ...(keptRequest === undefined ? {} : { request: keptRequest }),
               }
             : {
                 status: "running",
@@ -750,9 +754,22 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         }
         yield* waitForHandBack(threadId)
         if (current(threadId).status !== "running") {
-          return yield* new VmError({ message: "The user stopped the VM. Call the tool again to start a fresh one." })
+          return yield* new VmError({ message: STOPPED_BY_USER })
         }
         return "handedBack" as const
+      })
+
+    const handOver = (threadId: string, request: string) =>
+      Effect.gen(function* () {
+        yield* ensureRunning(threadId)
+        yield* setControl(threadId, "user", request)
+        yield* Effect.suspend(() => {
+          const vm = current(threadId)
+          return vm.status === "running" && vm.control === "user" ? waitForHandBack(threadId) : Effect.void
+        })
+        if (current(threadId).status !== "running") {
+          return yield* new VmError({ message: STOPPED_BY_USER })
+        }
       })
 
     const screenshot = (threadId: string) =>
@@ -1001,7 +1018,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
     const unwatchedByUser = (threadId: string) => {
       const vm = current(threadId)
       const watched = [...screens.values()].some((other) => other.threadId === threadId)
-      return !watched && vm.status === "running" && vm.control === "user"
+      return !watched && vm.status === "running" && vm.control === "user" && vm.request === undefined
     }
 
     const screenClosed = (streamId: string, screen: Screen, owner: ScreenOwner) => {
@@ -1122,7 +1139,8 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
       get: (threadId) => Effect.sync(() => current(threadId)),
       start,
       stop,
-      setControl,
+      setControl: (threadId, control) => setControl(threadId, control),
+      handOver,
       host,
       desktopUrl,
       screenshot,
