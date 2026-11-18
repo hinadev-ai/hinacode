@@ -8,7 +8,7 @@ import { afterAll, expect, layer } from "@effect/vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { NodeServices } from "@effect/platform-node"
-import { Context, Deferred, type Duration, Effect, Fiber, Layer, Option, Stream } from "effect"
+import { Context, Deferred, type Duration, Effect, Fiber, Layer, Option, Queue, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import {
   type ApprovalDecision,
@@ -48,6 +48,8 @@ import { layer as linearLayer } from "../services/Linear.ts"
 import { noKeyring, layer as secretsLayer } from "../services/Secrets.ts"
 import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
+import { type FakeSlack, makeFakeSlack } from "../services/slack/fakeSlack.ts"
+import { layer as slackLayer, Slack } from "../services/slack/Slack.ts"
 import { decodeTar, encodeTar } from "../services/tinyVm/tar.ts"
 import { FAKE_PNG, FakeSbxServer, fakeSbxLayer } from "../services/tinyVm/testing.ts"
 import { unavailableDevicesLayer } from "../services/devices/unavailable.ts"
@@ -221,8 +223,26 @@ const tinyVm = Layer.unwrap(
     return tinyVmLayer({ configPath: fake.configPath, env: {} }, vmProfileDir)
   }),
 ).pipe(Layer.provideMerge(fakeSbxLayer))
+const slackTokens = { appToken: "xapp-1-fake", botToken: "xoxb-fake" }
+
+class FakeSlackServer extends Context.Service<FakeSlackServer, FakeSlack>()("test/FakeSlackServer") {}
+
+const slack = Layer.unwrap(
+  Effect.gen(function* () {
+    const fake = yield* FakeSlackServer
+    return slackLayer({ apiUrl: fake.apiUrl })
+  }),
+).pipe(
+  Layer.provideMerge(
+    Layer.effect(
+      FakeSlackServer,
+      makeFakeSlack({ ...slackTokens, team: { id: "T1", name: "Acme" }, bot: "hinacode", users: {} }),
+    ),
+  ),
+)
 const domain = Layer.mergeAll(
   core,
+  slack.pipe(Layer.provide(core)),
   PullRequests.layer.pipe(Layer.provide(core)),
   tinyVm.pipe(Layer.provide(core)),
   unavailableDevicesLayer.pipe(Layer.provide(core)),
@@ -1916,6 +1936,84 @@ layer(testLayer)("run_agent stopped-parent race", (it) => {
       expect({ result, childInputs: turnInputs.filter((input) => input.threadId.includes(":agent:")) }).toMatchObject({
         result: { isError: true },
         childInputs: [],
+      })
+    }),
+  )
+})
+
+const connectSlack = Effect.gen(function* () {
+  yield* (yield* Settings.Settings).set({ experimental: { slack: true } })
+  yield* (yield* Slack).connect(slackTokens)
+})
+
+layer(testLayer)("slack_reply", (it) => {
+  it.effect("is not listed while Slack is not connected", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      expect(yield* toolNames(yield* mcp.connectionFor(a))).not.toContain("slack_reply")
+    }),
+  )
+
+  it.effect("posts into the Slack thread linked to the calling thread, and for no other thread", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const fake = yield* FakeSlackServer
+      const threads = yield* Threads
+      const { a, b } = yield* Seeded
+      const root = "1700000000.000100"
+      yield* connectSlack
+      yield* fake.post({ channel: "C1", ts: root, user: "U2", text: "gift cards return 500" })
+      yield* threads.linkSlack(a, {
+        channelId: "C1",
+        threadTs: root,
+        permalink: "https://acme.slack.com/archives/C1/p1700000000000100",
+        deliveredTs: root,
+      })
+      const linked = yield* mcp.connectionFor(a)
+      expect(yield* toolNames(linked)).toContain("slack_reply")
+
+      expect(yield* callAs(linked, "slack_reply", { text: "The id was **null**. Fix in #12." })).toStrictEqual({
+        text: "Posted to the Slack thread: https://acme.slack.com/archives/C1/p1800000001000100",
+        isError: false,
+        images: [],
+      })
+      expect(yield* Queue.take(fake.posts)).toMatchObject({
+        channel: "C1",
+        thread_ts: root,
+        text: "The id was **null**. Fix in #12.",
+      })
+
+      expect(yield* callAs(yield* mcp.connectionFor(b), "slack_reply", { text: "hello" })).toMatchObject({
+        text: "This thread is not linked to a Slack thread.",
+        isError: true,
+      })
+      expect(yield* callAs(linked, "slack_reply", { text: "x".repeat(12_001) })).toMatchObject({
+        text: "Slack takes at most 12000 characters in one reply and this one has 12001. Shorten it or split it.",
+        isError: true,
+      })
+      expect(yield* callAs(linked, "slack_reply", { text: " " })).toMatchObject({ isError: true })
+      yield* threads.linkSlack(a, null)
+      expect((yield* callAs(linked, "slack_reply", { text: "after the unlink" })).isError).toBe(true)
+      expect(yield* Queue.size(fake.posts)).toBe(0)
+    }),
+  )
+
+  it.effect("returns Slack's refusal as an error result", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const threads = yield* Threads
+      const { b } = yield* Seeded
+      yield* connectSlack
+      yield* threads.linkSlack(b, {
+        channelId: "C404",
+        threadTs: "1700000000.000100",
+        permalink: "https://acme.slack.com/archives/C404/p1700000000000100",
+        deliveredTs: "1700000000.000100",
+      })
+      expect(yield* callAs(yield* mcp.connectionFor(b), "slack_reply", { text: "hello" })).toMatchObject({
+        text: "Slack chat.postMessage failed: thread_not_found",
+        isError: true,
       })
     }),
   )

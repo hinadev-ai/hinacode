@@ -46,6 +46,14 @@ test("teaches cua-driver on an sbx desktop", () => {
   expect(instructions).toContain('"delivery_mode":"foreground"')
 })
 
+test("teaches slack_reply only while the Slack experiment is on", () => {
+  expect(agentInstructions(experimental, environment, [])).not.toContain("slack_reply")
+  const instructions = agentInstructions({ ...experimental, slack: true }, environment, [])
+  expect(instructions).toContain("<slack>")
+  expect(instructions).toContain("`slack_reply`")
+  expect(instructions).toContain('`"developer": true`')
+})
+
 test("says none for a detached HEAD and a repository without an origin", () => {
   const instructions = agentInstructions(experimental, { ...environment, branch: null, remote: null }, [])
   expect(instructions).toContain("git branch: `(none)`")

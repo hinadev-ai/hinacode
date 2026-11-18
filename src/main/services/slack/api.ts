@@ -77,6 +77,7 @@ const Replies = Schema.Struct({
   response_metadata: Schema.optionalKey(Schema.Struct({ next_cursor: Schema.optionalKey(Schema.String) })),
 })
 const Permalink = Schema.Struct({ permalink: Schema.String })
+const Posted = Schema.Struct({ ts: Schema.String })
 
 export interface SlackPlace {
   readonly channel: string
@@ -182,6 +183,16 @@ export const makeSlackApi = (apiUrl: string) => {
       Effect.map(
         call("chat.getPermalink", botToken, { channel, message_ts: ts }, Permalink),
         ({ permalink }) => permalink,
+      ),
+    postMessage: (botToken: string, thread: SlackPlace, markdown: string) =>
+      Effect.map(
+        call(
+          "chat.postMessage",
+          botToken,
+          { channel: thread.channel, thread_ts: thread.ts, markdown_text: markdown },
+          Posted,
+        ),
+        ({ ts }) => ts,
       ),
     postEphemeral: (
       botToken: string,
