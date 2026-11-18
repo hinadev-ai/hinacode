@@ -16,8 +16,11 @@ export const select = (messages: ReadonlyArray<SlackMessage>, ask: SlackAsk) => 
   const all = messages.some((message) => message.ts === ask.ts)
     ? messages
     : [...messages, { ts: ask.ts, user: ask.user, text: ask.text }]
-  const omitted = Math.max(0, all.length - MAX_MESSAGES)
-  return { kept: omitted === 0 ? all : [...all.slice(0, 1), ...all.slice(omitted + 1)], omitted }
+  if (all.length <= MAX_MESSAGES) return { kept: all, omitted: 0 }
+  const pinned = new Set(all.filter((message, index) => index === 0 || message.ts === ask.ts))
+  const recent = new Set(all.filter((message) => !pinned.has(message)).slice(pinned.size - MAX_MESSAGES))
+  const kept = all.filter((message) => pinned.has(message) || recent.has(message))
+  return { kept, omitted: all.length - kept.length }
 }
 
 export const peopleIn = (messages: ReadonlyArray<SlackMessage>) => {

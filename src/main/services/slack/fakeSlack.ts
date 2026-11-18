@@ -47,6 +47,8 @@ const start = (workspace: FakeWorkspace) =>
     const reactions = Effect.runSync(Queue.unbounded<FakeReaction>())
     const notes = Effect.runSync(Queue.unbounded<FakeNote>())
     const threads = new Map<string, Array<FakeMessage>>()
+    const held = Effect.runSync(Queue.unbounded<() => void>())
+    let holding: string | null = null
     const open = new Set<WebSocket>()
     let appTokenRevoked = false
 
@@ -107,7 +109,9 @@ const start = (workspace: FakeWorkspace) =>
         const token = (request.headers.authorization ?? "").replace(/^Bearer /, "")
         const params = new URLSearchParams(Buffer.concat(chunks).toString())
         response.setHeader("content-type", "application/json")
-        response.end(JSON.stringify(answer(method, token, params)))
+        const reply = () => response.end(JSON.stringify(answer(method, token, params)))
+        if (method === holding) Queue.offerUnsafe(held, reply)
+        else reply()
       })
     })
     const sockets = new WebSocketServer({ server: http })
@@ -130,6 +134,11 @@ const start = (workspace: FakeWorkspace) =>
           acks,
           reactions,
           notes,
+          held,
+          hold: (method: string | null) =>
+            Effect.sync(() => {
+              holding = method
+            }),
           post: (message: FakeMessage) =>
             Effect.sync(() => {
               const root = `${message.channel}:${message.thread_ts ?? message.ts}`
@@ -168,6 +177,8 @@ export interface FakeSlack {
   readonly acks: Queue.Queue<string>
   readonly reactions: Queue.Queue<FakeReaction>
   readonly notes: Queue.Queue<FakeNote>
+  readonly held: Queue.Queue<() => void>
+  readonly hold: (method: string | null) => Effect.Effect<void>
   readonly post: (message: FakeMessage) => Effect.Effect<void>
   readonly deliver: (payload: unknown) => Effect.Effect<string>
   readonly askToRefresh: Effect.Effect<void>

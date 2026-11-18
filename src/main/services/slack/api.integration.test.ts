@@ -10,14 +10,17 @@ interface Answer {
   readonly body: string
 }
 
-const slackAnswering = (answer: Answer) =>
+const slackAnswering = (answer: Answer | ((params: URLSearchParams) => Answer)) =>
   Effect.acquireRelease(
     Effect.callback<Server>((resume) => {
       const server = createServer((request, response) => {
-        request.resume()
+        const chunks: Array<Buffer> = []
+        request.on("data", (chunk: Buffer) => chunks.push(chunk))
         request.on("end", () => {
-          response.writeHead(answer.status, { "content-type": "application/json", ...answer.headers })
-          response.end(answer.body)
+          const { status, headers, body } =
+            typeof answer === "function" ? answer(new URLSearchParams(Buffer.concat(chunks).toString())) : answer
+          response.writeHead(status, { "content-type": "application/json", ...headers })
+          response.end(body)
         })
       })
       server.listen(0, "127.0.0.1", () => resume(Effect.succeed(server)))
@@ -61,6 +64,42 @@ describe("slack api", () => {
     Effect.gen(function* () {
       const refusal = yield* refusalFrom({ status: 200, body: JSON.stringify({ ok: false, error: "invalid_auth" }) })
       expect(refusal).toEqual({ reason: "invalid_auth", recoverable: false, retryAfterMs: null })
+    }),
+  )
+
+  it.live("reads a thread page by page", () =>
+    Effect.gen(function* () {
+      const api = yield* slackAnswering((params) => ({
+        status: 200,
+        body: JSON.stringify(
+          params.get("cursor") === null
+            ? { ok: true, messages: [{ ts: "1.0" }, { ts: "2.0" }], response_metadata: { next_cursor: "more" } }
+            : { ok: true, messages: [{ ts: "3.0" }], response_metadata: { next_cursor: "" } },
+        ),
+      }))
+      const messages = yield* api.replies("xoxb-bot", { channel: "C1", ts: "1.0" })
+      expect(messages.map((message) => message.ts)).toEqual(["1.0", "2.0", "3.0"])
+    }),
+  )
+
+  it.live("refuses a thread it cannot read to its end", () =>
+    Effect.gen(function* () {
+      let pages = 0
+      const api = yield* slackAnswering(() => {
+        pages += 1
+        return {
+          status: 200,
+          body: JSON.stringify({
+            ok: true,
+            messages: [{ ts: `${pages}.0` }],
+            response_metadata: { next_cursor: "more" },
+          }),
+        }
+      })
+      const error = yield* Effect.flip(api.replies("xoxb-bot", { channel: "C1", ts: "1.0" }))
+      expect(error.reason).toBe("the thread has more than 10000 messages")
+      expect(error.recoverable).toBe(false)
+      expect(pages).toBe(50)
     }),
   )
 

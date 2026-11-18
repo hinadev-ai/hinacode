@@ -942,7 +942,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       yield* sql`
         UPDATE thread SET slack = ${link === null ? null : JSON.stringify(link)}, updated_at = ${yield* nowIso}
-        WHERE id = ${id}
+        WHERE id = ${id} AND (${link === null ? 1 : 0} = 1 OR status != 'archived')
       `.pipe(Effect.mapError(persistence("threads.linkSlack")))
       const linked = yield* get(id)
       yield* PubSub.publish(written, linked)

@@ -55,6 +55,15 @@ describe("select", () => {
     expect(kept[1]).toBe(long[7])
     expect(kept.at(-1)).toEqual({ ts: ask.ts })
   })
+
+  it("keeps the mention when a long thread went on after it", () => {
+    const later = Array.from({ length: MAX_MESSAGES + 5 }, (_, index) => ({ ts: `17000002${index + 10}.000000` }))
+    const { kept, omitted } = select([...thread, ...later], ask)
+    expect(omitted).toBe(7)
+    expect(kept).toHaveLength(MAX_MESSAGES)
+    expect(kept.slice(0, 3)).toEqual([thread[0], thread[1], later[7]])
+    expect(kept.at(-1)).toBe(later.at(-1))
+  })
 })
 
 describe("peopleIn", () => {

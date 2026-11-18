@@ -556,6 +556,7 @@ describe("Threads", () => {
       yield* threads.linkSlack(second, link)
       expect((yield* threads.archive(second)).slack).toBeNull()
       expect(Option.isNone(yield* threads.bySlack("C1", link.threadTs))).toBe(true)
+      expect((yield* threads.linkSlack(second, link)).slack).toBeNull()
       expect((yield* threads.unarchive(second)).slack).toBeNull()
     }).pipe(Effect.provide(threadsLayer)),
   )
