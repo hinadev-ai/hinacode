@@ -329,6 +329,15 @@ const withPreparingThread = async (
             completed,
           )
         }
+        if (input.prompt === "creates a.txt and edits notes.md") {
+          return Stream.fromEffect(
+            Effect.sync((): AgentEvent => {
+              writeFileSync(join(input.cwd, "a.txt"), "agent\n")
+              writeFileSync(join(input.cwd, "notes.md"), "agent edit\n")
+              return completed
+            }),
+          )
+        }
         if (input.prompt === "ends silently") {
           return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` })
         }
@@ -871,6 +880,32 @@ const acceptedTurnWithEdits = async (probe: Probe) => {
   probe.pauseSnapshot()
   return { baseline, changes, messages }
 }
+
+it("undoes only what the turn changed and keeps what the user changed after it", async () => {
+  await withPreparingThread(async ({ runner, threads, worktrees, thread, idle, release }) => {
+    release()
+    const { path } = await Effect.runPromise(
+      worktrees.whenPrepared(thread.worktreeId!).pipe(Effect.andThen(worktrees.get(thread.worktreeId!))),
+    )
+    writeFileSync(join(path, "notes.md"), "before\n")
+    writeFileSync(join(path, "README.md"), "readme\n")
+    await Effect.runPromise(runner.send(thread.id, "creates a.txt and edits notes.md", []))
+    await idle
+
+    writeFileSync(join(path, "my-notes.md"), "mine\n")
+    writeFileSync(join(path, "README.md"), "readme\nhand edit\n")
+    const turn = await Effect.runPromise(threads.changes(thread.id, "turn"))
+    expect(turn?.files.map((file) => file.path)).toStrictEqual(["a.txt", "notes.md"])
+
+    writeFileSync(join(path, "notes.md"), "agent edit\nhand edit\n")
+    await Effect.runPromise(threads.undoTurn(thread.id))
+
+    expect(existsSync(join(path, "a.txt"))).toBe(false)
+    expect(readFileSync(join(path, "notes.md"), "utf8")).toBe("agent edit\nhand edit\n")
+    expect(readFileSync(join(path, "my-notes.md"), "utf8")).toBe("mine\n")
+    expect(readFileSync(join(path, "README.md"), "utf8")).toBe("readme\nhand edit\n")
+  })
+})
 
 it("tells the agent the branch and paths it works in", async () => {
   await withPreparingThread(async (probe) => {
