@@ -677,6 +677,7 @@
   "routines_prompt_required": "请先输入提示词。",
   "routines_enabled_label": "启用",
   "routines_create": "创建例行任务",
+  "routines_model_default_named": "默认（{model}）",
   "routines_webhook_url_label": "Webhook URL",
   "routines_listen_failed": "监听器未运行：{message}",
   "routines_copy_url": "复制 webhook URL",

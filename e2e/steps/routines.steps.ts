@@ -38,15 +38,6 @@ When(
     await prompt.click()
     await prompt.pressSequentially("Reply with ping only.")
 
-    await expect(dialog.getByPlaceholder("Loading models…")).toHaveCount(0, { timeout: 30_000 })
-    const model = dialog.getByLabel("Model", { exact: true })
-    if ((await model.getAttribute("role")) === "combobox") {
-      await model.click()
-      await page.getByRole("option").first().click()
-    } else if ((await model.inputValue()) === "") {
-      await model.fill("claude-sonnet-5-5")
-    }
-
     await dialog.getByRole("button", { name: "Create routine", exact: true }).click()
     await expect(dialog).toBeHidden()
     await expect(routineRow(page, names, name)).toBeVisible({ timeout: 2_000 })

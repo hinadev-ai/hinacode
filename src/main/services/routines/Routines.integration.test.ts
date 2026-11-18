@@ -238,7 +238,7 @@ describe("routine scheduling", () => {
     ),
   )
 
-  it.effect("rejects an empty name, model or prompt and an unknown project", () =>
+  it.effect("rejects an empty name or prompt and an unknown project", () =>
     withApp(({ projectId }) =>
       Effect.gen(function* () {
         const routine = yield* createRoutine(projectId)
@@ -246,6 +246,32 @@ describe("routine scheduling", () => {
         expect(empty.message).toBe("Prompt is required")
         const missing = yield* Effect.flip(createRoutine("nope"))
         expect(missing._tag).toBe("NotFoundError")
+      }),
+    ),
+  )
+
+  it.effect("runs a routine without a model on the agent's default model at run time", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const routine = yield* Routines.use((routines) =>
+          routines.create({
+            projectId,
+            name: "Nightly sweep",
+            enabled: true,
+            prompt: "Sweep",
+            provider: "claude",
+            model: "",
+            effort: null,
+            workspace: "local",
+            schedule: null,
+          }),
+        )
+        expect(routine.model).toBe("")
+        yield* Settings.Settings.use((settings) => settings.set({ defaultModel: { claude: "provider-default" } }))
+
+        const run = yield* Routines.use((routines) => routines.run(routine.id, "manual", null))
+        const thread = yield* settled(run.threadId)
+        expect(thread.model).toBe("provider-default")
       }),
     ),
   )

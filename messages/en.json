@@ -686,6 +686,7 @@
   "routines_prompt_required": "Write a prompt first.",
   "routines_enabled_label": "Enabled",
   "routines_create": "Create routine",
+  "routines_model_default_named": "Default ({model})",
   "routines_webhook_url_label": "Webhook URL",
   "routines_listen_failed": "The listener is not running: {message}",
   "routines_copy_url": "Copy webhook URL",

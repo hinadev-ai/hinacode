@@ -686,6 +686,7 @@
   "routines_prompt_required": "請先輸入提示詞。",
   "routines_enabled_label": "啟用",
   "routines_create": "建立例行任務",
+  "routines_model_default_named": "預設（{model}）",
   "routines_webhook_url_label": "Webhook URL",
   "routines_listen_failed": "監聽器未在執行：{message}",
   "routines_copy_url": "複製 webhook URL",

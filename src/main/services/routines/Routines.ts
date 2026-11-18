@@ -20,6 +20,7 @@ import { AgentRunner } from "../AgentRunner.ts"
 import { nowIso } from "../clock.ts"
 import { NotFoundError, type PersistenceError, persistence } from "../errors.ts"
 import { Events } from "../Events.ts"
+import { newThreadOptions } from "../newThread.ts"
 import { Projects } from "../Projects.ts"
 import { Scheduler } from "../Scheduler.ts"
 import { Secrets } from "../Secrets.ts"
@@ -128,9 +129,8 @@ const nextRunAfter = (row: Pick<RoutineRow, "enabled" | "schedule">, now: number
 const sameSchedule = (a: RoutineSchedule | null, b: RoutineSchedule | null) =>
   a === b || (a !== null && b !== null && a.cron === b.cron && a.timezone === b.timezone)
 
-const validate = (input: Pick<RoutineInput, "name" | "model" | "prompt">) => {
+const validate = (input: Pick<RoutineInput, "name" | "prompt">) => {
   if (input.name.trim() === "") return Effect.fail(new RoutineError({ reason: "Name is required" }))
-  if (input.model.trim() === "") return Effect.fail(new RoutineError({ reason: "Model is required" }))
   if (input.prompt.trim() === "") return Effect.fail(new RoutineError({ reason: "Prompt is required" }))
   return Effect.void
 }
@@ -292,6 +292,15 @@ const make = Effect.gen(function* () {
       )
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("could not settle earlier routine runs", routine.id, cause)))
 
+  const modelFor = (routine: RoutineRow) =>
+    routine.model === ""
+      ? newThreadOptions(routine.provider).pipe(
+          Effect.map(({ model }) => model),
+          Effect.provideService(Settings, settings),
+          Effect.provideService(AgentRunner, runner),
+        )
+      : Effect.succeed(routine.model)
+
   const createThread = (routine: RoutineRow, runId: string) =>
     Effect.gen(function* () {
       const workspace = yield* workspaceFor(routine)
@@ -299,7 +308,7 @@ const make = Effect.gen(function* () {
         projectId: routine.projectId,
         title: `${routine.name} ${runId.slice(0, 5)}`,
         provider: routine.provider,
-        model: routine.model,
+        model: yield* modelFor(routine),
         effort: routine.effort,
         createdBy: `routine:${routine.id}`,
       })
