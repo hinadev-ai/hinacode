@@ -75,8 +75,8 @@ export const refusalText = (reason: Refusal, owner: SlackOwner | null) => {
         : `Only ${owner.name} can ask this HinaCode.`
     case "externalChannel":
       return "HinaCode does not answer in a channel shared with another organization."
-    case "threadLinked":
-      return "This Slack thread already has a HinaCode thread."
+    case "threadWaiting":
+      return "The HinaCode thread for this Slack thread is waiting for you. Answer it in HinaCode, then mention me again."
     case "noRoutine":
       return "Pick the routine that answers Slack in HinaCode's settings first."
     case "routineDisabled":
@@ -84,4 +84,7 @@ export const refusalText = (reason: Refusal, owner: SlackOwner | null) => {
   }
 }
 
-export const failureText = (reason: string) => `HinaCode could not start: ${reason}`
+export const FOLLOW_UP =
+  "The developer mentioned you again in the Slack thread linked to this thread. The block holds the messages posted there since you last read it."
+
+export const failureText = (reason: string) => `HinaCode could not hand this to the agent: ${reason}`

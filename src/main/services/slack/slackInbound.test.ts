@@ -97,8 +97,9 @@ const ask = (fields: Partial<SlackAsk> = {}): SlackAsk => ({ ...askOf(mention())
 const ready: AskState = {
   owner: { teamId: "T1", userId: "U1", name: "Dev Eloper" },
   routine: { id: "r1", enabled: true },
-  deliveredTs: null,
+  linked: null,
 }
+const linked = { threadId: "t1", status: "idle", deliveredTs: "1700000000.000100" } as const
 
 describe("decideAsk", () => {
   it("starts the routine for the paired developer", () => {
@@ -114,9 +115,7 @@ describe("decideAsk", () => {
   })
 
   it("refuses someone else before it says anything about the routine or the thread", () => {
-    expect(
-      decideAsk(ask({ user: "U2" }), { owner: ready.owner, routine: null, deliveredTs: "1700000000.000100" }),
-    ).toEqual({
+    expect(decideAsk(ask({ user: "U2" }), { owner: ready.owner, routine: null, linked })).toEqual({
       type: "refuse",
       reason: "notOwner",
     })
@@ -126,15 +125,25 @@ describe("decideAsk", () => {
     expect(decideAsk(ask({ external: true }), ready)).toEqual({ type: "refuse", reason: "externalChannel" })
   })
 
-  it("refuses a new mention in a Slack thread that already has a HinaCode thread", () => {
-    expect(decideAsk(ask(), { ...ready, deliveredTs: "1700000000.000100" })).toEqual({
+  it.each(["idle", "running"] as const)("continues the linked thread while it is %s", (status) => {
+    expect(decideAsk(ask(), { ...ready, linked: { ...linked, status } })).toEqual({ type: "continue", threadId: "t1" })
+  })
+
+  it("continues the linked thread with no routine picked", () => {
+    expect(decideAsk(ask(), { ...ready, routine: null, linked }).type).toBe("continue")
+  })
+
+  it.each(["awaiting_approval", "limited"] as const)("refuses while the linked thread is %s", (status) => {
+    expect(decideAsk(ask(), { ...ready, linked: { ...linked, status } })).toEqual({
       type: "refuse",
-      reason: "threadLinked",
+      reason: "threadWaiting",
     })
   })
 
-  it("ignores a mention the linked thread was already given", () => {
-    expect(decideAsk(ask(), { ...ready, deliveredTs: "1700000100.000200" })).toEqual({ type: "ignore" })
+  it("ignores a mention the linked thread was already given, whatever its state", () => {
+    const given = { ...linked, deliveredTs: "1700000100.000200" }
+    expect(decideAsk(ask(), { ...ready, linked: given })).toEqual({ type: "ignore" })
+    expect(decideAsk(ask(), { ...ready, linked: { ...given, status: "limited" } })).toEqual({ type: "ignore" })
   })
 
   it("refuses while no routine is picked", () => {

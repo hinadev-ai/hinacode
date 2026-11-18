@@ -204,6 +204,10 @@ export class Threads extends Context.Service<
     readonly unsettle: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly bySlack: (channelId: string, threadTs: string) => Effect.Effect<Option.Option<Thread>, PersistenceError>
     readonly linkSlack: (id: string, link: SlackLink | null) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly deliveredSlack: (
+      id: string,
+      deliveredTs: string,
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly workStartedAt: (id: string) => Effect.Effect<string | null, PersistenceError>
     readonly remove: (
       id: string,
@@ -949,6 +953,16 @@ const make = Effect.gen(function* () {
       return linked
     })
 
+  const deliveredSlack = (id: string, deliveredTs: string) =>
+    Effect.gen(function* () {
+      yield* sql`
+        UPDATE thread SET slack = json_set(slack, '$.deliveredTs', ${deliveredTs}) WHERE id = ${id} AND slack IS NOT NULL
+      `.pipe(Effect.mapError(persistence("threads.deliveredSlack")))
+      const delivered = yield* get(id)
+      yield* PubSub.publish(written, delivered)
+      return delivered
+    })
+
   const workStartedAt = (id: string) =>
     sql<{ readonly startedAt: string | null }>`SELECT work_started_at AS startedAt FROM thread WHERE id = ${id}`.pipe(
       Effect.map((rows) => rows[0]?.startedAt ?? null),
@@ -995,6 +1009,7 @@ const make = Effect.gen(function* () {
     bySlack: (channelId, threadTs) =>
       findBySlack({ channelId, threadTs }).pipe(Effect.mapError(persistence("threads.bySlack"))),
     linkSlack,
+    deliveredSlack,
     workStartedAt,
     remove,
     resetInterrupted: sql`
