@@ -552,7 +552,13 @@ describe("Threads", () => {
       expect((yield* Effect.flip(threads.linkSlack(second, link)))._tag).toBe("PersistenceError")
       expect((yield* threads.update({ id: first, title: "renamed" })).slack).toStrictEqual(link)
 
+      expect((yield* threads.deliveredSlack(first, "1700000300.000400")).slack).toStrictEqual({
+        ...link,
+        deliveredTs: "1700000300.000400",
+      })
+
       expect((yield* threads.linkSlack(first, null)).slack).toBeNull()
+      expect((yield* threads.deliveredSlack(first, "1700000400.000500")).slack).toBeNull()
       yield* threads.linkSlack(second, link)
       expect((yield* threads.archive(second)).slack).toBeNull()
       expect(Option.isNone(yield* threads.bySlack("C1", link.threadTs))).toBe(true)

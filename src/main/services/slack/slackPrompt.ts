@@ -1,6 +1,6 @@
 import type { SlackOwner } from "../../../shared/domain.ts"
 import type { SlackMessage } from "./api.ts"
-import type { Refusal, SlackAsk } from "./slackInbound.ts"
+import { isAfter, type Refusal, type SlackAsk } from "./slackInbound.ts"
 
 export const MAX_MESSAGES = 100
 export const MAX_PEOPLE = 50
@@ -15,7 +15,11 @@ const MENTION = /<@([A-Z0-9]+)(?:\|[^>]*)?>/g
 export const select = (messages: ReadonlyArray<SlackMessage>, ask: SlackAsk) => {
   const all = messages.some((message) => message.ts === ask.ts)
     ? messages
-    : [...messages, { ts: ask.ts, user: ask.user, text: ask.text }]
+    : [
+        ...messages.filter((message) => !isAfter(message.ts, ask.ts)),
+        { ts: ask.ts, user: ask.user, text: ask.text },
+        ...messages.filter((message) => isAfter(message.ts, ask.ts)),
+      ]
   if (all.length <= MAX_MESSAGES) return { kept: all, omitted: 0 }
   const pinned = new Set(all.filter((message, index) => index === 0 || message.ts === ask.ts))
   const recent = new Set(all.filter((message) => !pinned.has(message)).slice(pinned.size - MAX_MESSAGES))
@@ -75,8 +79,8 @@ export const refusalText = (reason: Refusal, owner: SlackOwner | null) => {
         : `Only ${owner.name} can ask this HinaCode.`
     case "externalChannel":
       return "HinaCode does not answer in a channel shared with another organization."
-    case "threadLinked":
-      return "This Slack thread already has a HinaCode thread."
+    case "threadWaiting":
+      return "The HinaCode thread for this Slack thread is waiting for you. Answer it in HinaCode, then mention me again."
     case "noRoutine":
       return "Pick the routine that answers Slack in HinaCode's settings first."
     case "routineDisabled":
@@ -84,4 +88,7 @@ export const refusalText = (reason: Refusal, owner: SlackOwner | null) => {
   }
 }
 
-export const failureText = (reason: string) => `HinaCode could not start: ${reason}`
+export const FOLLOW_UP =
+  "The developer mentioned you again in the Slack thread linked to this thread. The block holds the messages posted there since you last read it."
+
+export const failureText = (reason: string) => `HinaCode could not hand this to the agent: ${reason}`

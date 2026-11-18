@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import type { SlackOwner } from "../../../shared/domain.ts"
+import type { SlackOwner, ThreadStatus } from "../../../shared/domain.ts"
 
 export const DirectMessage = Schema.Struct({
   event: Schema.Struct({
@@ -81,15 +81,16 @@ export const askOf = ({ event, is_ext_shared_channel }: AskEvent): SlackAsk | nu
 export interface AskState {
   readonly owner: SlackOwner | null
   readonly routine: { readonly id: string; readonly enabled: boolean } | null
-  readonly deliveredTs: string | null
+  readonly linked: { readonly threadId: string; readonly status: ThreadStatus; readonly deliveredTs: string } | null
 }
 
-export type Refusal = "notOwner" | "externalChannel" | "threadLinked" | "noRoutine" | "routineDisabled"
+export type Refusal = "notOwner" | "externalChannel" | "threadWaiting" | "noRoutine" | "routineDisabled"
 
 export type AskDecision =
   | { readonly type: "ignore" }
   | { readonly type: "refuse"; readonly reason: Refusal }
   | { readonly type: "start"; readonly routineId: string }
+  | { readonly type: "continue"; readonly threadId: string }
 
 const refuse = (reason: Refusal): AskDecision => ({ type: "refuse", reason })
 
@@ -104,12 +105,17 @@ export const isAfter = (ts: string, other: string) => {
   return seconds > otherSeconds || (seconds === otherSeconds && micros > otherMicros)
 }
 
-export const decideAsk = (ask: SlackAsk, { owner, routine, deliveredTs }: AskState): AskDecision => {
+export const decideAsk = (ask: SlackAsk, { owner, routine, linked }: AskState): AskDecision => {
   const fromOwner =
     owner !== null && ask.user === owner.userId && (ask.userTeam === null || ask.userTeam === owner.teamId)
   if (!fromOwner) return refuse("notOwner")
   if (ask.external) return refuse("externalChannel")
-  if (deliveredTs !== null) return isAfter(ask.ts, deliveredTs) ? refuse("threadLinked") : { type: "ignore" }
+  if (linked !== null) {
+    if (!isAfter(ask.ts, linked.deliveredTs)) return { type: "ignore" }
+    return linked.status === "idle" || linked.status === "running"
+      ? { type: "continue", threadId: linked.threadId }
+      : refuse("threadWaiting")
+  }
   if (routine === null) return refuse("noRoutine")
   if (!routine.enabled) return refuse("routineDisabled")
   return { type: "start", routineId: routine.id }
