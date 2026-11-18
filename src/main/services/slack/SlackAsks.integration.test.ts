@@ -90,24 +90,25 @@ const say = (fake: FakeSlack, message: FakeMessage, type: "app_mention" | "messa
 
 const runsOf = (routineId: string) => Routines.use((routines) => routines.runs(routineId, 20))
 
-const finished = (threadId: string | null) =>
+const finished = (threadId: string | null, turns = 1) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
     yield* sql<{ readonly count: number }>`
-      SELECT COUNT(*) AS count FROM message WHERE thread_id = ${threadId ?? ""} AND role = 'assistant'
-    `.pipe(Effect.repeat({ until: ([row]) => (row?.count ?? 0) > 0 }))
+      SELECT COUNT(*) AS count FROM message
+      WHERE thread_id = ${threadId ?? ""} AND role = 'assistant' AND completed_at IS NOT NULL
+    `.pipe(Effect.repeat({ until: ([row]) => (row?.count ?? 0) >= turns }))
     return yield* Threads.use((threads) => threads.get(threadId ?? "")).pipe(
       Effect.repeat({ until: (thread) => thread.status === "idle" }),
     )
   })
 
-const firstPrompt = (threadId: string) =>
+const prompts = (threadId: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
-    const [message] = yield* sql<{ readonly parts: string }>`
-      SELECT parts FROM message WHERE thread_id = ${threadId} AND role = 'user' ORDER BY created_at LIMIT 1
+    const messages = yield* sql<{ readonly parts: string }>`
+      SELECT parts FROM message WHERE thread_id = ${threadId} AND role = 'user' ORDER BY created_at, rowid
     `
-    return message?.parts ?? ""
+    return messages.map((message) => message.parts)
   })
 
 const strangerHeard = (fake: FakeSlack) =>
@@ -145,7 +146,7 @@ describe("slack asks", () => {
           ),
         ).toBe(true)
 
-        const prompt = yield* firstPrompt(thread.id)
+        const [prompt = ""] = yield* prompts(thread.id)
         expect(prompt).toContain("Investigate what the developer asked.")
         expect(prompt).toContain(permalink)
         expect(prompt).toContain('\\"from\\": \\"Mei\\"')
@@ -191,23 +192,89 @@ describe("slack asks", () => {
     ),
   )
 
-  it.live("a later mention in a Slack thread that has a thread is refused inside that Slack thread", () =>
+  it.live("a later mention continues the same thread with only the messages since the last one", () =>
     stage(({ fake, routineId }) =>
       Effect.gen(function* () {
         yield* fake.post(report)
         yield* say(fake, handover)
         yield* Queue.take(fake.reactions)
-        yield* finished((yield* runsOf(routineId))[0]!.threadId)
+        const threadId = (yield* runsOf(routineId))[0]!.threadId ?? ""
+        yield* finished(threadId)
 
-        yield* say(fake, { ...handover, ts: "1700000200.000300", text: "<@UBOT> any news?" })
+        yield* fake.post({ ...handover, ts: "1700000200.000300", user: "U2", text: "only with expired cards" })
+        const again = { ...handover, ts: "1700000300.000400", text: "<@UBOT> see Mei's note" }
+        yield* say(fake, again)
 
+        expect(yield* Queue.take(fake.reactions)).toEqual({ channel: "C1", timestamp: again.ts, name: HEARD_REACTION })
+        const thread = yield* finished(threadId, 2)
+        expect(thread.slack).toMatchObject({ threadTs: report.ts, permalink, deliveredTs: again.ts })
+        expect(yield* runsOf(routineId)).toHaveLength(1)
+        const [, followUp, ...more] = yield* prompts(threadId)
+        expect(more).toEqual([])
+        expect(followUp).toContain("mentioned you again")
+        expect(followUp).toContain("only with expired cards")
+        expect(followUp).toContain("@HinaCode see Mei's note")
+        expect(followUp).not.toContain("gift cards return 500")
+        expect(followUp).not.toContain("look into this")
+      }),
+    ),
+  )
+
+  it.live("a thread that waits for the developer refuses, and the next mention delivers both", () =>
+    stage(({ fake, routineId }) =>
+      Effect.gen(function* () {
+        const threads = yield* Threads
+        yield* fake.post(report)
+        yield* say(fake, handover)
+        yield* Queue.take(fake.reactions)
+        const threadId = (yield* runsOf(routineId))[0]!.threadId ?? ""
+        yield* finished(threadId)
+
+        yield* threads.update({ id: threadId, status: "awaiting_approval" })
+        yield* say(fake, { ...handover, ts: "1700000200.000300", text: "<@UBOT> also check refunds" })
         expect(yield* Queue.take(fake.notes)).toEqual({
           channel: "C1",
           user: "U1",
-          text: "This Slack thread already has a HinaCode thread.",
+          text: "The HinaCode thread for this Slack thread is waiting for you. Answer it in HinaCode, then mention me again.",
           thread_ts: report.ts,
         })
+        expect((yield* threads.get(threadId)).slack?.deliveredTs).toBe(handover.ts)
+        expect(yield* prompts(threadId)).toHaveLength(1)
+
+        yield* threads.update({ id: threadId, status: "idle" })
+        const again = { ...handover, ts: "1700000300.000400", text: "<@UBOT> go on" }
+        yield* say(fake, again)
+        expect((yield* Queue.take(fake.reactions)).timestamp).toBe(again.ts)
+        expect((yield* finished(threadId, 2)).slack?.deliveredTs).toBe(again.ts)
+        const [, followUp] = yield* prompts(threadId)
+        expect(followUp).toContain("also check refunds")
+        expect(followUp).toContain("go on")
+      }),
+    ),
+  )
+
+  it.live("starts nothing new when the link is removed while the new messages are being read", () =>
+    stage(({ fake, routineId }) =>
+      Effect.gen(function* () {
+        const threads = yield* Threads
+        yield* fake.post(report)
+        yield* say(fake, handover)
+        yield* Queue.take(fake.reactions)
+        const threadId = (yield* runsOf(routineId))[0]!.threadId ?? ""
+        yield* finished(threadId)
+
+        yield* fake.hold("users.info")
+        yield* say(fake, { ...handover, ts: "1700000200.000300", text: "<@UBOT> any news?" })
+        const answerName = yield* Queue.take(fake.held)
+        yield* threads.linkSlack(threadId, null)
+        yield* fake.hold(null)
+        answerName()
+        yield* strangerHeard(fake)
+
+        expect(yield* prompts(threadId)).toHaveLength(1)
         expect(yield* runsOf(routineId)).toHaveLength(1)
+        expect((yield* threads.get(threadId)).slack).toBeNull()
+        expect(yield* Queue.size(fake.reactions)).toBe(0)
       }),
     ),
   )
@@ -285,7 +352,7 @@ describe("slack asks", () => {
         yield* fake.deliver({ team_id: "T1", event: { type: "app_mention", ...handover } })
 
         expect((yield* Queue.take(fake.notes)).text).toBe(
-          "HinaCode could not start: Slack conversations.replies failed: thread_not_found",
+          "HinaCode could not hand this to the agent: Slack conversations.replies failed: thread_not_found",
         )
         expect(yield* runsOf(routineId)).toEqual([])
       }),
