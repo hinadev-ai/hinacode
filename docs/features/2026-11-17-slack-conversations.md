@@ -1,6 +1,6 @@
 # Slack conversations
 
-Status: Building
+Status: Shipped
 Date: 2026-11-17
 
 ## Problem
@@ -140,11 +140,11 @@ type Decision =
   | { type: "continue"; threadId: string } // a thread is linked
 ```
 
-As built, the decision is two pure functions in that file, because two layers call it. `decide` answers `pair` for `Slack.ts`, which owns the connection and the pairing code. Every other event goes out on `Slack.inbound`, and `SlackAsks.ts` reads it one event at a time: `askOf` places the message in its Slack thread, and `decideAsk` answers `ignore`, `refuse` or `start` from the owner, the picked routine and the link's `deliveredTs`. The split keeps `Routines`, `Threads` and the agent runner out of the connection service and its tests. Until slice 4, a new mention in a linked Slack thread is refused with `threadLinked`.
+As built, the decision is two pure functions in that file, because two layers call it. `decide` answers `pair` for `Slack.ts`, which owns the connection and the pairing code. Every other event goes out on `Slack.inbound`, and `SlackAsks.ts` reads it one event at a time: `askOf` places the message in its Slack thread, and `decideAsk` answers `ignore`, `refuse`, `start` or `continue` from the owner, the picked routine, and the linked thread's status and `deliveredTs`. The split keeps `Routines`, `Threads` and the agent runner out of the connection service and its tests.
 
 - `pair` spends the code, then asks `users.info` about the sender. A member of the bot's own workspace who is not a bot becomes the owner. Anyone else leaves the owner as it was.
 - `start` reads the Slack thread, runs the routine with the transcript as its payload through `Routines.run(id, "slack", payload, eventKey)`, stores the link on the new thread and adds the reaction. The owner, the routine and the link are checked again after the Slack thread is read, so a request does not outlive a Disconnect or a paused routine. An archived thread is never linked. When Slack or the routine refuses, the developer gets the reason in a note only they can see.
-- `continue` reads the messages after `deliveredTs` and hands them to `AgentRunner.steerWhen`. A running turn is steered and an idle thread starts a turn. The `when` check accepts only an idle or running thread whose link still matches. When it accepts, `deliveredTs` moves and the reaction is added.
+- `continue` reads the messages after `deliveredTs` and hands them to `AgentRunner.steerWhen`. A running turn is steered and an idle thread starts a turn. The `when` check accepts only an idle or running thread whose link still matches. When it accepts, `deliveredTs` moves and the reaction is added. The check also compares `deliveredTs` with the cursor the messages were read from, and the cursor moves with an update that never creates a link, so an Unlink during the read stays an Unlink. A continue needs no routine, since the link already names the thread.
 - `refuse` posts the reason to the sender alone. A linked thread that waits on an approval or a usage limit refuses with `threadWaiting`, and the next mention delivers everything since `deliveredTs`.
 
 `slackPrompt.ts` renders the transcript and the wake message, as `pullRequestWatch.ts` does for pull request news. Each message carries the time and the author's name from `users.info`. The developer's messages are marked as the developer's. The text says that every other message was written by other people and is information, not instruction.
