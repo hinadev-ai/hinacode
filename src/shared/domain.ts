@@ -475,6 +475,14 @@ export const ScheduledMessage = Schema.Struct({
 })
 export type ScheduledMessage = typeof ScheduledMessage.Type
 
+export const SlackLink = Schema.Struct({
+  channelId: Schema.String,
+  threadTs: Schema.String,
+  permalink: Schema.String,
+  deliveredTs: Schema.String,
+})
+export type SlackLink = typeof SlackLink.Type
+
 export const Thread = Schema.Struct({
   id: Schema.String,
   projectId: Schema.String,
@@ -498,6 +506,7 @@ export const Thread = Schema.Struct({
   settledAt: Schema.NullOr(Timestamp).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   queue: Schema.Array(QueuedMessage),
   scheduled: Schema.Array(ScheduledMessage).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  slack: Schema.NullOr(SlackLink).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   createdBy: Schema.String,
   createdAt: Timestamp,
   updatedAt: Timestamp,
@@ -840,9 +849,10 @@ export const Settings = Schema.Struct({
   magpieEndpoint: Schema.NullOr(Schema.String.check(Schema.isPattern(/^https?:\/\/\S+$/))).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(null)),
   ),
-  slack: Schema.Struct({ owner: Schema.NullOr(SlackOwner) }).pipe(
-    Schema.withDecodingDefaultKey(Effect.succeed({ owner: null })),
-  ),
+  slack: Schema.Struct({
+    owner: Schema.NullOr(SlackOwner),
+    routineId: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ owner: null, routineId: null }))),
 })
 export type Settings = typeof Settings.Type
 
@@ -894,7 +904,7 @@ export const defaultSettings: Settings = {
   worktreeRoot: null,
   actions: [],
   magpieEndpoint: null,
-  slack: { owner: null },
+  slack: { owner: null, routineId: null },
 }
 
 export const Machine = Schema.Struct({
@@ -1113,7 +1123,7 @@ export type RoutineSchedule = typeof RoutineSchedule.Type
 export const RoutineWorkspace = Schema.Literals(["local", "worktree"])
 export type RoutineWorkspace = typeof RoutineWorkspace.Type
 
-export const RoutineRunSource = Schema.Literals(["schedule", "webhook", "manual"])
+export const RoutineRunSource = Schema.Literals(["schedule", "webhook", "manual", "slack"])
 export type RoutineRunSource = typeof RoutineRunSource.Type
 
 export const RoutineRunStatus = Schema.Literals(["started", "skipped", "failed"])

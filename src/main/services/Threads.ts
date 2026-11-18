@@ -24,6 +24,7 @@ import {
   isThreadBusy,
   QueuedMessage,
   ScheduledMessage,
+  SlackLink,
   Thread,
   type ThreadStatus,
   type UndoneTurn,
@@ -68,6 +69,7 @@ const ThreadRow = Schema.Struct({
   forkedFrom: Schema.NullOr(Schema.fromJsonString(ForkPoint)),
   queue: Schema.fromJsonString(Schema.Array(QueuedMessage)),
   scheduled: Schema.fromJsonString(Schema.Array(ScheduledMessage)),
+  slack: Schema.NullOr(Schema.fromJsonString(SlackLink)),
 })
 
 interface CreateThread {
@@ -200,6 +202,8 @@ export class Threads extends Context.Service<
       stillDue: (thread: Thread, workStartedAt: string | null) => Effect.Effect<boolean, E>,
     ) => Effect.Effect<Option.Option<Thread>, E | PersistenceError | NotFoundError | CommandError | WorktreeBusyError>
     readonly unsettle: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly bySlack: (channelId: string, threadTs: string) => Effect.Effect<Option.Option<Thread>, PersistenceError>
+    readonly linkSlack: (id: string, link: SlackLink | null) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly workStartedAt: (id: string) => Effect.Effect<string | null, PersistenceError>
     readonly remove: (
       id: string,
@@ -280,6 +284,15 @@ const make = Effect.gen(function* () {
     Request: Schema.String,
     Result: ThreadRow,
     execute: (parentId) => sql`SELECT * FROM thread WHERE side_of = ${parentId}`,
+  })
+  const findBySlack = SqlSchema.findOneOption({
+    Request: Schema.Struct({ channelId: Schema.String, threadTs: Schema.String }),
+    Result: ThreadRow,
+    execute: ({ channelId, threadTs }) => sql`
+      SELECT * FROM thread
+      WHERE slack IS NOT NULL AND json_extract(slack, '$.channelId') = ${channelId}
+        AND json_extract(slack, '$.threadTs') = ${threadTs}
+    `,
   })
   const detachChildRows = SqlSchema.findAll({
     Request: Schema.String,
@@ -376,6 +389,7 @@ const make = Effect.gen(function* () {
         parentId: parent === undefined ? null : (parent.parentId ?? parent.id),
         status,
         usageLimit: null,
+        slack: null,
         sortIndex: next,
         pinnedAt: null,
         snoozedUntil: null,
@@ -467,6 +481,7 @@ const make = Effect.gen(function* () {
         parentId: null,
         status: "idle",
         usageLimit: null,
+        slack: null,
         sortIndex: next,
         pinnedAt: null,
         snoozedUntil: null,
@@ -513,6 +528,7 @@ const make = Effect.gen(function* () {
         parentId: null,
         status: "idle",
         usageLimit: null,
+        slack: null,
         pinnedAt: null,
         snoozedUntil: null,
         settledAt: null,
@@ -851,7 +867,7 @@ const make = Effect.gen(function* () {
         yield* removeWorktreeIfSet(thread, options)
         yield* terminals.closeThread(id)
         yield* sql`
-          UPDATE thread SET status = 'archived', usage_limit = NULL, updated_at = ${yield* nowIso} WHERE id = ${id}
+          UPDATE thread SET status = 'archived', usage_limit = NULL, slack = NULL, updated_at = ${yield* nowIso} WHERE id = ${id}
         `.pipe(Effect.mapError(persistence("threads.archive")))
         yield* detachChildren(id)
         yield* syncChatFolder(thread, false)
@@ -922,6 +938,17 @@ const make = Effect.gen(function* () {
       }),
     )
 
+  const linkSlack = (id: string, link: SlackLink | null) =>
+    Effect.gen(function* () {
+      yield* sql`
+        UPDATE thread SET slack = ${link === null ? null : JSON.stringify(link)}, updated_at = ${yield* nowIso}
+        WHERE id = ${id}
+      `.pipe(Effect.mapError(persistence("threads.linkSlack")))
+      const linked = yield* get(id)
+      yield* PubSub.publish(written, linked)
+      return linked
+    })
+
   const workStartedAt = (id: string) =>
     sql<{ readonly startedAt: string | null }>`SELECT work_started_at AS startedAt FROM thread WHERE id = ${id}`.pipe(
       Effect.map((rows) => rows[0]?.startedAt ?? null),
@@ -965,6 +992,9 @@ const make = Effect.gen(function* () {
     settleIf,
     settleMerged,
     unsettle,
+    bySlack: (channelId, threadTs) =>
+      findBySlack({ channelId, threadTs }).pipe(Effect.mapError(persistence("threads.bySlack"))),
+    linkSlack,
     workStartedAt,
     remove,
     resetInterrupted: sql`

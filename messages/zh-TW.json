@@ -669,6 +669,7 @@
   "routines_source_schedule": "排程",
   "routines_source_webhook": "Webhook",
   "routines_source_manual": "立即執行",
+  "routines_source_slack": "Slack",
   "routines_enable_for": "啟用 {name}",
   "routines_run_now": "立即執行",
   "routines_run_now_for": "立即執行 {name}",

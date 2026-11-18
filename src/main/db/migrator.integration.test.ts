@@ -61,6 +61,8 @@ describe("runMigrations", () => {
       yield* sql`DROP TABLE app_connection`
       for (const column of ["client_id", "client_name", "claimed_at", "thread_title"])
         yield* sql.unsafe(`ALTER TABLE thread_device DROP COLUMN ${column}`)
+      yield* sql`DROP INDEX thread_slack`
+      yield* sql`ALTER TABLE thread DROP COLUMN slack`
       yield* restoreAutomationTables
       yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id >= 43`
 
@@ -77,6 +79,7 @@ describe("runMigrations", () => {
         [50, "thread_device_client"],
         [51, "turn_end_tree"],
         [52, "pi_provider"],
+        [53, "thread_slack"],
       ])
       expect(yield* columnsOf("pull_request_link")).not.toContain("observed_status")
       expect(yield* sql`SELECT name FROM effect_sql_migrations WHERE migration_id = 40`).toStrictEqual([
@@ -106,7 +109,7 @@ describe("runMigrations", () => {
 
       expect(upgraded.thread).toStrictEqual({ title: "t", provider: "claude" })
       expect(upgraded.ids.slice(0, 4)).toStrictEqual([1, 2, 3, 4])
-      expect(upgraded.ids.at(-1)).toBe(52)
+      expect(upgraded.ids.at(-1)).toBe(53)
       expect(upgraded.projectColumns).toContain("trusted")
     }),
   )
@@ -152,7 +155,7 @@ describe("runMigrations", () => {
           const sql = yield* SqlClient.SqlClient
           const seeded = yield* seedThread({ rootPath: "/repo" })
           yield* sql`ALTER TABLE thread ADD COLUMN from_the_future TEXT NOT NULL DEFAULT 'kept'`
-          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (53, 'from_the_future')`
+          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (54, 'from_the_future')`
           return seeded
         }),
       )
@@ -172,7 +175,7 @@ describe("runMigrations", () => {
         ran: [],
         thread: { title: "t", provider: "claude" },
         future: { fromTheFuture: "kept" },
-        ids: expect.arrayContaining([52, 53]),
+        ids: expect.arrayContaining([53, 54]),
       })
     }),
   )

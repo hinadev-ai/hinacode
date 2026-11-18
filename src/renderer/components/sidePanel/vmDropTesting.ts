@@ -22,6 +22,7 @@ export const thread: Thread = {
   parentId: null,
   status: "idle",
   usageLimit: null,
+  slack: null,
   sortIndex: 0,
   pinnedAt: null,
   settledAt: null,

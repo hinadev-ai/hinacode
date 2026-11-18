@@ -55,6 +55,7 @@ const threadWith = (id: string, status: Thread["status"]): Thread => ({
   parentId: null,
   status,
   usageLimit: null,
+  slack: null,
   sortIndex: 0,
   pinnedAt: null,
   settledAt: null,

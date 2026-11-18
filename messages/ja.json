@@ -669,6 +669,7 @@
   "routines_source_schedule": "スケジュール",
   "routines_source_webhook": "Webhook",
   "routines_source_manual": "今すぐ実行",
+  "routines_source_slack": "Slack",
   "routines_enable_for": "{name} を有効にする",
   "routines_run_now": "今すぐ実行",
   "routines_run_now_for": "{name} を今すぐ実行",

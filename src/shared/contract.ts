@@ -548,6 +548,7 @@ export const RpcMethods = {
   "slack.connect": rpc(SlackTokens, SlackStatus),
   "slack.disconnect": rpc(Schema.Void, SlackStatus),
   "slack.pair": rpc(Schema.Void, SlackStatus),
+  "slack.unlink": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   "agents.account": rpc(
@@ -1007,6 +1008,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "slack.connect": "mutation",
   "slack.disconnect": "mutation",
   "slack.pair": "mutation",
+  "slack.unlink": "mutation",
   "models.list": "read",
   "agents.account": "read",
   "agents.updates": "read",

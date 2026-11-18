@@ -17,6 +17,23 @@ export interface FakeWorkspace {
   >
 }
 
+export const FAKE_BOT_USER_ID = "UBOT"
+
+export interface FakeMessage {
+  readonly channel: string
+  readonly ts: string
+  readonly thread_ts?: string
+  readonly user: string
+  readonly text: string
+}
+
+export interface FakeNote {
+  readonly channel: string
+  readonly user: string
+  readonly text: string
+  readonly thread_ts: string | null
+}
+
 export interface FakeReaction {
   readonly channel: string
   readonly timestamp: string
@@ -28,6 +45,8 @@ const start = (workspace: FakeWorkspace) =>
     const links = Effect.runSync(Queue.unbounded<WebSocket>())
     const acks = Effect.runSync(Queue.unbounded<string>())
     const reactions = Effect.runSync(Queue.unbounded<FakeReaction>())
+    const notes = Effect.runSync(Queue.unbounded<FakeNote>())
+    const threads = new Map<string, Array<FakeMessage>>()
     const open = new Set<WebSocket>()
     let appTokenRevoked = false
 
@@ -35,7 +54,13 @@ const start = (workspace: FakeWorkspace) =>
       switch (method) {
         case "auth.test":
           return token === workspace.botToken
-            ? { ok: true, team_id: workspace.team.id, team: workspace.team.name, user: workspace.bot }
+            ? {
+                ok: true,
+                team_id: workspace.team.id,
+                team: workspace.team.name,
+                user: workspace.bot,
+                user_id: FAKE_BOT_USER_ID,
+              }
             : { ok: false, error: "invalid_auth" }
         case "apps.connections.open":
           return token === workspace.appToken && !appTokenRevoked
@@ -50,6 +75,23 @@ const start = (workspace: FakeWorkspace) =>
             channel: params.get("channel") ?? "",
             timestamp: params.get("timestamp") ?? "",
             name: params.get("name") ?? "",
+          })
+          return { ok: true }
+        case "conversations.replies": {
+          const messages = threads.get(`${params.get("channel")}:${params.get("ts")}`)
+          return messages === undefined ? { ok: false, error: "thread_not_found" } : { ok: true, messages }
+        }
+        case "chat.getPermalink":
+          return {
+            ok: true,
+            permalink: `https://acme.slack.com/archives/${params.get("channel")}/p${(params.get("message_ts") ?? "").replace(".", "")}`,
+          }
+        case "chat.postEphemeral":
+          Queue.offerUnsafe(notes, {
+            channel: params.get("channel") ?? "",
+            user: params.get("user") ?? "",
+            text: params.get("text") ?? "",
+            thread_ts: params.get("thread_ts"),
           })
           return { ok: true }
         default:
@@ -87,6 +129,12 @@ const start = (workspace: FakeWorkspace) =>
           links,
           acks,
           reactions,
+          notes,
+          post: (message: FakeMessage) =>
+            Effect.sync(() => {
+              const root = `${message.channel}:${message.thread_ts ?? message.ts}`
+              threads.set(root, [...(threads.get(root) ?? []), message])
+            }),
           deliver: (payload: unknown) =>
             Effect.sync(() => {
               const envelope_id = randomUUID()
@@ -119,6 +167,8 @@ export interface FakeSlack {
   readonly links: Queue.Queue<WebSocket>
   readonly acks: Queue.Queue<string>
   readonly reactions: Queue.Queue<FakeReaction>
+  readonly notes: Queue.Queue<FakeNote>
+  readonly post: (message: FakeMessage) => Effect.Effect<void>
   readonly deliver: (payload: unknown) => Effect.Effect<string>
   readonly askToRefresh: Effect.Effect<void>
   readonly drop: Effect.Effect<void>

@@ -39,6 +39,7 @@ import * as Browser from "./services/Browser.ts"
 import * as Routines from "./services/routines/Routines.ts"
 import { SLACK_API_URL } from "./services/slack/api.ts"
 import * as Slack from "./services/slack/Slack.ts"
+import * as SlackAsks from "./services/slack/SlackAsks.ts"
 import * as Scheduler from "./services/Scheduler.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
@@ -233,8 +234,12 @@ export const makeAppLayer = ({
     linearLayer(process.env),
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
+  const routines = Routines.layer.pipe(Layer.provide(Scheduler.layer))
+  const slack = Slack.layer({ apiUrl: process.env["HINACODE_SLACK_API_URL"] ?? SLACK_API_URL }).pipe(
+    Layer.provide(Secrets.layer),
+  )
   const services = Layer.mergeAll(
-    Routines.layer.pipe(Layer.provide(Scheduler.layer)),
+    routines,
     Settle.layer,
     ArtifactFeedback.layer,
     PullRequestWatcher.layer,
@@ -247,7 +252,8 @@ export const makeAppLayer = ({
     AppConnections.followRelayLayer,
     AppServer.layer.pipe(Layer.provide(Secrets.layer)),
     process.env["HINACODE_MEMORY_GUARD"] === "0" ? Layer.empty : memoryGuardLayer,
-    Slack.layer({ apiUrl: process.env["HINACODE_SLACK_API_URL"] ?? SLACK_API_URL }).pipe(Layer.provide(Secrets.layer)),
+    slack,
+    SlackAsks.layer.pipe(Layer.provide(Layer.mergeAll(routines, slack))),
   ).pipe(Layer.provideMerge(BoatMachines.layer(process.env).pipe(Layer.provide(boat))), Layer.provideMerge(agents))
   return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer, hubClaimsLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),

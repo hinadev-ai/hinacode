@@ -57,6 +57,7 @@ const THREAD = {
   providerSessionId: null,
   status: "running",
   usageLimit: null,
+  slack: null,
   sortIndex: 0,
   pinnedAt: null,
   queue: [],

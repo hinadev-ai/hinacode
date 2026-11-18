@@ -25,6 +25,7 @@ const archived: Thread = {
   parentId: null,
   status: "archived",
   usageLimit: null,
+  slack: null,
   sortIndex: 0,
   pinnedAt: null,
   settledAt: null,
