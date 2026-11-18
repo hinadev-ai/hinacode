@@ -242,6 +242,43 @@ describe("slack asks", () => {
     ),
   )
 
+  it.live("starts nothing when the developer turns Slack off while the thread is being read", () =>
+    stage(({ fake, routineId }) =>
+      Effect.gen(function* () {
+        const settings = yield* Settings
+        yield* fake.post(report)
+        yield* fake.hold("chat.getPermalink")
+        yield* say(fake, handover)
+        const answerPermalink = yield* Queue.take(fake.held)
+
+        yield* settings.set({ slack: { owner: null } })
+        yield* fake.hold(null)
+        answerPermalink()
+
+        expect((yield* Queue.take(fake.notes)).text).toBe("This HinaCode is not paired with a Slack user yet.")
+        expect(yield* runsOf(routineId)).toEqual([])
+      }),
+    ),
+  )
+
+  it.live("starts nothing when the routine is paused while the thread is being read", () =>
+    stage(({ fake, routineId }) =>
+      Effect.gen(function* () {
+        yield* fake.post(report)
+        yield* fake.hold("chat.getPermalink")
+        yield* say(fake, handover)
+        const answerPermalink = yield* Queue.take(fake.held)
+
+        yield* Routines.use((routines) => routines.update({ id: routineId, enabled: false }))
+        yield* fake.hold(null)
+        answerPermalink()
+
+        expect((yield* Queue.take(fake.notes)).text).toBe("The routine that answers Slack is paused.")
+        expect(yield* runsOf(routineId)).toEqual([])
+      }),
+    ),
+  )
+
   it.live("tells the developer why when Slack refuses to hand over the thread", () =>
     stage(({ fake, routineId }) =>
       Effect.gen(function* () {

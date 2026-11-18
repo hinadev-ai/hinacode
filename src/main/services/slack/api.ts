@@ -4,7 +4,7 @@ export const SLACK_API_URL = "https://slack.com/api/"
 
 const REQUEST_TIMEOUT_MS = 15_000
 const REPLIES_PAGE_SIZE = 200
-const REPLIES_MAX_PAGES = 5
+const REPLIES_MAX_PAGES = 50
 const RETRY_BASE_MS = 1_000
 const RETRY_MAX_MS = 30_000
 const PASSING_REFUSALS = new Set([
@@ -160,9 +160,18 @@ export const makeSlackApi = (apiUrl: string) => {
       ),
       ({ messages, response_metadata }) => {
         const next = response_metadata?.next_cursor ?? ""
-        return next === "" || page >= REPLIES_MAX_PAGES
-          ? Effect.succeed(messages)
-          : Effect.map(replies(botToken, { channel, ts }, next, page + 1), (rest) => [...messages, ...rest])
+        if (next === "") return Effect.succeed(messages)
+        if (page >= REPLIES_MAX_PAGES) {
+          return Effect.fail(
+            new SlackApiError({
+              method: "conversations.replies",
+              reason: `the thread has more than ${REPLIES_PAGE_SIZE * REPLIES_MAX_PAGES} messages`,
+              recoverable: false,
+              retryAfterMs: null,
+            }),
+          )
+        }
+        return Effect.map(replies(botToken, { channel, ts }, next, page + 1), (rest) => [...messages, ...rest])
       },
     )
 
