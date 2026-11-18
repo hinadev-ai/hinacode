@@ -702,7 +702,7 @@ const make = Effect.gen(function* () {
           : {
               worktree: yield* worktrees.create({
                 projectId: thread.projectId,
-                branch: `kk/${slugifyBranch(thread.title) || randomName()}`,
+                branch: `hinacode/${slugifyBranch(thread.title) || randomName()}`,
                 baseRef: target.ref.trim() || (yield* worktrees.currentBranch(thread.projectId)),
               }),
               pullRequestUrl: null,
