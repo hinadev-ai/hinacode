@@ -45,6 +45,7 @@ const ownTools = [
   "vm_exec",
   "vm_stop",
   "vm_pull_file",
+  "vm_hand_over",
   "device_screenshot",
   "device_tap",
   "device_swipe",

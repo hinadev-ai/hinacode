@@ -75,6 +75,7 @@ export class TinyVm extends Context.Service<
     readonly desktopUrl: (threadId: string) => Effect.Effect<string, VmError>
     readonly screenshot: (threadId: string) => Effect.Effect<Uint8Array, VmError>
     readonly act: (threadId: string, actions: ReadonlyArray<VmAction>) => Effect.Effect<"done" | "handedBack", VmError>
+    readonly handOver: (threadId: string, request: string) => Effect.Effect<void, VmError>
     readonly exec: (threadId: string, input: VmExec) => Effect.Effect<ExecResult, VmError>
     readonly dropFiles: (
       threadId: string,
@@ -90,6 +91,7 @@ export class TinyVm extends Context.Service<
 >()("hinacode/TinyVm") {}
 
 const VNC_PORT = 5900
+const STOPPED_BY_USER = "The user stopped the VM. Call the tool again to start a fresh one."
 const PROFILE_GUEST_ARCHIVE = "hinacode-chromium-profile.tgz"
 const PROFILE_STORE = "chromium-profile.tgz"
 const PROFILE_META = "chromium-profile.json"
@@ -98,6 +100,7 @@ const PROFILE_SAVE_ON_STOP: Duration.Input = "60 seconds"
 const PROFILE_SAVE_ON_QUIT: Duration.Input = "2 seconds"
 const QUIT_TIMEOUT: Duration.Input = "3 seconds"
 const SETUP_SCRIPT_TIMEOUT_SECONDS = 600
+const COPY_ONLY_CLIPBOARD_SCRIPT = "vncconfig -display :0 -set SendPrimary=0"
 const SETUP_OUTPUT_TAIL = 2000
 const PROFILE_EXCLUDES = [
   "chromium/*/Cache",
@@ -251,6 +254,8 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
       onNone: () => Effect.fail(new VmError({ message: "Boat is not available in this build." })),
       onSome: (boat) => boat.client.pipe(Effect.mapError(toVmError)),
     })
+    const hostSandbox = Option.match(boatService, { onNone: () => undefined, onSome: (boat) => boat.hostSandbox })
+    const stopsWithVm = (sandboxId: string) => sandboxId !== hostSandbox
     const clientFor = (vmProvider: VmProvider): Effect.Effect<SandboxClient, VmError> =>
       vmProvider === "boat" ? boatClientEffect : sbxClientEffect
 
@@ -452,6 +457,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
 
     const boatStart = (boat: BoatClient, threadId: string, size: string) =>
       Effect.gen(function* () {
+        if (hostSandbox !== undefined) return { id: hostSandbox, fresh: false }
         const map = yield* readBoatMap
         const existing = map[threadId]
         if (existing !== undefined) {
@@ -496,7 +502,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         return {
           sandboxId: started.id,
           profile: "off" as VmProfile,
-          dispose: Effect.ignore(boat.stop(started.id)),
+          dispose: stopsWithVm(started.id) ? Effect.ignore(boat.stop(started.id)) : Effect.void,
         }
       })
 
@@ -504,6 +510,14 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
       Effect.gen(function* () {
         const sbx = yield* sbxClientEffect
         const sandbox = yield* sbx.create(template, configuredEnv).pipe(Effect.mapError(toVmError))
+        yield* sbx.exec(sandbox.id, { script: COPY_ONLY_CLIPBOARD_SCRIPT, timeoutSeconds: 10 }).pipe(
+          Effect.flatMap((result) =>
+            result.exitCode === 0 ? Effect.void : Effect.fail(`exit code ${result.exitCode}`),
+          ),
+          Effect.catch((cause) =>
+            Effect.logWarning("tiny vm: selected text may still reach the host clipboard", String(cause)),
+          ),
+        )
         yield* runSetupScript(sbx, sandbox.id).pipe(Effect.tapError(() => Effect.ignore(sbx.remove(sandbox.id))))
         const profile = yield* prepareProfile(threadId, sbx, sandbox.id)
         return { sandboxId: sandbox.id, profile, dispose: Effect.ignore(sbx.remove(sandbox.id)) }
@@ -597,7 +611,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
             Effect.catch((error) => Effect.logWarning("tiny vm: profile save on stop failed", error.message)),
           )
         }
-        if (vm.status === "running" && vm.provider === "boat") {
+        if (vm.status === "running" && vm.provider === "boat" && stopsWithVm(vm.sandboxId)) {
           const stopped = yield* boatClientEffect.pipe(
             Effect.flatMap((boat) => boat.stop(vm.sandboxId)),
             Effect.as(true),
@@ -659,10 +673,11 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         )
       })
 
-    const setControl = (threadId: string, control: VmControl) =>
+    const setControl = (threadId: string, control: VmControl, request?: string) =>
       Effect.suspend((): Effect.Effect<ThreadVm> => {
         const vm = current(threadId)
         if (vm.status !== "running") return Effect.succeed(vm)
+        const keptRequest = request ?? (vm.control === "user" ? vm.request : undefined)
         const next: ThreadVm =
           control === "user"
             ? {
@@ -673,6 +688,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
                 profile: vm.profile,
                 control: "user",
                 agentWaiting: (waiting.get(threadId) ?? 0) > 0,
+                ...(keptRequest === undefined ? {} : { request: keptRequest }),
               }
             : {
                 status: "running",
@@ -738,9 +754,22 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         }
         yield* waitForHandBack(threadId)
         if (current(threadId).status !== "running") {
-          return yield* new VmError({ message: "The user stopped the VM. Call the tool again to start a fresh one." })
+          return yield* new VmError({ message: STOPPED_BY_USER })
         }
         return "handedBack" as const
+      })
+
+    const handOver = (threadId: string, request: string) =>
+      Effect.gen(function* () {
+        yield* ensureRunning(threadId)
+        yield* setControl(threadId, "user", request)
+        yield* Effect.suspend(() => {
+          const vm = current(threadId)
+          return vm.status === "running" && vm.control === "user" ? waitForHandBack(threadId) : Effect.void
+        })
+        if (current(threadId).status !== "running") {
+          return yield* new VmError({ message: STOPPED_BY_USER })
+        }
       })
 
     const screenshot = (threadId: string) =>
@@ -989,7 +1018,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
     const unwatchedByUser = (threadId: string) => {
       const vm = current(threadId)
       const watched = [...screens.values()].some((other) => other.threadId === threadId)
-      return !watched && vm.status === "running" && vm.control === "user"
+      return !watched && vm.status === "running" && vm.control === "user" && vm.request === undefined
     }
 
     const screenClosed = (streamId: string, screen: Screen, owner: ScreenOwner) => {
@@ -1110,7 +1139,8 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
       get: (threadId) => Effect.sync(() => current(threadId)),
       start,
       stop,
-      setControl,
+      setControl: (threadId, control) => setControl(threadId, control),
+      handOver,
       host,
       desktopUrl,
       screenshot,

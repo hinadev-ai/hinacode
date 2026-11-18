@@ -18,6 +18,7 @@ import { storedTunnel } from "./remote/relay.ts"
 import {
   applyServeRelay,
   autoUpdate,
+  boundServeLog,
   browserCommand,
   linkInstructions,
   restartCommand,
@@ -29,6 +30,7 @@ import { layer as SettingsLayer, Settings } from "./services/Settings.ts"
 import { hydratePath } from "./shellPath.ts"
 
 const QUIT_TIMEOUT_MS = 5000
+const SERVE_LOG_CHECK_MS = 10 * 60_000
 const LISTEN_TIMEOUT_MS = 5000
 
 const { version } = packageJson
@@ -110,10 +112,18 @@ const listening = async (runtime: ManagedRuntime.ManagedRuntime<RemoteAccess | S
   }
 }
 
+const keepServeLogBounded = (path: string) => {
+  const check = () => boundServeLog(path).catch((error: unknown) => console.error("serve log rotation failed", error))
+  void check()
+  setInterval(check, SERVE_LOG_CHECK_MS).unref()
+}
+
 export const serve = async (flags: ServeFlags, userData: string) => {
   const config = serveConfig(flags, process.env)
   mkdirSync(userData, { recursive: true, mode: 0o700 })
   lockDataDir(userData)
+  const serveLog = process.env["HINACODE_SERVE_LOG"]
+  if (serveLog) keepServeLogBounded(serveLog)
   await hydratePath(process.env).ready
 
   const runtime = ManagedRuntime.make(

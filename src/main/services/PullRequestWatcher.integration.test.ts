@@ -234,6 +234,16 @@ describe("PullRequestWatcher", () => {
       }),
     )
 
+    it.effect("clears the watch of a settled thread without waking it", () =>
+      Effect.gen(function* () {
+        const { threadId } = yield* watchedThread("settled", (u) => failing(u))
+        yield* Threads.use((threads) => threads.settle(threadId))
+        yield* sweep
+        expect(wakesFor(threadId)).toStrictEqual([])
+        expect((yield* linkOf(threadId))?.watch).toBeNull()
+      }),
+    )
+
     it.effect("drops a poll whose watch was stopped while GitHub was answering", () =>
       Effect.gen(function* () {
         const { threadId, url } = yield* watchedThread("stopped", (u) => failing(u))

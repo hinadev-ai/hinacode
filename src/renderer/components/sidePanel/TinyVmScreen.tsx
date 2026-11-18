@@ -16,6 +16,7 @@ interface TinyVmScreenProps {
   readonly threadId: string
   readonly control: VmControl
   readonly bare?: boolean
+  readonly screenId?: string
   readonly fullscreenControls?: ReactNode
   readonly onHandBack: () => void
   readonly onReconnect: () => void
@@ -26,12 +27,13 @@ export default function TinyVmScreen({
   threadId,
   control,
   bare = false,
+  screenId,
   fullscreenControls,
   onHandBack,
   onReconnect,
   drop,
 }: TinyVmScreenProps) {
-  const id = vmScreenId(threadId)
+  const id = screenId ?? vmScreenId(threadId)
   const targetRef = useRef<HTMLDivElement>(null)
   const rfbRef = useRef<RFB | null>(null)
   const controlRef = useRef(control)
@@ -53,12 +55,19 @@ export default function TinyVmScreen({
     applyControl(rfb)
     const onConnect = () => setConnection("connected")
     const onDisconnect = () => setConnection("lost")
+    const onClipboard = (event: Event) => {
+      if (!document.hasFocus() || !target.contains(document.activeElement)) return
+      const text: unknown = event instanceof CustomEvent ? Reflect.get(Object(event.detail), "text") : undefined
+      if (typeof text === "string" && text !== "") navigator.clipboard.writeText(text).catch(toastError)
+    }
     rfb.addEventListener("connect", onConnect)
     rfb.addEventListener("disconnect", onDisconnect)
+    rfb.addEventListener("clipboard", onClipboard)
     rfbRef.current = rfb
     return () => {
       rfb.removeEventListener("connect", onConnect)
       rfb.removeEventListener("disconnect", onDisconnect)
+      rfb.removeEventListener("clipboard", onClipboard)
       rfb.disconnect()
       rfbRef.current = null
     }
@@ -98,7 +107,7 @@ export default function TinyVmScreen({
         !bare && control === "user" && "outline-2 outline-offset-2 outline-working",
       )}
     >
-      <div ref={targetRef} className="absolute inset-0" />
+      <div ref={targetRef} className={cn("absolute inset-0", control !== "user" && "[&_canvas]:cursor-default!")} />
       {fullscreen && (
         <div className="absolute top-3 right-3 flex items-center gap-2 rounded-[12px] bg-background/90 p-1 shadow-md">
           {fullscreenControls}

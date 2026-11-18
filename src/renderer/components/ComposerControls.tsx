@@ -7,6 +7,7 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react"
 import { formatForDisplay } from "@tanstack/react-hotkeys"
 import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
+import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { toast } from "sonner"
 import {
@@ -38,6 +39,7 @@ import {
   modelsAtom,
   projectsAtom,
   pullRequestsAtom,
+  type RpcError,
   setUpProvidersAtom,
 } from "../lib/rpc.ts"
 import { environmentName, environmentOf, useClouds, useThreadEnvironment } from "../lib/environments.ts"
@@ -51,6 +53,7 @@ import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
 import { type ComposerPicker, returnFocus, useUi } from "../stores/ui.ts"
+import { BoatThreadDialog } from "./BoatThreadDialog.tsx"
 import { EffortIcon } from "./icons/EffortIcon.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { switchAccount, useAccountHint, useAccountOptions } from "./AccountSwitch.tsx"
@@ -111,6 +114,13 @@ function useThreadModel(thread: Thread) {
   return useAgentModels(useThreadEnvironment(thread.id), thread.provider, null).find(
     (model) => model.id === thread.model,
   )
+}
+
+function emptyListNotice(listing: AsyncResult.AsyncResult<ReadonlyArray<ModelInfo>, RpcError>) {
+  if (listing.waiting || AsyncResult.isInitial(listing)) return m.settings_models_loading()
+  if (AsyncResult.isFailure(listing))
+    return m.thread_model_list_failed({ message: errorMessage(Cause.squash(listing.cause)) })
+  return m.thread_model_none()
 }
 
 const sameModel = (a: ModelInfo, b: ModelInfo) => a.provider === b.provider && a.id === b.id
@@ -261,6 +271,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const tab = tabs.find((candidate) => candidate.value === tabValue) ?? tabs[0]!
   const models = usePickerModels(environment, tab.provider, tab.provider === thread.provider ? thread.model : null)
   const ownModels = usePickerModels(environment, thread.provider, null)
+  const listing = useAtomValue(modelsAtom(environment, tab.provider))
   const showsHints = tabs.some((candidate) => candidate.hint !== undefined)
   const [listRows, setListRows] = useState(0)
   if (open && models.length > listRows) setListRows(models.length)
@@ -507,7 +518,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           />
           <div
             style={{ "--rows": listRows } as CSSProperties}
-            className="grid min-h-0 basis-[calc(var(--rows)*2.125rem)] grid-rows-1"
+            className={cn("grid basis-[calc(var(--rows)*2.125rem)] grid-rows-1", models.length > 0 && "min-h-0")}
           >
             <Combobox.List
               aria-label={m.thread_model_picker()}
@@ -526,7 +537,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
               )}
             </Combobox.List>
             <Combobox.Empty className="col-start-1 row-start-1 self-start px-2 py-1.5 text-sm text-muted-foreground empty:hidden">
-              {models.length > 0 && m.thread_model_no_match()}
+              {models.length > 0 ? m.thread_model_no_match() : emptyListNotice(listing)}
             </Combobox.Empty>
           </div>
         </Combobox.Root>
@@ -909,6 +920,7 @@ export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   const clouds = useClouds()
   const [creatingOn, setCreatingOn] = useState<EnvironmentId | undefined>(undefined)
+  const [boatOpen, setBoatOpen] = useState(false)
   const current = projects.find((project) => project.id === thread.projectId)
   const environment = environmentOf(current)
   const members =
@@ -929,10 +941,11 @@ export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
       : reachable.filter((candidate) => members.every((project) => environmentOf(project) !== candidate))
   const inlineName = (id: EnvironmentId) =>
     id === null ? m.environment_this_machine_inline() : environmentName(id, clouds)
+  const boat = current?.repository !== undefined && !inBrowser() ? current : undefined
   return (
     <>
       <ContextSwitch thread={thread} label={inlineName(environment)} options={options}>
-        {missing.length > 0 && (
+        {(missing.length > 0 || boat !== undefined) && (
           <>
             <DropdownMenuSeparator />
             {missing.map((candidate) => (
@@ -943,9 +956,17 @@ export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
                 {m.thread_environment_create({ machine: inlineName(candidate) })}
               </DropdownMenuItem>
             ))}
+            {boat !== undefined && (
+              <DropdownMenuItem onClick={() => startTransition(() => setBoatOpen(true))}>
+                {m.boat_thread_new()}
+              </DropdownMenuItem>
+            )}
           </>
         )}
       </ContextSwitch>
+      {boat !== undefined && (
+        <BoatThreadDialog thread={thread} project={boat} open={boatOpen} onOpenChange={setBoatOpen} />
+      )}
       {creatingOn !== undefined && cloneSource !== null && (
         <ProjectDialog
           open

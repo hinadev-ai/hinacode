@@ -331,6 +331,15 @@ const withPreparingThread = async (
             completed,
           )
         }
+        if (input.prompt === "creates a.txt and edits notes.md") {
+          return Stream.fromEffect(
+            Effect.sync((): AgentEvent => {
+              writeFileSync(join(input.cwd, "a.txt"), "agent\n")
+              writeFileSync(join(input.cwd, "notes.md"), "agent edit\n")
+              return completed
+            }),
+          )
+        }
         if (input.prompt === "ends silently") {
           return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` })
         }
@@ -464,14 +473,14 @@ const withPreparingThread = async (
             }),
             Layer.succeed(Threads.Threads, {
               ...threads,
-              captureTurnBase: (cwd) =>
+              captureWorkingTree: (cwd) =>
                 Effect.gen(function* () {
                   if (holdSnapshot) {
                     holdSnapshot = false
                     snapshotting.resolve()
                     yield* Effect.promise(() => snapshotReady.promise)
                   }
-                  return yield* threads.captureTurnBase(cwd)
+                  return yield* threads.captureWorkingTree(cwd)
                 }),
             }),
             SourceControl.layer.pipe(
@@ -860,20 +869,47 @@ it("drops watch news stopped while the turn snapshot is pending", async () => {
 
 const acceptedTurnWithEdits = async (probe: Probe) => {
   probe.release()
-  await Effect.runPromise(probe.runner.send(probe.thread.id, "accepted input", []))
+  await Effect.runPromise(probe.runner.send(probe.thread.id, "creates a.txt and edits notes.md", []))
   await probe.idle
   const messages = (await Effect.runPromise(probe.runner.transcript(probe.thread.id))).messages
   expect(messages).toHaveLength(2)
-  if (probe.thread.worktreeId === null) throw new Error("preparing thread has no worktree")
-  const worktree = await Effect.runPromise(probe.worktrees.get(probe.thread.worktreeId))
-  writeFileSync(join(worktree.path, "edited.txt"), "user edit\n")
   const baseline = await probe.turnBase()
   const changes = await Effect.runPromise(probe.threads.changes(probe.thread.id, "turn"))
   expect(baseline).not.toBeNull()
-  expect(changes?.files.map((file) => file.path)).toContain("edited.txt")
+  expect(changes?.files.map((file) => file.path)).toContain("a.txt")
   probe.pauseSnapshot()
   return { baseline, changes, messages }
 }
+
+it("undoes only what the turn changed and keeps what the user changed after it", async () => {
+  await withPreparingThread(async ({ runner, threads, worktrees, thread, idle, release }) => {
+    release()
+    const { path } = await Effect.runPromise(
+      worktrees.whenPrepared(thread.worktreeId!).pipe(Effect.andThen(worktrees.get(thread.worktreeId!))),
+    )
+    writeFileSync(join(path, "notes.md"), "before\n")
+    writeFileSync(join(path, "README.md"), "readme\n")
+    await Effect.runPromise(runner.send(thread.id, "creates a.txt and edits notes.md", []))
+    await idle
+
+    writeFileSync(join(path, "my-notes.md"), "mine\n")
+    writeFileSync(join(path, "README.md"), "readme\nhand edit\n")
+    const turn = await Effect.runPromise(threads.changes(thread.id, "turn"))
+    expect(turn?.files.map((file) => file.path)).toStrictEqual(["a.txt", "notes.md"])
+
+    writeFileSync(join(path, "notes.md"), "agent edit\nhand edit\n")
+    expect(await Effect.runPromise(threads.undoTurn(thread.id))).toStrictEqual({
+      undone: ["a.txt"],
+      kept: ["notes.md"],
+    })
+
+    expect(existsSync(join(path, "a.txt"))).toBe(false)
+    expect(readFileSync(join(path, "notes.md"), "utf8")).toBe("agent edit\nhand edit\n")
+    expect(readFileSync(join(path, "my-notes.md"), "utf8")).toBe("mine\n")
+    expect(readFileSync(join(path, "README.md"), "utf8")).toBe("readme\nhand edit\n")
+    expect(await Effect.runPromise(threads.changes(thread.id, "turn"))).toBeNull()
+  })
+})
 
 it("tells the agent the branch and paths it works in", async () => {
   await withPreparingThread(async (probe) => {
@@ -970,7 +1006,7 @@ it("preserves the accepted turn baseline when a watch stops during snapshot capt
     probe.snapshot()
     await polling
 
-    expect(probe.turns.map((turn) => turn.input.prompt)).toStrictEqual(["accepted input"])
+    expect(probe.turns.map((turn) => turn.input.prompt)).toStrictEqual(["creates a.txt and edits notes.md"])
     expect((await Effect.runPromise(probe.runner.transcript(probe.thread.id))).messages).toStrictEqual(before.messages)
     expect(await Effect.runPromise(probe.threads.changes(probe.thread.id, "turn"))).toStrictEqual(before.changes)
     expect(await probe.turnBase()).toBe(before.baseline)
@@ -986,7 +1022,7 @@ it("preserves the accepted turn baseline when pending Stop interrupts snapshot c
     probe.snapshot()
     expect(Exit.isFailure(await sending)).toBe(true)
 
-    expect(probe.turns.map((turn) => turn.input.prompt)).toStrictEqual(["accepted input"])
+    expect(probe.turns.map((turn) => turn.input.prompt)).toStrictEqual(["creates a.txt and edits notes.md"])
     expect((await Effect.runPromise(probe.runner.transcript(probe.thread.id))).messages).toStrictEqual(before.messages)
     expect(await Effect.runPromise(probe.threads.changes(probe.thread.id, "turn"))).toStrictEqual(before.changes)
     expect(await probe.turnBase()).toBe(before.baseline)

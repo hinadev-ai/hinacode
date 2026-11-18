@@ -713,6 +713,10 @@ const make = Effect.gen(function* () {
         if (dirty.size > 0 && Date.now() - persistedAt >= interval) yield* persist
       })
 
+    const recordTurnEnd = threads
+      .captureWorkingTree(cwd)
+      .pipe(Effect.flatMap((tree) => threads.recordTurnEnd({ threadId: thread.id, tree })))
+
     const perform = (effect: TurnEffect) => {
       switch (effect.type) {
         case "bind_session":
@@ -720,11 +724,14 @@ const make = Effect.gen(function* () {
         case "drop_session":
           return updateThread({ id: thread.id, providerSessionId: null })
         case "set_status":
-          return updateThread({
-            id: thread.id,
-            status: effect.status,
-            ...(effect.usageLimit !== undefined && { usageLimit: effect.usageLimit }),
-          })
+          return Effect.andThen(
+            isThreadBusy(effect.status) ? Effect.void : recordTurnEnd,
+            updateThread({
+              id: thread.id,
+              status: effect.status,
+              ...(effect.usageLimit !== undefined && { usageLimit: effect.usageLimit }),
+            }),
+          )
         case "steer_held":
           return steerHeld
       }
@@ -885,7 +892,8 @@ const make = Effect.gen(function* () {
       setTurnMessages(replaceLast(turnMessages, closed))
       yield* persist
       if (closed !== last) yield* publishTranscript({ type: "message.updated", message: closed })
-      if (isThreadBusy(state.status)) yield* updateThread({ id: thread.id, status: "idle" })
+      if (isThreadBusy(state.status))
+        yield* Effect.andThen(recordTurnEnd, updateThread({ id: thread.id, status: "idle" }))
       if (state.outcome !== "completed" || (yield* Deferred.isDone(stop))) return
       next = yield* nextQueued(thread.id)
     }).pipe(
@@ -1228,7 +1236,7 @@ const make = Effect.gen(function* () {
               })
             }
             const [tree, environment] = yield* Effect.all(
-              [threads.captureTurnBase(cwd), readEnvironment(thread, workspace)],
+              [threads.captureWorkingTree(cwd), readEnvironment(thread, workspace)],
               {
                 concurrency: "unbounded",
               },

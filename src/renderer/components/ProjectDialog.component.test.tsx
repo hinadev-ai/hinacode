@@ -31,3 +31,15 @@ test("a clone target picked in a Windows folder joins with a backslash", async (
 
   await expect.element(page.getByLabelText("Clone to")).toHaveValue("C:\\Users\\me\\code\\app")
 })
+
+test("a folder path says a missing folder is created, a GitHub repository does not", async () => {
+  const rootRoute = createRootRoute({ component: () => <ProjectDialog open onOpenChange={() => {}} /> })
+  await render(<RouterProvider router={createRouter({ routeTree: rootRoute, history: createMemoryHistory() })} />)
+  const hint = page.getByText("HinaCode creates the folder if it does not exist.")
+
+  await page.getByLabelText("Folder or GitHub repository").fill("~/code/typo")
+  await expect.element(hint).toBeVisible()
+
+  await page.getByLabelText("Folder or GitHub repository").fill("https://github.com/octo/app")
+  await expect.element(hint).not.toBeInTheDocument()
+})

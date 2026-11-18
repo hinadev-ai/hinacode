@@ -28,10 +28,11 @@ A Mac hub serves iOS and Android. A Linux or Windows hub serves Android only. Th
 1. Run HinaCode or `hinacode serve` on the hub machine and pair it from the client as usual, by relay sign-in or QR.
 2. On the client, Settings > Experimental > Devices gains **Run devices on**, a select with **This machine** and every paired machine. Each option shows what that machine can run today, such as "studio, iOS and Android" or "buildbox, Android only, 2 steps left".
 3. Picking a machine opens its **setup checklist** when it is not ready (next section). A ready machine is the whole setup.
+4. The same field works while Settings edits a paired machine. It then lists the machines that machine has paired, from `devices.hubs`, and reads each one's readiness through it with `devices.checks { hub }`. A client paired to a Linux box can point the box's threads at a Mac the box paired, without opening HinaCode on the box. The Devices panel of a thread names the hub of the machine that owns the thread.
 
 ### Set up a machine that is not ready yet
 
-4. The checklist reads the hub's own state over the remote connection, so the developer sets up the hub from the client without walking to it. Each row is one requirement with its state and its fix.
+5. The checklist reads the hub's own state over the remote connection, so the developer sets up the hub from the client without walking to it. Each row is one requirement with its state and its fix.
 
 | Requirement          | Needed for                      | Fix from the client                                   |
 | -------------------- | ------------------------------- | ----------------------------------------------------- |
@@ -43,23 +44,23 @@ A Mac hub serves iOS and Android. A Linux or Windows hub serves Android only. Th
 | Android system image | Android, when the SDK has none  | **Install** runs `sdkmanager` for the newest image    |
 | An emulator (AVD)    | Android, when none exists       | **Create** runs `avdmanager create avd` on that image |
 
-5. **Install** shows a pending state in the row and rechecks when it finishes. A row whose fix needs Homebrew and finds none says so and offers the command to copy. A manual row has **Check again**.
-6. Required rows gate a platform. Recommended rows never block. The hub serves Android while its iOS rows are still red.
-7. The same checklist replaces today's per-platform notes in the Devices panel on every machine, local included. The simslim note in `DeviceList.tsx` becomes one row of it.
+6. **Install** shows a pending state in the row and rechecks when it finishes. A row whose fix needs Homebrew and finds none says so and offers the command to copy. A manual row has **Check again**.
+7. Required rows gate a platform. Recommended rows never block. The hub serves Android while its iOS rows are still red.
+8. The same checklist replaces today's per-platform notes in the Devices panel on every machine, local included. The simslim note in `DeviceList.tsx` becomes one row of it.
 
 ### Use it
 
-8. The Devices panel in a client thread lists the hub's devices. The header says **on studio**, so the developer always knows where the phone is. Attach, create, stream, touch, pick element and every toolbar button behave as they do locally.
-9. The toolbar gains a headphones button. Sound is off until the developer turns it on for a device, then it plays on the client. Android only for now (see Audio).
-10. The agent uses the `device_*` tools (see Agent tools). Their results and the thread instructions say the devices run on the hub, so `localhost` on the device means the hub.
-11. The agent builds on the client and calls `device_install` with the `.app` or `.apk` path. HinaCode copies it to the hub and installs it. Locally the same tool installs directly, so the agent learns one tool whichever machine runs the devices.
-12. On the hub, its own Devices panel shows which machine and thread holds each device, such as "In use by laptop, Fix login screen".
-13. Archiving the client thread deletes the simulators it created on the hub, as it does locally.
+9. The Devices panel in a client thread lists the hub's devices. The header says **on studio**, so the developer always knows where the phone is. Attach, create, stream, touch, pick element and every toolbar button behave as they do locally.
+10. The toolbar gains a headphones button. Sound is off until the developer turns it on for a device, then it plays on the client. Android only for now (see Audio).
+11. The agent uses the `device_*` tools (see Agent tools). Their results and the thread instructions say the devices run on the hub, so `localhost` on the device means the hub.
+12. The agent builds on the client and calls `device_install` with the `.app` or `.apk` path. HinaCode copies it to the hub and installs it. Locally the same tool installs directly, so the agent learns one tool whichever machine runs the devices.
+13. On the hub, its own Devices panel shows which machine and thread holds each device, such as "In use by laptop, Fix login screen".
+14. Archiving the client thread deletes the simulators it created on the hub, as it does locally.
 
 ### When the hub is gone
 
-14. When the hub is offline, the panel says "studio is offline. Devices come back when it reconnects." and keeps the last list greyed out. The agent's tools fail with the same sentence. HinaCode never falls back to the client's own simulators, because a surprise 2.8 GB boot on the laptop is what the developer set up a hub to avoid.
-15. Choosing **This machine** again returns to local devices. Devices the client held on the hub are released at the next claim.
+15. When the hub is offline, the panel says "studio is offline. Devices come back when it reconnects." and keeps the last list greyed out. The agent's tools fail with the same sentence. HinaCode never falls back to the client's own simulators, because a surprise 2.8 GB boot on the laptop is what the developer set up a hub to avoid.
+16. Choosing **This machine** again returns to local devices. Devices the client held on the hub are released at the next claim.
 
 ## Design
 
@@ -162,7 +163,7 @@ The hub accepts device calls only over the authenticated remote connection, from
 
 ### UI
 
-- Settings: **Run devices on** under the Devices switch, with each machine's readiness summary.
+- Settings: **Run devices on** under the Devices switch, with each machine's readiness summary, for this machine or the paired machine Settings is editing.
 - `DeviceChecklist`, shared by settings and the Devices panel, rendered from `Check[]`.
 - `DevicesView` header: the hub's name and the offline state.
 - Device toolbar: the speaker toggle.

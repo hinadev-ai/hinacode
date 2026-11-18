@@ -6,6 +6,7 @@ import { Events } from "./Events.ts"
 import { SourceControl } from "./SourceControl.ts"
 import { Ports } from "./Ports.ts"
 import { PullRequests } from "./PullRequests.ts"
+import { Scratch } from "./Scratch.ts"
 import { Settings } from "./Settings.ts"
 import { Terminals } from "./Terminals.ts"
 import { Threads } from "./Threads.ts"
@@ -60,6 +61,7 @@ const make = Effect.gen(function* () {
   const runner = yield* AgentRunner
   const terminals = yield* Terminals
   const ports = yield* Ports
+  const scratch = yield* Scratch
 
   const stopProcesses = (threadId: string) =>
     terminals.closeThread(threadId).pipe(Effect.andThen(ports.closeThread(threadId)))
@@ -82,7 +84,10 @@ const make = Effect.gen(function* () {
       if (isThreadBusy((yield* threads.get(threadId)).status)) return yield* new ThreadBusyError({ id: threadId })
       const settled = yield* runner.release(
         threadId,
-        stopProcesses(threadId).pipe(Effect.andThen(threads.settle(threadId))),
+        stopProcesses(threadId).pipe(
+          Effect.andThen(threads.settle(threadId)),
+          Effect.tap(() => scratch.removeTmp(threadId)),
+        ),
       )
       if (Option.isNone(settled)) return yield* new ThreadBusyError({ id: threadId })
       return settled.value
@@ -117,7 +122,7 @@ const make = Effect.gen(function* () {
       const settled = yield* threads.settleMerged(threadId, isStillDone)
       if (Option.isNone(settled)) return
       yield* events.publish({ type: "thread.updated", thread: settled.value })
-      yield* runner.release(threadId, terminals.closeThread(threadId))
+      yield* runner.release(threadId, terminals.closeThread(threadId).pipe(Effect.andThen(scratch.removeTmp(threadId))))
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("auto settle skipped a thread", threadId, cause)))
 
   const settleIfIdle = (thread: Thread, links: ReadonlyArray<PullRequestLink>, days: number, now: number) =>
@@ -130,7 +135,10 @@ const make = Effect.gen(function* () {
       const settled = Option.flatten(
         yield* runner.release(
           thread.id,
-          stopProcesses(thread.id).pipe(Effect.andThen(threads.settleIf(thread.id, isStillIdle))),
+          stopProcesses(thread.id).pipe(
+            Effect.andThen(threads.settleIf(thread.id, isStillIdle)),
+            Effect.tap(Option.match({ onNone: () => Effect.void, onSome: () => scratch.removeTmp(thread.id) })),
+          ),
         ),
       )
       if (Option.isSome(settled)) yield* events.publish({ type: "thread.updated", thread: settled.value })

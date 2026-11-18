@@ -30,6 +30,7 @@ import { Attachments } from "./services/Attachments.ts"
 import { Browser } from "./services/Browser.ts"
 import { UnknownRootError } from "./services/errors.ts"
 import { ClientSettings } from "./services/ClientSettings.ts"
+import { BoatMachines } from "./services/boat/BoatMachines.ts"
 import { Environments } from "./services/Environments.ts"
 import { Events } from "./services/Events.ts"
 import { Files } from "./services/Files.ts"
@@ -64,11 +65,13 @@ import { randomName, Threads } from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { Devices } from "./services/devices/Devices.ts"
+import { callHub } from "./services/devices/hub.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
 export type AppServices =
   | AgentAccounts
   | AppConnections
+  | BoatMachines
   | AgentLogins
   | SessionImports
   | Projects
@@ -282,6 +285,13 @@ const handlers: Handlers = {
       Effect.andThen(closeTerminals(id)),
       Effect.andThen(Threads.use((threads) => threads.remove(id, { removeWorktree }))),
       Effect.andThen(Events.use((events) => events.publish({ type: "thread.removed", id }))),
+      Effect.andThen(
+        Attachments.use((attachments) => attachments.prune).pipe(
+          Effect.catchCause((cause) => Effect.logWarning("attachment prune failed", cause)),
+          Effect.forkDetach,
+        ),
+      ),
+      Effect.asVoid,
     ),
 
   "threads.resumeAtReset": ({ id, enabled }) => AgentRunner.use((runner) => runner.resumeAtReset(id, enabled)),
@@ -299,8 +309,8 @@ const handlers: Handlers = {
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
   "threads.undoTurn": ({ threadId }) => Threads.use((threads) => threads.undoTurn(threadId)),
-  "threads.archive": ({ threadId }) =>
-    Threads.use((threads) => threads.archive(threadId)).pipe(Effect.tap(announceThread)),
+  "threads.archive": ({ threadId, discardChanges }) =>
+    Threads.use((threads) => threads.archive(threadId, { discardChanges })).pipe(Effect.tap(announceThread)),
   "threads.unarchive": ({ threadId }) =>
     Threads.use((threads) => threads.unarchive(threadId)).pipe(Effect.tap(announceThread)),
   "threads.settle": ({ threadId }) => Settle.use((settle) => settle.settle(threadId)).pipe(Effect.tap(announceThread)),
@@ -360,6 +370,9 @@ const handlers: Handlers = {
   "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
   "environments.rename": ({ id, name }) => Environments.use((environments) => environments.rename(id, name)),
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
+  "boatMachines.options": () => BoatMachines.use((machines) => machines.options),
+  "boatMachines.connect": (input) => BoatMachines.use((machines) => machines.connect(input)),
+  "boatMachines.forThread": (input) => BoatMachines.use((machines) => machines.forThread(input)),
   "relayAccount.status": () => RelayAccount.use((account) => account.status),
   "relayAccount.signIn": (_, desktop) =>
     Effect.gen(function* () {
@@ -536,7 +549,12 @@ const handlers: Handlers = {
   "terminal.attach": ({ id, since }) => Terminals.use((terminals) => terminals.attach(id, since)),
 
   "devices.list": () => Devices.use((devices) => devices.list()),
-  "devices.checks": () => Devices.use((devices) => devices.checks()),
+  "devices.checks": ({ hub }) =>
+    hub === undefined ? Devices.use((devices) => devices.checks()) : callHub(hub, "devices.checks", {}),
+  "devices.hubs": () =>
+    Environments.use((environments) => environments.list).pipe(
+      Effect.map(({ clouds }) => clouds.map(({ id, name, status }) => ({ id, name, status }))),
+    ),
   "device.get": ({ threadId }) => Devices.use((devices) => devices.get(threadId)),
   "device.attach": ({ threadId, deviceId, client }) =>
     Devices.use((devices) => devices.attach(threadId, deviceId, client)),

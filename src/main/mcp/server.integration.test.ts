@@ -283,6 +283,13 @@ const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
       : Effect.andThen(TestClock.withLive(Effect.sleep("20 millis")), until(check)),
   )
 
+const interruptTurn = (threadId: string) =>
+  Effect.gen(function* () {
+    const runner = yield* AgentRunner
+    yield* runner.interrupt(threadId)
+    yield* until(runner.isBusy(threadId).pipe(Effect.map((busy) => (busy ? Option.none() : Option.some(busy)))))
+  })
+
 const advanceUntil = <A>(step: Duration.Input, check: Effect.Effect<Option.Option<A>>) =>
   until(Effect.andThen(TestClock.adjust(step), check))
 
@@ -625,7 +632,7 @@ layer(testLayer)("request_secret", (it) => {
       expect(pushes.map((push) => (push.type === "thread.event" ? push.event.type : push.type))).toEqual(
         expect.arrayContaining(["secret_requested", "secret_resolved"]),
       )
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -644,7 +651,7 @@ layer(testLayer)("request_secret", (it) => {
       expect(result.isError).toBe(true)
       expect(result.text).toContain("declined")
       expect(existsSync(yield* secretPath(a, "declined.token"))).toBe(false)
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -658,7 +665,7 @@ layer(testLayer)("request_secret", (it) => {
         callAs(yield* mcp.connectionFor(a), "request_secret", { name: "late.token", description: "x" }),
       )
       yield* pendingSecretRequest(a)
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
       const result = yield* Fiber.join(call)
       expect(result.isError).toBe(true)
       expect(result.text).toContain("turn ended")
@@ -697,7 +704,7 @@ layer(testLayer)("run_agent", (it) => {
       expect(parts).toContainEqual(
         expect.objectContaining({ type: "tool_call", callId: "agent-call-1", parentCallId: subagent?.callId }),
       )
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -720,7 +727,7 @@ layer(testLayer)("run_agent", (it) => {
       expect(approvalDecisions).toStrictEqual([{ requestId: "sub-approval", decision: "allow" }])
       const shown = pushes.filter((push) => push.type === "thread.event" && push.event.type === "approval_requested")
       expect(shown).toStrictEqual([])
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
       yield* threads.update({ id: a, accessMode })
     }),
   )
@@ -751,7 +758,7 @@ layer(testLayer)("run_agent", (it) => {
       expect(result).toMatchObject({ isError: true, text: "The user stopped this agent." })
       expect((yield* runner.subagents(a)).find((subagent) => subagent.id === running.id)?.status).toBe("stopped")
       expect((yield* runner.transcript(a)).messages.at(-1)?.completedAt).toBeNull()
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -786,7 +793,7 @@ layer(testLayer)("run_agent", (it) => {
         isError: true,
         text: "No agent not-an-agent runs in this thread's turn.",
       })
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -814,7 +821,7 @@ layer(testLayer)("run_agent", (it) => {
         yield* Effect.forkChild(callAs(connection, "wait_agent", { agentId: running?.id })),
       )
       expect(finished).toMatchObject({ isError: false, text: "Looks good." })
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -849,7 +856,7 @@ layer(testLayer)("run_agent", (it) => {
       expect(yield* ask()).toMatchObject({ isError: false })
       expect(turnInputs.at(-1)).toMatchObject({ model: "openrouter/a" })
       yield* settings.set({ modelPresets: defaultSettings.modelPresets })
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -1346,6 +1353,7 @@ const VM_TOOLS = [
   "vm_exec",
   "vm_stop",
   "vm_pull_file",
+  "vm_hand_over",
 ]
 
 layer(testLayer)("tiny vm tools while the toggle is off", (it) => {
@@ -1375,6 +1383,20 @@ layer(testLayer)("tiny vm tools", (it) => {
       const { a } = yield* Seeded
       yield* setTinyVm(true)
       expect(yield* toolNames(yield* mcp.connectionFor(a))).toEqual(expect.arrayContaining(VM_TOOLS))
+    }),
+  )
+
+  it.effect("a new VM keeps text the user only selects out of this machine's clipboard", () =>
+    Effect.gen(function* () {
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      const execsBefore = fake.execs.length
+      yield* vm.start(a)
+      expect(fake.execs.slice(execsBefore).map((exec) => exec.script)).toContain(
+        "vncconfig -display :0 -set SendPrimary=0",
+      )
     }),
   )
 
@@ -1684,6 +1706,78 @@ layer(testLayer)("tiny vm tools", (it) => {
       expect(result.text).toContain("handed it back")
       expect(result.images).toHaveLength(1)
       expect(fake.inputs).toStrictEqual([])
+    }),
+  )
+
+  it.effect("vm_hand_over gives the user control with the request and returns the screen on hand back", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      fake.inputs.length = 0
+      const call = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(a), "vm_hand_over", { request: "Sign in to GitHub" }),
+      )
+      yield* until(
+        Effect.map(vm.get(a), (current) =>
+          current.status === "running" && current.control === "user" && current.agentWaiting
+            ? Option.some(current)
+            : Option.none(),
+        ),
+      )
+      expect(yield* vm.get(a)).toMatchObject({ control: "user", agentWaiting: true, request: "Sign in to GitHub" })
+      expect(call.pollUnsafe()).toBeUndefined()
+
+      yield* vm.setControl(a, "agent")
+      const result = yield* Fiber.join(call)
+      expect(result.isError).toBe(false)
+      expect(result.text).toContain("handed control back")
+      expect(result.images).toHaveLength(1)
+      expect(fake.inputs).toStrictEqual([])
+
+      const taken = yield* vm.setControl(a, "user")
+      expect(taken).toMatchObject({ control: "user" })
+      expect(taken).not.toHaveProperty("request")
+    }),
+  )
+
+  it.effect("closing the last screen during a hand over keeps control with the user", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      yield* vm.start(a)
+      const owner = new EventEmitter()
+      yield* vm.openScreen(a, "stream-hand-over", owner)
+      const call = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(a), "vm_hand_over", { request: "Solve the CAPTCHA" }),
+      )
+      yield* until(
+        Effect.map(vm.get(a), (current) =>
+          current.status === "running" && current.control === "user" && current.agentWaiting
+            ? Option.some(true)
+            : Option.none(),
+        ),
+      )
+      owner.emit("destroyed")
+      yield* until(
+        Effect.sync(() =>
+          pushes.some((push) => push.type === "vm.screen.closed" && push.streamId === "stream-hand-over")
+            ? Option.some(true)
+            : Option.none(),
+        ),
+      )
+      yield* TestClock.withLive(Effect.sleep("20 millis"))
+      yield* TestClock.adjust(HAND_BACK_GRACE)
+      yield* TestClock.withLive(Effect.sleep("20 millis"))
+      expect(yield* vm.get(a)).toMatchObject({ control: "user", request: "Solve the CAPTCHA" })
+      expect(call.pollUnsafe()).toBeUndefined()
+
+      yield* vm.setControl(a, "agent")
+      expect((yield* Fiber.join(call)).isError).toBe(false)
     }),
   )
 

@@ -168,6 +168,25 @@ export const addEnvironmentAtom = Atom.fn((input: RpcRequest<"environments.add">
   call("environments.add", input).pipe(Effect.tap(() => Atom.refresh(environmentsAtom))),
 )
 
+export const boatMachineOptionsAtom = Atom.make((get) => {
+  get(secretStoredAtom(null, "boat.apiKey"))
+  return call("boatMachines.options", undefined)
+})
+
+export const boatThreadMachineAtom = Atom.fn((input: RpcRequest<"boatMachines.forThread">) =>
+  call("boatMachines.forThread", input).pipe(
+    Effect.tap(() => Atom.refresh(environmentsAtom)),
+    Effect.tap(() => Atom.refresh(projectsAtom)),
+  ),
+)
+
+export const connectBoatMachineAtom = Atom.fn((input: RpcRequest<"boatMachines.connect">) =>
+  call("boatMachines.connect", input).pipe(
+    Effect.tap(() => Atom.refresh(environmentsAtom)),
+    Effect.tap(() => Atom.refresh(boatMachineOptionsAtom)),
+  ),
+)
+
 export const removeEnvironmentAtom = Atom.fn((id: string) =>
   call("environments.remove", { id }).pipe(
     Effect.tap(() => Atom.refresh(environmentsAtom)),
@@ -578,8 +597,19 @@ export const vmDesktopUrlAtom = familyOf((threadId: string, _sandboxId: string) 
 
 export const deviceHostAtom = Atom.family((threadId: string) => Atom.make(call("devices.list", { threadId })))
 
-export const deviceChecksAtom = Atom.family((environment: EnvironmentId) =>
-  Atom.make(call("devices.checks", undefined, { environment })),
+export const deviceChecksAtom = familyOf((environment: EnvironmentId, hub: string | null) =>
+  Atom.make(call("devices.checks", hub === null ? {} : { hub }, { environment })),
+)
+
+export const deviceHubsAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make((get) => {
+    get.addFinalizer(
+      onPushEvent(
+        (event) => (event.type === "environment.status" || event.type === "environments.changed") && get.refreshSelf(),
+      ),
+    )
+    return call("devices.hubs", undefined, { environment })
+  }),
 )
 
 export const vmHostAtom = Atom.family((environment: EnvironmentId) =>
