@@ -7,6 +7,7 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react"
 import { formatForDisplay } from "@tanstack/react-hotkeys"
 import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
+import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { toast } from "sonner"
 import {
@@ -38,6 +39,7 @@ import {
   modelsAtom,
   projectsAtom,
   pullRequestsAtom,
+  type RpcError,
   setUpProvidersAtom,
 } from "../lib/rpc.ts"
 import { environmentName, environmentOf, useClouds, useThreadEnvironment } from "../lib/environments.ts"
@@ -111,6 +113,13 @@ function useThreadModel(thread: Thread) {
   return useAgentModels(useThreadEnvironment(thread.id), thread.provider, null).find(
     (model) => model.id === thread.model,
   )
+}
+
+function emptyListNotice(listing: AsyncResult.AsyncResult<ReadonlyArray<ModelInfo>, RpcError>) {
+  if (listing.waiting || AsyncResult.isInitial(listing)) return m.settings_models_loading()
+  if (AsyncResult.isFailure(listing))
+    return m.thread_model_list_failed({ message: errorMessage(Cause.squash(listing.cause)) })
+  return m.thread_model_none()
 }
 
 const sameModel = (a: ModelInfo, b: ModelInfo) => a.provider === b.provider && a.id === b.id
@@ -261,6 +270,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const tab = tabs.find((candidate) => candidate.value === tabValue) ?? tabs[0]!
   const models = usePickerModels(environment, tab.provider, tab.provider === thread.provider ? thread.model : null)
   const ownModels = usePickerModels(environment, thread.provider, null)
+  const listing = useAtomValue(modelsAtom(environment, tab.provider))
   const showsHints = tabs.some((candidate) => candidate.hint !== undefined)
   const [listRows, setListRows] = useState(0)
   if (open && models.length > listRows) setListRows(models.length)
@@ -507,7 +517,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           />
           <div
             style={{ "--rows": listRows } as CSSProperties}
-            className="grid min-h-0 basis-[calc(var(--rows)*2.125rem)] grid-rows-1"
+            className={cn("grid basis-[calc(var(--rows)*2.125rem)] grid-rows-1", models.length > 0 && "min-h-0")}
           >
             <Combobox.List
               aria-label={m.thread_model_picker()}
@@ -526,7 +536,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
               )}
             </Combobox.List>
             <Combobox.Empty className="col-start-1 row-start-1 self-start px-2 py-1.5 text-sm text-muted-foreground empty:hidden">
-              {models.length > 0 && m.thread_model_no_match()}
+              {models.length > 0 ? m.thread_model_no_match() : emptyListNotice(listing)}
             </Combobox.Empty>
           </div>
         </Combobox.Root>

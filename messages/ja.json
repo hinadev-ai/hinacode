@@ -132,6 +132,8 @@
   "thread_model_picker": "モデル",
   "thread_model_search": "モデルを検索",
   "thread_model_no_match": "一致するモデルがありません",
+  "thread_model_none": "このエージェントはモデルを返しませんでした",
+  "thread_model_list_failed": "モデルを取得できませんでした: {message}",
   "message_you": "あなた",
   "message_thinking": "思考中…",
   "markdown_attachment": "GitHub 添付ファイル",

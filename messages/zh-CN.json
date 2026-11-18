@@ -123,6 +123,8 @@
   "thread_model_picker": "模型",
   "thread_model_search": "搜索模型",
   "thread_model_no_match": "没有匹配的模型",
+  "thread_model_none": "此智能体没有列出任何模型",
+  "thread_model_list_failed": "无法列出模型：{message}",
   "message_you": "你",
   "message_thinking": "思考中…",
   "markdown_attachment": "GitHub 附件",
