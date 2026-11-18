@@ -1,5 +1,5 @@
 import { Context, Duration, Effect, Layer, Schema } from "effect"
-import type { Message, Thread } from "../../shared/domain.ts"
+import type { Message, Settings as SettingsSchema, Thread } from "../../shared/domain.ts"
 import { installedBinary } from "../agents/binary.ts"
 import { AgentError } from "../agents/provider.ts"
 import { slugifyBranch } from "./branchName.ts"
@@ -19,9 +19,15 @@ const SUGGESTION_JSON_SCHEMA = {
   additionalProperties: false,
 }
 
-const SYSTEM_PROMPT = `You name coding tasks in a developer's sidebar. Given the developer's messages in a task, inside <messages>, reply with:
+const systemPrompt = (branchNamingInstructions: string) => {
+  const base = `You name coding tasks in a developer's sidebar. Given the developer's messages in a task, inside <messages>, reply with:
 - title: at most 50 characters, sentence case, no trailing period, in the language of the message
-- branch: 2 to 5 lowercase English words joined by hyphens, with no prefix`
+- branch: 2 to 5 lowercase English words joined by hyphens, unless the developer's rules inside <branch_naming> say otherwise`
+  const rules = branchNamingInstructions.trim()
+  return rules === "" ? base : `${base}\n\n<branch_naming>\n${rules}\n</branch_naming>`
+}
+
+type NamingSettings = Pick<SettingsSchema, "textGenerationModel" | "branchNamingInstructions">
 
 const PROMPT_LIMIT = 4000
 const ELISION = "\n\n[…]\n\n"
@@ -40,7 +46,7 @@ export class ThreadNaming extends Context.Service<
   }
 >()("hinacode/ThreadNaming") {}
 
-export const suggest = (model: string, prompt: string) =>
+export const suggest = (settings: NamingSettings, prompt: string) =>
   Effect.gen(function* () {
     const pathToClaudeCodeExecutable = yield* installedBinary("claude", "claude")
     const output = yield* Effect.tryPromise({
@@ -53,9 +59,9 @@ export const suggest = (model: string, prompt: string) =>
           options: {
             env: { ...process.env },
             pathToClaudeCodeExecutable,
-            model,
+            model: settings.textGenerationModel,
             effort: "low",
-            systemPrompt: SYSTEM_PROMPT,
+            systemPrompt: systemPrompt(settings.branchNamingInstructions),
             tools: [],
             settingSources: [],
             persistSession: false,
@@ -102,8 +108,7 @@ const make = Effect.gen(function* () {
 
   const nameFromPrompt = (thread: Thread, prompt: string, scope: NamingScope) =>
     Effect.gen(function* () {
-      const { textGenerationModel } = yield* settings.get
-      const suggestion = yield* suggest(textGenerationModel, prompt)
+      const suggestion = yield* suggest(yield* settings.get, prompt)
       const current = yield* threads.get(thread.id)
       const title = suggestion.title.trim()
       if (title !== "" && current.title === thread.title) {
@@ -112,7 +117,7 @@ const make = Effect.gen(function* () {
       }
       const branch = slugifyBranch(suggestion.branch)
       if (scope === "titleAndBranch" && current.worktreeId !== null && branch !== "") {
-        yield* worktrees.renameBranch(current.worktreeId, `kk/${branch}`)
+        yield* worktrees.renameBranch(current.worktreeId, branch)
       }
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("thread naming failed", cause)))
 
@@ -121,8 +126,7 @@ const make = Effect.gen(function* () {
       const before = yield* threads.get(threadId)
       const prompt = userText(yield* messages.list(threadId))
       if (prompt === "") return before
-      const { textGenerationModel } = yield* settings.get
-      const title = (yield* suggest(textGenerationModel, prompt)).title.trim()
+      const title = (yield* suggest(yield* settings.get, prompt)).title.trim()
       const current = yield* threads.get(threadId)
       if (title === "" || title === current.title || current.title !== before.title) return current
       const renamed = yield* threads.update({ id: threadId, title })

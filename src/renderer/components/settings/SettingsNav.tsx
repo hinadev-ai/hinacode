@@ -96,6 +96,7 @@ const settingsPages: ReadonlyArray<SettingsPage> = [
     icon: BranchIcon,
     keywords: [
       m.settings_worktree_root,
+      m.settings_branch_naming,
       m.settings_archive,
       m.settings_archive_when_merged,
       m.settings_archive_settle_idle,

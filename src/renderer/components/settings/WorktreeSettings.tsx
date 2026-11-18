@@ -23,8 +23,9 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog.tsx"
 import { ArchiveSettings } from "./ArchiveSettings.tsx"
-import { SettingsSection, settingsGroupClass } from "./SettingsSection.tsx"
+import { SettingsGroup, SettingsSection, settingsGroupClass } from "./SettingsSection.tsx"
 import { ChatIcon, TrashIcon } from "@hinacode/icons"
+import { BranchNamingField } from "./BranchNamingField.tsx"
 import { WorktreeRootField } from "./WorktreeRootField.tsx"
 
 type Blocker = "setup" | "turn"
@@ -103,7 +104,10 @@ function Worktrees() {
 
   return (
     <SettingsSection>
-      <WorktreeRootField />
+      <SettingsGroup>
+        <WorktreeRootField />
+        <BranchNamingField />
+      </SettingsGroup>
       {groups.length === 0 ? (
         <p className="text-sm text-muted-foreground">{m.settings_worktrees_empty()}</p>
       ) : (

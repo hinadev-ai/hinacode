@@ -773,6 +773,8 @@ const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
   magpie: value,
 })
 
+export const DEFAULT_BRANCH_NAMING_INSTRUCTIONS = "Start with hinacode/."
+
 export const Settings = Schema.Struct({
   defaultProvider: ProviderId,
   providerEnabled: perProvider(Schema.Boolean, true),
@@ -796,6 +798,9 @@ export const Settings = Schema.Struct({
   ),
   remote: Schema.Struct({ enabled: Schema.Boolean, bindHost: BindHost, port: ListenPort }),
   textGenerationModel: Schema.String,
+  branchNamingInstructions: Schema.String.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_BRANCH_NAMING_INSTRUCTIONS)),
+  ),
   pullRequestGuide: Schema.Struct({
     enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
     model: Schema.String,
@@ -842,6 +847,7 @@ export const defaultSettings: Settings = {
   routines: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: PRIVATE_NETWORKS, port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",
+  branchNamingInstructions: DEFAULT_BRANCH_NAMING_INSTRUCTIONS,
   pullRequestGuide: { enabled: false, model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
   archive: { whenMerged: true, removeWorktree: false, settleAfterIdleDays: 7, archiveAfterSettledDays: null },
