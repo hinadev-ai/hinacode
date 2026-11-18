@@ -19,6 +19,7 @@
   "project_name_placeholder": "my-app",
   "project_root_label": "根目录路径",
   "project_root_placeholder": "~/code/my-app",
+  "project_root_create_hint": "如果文件夹不存在，HinaCode 会创建它。",
   "project_root_browse": "浏览…",
   "path_input_suggestions": "文件夹建议",
   "path_input_repository": "Git 仓库",
@@ -725,6 +726,7 @@
       }
     }
   ],
+  "project_delete_body_empty": "磁盘上的文件夹会保留。此操作无法撤销。",
   "project_delete_worktrees": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

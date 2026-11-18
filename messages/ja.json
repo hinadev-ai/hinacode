@@ -19,6 +19,7 @@
   "project_name_placeholder": "my-app",
   "project_root_label": "ルートパス",
   "project_root_placeholder": "~/code/my-app",
+  "project_root_create_hint": "フォルダがなければ HinaCode が作成します。",
   "project_root_browse": "参照…",
   "path_input_suggestions": "フォルダの候補",
   "path_input_repository": "Git リポジトリ",
@@ -734,6 +735,7 @@
       }
     }
   ],
+  "project_delete_body_empty": "ディスク上のフォルダ自体は保持されます。この操作は取り消せません。",
   "project_delete_worktrees": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

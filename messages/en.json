@@ -19,6 +19,7 @@
   "project_name_placeholder": "my-app",
   "project_root_label": "Root path",
   "project_root_placeholder": "~/code/my-app",
+  "project_root_create_hint": "HinaCode creates the folder if it does not exist.",
   "project_root_browse": "Browse…",
   "path_input_suggestions": "Folder suggestions",
   "path_input_repository": "Git repository",
@@ -734,6 +735,7 @@
       }
     }
   ],
+  "project_delete_body_empty": "The folder on disk stays. This cannot be undone.",
   "project_delete_worktrees": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
