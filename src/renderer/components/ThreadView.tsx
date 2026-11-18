@@ -28,9 +28,11 @@ import { QuestionRequestCard } from "./QuestionCard.tsx"
 import { SecretRequestCard } from "./SecretRequestCard.tsx"
 import { SubagentTranscript, useSubagentLabel } from "./SubagentView.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
+import { PutAwayCallout, putAwayOf, putAwayStates } from "./PutAwayCallout.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
 import { AccountLimitNotice } from "./AccountSwitch.tsx"
 import { WorktreePreparation } from "./WorktreePreparation.tsx"
+import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 
 const FIND_DEBOUNCE_MS = 100
@@ -63,11 +65,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   const notices = (
     <>
       <PendingRequests thread={thread} />
-      {thread.status === "limited" && thread.usageLimit !== null ? (
-        <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
-      ) : (
-        <AccountLimitNotice key={thread.id} thread={thread} />
-      )}
+      <ThreadStateNotice key={thread.id} thread={thread} />
       <CloudNotice threadId={thread.id} />
     </>
   )
@@ -121,7 +119,16 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   )
 }
 
+function ThreadStateNotice({ thread }: { thread: Thread }) {
+  const putAway = putAwayOf(thread)
+  if (thread.status === "limited" && thread.usageLimit !== null)
+    return <UsageLimitCallout thread={thread} limit={thread.usageLimit} />
+  if (putAway !== null) return <PutAwayCallout threadId={thread.id} putAway={putAway} />
+  return <AccountLimitNotice thread={thread} />
+}
+
 function ThreadBreadcrumb({ thread, agent }: { thread: Thread; agent: string | undefined }) {
+  const putAway = putAwayOf(thread)
   const project = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []).find(
     (candidate) => candidate.id === thread.projectId,
   )
@@ -142,6 +149,7 @@ function ThreadBreadcrumb({ thread, agent }: { thread: Thread; agent: string | u
           <h1 dir="auto" className="truncate text-base font-semibold" title={thread.title}>
             {thread.status === "draft" ? m.thread_draft_title() : thread.title}
           </h1>
+          {putAway !== null && <Badge variant="secondary">{putAwayStates[putAway].label()}</Badge>}
         </li>
         {agent !== undefined && <SubagentCrumb threadId={thread.id} callId={agent} />}
       </ol>
