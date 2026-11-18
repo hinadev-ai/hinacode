@@ -53,7 +53,7 @@ import {
 import { returnFocus, type SidebarTab, useUi } from "../stores/ui.ts"
 import { CloudMark } from "./CloudMark.tsx"
 import { GroupNameDialog } from "./GroupNameDialog.tsx"
-import { ResizeHandle } from "./ResizeHandle.tsx"
+import { WorkspaceSash } from "./WorkspaceSash.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
 import {
@@ -128,17 +128,16 @@ export function Sidebar({
   const setQuery = useUi((state) => state.setSidebarQuery)
   const setSidebarWidth = useUi((state) => state.setSidebarWidth)
   const addProjectButtonRef = useRef<HTMLButtonElement>(null)
-  const navRef = useRef<HTMLElement>(null)
   const router = useRouter()
 
   useEffect(() => router.subscribe("onResolved", () => setOverlayOpen(false)), [router, setOverlayOpen])
 
   const content = (
     <nav
-      ref={navRef}
       aria-label={m.sidebar_label()}
       hidden={!compact && (!sidebarOpen || replaced)}
-      style={compact ? undefined : { width: sidebarWidth }}
+      data-workspace-pane={compact ? undefined : "sidebar"}
+      style={compact ? undefined : { width: sidebarWidth, minWidth: SIDEBAR_BOUNDS.min, maxWidth: SIDEBAR_BOUNDS.max }}
       className={
         compact
           ? "flex min-h-0 w-full flex-1 flex-col bg-sidebar text-sidebar-foreground"
@@ -224,12 +223,12 @@ export function Sidebar({
         finalFocus={returnFocus}
       />
       {!compact && sidebarOpen && !replaced && (
-        <ResizeHandle
+        <WorkspaceSash
           label={m.sidebar_resize()}
+          pane="sidebar"
           edge="right"
-          targetRef={navRef}
           bounds={SIDEBAR_BOUNDS}
-          onResize={setSidebarWidth}
+          width={sidebarWidth}
           onReset={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
         />
       )}

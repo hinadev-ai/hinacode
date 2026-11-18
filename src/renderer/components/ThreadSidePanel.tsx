@@ -2,11 +2,11 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "cn"
 import { createElement, type RefObject, Suspense, useEffect, useRef } from "react"
 import type { Thread } from "../../shared/domain.ts"
-import { usePanelLayout, useSidePanelMaxWidth } from "../lib/panelLayout.ts"
+import { usePanelLayout } from "../lib/panelLayout.ts"
 import { SIDE_PANEL_BOUNDS } from "../lib/panelSize.ts"
 import { m } from "../paraglide/messages.js"
 import { selectSidePanelView, useSidePanelExpanded, useUi } from "../stores/ui.ts"
-import { ResizeHandle } from "./ResizeHandle.tsx"
+import { WorkspaceSash } from "./WorkspaceSash.tsx"
 import { useThreadEnvironment } from "../lib/environments.ts"
 import { ActivityBar } from "./sidePanel/ActivityBar.tsx"
 import { type SidePanelView, useSidePanelViews, viewById } from "./sidePanel/views.ts"
@@ -29,11 +29,7 @@ export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; c
   return (
     <aside
       aria-label={m.panel_label()}
-      className={cn(
-        "flex min-h-0 shrink-0",
-        compact ? "w-full flex-1" : "border-l border-border",
-        expanded && "min-w-0 flex-1 shrink",
-      )}
+      className={cn("flex min-h-0 min-w-0", compact ? "w-full flex-1" : "border-l border-border", expanded && "flex-1")}
     >
       {shown && <ViewContent thread={thread} view={view} panelId={panelId} compact={compact} expanded={expanded} />}
       <ActivityBar threadId={thread.id} views={views} selected={shown ? view.id : null} panelId={panelId} />
@@ -51,7 +47,6 @@ interface ViewContentProps {
 
 function ViewContent({ thread, view, panelId, compact, expanded }: ViewContentProps) {
   const viewId = view.id
-  const maximum = useSidePanelMaxWidth()
   const content = createElement(view.component, { thread })
   const header = view.header && createElement(view.header, { thread })
   const width = useUi((state) => state.sidePanelWidth)
@@ -79,16 +74,17 @@ function ViewContent({ thread, view, panelId, compact, expanded }: ViewContentPr
       role="tabpanel"
       tabIndex={-1}
       aria-label={view.title()}
-      style={fills ? undefined : { width: width ?? undefined, maxWidth: maximum }}
-      className={cn("relative flex min-h-0 min-w-0 flex-col outline-none", fills ? "flex-1" : "w-96 max-w-[50vw]")}
+      data-workspace-pane={fills ? undefined : "side-panel"}
+      style={fills ? undefined : { width: width ?? undefined, minWidth: SIDE_PANEL_BOUNDS.min }}
+      className={cn("relative flex min-h-0 min-w-0 flex-col outline-none", fills ? "flex-1" : "w-96")}
     >
       {!fills && (
-        <ResizeHandle
+        <WorkspaceSash
           label={m.panel_resize()}
+          pane="side-panel"
           edge="left"
-          targetRef={ref}
-          bounds={{ min: SIDE_PANEL_BOUNDS.min, max: maximum }}
-          onResize={setWidth}
+          bounds={SIDE_PANEL_BOUNDS}
+          width={width}
           onReset={() => setWidth(null)}
         />
       )}

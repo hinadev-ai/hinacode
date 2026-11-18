@@ -5,6 +5,8 @@ const MIN_MESSAGE_WIDTH = 200
 const COMPOSER_PADDING_REM = 2.75
 const ACTIVITY_BAR_WIDTH_REM = 2.75
 
+export const CONTENT_MIN_WIDTH = `calc(${MIN_MESSAGE_WIDTH}px + ${COMPOSER_PADDING_REM}rem + 3px)`
+
 const rootFontSize = () => Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
 const panelSpace = (fontSize: number) =>
   (document.querySelector("main")?.getBoundingClientRect().width ?? window.innerWidth) -
@@ -19,12 +21,6 @@ export function getPanelLayout() {
   if (width >= 48) return "sidebar"
   return "compact"
 }
-
-const getSidePanelMaxWidth = () =>
-  Math.max(
-    SIDE_PANEL_BOUNDS.min,
-    Math.floor(Math.min(SIDE_PANEL_BOUNDS.max, window.innerWidth / 2, panelSpace(rootFontSize()))),
-  )
 
 const subscribe = (onChange: () => void) => {
   window.addEventListener("resize", onChange)
@@ -42,4 +38,3 @@ const subscribe = (onChange: () => void) => {
 }
 
 export const usePanelLayout = () => useSyncExternalStore(subscribe, getPanelLayout)
-export const useSidePanelMaxWidth = () => useSyncExternalStore(subscribe, getSidePanelMaxWidth)
