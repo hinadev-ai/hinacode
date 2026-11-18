@@ -1,6 +1,7 @@
 import { Context, Effect, Layer } from "effect"
 import { McpSchema, Toolkit } from "effect/ai"
 import { Devices } from "../../services/devices/Devices.ts"
+import { Slack } from "../../services/slack/Slack.ts"
 import { TinyVm } from "../../services/tinyVm/TinyVm.ts"
 import { AgentTools, agentToolsLayer } from "./agents.ts"
 import { registerArtifactTools } from "./artifacts.ts"
@@ -9,6 +10,7 @@ import { LinearTools, linearToolsLayer } from "./linear.ts"
 import { PullRequestTools, pullRequestToolsLayer } from "./pullRequests.ts"
 import { ReviewTools, reviewToolsLayer } from "./reviewChanges.ts"
 import { SecretTools, secretToolsLayer } from "./secrets.ts"
+import { SlackTools, slackToolsLayer } from "./slack.ts"
 import { TerminalTools, terminalToolsLayer } from "./terminals.ts"
 import { ThreadTools, threadToolsLayer } from "./threads.ts"
 import { VmTools, vmToolsLayer } from "./tinyVm.ts"
@@ -18,6 +20,7 @@ export const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const tinyVm = yield* TinyVm
     const devices = yield* Devices
+    const slack = yield* Slack
     yield* McpTool.register(
       Toolkit.merge(SecretTools, ThreadTools, AgentTools, ReviewTools, PullRequestTools, LinearTools, TerminalTools),
     )
@@ -29,6 +32,10 @@ export const layer = Layer.effectDiscard(
     yield* McpTool.register(
       DeviceTools,
       Context.make(McpSchema.EnabledWhen, () => devices.enabled()),
+    )
+    yield* McpTool.register(
+      SlackTools,
+      Context.make(McpSchema.EnabledWhen, () => slack.enabled()),
     )
   }),
 ).pipe(
@@ -43,6 +50,7 @@ export const layer = Layer.effectDiscard(
       terminalToolsLayer,
       vmToolsLayer,
       deviceToolsLayer,
+      slackToolsLayer,
     ),
   ),
 )
