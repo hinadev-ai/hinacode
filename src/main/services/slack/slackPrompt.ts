@@ -1,6 +1,6 @@
 import type { SlackOwner } from "../../../shared/domain.ts"
 import type { SlackMessage } from "./api.ts"
-import type { Refusal, SlackAsk } from "./slackInbound.ts"
+import { isAfter, type Refusal, type SlackAsk } from "./slackInbound.ts"
 
 export const MAX_MESSAGES = 100
 export const MAX_PEOPLE = 50
@@ -15,7 +15,11 @@ const MENTION = /<@([A-Z0-9]+)(?:\|[^>]*)?>/g
 export const select = (messages: ReadonlyArray<SlackMessage>, ask: SlackAsk) => {
   const all = messages.some((message) => message.ts === ask.ts)
     ? messages
-    : [...messages, { ts: ask.ts, user: ask.user, text: ask.text }]
+    : [
+        ...messages.filter((message) => !isAfter(message.ts, ask.ts)),
+        { ts: ask.ts, user: ask.user, text: ask.text },
+        ...messages.filter((message) => isAfter(message.ts, ask.ts)),
+      ]
   if (all.length <= MAX_MESSAGES) return { kept: all, omitted: 0 }
   const pinned = new Set(all.filter((message, index) => index === 0 || message.ts === ask.ts))
   const recent = new Set(all.filter((message) => !pinned.has(message)).slice(pinned.size - MAX_MESSAGES))
