@@ -26,6 +26,7 @@ import {
   ScheduledMessage,
   Thread,
   type ThreadStatus,
+  type UndoneTurn,
   type CheckoutTarget,
   type WorkspaceChoice,
 } from "../../shared/domain.ts"
@@ -50,7 +51,7 @@ import { type CommandError, Git } from "./Git.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
 import { Scratch } from "./Scratch.ts"
-import { diffWorkingTree, snapshotWorkingTree } from "./workingTree.ts"
+import { changedPaths, diffTrees, diffWorkingTree, snapshotWorkingTree } from "./workingTree.ts"
 import { Settings } from "./Settings.ts"
 import { Terminals } from "./Terminals.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
@@ -214,7 +215,7 @@ export class Threads extends Context.Service<
     readonly undoTurn: (
       id: string,
     ) => Effect.Effect<
-      void,
+      UndoneTurn,
       | PersistenceError
       | NotFoundError
       | FolderMissingError
@@ -222,8 +223,12 @@ export class Threads extends Context.Service<
       | PlatformError.PlatformError
       | ThreadBusyError
     >
-    readonly captureTurnBase: (cwd: string) => Effect.Effect<string | null>
+    readonly captureWorkingTree: (cwd: string) => Effect.Effect<string | null>
     readonly recordTurnBase: (input: {
+      readonly threadId: string
+      readonly tree: string | null
+    }) => Effect.Effect<void, PersistenceError>
+    readonly recordTurnEnd: (input: {
       readonly threadId: string
       readonly tree: string | null
     }) => Effect.Effect<void, PersistenceError>
@@ -298,10 +303,10 @@ const make = Effect.gen(function* () {
     `,
   })
 
-  const findTurnBase = SqlSchema.findOneOption({
+  const findTurnTrees = SqlSchema.findOne({
     Request: Schema.String,
-    Result: Schema.Struct({ turnBaseTree: Schema.NullOr(Schema.String) }),
-    execute: (id) => sql`SELECT turn_base_tree FROM thread WHERE id = ${id}`,
+    Result: Schema.Struct({ turnBaseTree: Schema.NullOr(Schema.String), turnEndTree: Schema.NullOr(Schema.String) }),
+    execute: (id) => sql`SELECT turn_base_tree, turn_end_tree FROM thread WHERE id = ${id}`,
   })
 
   const findStarted = SqlSchema.findOne({
@@ -737,53 +742,75 @@ const make = Effect.gen(function* () {
         const { worktreeId } = yield* get(id)
         return worktreeId === null ? null : yield* worktrees.changes(worktreeId)
       }
-      const base = yield* turnBase(id)
-      return base === null ? null : yield* turnChanges(base)
+      const turn = yield* lastTurn(yield* get(id))
+      return turn === null ? null : yield* turnChanges(turn)
     })
 
-  const turnBase = (id: string) =>
+  const lastTurn = (thread: Thread) =>
     Effect.gen(function* () {
-      const row = yield* findTurnBase(id).pipe(Effect.mapError(persistence("threads.turnBase")))
-      if (Option.isNone(row)) return yield* new NotFoundError({ entity: "thread", id })
-      const { turnBaseTree } = row.value
-      if (turnBaseTree === null) return null
-      const { cwd } = yield* activeWorkspace(id)
-      return { tree: turnBaseTree, cwd }
+      const { turnBaseTree: base, turnEndTree: end } = yield* findTurnTrees(thread.id).pipe(
+        Effect.mapError(persistence("threads.lastTurn")),
+      )
+      if (base === null || (end === null && !isThreadBusy(thread.status))) return null
+      const { cwd } = yield* activeWorkspace(thread.id)
+      return { base, end, cwd }
     })
 
-  const turnChanges = ({ tree, cwd }: { tree: string; cwd: string }) =>
-    diffWorkingTree(cwd, Effect.succeed(tree)).pipe(Effect.provideContext(gitContext))
+  const turnChanges = ({ base, end, cwd }: { base: string; end: string | null; cwd: string }) =>
+    (end === null ? diffWorkingTree(cwd, Effect.succeed(base)) : diffTrees(cwd, base, end)).pipe(
+      Effect.provideContext(gitContext),
+    )
 
   const undoTurn = (id: string) =>
     Effect.gen(function* () {
       const thread = yield* get(id)
       if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
-      const base = yield* turnBase(id)
-      if (base === null) return
-      const { files } = yield* turnChanges(base)
-      const root = (yield* git.run(base.cwd, ["rev-parse", "--show-toplevel"])).trim()
+      const turn = yield* lastTurn(thread)
+      if (turn === null || turn.end === null) return { undone: [], kept: [] }
+      const { base, end, cwd } = turn
+      const [{ files }, changedSinceTurn] = yield* Effect.all(
+        [
+          diffTrees(cwd, base, end),
+          snapshotWorkingTree(cwd).pipe(Effect.flatMap((current) => changedPaths(cwd, end, current))),
+        ],
+        { concurrency: "unbounded" },
+      ).pipe(Effect.provideContext(gitContext))
+      const changedSince = new Set(changedSinceTurn)
+      const undone = files.filter((file) => !changedSince.has(file.path))
+      const root = (yield* git.run(cwd, ["rev-parse", "--show-toplevel"])).trim()
       yield* Effect.forEach(
-        files.filter((file) => file.status === "added"),
+        undone.filter((file) => file.status === "added"),
         (file) => fs.remove(join(root, file.path), { force: true }),
         { discard: true },
       )
-      const restored = files.filter((file) => file.status !== "added").map((file) => file.path)
+      const restored = undone.filter((file) => file.status !== "added").map((file) => file.path)
       if (restored.length > 0) {
-        yield* git.run(root, ["restore", `--source=${base.tree}`, "--worktree", "--", ...restored], {
+        yield* git.run(root, ["restore", `--source=${base}`, "--worktree", "--", ...restored], {
           env: { GIT_LITERAL_PATHSPECS: "1" },
         })
       }
+      yield* recordTurnBase({ threadId: id, tree: null })
+      return {
+        undone: undone.map((file) => file.path),
+        kept: files.filter((file) => changedSince.has(file.path)).map((file) => file.path),
+      }
     })
 
-  const captureTurnBase = (cwd: string) =>
+  const captureWorkingTree = (cwd: string) =>
     snapshotWorkingTree(cwd).pipe(
       Effect.provideContext(gitContext),
       Effect.orElseSucceed(() => null),
     )
 
   const recordTurnBase: typeof Threads.Service.recordTurnBase = ({ threadId, tree }) =>
-    sql`UPDATE thread SET turn_base_tree = ${tree} WHERE id = ${threadId}`.pipe(
+    sql`UPDATE thread SET turn_base_tree = ${tree}, turn_end_tree = NULL WHERE id = ${threadId}`.pipe(
       Effect.mapError(persistence("threads.recordTurnBase")),
+      Effect.asVoid,
+    )
+
+  const recordTurnEnd: typeof Threads.Service.recordTurnEnd = ({ threadId, tree }) =>
+    sql`UPDATE thread SET turn_end_tree = ${tree} WHERE id = ${threadId}`.pipe(
+      Effect.mapError(persistence("threads.recordTurnEnd")),
       Effect.asVoid,
     )
 
@@ -928,8 +955,9 @@ const make = Effect.gen(function* () {
     listFiles,
     changes,
     undoTurn,
-    captureTurnBase,
+    captureWorkingTree,
     recordTurnBase,
+    recordTurnEnd,
     archive,
     archiveIf,
     unarchive,

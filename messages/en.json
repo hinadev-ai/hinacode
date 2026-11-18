@@ -2833,6 +2833,7 @@
       }
     }
   ],
+  "turn_changes_kept": "Kept {files}, which changed after the turn.",
   "transcript_scroll_to_latest": "Scroll to latest message",
   "tool_kind_skill": [
     {

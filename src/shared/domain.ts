@@ -89,6 +89,12 @@ export const Changes = Schema.Struct({
 })
 export type Changes = typeof Changes.Type
 
+export const UndoneTurn = Schema.Struct({
+  undone: Schema.Array(Schema.String),
+  kept: Schema.Array(Schema.String),
+})
+export type UndoneTurn = typeof UndoneTurn.Type
+
 export const ChangesScope = Schema.Literals(["worktree", "turn"])
 export type ChangesScope = typeof ChangesScope.Type
 
