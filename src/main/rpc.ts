@@ -61,6 +61,7 @@ import { SystemResources } from "./services/SystemResources.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
 import { SessionImports } from "./services/SessionImports.ts"
+import { Slack } from "./services/slack/Slack.ts"
 import { randomName, Threads } from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
@@ -71,6 +72,7 @@ import { Worktrees } from "./services/Worktrees.ts"
 export type AppServices =
   | AgentAccounts
   | AppConnections
+  | Slack
   | BoatMachines
   | AgentLogins
   | SessionImports
@@ -400,6 +402,10 @@ const handlers: Handlers = {
   "appConnections.start": () => AppConnections.use((connections) => connections.start),
   "appConnections.answer": (input) => AppConnections.use((connections) => connections.answer(input)),
   "appConnections.remove": ({ id }) => AppConnections.use((connections) => connections.remove(id)),
+  "slack.status": () => Slack.use((slack) => slack.status),
+  "slack.connect": (tokens) => Slack.use((slack) => slack.connect(tokens)),
+  "slack.disconnect": () => Slack.use((slack) => slack.disconnect),
+  "slack.pair": () => Slack.use((slack) => slack.pair),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),
@@ -491,8 +497,10 @@ const handlers: Handlers = {
   "secrets.respond": ({ requestId, value }) => AgentRunner.use((runner) => runner.respondSecret(requestId, value)),
 
   "secrets.has": ({ name }) => Secrets.use((secrets) => secrets.has(name)),
-  "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
-  "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
+  "secrets.set": ({ name, value }) =>
+    Secrets.use((secrets) => secrets.set(name, value)).pipe(Effect.tap(() => Slack.use((slack) => slack.sync))),
+  "secrets.clear": ({ name }) =>
+    Secrets.use((secrets) => secrets.clear(name)).pipe(Effect.tap(() => Slack.use((slack) => slack.sync))),
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
   "subagents.stop": ({ threadId, subagentId }) =>
     AgentRunner.use((runner) => runner.stopSubagent(threadId, subagentId)),

@@ -116,6 +116,8 @@ import {
   OpenPullRequest,
   PullRequestMatch,
   perProvider,
+  SlackStatus,
+  SlackTokens,
   type SettingsPatch,
 } from "./domain.ts"
 import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } from "./github.ts"
@@ -542,6 +544,10 @@ export const RpcMethods = {
   "appConnections.start": rpc(Schema.Void, AppConnectionsStatus),
   "appConnections.answer": rpc(Schema.Struct({ id: Schema.String, approve: Schema.Boolean }), AppConnectionsStatus),
   "appConnections.remove": rpc(Schema.Struct({ id: Schema.String }), AppConnectionsStatus),
+  "slack.status": rpc(Schema.Void, SlackStatus),
+  "slack.connect": rpc(SlackTokens, SlackStatus),
+  "slack.disconnect": rpc(Schema.Void, SlackStatus),
+  "slack.pair": rpc(Schema.Void, SlackStatus),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   "agents.account": rpc(
@@ -997,6 +1003,10 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "appConnections.start": "mutation",
   "appConnections.answer": "mutation",
   "appConnections.remove": "mutation",
+  "slack.status": "read",
+  "slack.connect": "mutation",
+  "slack.disconnect": "mutation",
+  "slack.pair": "mutation",
   "models.list": "read",
   "agents.account": "read",
   "agents.updates": "read",
@@ -1288,6 +1298,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("environment.status"), id: Schema.String, status: EnvironmentStatus }),
   Schema.Struct({ type: Schema.Literal("environments.changed") }),
   Schema.Struct({ type: Schema.Literal("appConnections.changed"), status: AppConnectionsStatus }),
+  Schema.Struct({ type: Schema.Literal("slack.changed") }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   Schema.Struct({ type: Schema.Literal("device.updated"), threadId: Schema.String, devices: ThreadDevices }),
   Schema.Struct({

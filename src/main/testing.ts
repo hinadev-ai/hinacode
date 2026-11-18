@@ -48,6 +48,8 @@ import * as RelayAccount from "./services/RelayAccount.ts"
 import * as Scratch from "./services/Scratch.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
+import { SLACK_API_URL } from "./services/slack/api.ts"
+import * as Slack from "./services/slack/Slack.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Settle from "./services/Settle.ts"
 import * as Terminals from "./services/Terminals.ts"
@@ -142,6 +144,7 @@ export const makeTestAppLayer = (
     PullRequestGuides.idleLayer,
     Settle.layer.pipe(Layer.provide(agents)),
     ArtifactFeedback.layer.pipe(Layer.provide(agents)),
+    Slack.layer({ apiUrl: SLACK_API_URL }).pipe(Layer.provide(Layer.mergeAll(Secrets.layer, agents))),
   )
   const app = Layer.mergeAll(
     base,

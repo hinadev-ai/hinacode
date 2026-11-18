@@ -37,6 +37,8 @@ import * as BoatMachines from "./services/boat/BoatMachines.ts"
 import * as Settle from "./services/Settle.ts"
 import * as Browser from "./services/Browser.ts"
 import * as Routines from "./services/routines/Routines.ts"
+import { SLACK_API_URL } from "./services/slack/api.ts"
+import * as Slack from "./services/slack/Slack.ts"
 import * as Scheduler from "./services/Scheduler.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
@@ -245,6 +247,7 @@ export const makeAppLayer = ({
     AppConnections.followRelayLayer,
     AppServer.layer.pipe(Layer.provide(Secrets.layer)),
     process.env["HINACODE_MEMORY_GUARD"] === "0" ? Layer.empty : memoryGuardLayer,
+    Slack.layer({ apiUrl: process.env["HINACODE_SLACK_API_URL"] ?? SLACK_API_URL }).pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(BoatMachines.layer(process.env).pipe(Layer.provide(boat))), Layer.provideMerge(agents))
   return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer, hubClaimsLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
