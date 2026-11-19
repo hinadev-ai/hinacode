@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { describe, expect, test } from "vitest"
-import { BrowserCommand, BrowserFrame, BrowserUrl } from "./browser.ts"
+import { BrowserCommand, BrowserFrame, BrowserTouch, BrowserUrl } from "./browser.ts"
 import { desktopOnlyMethods, RpcMethods } from "./contract.ts"
 import { routes } from "./routes.ts"
 
@@ -61,5 +61,19 @@ describe("remote browser boundary", () => {
       expect(desktopOnlyMethods.has(method)).toBe(false)
       expect(Schema.is(RpcMethods[method].request)({})).toBe(false)
     }
+  })
+
+  test("touch input to an embedded page stays on the desktop window", () => {
+    for (const method of ["browser.emulateTouch", "browser.touch"] as const) {
+      expect(routes[method]).toStrictEqual({ to: "client" })
+      expect(desktopOnlyMethods.has(method)).toBe(true)
+    }
+  })
+
+  test("bounds touch input to known phases and window coordinates", () => {
+    expect(Schema.is(BrowserTouch)({ type: "touchStart", x: 3000, y: 120 })).toBe(true)
+    expect(Schema.is(BrowserTouch)({ type: "touchStart", x: -1, y: 120 })).toBe(false)
+    expect(Schema.is(BrowserTouch)({ type: "touchStart", x: Infinity, y: 120 })).toBe(false)
+    expect(Schema.is(BrowserTouch)({ type: "mousePressed", x: 10, y: 10 })).toBe(false)
   })
 })

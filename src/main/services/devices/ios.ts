@@ -16,7 +16,15 @@ import type {
 import { findBinary } from "../../agents/binary.ts"
 import { consumerUsage, hidUsage, keystrokesFor } from "./hidUsage.ts"
 import { iosVersionOf } from "./iosParsers.ts"
-import { DeviceError, type DeviceLink, type DevicePlatformDriver, type Frame } from "./platform.ts"
+import {
+  DeviceError,
+  type DeviceLink,
+  type DevicePlatformDriver,
+  type Frame,
+  lastLines,
+  notBuiltYet,
+} from "./platform.ts"
+import { brewInstall, cannotSetUp, check, runSetup } from "./setup.ts"
 
 export interface SimhelperSources {
   readonly "main.swift": string
@@ -71,6 +79,20 @@ const lastLine = (text: string) => text.trim().split("\n").at(-1)?.trim() ?? ""
 
 const udidOf = (id: DeviceId) => id.slice("ios:".length)
 
+const plistValue = async (bundle: string, key: string) =>
+  (await run("plutil", ["-extract", key, "raw", "-o", "-", join(bundle, "Info.plist")])).toString().trim()
+
+const executableOf = async (udid: string, app: string) => {
+  if (!BUNDLE_ID.test(app)) throw new DeviceError(`${JSON.stringify(app)} is not a bundle id, such as com.example.app.`)
+  const container = await simctl(["get_app_container", udid, app, "app"]).then(
+    (stdout) => stdout.toString().trim(),
+    () => Promise.reject(new DeviceError(`${app} is not installed on this simulator.`)),
+  )
+  const executable = await plistValue(container, "CFBundleExecutable")
+  if (/["\\]/.test(executable)) throw new DeviceError(`${app} has an executable name HinaCode cannot filter on.`)
+  return executable
+}
+
 const isExecutable = (path: string) =>
   access(path, constants.X_OK).then(
     () => true,
@@ -83,9 +105,6 @@ const findSimslim = async (simslimPath?: string): Promise<string | undefined> =>
   }
   return findBinary("simslim")
 }
-
-export const simslimAvailable = async (simslimPath?: string): Promise<boolean> =>
-  (await findSimslim(simslimPath)) !== undefined
 
 const findAxe = async () =>
   (await isExecutable("/opt/homebrew/bin/axe")) ? "/opt/homebrew/bin/axe" : findBinary("axe")
@@ -460,14 +479,58 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
     }
   }
 
+  const support: DevicePlatformDriver["support"] = async () => {
+    if (process.platform !== "darwin") return { kind: "unsupported", reason: "notMac" }
+    return simctl(["help"]).then(
+      () => ({ kind: "ready" }),
+      () => ({ kind: "missing", tool: "xcode" }),
+    )
+  }
+
+  const runtimeInstalled = async () =>
+    decode(SimctlRuntimes, await simctl(["list", "runtimes", "-j"]), "simctl list runtimes").runtimes.some(
+      (runtime) => runtime.isAvailable && runtime.platform === "iOS",
+    )
+
+  const checks: DevicePlatformDriver["checks"] = async () => {
+    const xcode = await support()
+    if (xcode.kind === "unsupported") {
+      return [
+        check("xcode", "ios", "manual", "unsupported"),
+        check("iosRuntime", "ios", "install", "unsupported"),
+        check("simslim", "recommended", "install", "unsupported"),
+        check("axe", "recommended", "install", "unsupported"),
+      ]
+    }
+    const [runtime, simslim, axe] = await Promise.all([
+      xcode.kind === "ready" ? runtimeInstalled().catch(() => false) : false,
+      findSimslim(options.simslimPath),
+      findAxe(),
+    ])
+    return [
+      check("xcode", "ios", "manual", xcode.kind === "ready"),
+      check("iosRuntime", "ios", "install", runtime),
+      check("simslim", "recommended", "install", simslim !== undefined),
+      check("axe", "recommended", "install", axe !== undefined),
+    ]
+  }
+
+  const setup: DevicePlatformDriver["setup"] = async (requirement) => {
+    switch (requirement) {
+      case "simslim":
+        return brewInstall("mobai-app/tap/simslim")
+      case "axe":
+        return brewInstall("cameroncooke/axe/axe")
+      case "iosRuntime":
+        await runSetup("xcodebuild", ["-downloadPlatform", "iOS"])
+        return
+      default:
+        return cannotSetUp(requirement)
+    }
+  }
+
   return {
-    support: async () => {
-      if (process.platform !== "darwin") return { kind: "unsupported", reason: "notMac" }
-      return simctl(["help"]).then(
-        () => ({ kind: "ready" }),
-        () => ({ kind: "missing", tool: "xcode" }),
-      )
-    },
+    support,
 
     list: async () => {
       const simslim = await findSimslim(options.simslimPath)
@@ -491,6 +554,7 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
             return {
               id: `ios:${row.udid}`,
               platform: "ios",
+              holders: [],
               name: row.name,
               osVersion: `iOS ${osVersion}`,
               state: deviceState(row.state),
@@ -578,5 +642,20 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
         throw new DeviceError(`${JSON.stringify(app)} is not a bundle id, such as com.example.app.`)
       await simctl(["launch", udidOf(id), app])
     },
+
+    checks,
+    setup,
+    install: async (id, path) => {
+      await simctl(["install", udidOf(id), path], 300_000)
+      return plistValue(path, "CFBundleIdentifier").catch(() => null)
+    },
+
+    logs: async (id, app, sinceSeconds) => {
+      const udid = udidOf(id)
+      const filter = app === null ? [] : ["--predicate", `process == "${await executableOf(udid, app)}"`]
+      const show = ["log", "show", "--last", `${sinceSeconds}s`, "--style", "compact", ...filter]
+      return lastLines((await simctl(["spawn", udid, ...show])).toString())
+    },
+    audio: notBuiltYet,
   }
 }

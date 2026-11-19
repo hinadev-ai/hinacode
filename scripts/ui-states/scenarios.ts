@@ -67,6 +67,7 @@ const UNRESOLVED_PAGE = "http://staging.fernwood.invalid/checkout"
 
 const world: Overrides = {
   "environments.list": { result: { clouds } },
+  "devices.hubs": { result: clouds.map(({ id, name, status }) => ({ id, name, status })) },
   "agents.updates": { result: [] },
   "updates.status": { result: { current: "0.43.0", state: { type: "upToDate" } } },
   "system.resources": { result: resources(0.18, 0.52) },
@@ -115,6 +116,22 @@ const deviceScenarios: ReadonlyArray<Scenario> = [
   {
     name: "devices-list-unsupported",
     overrides: { "devices.list": { result: devicesHost.unsupported }, "device.get": { result: [] } },
+    setup: showDevices,
+  },
+  {
+    name: "devices-checklist-missing-tools",
+    overrides: { "devices.list": { result: devicesHost.missingTools }, "device.get": { result: [] } },
+    setup: showDevices,
+  },
+  {
+    name: "devices-hub-offline",
+    experimental: { devicesOn: "cloud-studio" },
+    overrides: { "devices.list": { result: devicesHost.ready }, "device.get": { result: [] } },
+    setup: showDevices,
+  },
+  {
+    name: "devices-stale-holder",
+    overrides: { "devices.list": { result: devicesHost.staleHolder }, "device.get": { result: [] } },
     setup: showDevices,
   },
   {

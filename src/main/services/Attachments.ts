@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises"
-import { basename, extname, join } from "node:path"
-import { Context, Effect, Layer, Schema } from "effect"
+import { copyFile, mkdir, readdir, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises"
+import { basename, dirname, extname, join, sep } from "node:path"
+import { Context, Effect, Layer, Schema, Semaphore } from "effect"
+import { SqlClient } from "effect/sql"
 import type { Attachment } from "../../shared/domain.ts"
 import { isInside } from "../security.ts"
 
@@ -62,6 +63,11 @@ export class Attachments extends Context.Service<
       source: AttachmentSource,
     ) => Effect.Effect<Attachment, AttachmentError | AttachmentTooLargeError>
     readonly read: (path: string) => Effect.Effect<{ readonly dataUrl: string }, AttachmentError>
+    readonly copyInto: (
+      threadId: string,
+      attachment: Attachment,
+    ) => Effect.Effect<Attachment, AttachmentError | AttachmentTooLargeError>
+    readonly prune: Effect.Effect<void, AttachmentError>
   }
 >()("hinacode/Attachments") {}
 
@@ -121,5 +127,135 @@ const attachment = (id: string, name: string, path: string, mime: string, bytes:
   bytes,
 })
 
-export const layer = (root: string) =>
-  Layer.succeed(Attachments, Attachments.of({ stage: stage(root), read: read(root) }))
+const errorCode = (cause: unknown) => (cause as NodeJS.ErrnoException).code
+
+const namesIn = (folder: string, kind: "files" | "folders") =>
+  Effect.tryPromise({ try: () => readdir(folder, { withFileTypes: true }), catch: (cause) => cause }).pipe(
+    Effect.catchIf(
+      (cause) => errorCode(cause) === "ENOENT",
+      () => Effect.succeed([]),
+    ),
+    Effect.mapError(failure(`Cannot list ${folder}`)),
+    Effect.map((entries) =>
+      entries.filter((entry) => (kind === "files" ? entry.isFile() : entry.isDirectory())).map((entry) => entry.name),
+    ),
+  )
+
+const filesIn = (folder: string) =>
+  Effect.map(namesIn(folder, "files"), (names) => names.map((name) => join(folder, name)))
+
+const asJsonText = (text: string) => JSON.stringify(text).slice(1, -1)
+
+const mentions = (text: string, path: string) => text.includes(path) || text.includes(asJsonText(path))
+
+const ARTIFACT_TEXT_EXTENSIONS = new Set([".json", ".md", ".html", ".excalidraw", ".svg", ".txt", ".js", ".css"])
+
+const artifactTextsMentioning = (artifactsRoot: string | undefined, folders: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    if (artifactsRoot === undefined) return []
+    const exists = yield* Effect.tryPromise({ try: () => stat(artifactsRoot), catch: (cause) => cause }).pipe(
+      Effect.as(true),
+      Effect.catchIf(
+        (cause) => errorCode(cause) === "ENOENT",
+        () => Effect.succeed(false),
+      ),
+      Effect.mapError(failure(`Cannot read ${artifactsRoot}`)),
+    )
+    if (!exists) return []
+    const entries = yield* Effect.tryPromise({
+      try: () => readdir(artifactsRoot, { recursive: true, withFileTypes: true }),
+      catch: failure(`Cannot list ${artifactsRoot}`),
+    })
+    const files = entries
+      .filter((entry) => entry.isFile() && ARTIFACT_TEXT_EXTENSIONS.has(extname(entry.name)))
+      .map((entry) => join(entry.parentPath, entry.name))
+    const texts = yield* Effect.forEach(
+      files,
+      (file) =>
+        Effect.tryPromise({ try: () => readFile(file, "utf8"), catch: (cause) => cause }).pipe(
+          Effect.map((text) => (folders.some((folder) => mentions(text, folder)) ? [text] : [])),
+          Effect.catchIf(
+            (cause) => errorCode(cause) === "ENOENT",
+            () => Effect.succeed([]),
+          ),
+          Effect.mapError(failure(`Cannot read ${file}`)),
+        ),
+      { concurrency: 4 },
+    )
+    return texts.flat()
+  })
+
+const removeIfEmpty = (folder: string) =>
+  Effect.tryPromise({ try: () => rmdir(folder), catch: (cause) => cause }).pipe(
+    Effect.catchIf(
+      (cause) => errorCode(cause) === "ENOTEMPTY" || errorCode(cause) === "ENOENT",
+      () => Effect.void,
+    ),
+    Effect.mapError(failure(`Cannot remove ${folder}`)),
+  )
+
+export const layer = (root: string, { artifactsRoot }: { readonly artifactsRoot?: string } = {}) =>
+  Layer.effect(
+    Attachments,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+
+      const rootPrefix = root + sep
+      const rootAsJson = asJsonText(rootPrefix)
+      const textsMentioningRoot = sql<{ readonly text: string }>`
+        SELECT parts AS text FROM message WHERE instr(parts, ${rootAsJson}) > 0 OR instr(parts, ${rootPrefix}) > 0
+        UNION ALL SELECT part FROM message_part WHERE instr(part, ${rootAsJson}) > 0 OR instr(part, ${rootPrefix}) > 0
+        UNION ALL SELECT queue FROM thread WHERE instr(queue, ${rootAsJson}) > 0 OR instr(queue, ${rootPrefix}) > 0
+        UNION ALL SELECT scheduled FROM thread
+          WHERE instr(scheduled, ${rootAsJson}) > 0 OR instr(scheduled, ${rootPrefix}) > 0
+        UNION ALL SELECT prompt FROM routine WHERE instr(prompt, ${rootAsJson}) > 0 OR instr(prompt, ${rootPrefix}) > 0
+      `.pipe(
+        Effect.map((rows) => rows.map((row) => row.text)),
+        Effect.mapError(failure("Cannot look up attachment references")),
+      )
+
+      const deleteFile = (path: string) =>
+        Effect.tryPromise({ try: () => rm(path, { force: true }), catch: failure(`Cannot delete ${path}`) })
+
+      const pruneOnce = Effect.gen(function* () {
+        const folders = yield* namesIn(root, "folders")
+        const threads = yield* sql<{ readonly id: string }>`SELECT id FROM thread`.pipe(
+          Effect.mapError(failure("Cannot list threads")),
+        )
+        const live = new Set(threads.map((thread) => safeName(thread.id)))
+        const orphans = folders.filter((folder) => !live.has(folder)).map((folder) => join(root, folder))
+        const files = (yield* Effect.forEach(orphans, filesIn)).flat()
+        if (files.length > 0) {
+          const orphanPrefixes = orphans.map((folder) => folder + sep)
+          const mentionsOrphan = (text: string) => orphanPrefixes.some((prefix) => mentions(text, prefix))
+          const texts = [
+            ...(yield* textsMentioningRoot).filter(mentionsOrphan),
+            ...(yield* artifactTextsMentioning(artifactsRoot, orphanPrefixes)),
+          ]
+          const unreferenced = files.filter((path) => !texts.some((text) => mentions(text, path)))
+          yield* Effect.forEach(unreferenced, deleteFile, { discard: true })
+        }
+        yield* Effect.forEach(orphans, removeIfEmpty, { discard: true })
+      })
+
+      const pruneLock = yield* Semaphore.make(1)
+      const prune = Semaphore.withPermit(pruneLock, pruneOnce)
+
+      yield* prune.pipe(
+        Effect.catchCause((cause) => Effect.logWarning("attachment sweep failed", cause)),
+        Effect.forkScoped,
+      )
+
+      const copyInto = (threadId: string, original: Attachment) =>
+        dirname(original.path) === join(root, safeName(threadId))
+          ? Effect.succeed(original)
+          : Effect.map(stage(root)(threadId, { path: original.path }), ({ id, path, bytes }) => ({
+              ...original,
+              id,
+              path,
+              bytes,
+            }))
+
+      return Attachments.of({ stage: stage(root), read: read(root), copyInto, prune })
+    }),
+  )

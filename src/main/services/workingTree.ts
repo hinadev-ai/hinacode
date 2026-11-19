@@ -29,10 +29,9 @@ export const snapshotWorkingTree = (cwd: string) =>
     return (yield* git.run(cwd, ["write-tree"], { env })).trim()
   }).pipe(Effect.scoped)
 
-export const diffWorkingTree = <E, R>(cwd: string, base: Effect.Effect<string, E, R>) =>
+export const diffTrees = (cwd: string, from: string, to: string) =>
   Effect.gen(function* () {
     const git = yield* Git
-    const [baseTree, tree] = yield* Effect.all([base, snapshotWorkingTree(cwd)], { concurrency: "unbounded" })
     const output = yield* git.run(cwd, [
       "-c",
       "core.quotePath=false",
@@ -43,8 +42,21 @@ export const diffWorkingTree = <E, R>(cwd: string, base: Effect.Effect<string, E
       "--src-prefix=a/",
       "--dst-prefix=b/",
       ...RAW_WITH_PATCH_ARGS,
-      baseTree,
-      tree,
+      from,
+      to,
     ])
     return parseRawWithPatch(output) satisfies Changes
+  })
+
+export const changedPaths = (cwd: string, from: string, to: string) =>
+  Effect.gen(function* () {
+    const git = yield* Git
+    const output = yield* git.run(cwd, ["diff", "--no-renames", "--name-only", "-z", from, to])
+    return output.split("\0").filter((path) => path !== "")
+  })
+
+export const diffWorkingTree = <E, R>(cwd: string, base: Effect.Effect<string, E, R>) =>
+  Effect.gen(function* () {
+    const [baseTree, tree] = yield* Effect.all([base, snapshotWorkingTree(cwd)], { concurrency: "unbounded" })
+    return yield* diffTrees(cwd, baseTree, tree)
   })

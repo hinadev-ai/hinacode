@@ -95,6 +95,7 @@ import { Messages, type ToolCallRef } from "./Messages.ts"
 import { touchesPullRequest } from "./pullRequestCommand.ts"
 import { PullRequests } from "./PullRequests.ts"
 import { Attachments, extensionForMime } from "./Attachments.ts"
+import { Environments } from "./Environments.ts"
 import { Scratch } from "./Scratch.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
@@ -363,6 +364,7 @@ const make = Effect.gen(function* () {
   const push = yield* Events
   const mcp = yield* McpCredentials
   const settings = yield* Settings
+  const environments = yield* Effect.serviceOption(Environments)
   const naming = yield* ThreadNaming
   const accounts = yield* AgentAccounts
   const projects = yield* Projects
@@ -382,6 +384,14 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => null),
     )
 
+  const deviceHubName = (hub: string | null) =>
+    hub === null || Option.isNone(environments)
+      ? Effect.succeed(hub)
+      : environments.value.list.pipe(
+          Effect.map(({ clouds }) => clouds.find((each) => each.id === hub)?.name ?? hub),
+          Effect.orElseSucceed(() => hub),
+        )
+
   const subagentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment) =>
     Effect.gen(function* () {
       const settingsValue = yield* settings.get
@@ -390,7 +400,12 @@ const make = Effect.gen(function* () {
         Record.map(providers, (provider, id) => (enabled.includes(id) ? listedModels(provider) : Effect.succeed(null))),
         { concurrency: "unbounded" },
       )
-      return agentInstructions(experimental, environment, subagentChoices(listed, settingsValue.modelPresets, enabled))
+      return agentInstructions(
+        experimental,
+        environment,
+        subagentChoices(listed, settingsValue.modelPresets, enabled),
+        yield* deviceHubName(experimental.devicesOn),
+      )
     })
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
@@ -699,6 +714,10 @@ const make = Effect.gen(function* () {
         if (dirty.size > 0 && Date.now() - persistedAt >= interval) yield* persist
       })
 
+    const recordTurnEnd = threads
+      .captureWorkingTree(cwd)
+      .pipe(Effect.flatMap((tree) => threads.recordTurnEnd({ threadId: thread.id, tree })))
+
     const perform = (effect: TurnEffect) => {
       switch (effect.type) {
         case "bind_session":
@@ -706,11 +725,14 @@ const make = Effect.gen(function* () {
         case "drop_session":
           return updateThread({ id: thread.id, providerSessionId: null })
         case "set_status":
-          return updateThread({
-            id: thread.id,
-            status: effect.status,
-            ...(effect.usageLimit !== undefined && { usageLimit: effect.usageLimit }),
-          })
+          return Effect.andThen(
+            isThreadBusy(effect.status) ? Effect.void : recordTurnEnd,
+            updateThread({
+              id: thread.id,
+              status: effect.status,
+              ...(effect.usageLimit !== undefined && { usageLimit: effect.usageLimit }),
+            }),
+          )
         case "steer_held":
           return steerHeld
       }
@@ -877,7 +899,8 @@ const make = Effect.gen(function* () {
       setTurnMessages(replaceLast(turnMessages, closed))
       yield* persist
       if (closed !== last) yield* publishTranscript({ type: "message.updated", message: closed })
-      if (isThreadBusy(state.status)) yield* updateThread({ id: thread.id, status: "idle" })
+      if (isThreadBusy(state.status))
+        yield* Effect.andThen(recordTurnEnd, updateThread({ id: thread.id, status: "idle" }))
       if (state.outcome !== "completed" || (yield* Deferred.isDone(stop))) return
       next = yield* nextQueued(thread.id)
     }).pipe(
@@ -1222,7 +1245,7 @@ const make = Effect.gen(function* () {
               })
             }
             const [tree, environment] = yield* Effect.all(
-              [threads.captureTurnBase(cwd), readEnvironment(thread, workspace)],
+              [threads.captureWorkingTree(cwd), readEnvironment(thread, workspace)],
               {
                 concurrency: "unbounded",
               },

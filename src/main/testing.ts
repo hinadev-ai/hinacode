@@ -11,6 +11,7 @@ import * as AppServer from "./apps/server.ts"
 import * as Db from "./db/client.ts"
 import { sendToWindows } from "./ipc.ts"
 import { answerAsksLayer } from "./environments/route.ts"
+import { hubClaimsLayer } from "./services/devices/hubClaims.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import * as Peers from "./remote/peers.ts"
@@ -27,6 +28,8 @@ import * as Attachments from "./services/Attachments.ts"
 import * as Browser from "./services/Browser.ts"
 import { Routines } from "./services/routines/Routines.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
+import * as Boat from "./services/boat/Boat.ts"
+import * as BoatMachines from "./services/boat/BoatMachines.ts"
 import * as Environments from "./services/Environments.ts"
 import { type Events, makeEventsLayer, type PushBroadcast, type WindowPush } from "./services/Events.ts"
 import * as Favicons from "./services/Favicons.ts"
@@ -78,7 +81,7 @@ export const makeTestAppLayer = (
     ),
     ClientSettings.layer(dirname(dbPath)),
     Messages.layer,
-    Attachments.layer(join(dirname(dbPath), "attachments")),
+    Attachments.layer(join(dirname(dbPath), "attachments"), { artifactsRoot: join(dirname(dbPath), "artifacts") }),
     Artifacts.layer(join(dirname(dbPath), "artifacts")),
     ArtifactInspector.unavailable,
     Search.layer,
@@ -122,8 +125,12 @@ export const makeTestAppLayer = (
   const environments = RelayAccount.layer({ serviceUrl: Relay.DEFAULT_RELAY_SERVICE_URL }).pipe(
     Layer.provide(Layer.mergeAll(Secrets.layer, agents)),
   )
+  const boatMachines = BoatMachines.layer({}).pipe(
+    Layer.provide(Layer.mergeAll(Boat.layer({}).pipe(Layer.provide(Secrets.layer)), agents)),
+  )
   const base = Layer.mergeAll(
     agents,
+    boatMachines,
     routinesStub,
     updatesStub,
     logins,
@@ -138,7 +145,7 @@ export const makeTestAppLayer = (
     Mcp.serverLayer.pipe(Layer.provide(base)),
     AppServer.layer.pipe(Layer.provide(Layer.mergeAll(base, Secrets.layer))),
   )
-  return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
+  return Layer.mergeAll(RemoteServer.layer, answerAsksLayer, hubClaimsLayer).pipe(
     Layer.provideMerge(app),
     Layer.provideMerge(SourceControl.layer),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),

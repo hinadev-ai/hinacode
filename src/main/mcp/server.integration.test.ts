@@ -37,6 +37,7 @@ import * as AgentAccounts from "../services/AgentAccounts.ts"
 import { AgentRunner, layer as runnerLayer } from "../services/AgentRunner.ts"
 import { ThreadNaming } from "../services/ThreadNaming.ts"
 import { Events, PushBroadcast } from "../services/Events.ts"
+import { Environments } from "../services/Environments.ts"
 import * as Git from "../services/Git.ts"
 import * as GitHub from "../services/GitHub.ts"
 import * as Messages from "../services/Messages.ts"
@@ -54,6 +55,7 @@ import { Threads, layer as threadsLayer } from "../services/Threads.ts"
 import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
 import { layer as serverLayer } from "./server.ts"
+import { readWhenIdle } from "./tools/threadViews.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
 import * as Scratch from "../services/Scratch.ts"
 import * as Search from "../services/Search.ts"
@@ -183,6 +185,7 @@ const stubs = Layer.mergeAll(
   Layer.succeed(MagpieProvider, fakeProvider("magpie")),
   Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
   Layer.succeed(PushBroadcast, { subscribe: () => Effect.void }),
+  Layer.mock(Environments, { list: Effect.succeed({ clouds: [] }), owner: () => undefined }),
   Layer.succeed(
     Peers,
     Peers.of({
@@ -277,6 +280,13 @@ const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
       ? Effect.succeed(found.value)
       : Effect.andThen(TestClock.withLive(Effect.sleep("20 millis")), until(check)),
   )
+
+const interruptTurn = (threadId: string) =>
+  Effect.gen(function* () {
+    const runner = yield* AgentRunner
+    yield* runner.interrupt(threadId)
+    yield* until(runner.isBusy(threadId).pipe(Effect.map((busy) => (busy ? Option.none() : Option.some(busy)))))
+  })
 
 const advanceUntil = <A>(step: Duration.Input, check: Effect.Effect<Option.Option<A>>) =>
   until(Effect.andThen(TestClock.adjust(step), check))
@@ -620,7 +630,7 @@ layer(testLayer)("request_secret", (it) => {
       expect(pushes.map((push) => (push.type === "thread.event" ? push.event.type : push.type))).toEqual(
         expect.arrayContaining(["secret_requested", "secret_resolved"]),
       )
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -639,7 +649,7 @@ layer(testLayer)("request_secret", (it) => {
       expect(result.isError).toBe(true)
       expect(result.text).toContain("declined")
       expect(existsSync(yield* secretPath(a, "declined.token"))).toBe(false)
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -653,7 +663,7 @@ layer(testLayer)("request_secret", (it) => {
         callAs(yield* mcp.connectionFor(a), "request_secret", { name: "late.token", description: "x" }),
       )
       yield* pendingSecretRequest(a)
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
       const result = yield* Fiber.join(call)
       expect(result.isError).toBe(true)
       expect(result.text).toContain("turn ended")
@@ -692,7 +702,7 @@ layer(testLayer)("run_agent", (it) => {
       expect(parts).toContainEqual(
         expect.objectContaining({ type: "tool_call", callId: "agent-call-1", parentCallId: subagent?.callId }),
       )
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -715,7 +725,7 @@ layer(testLayer)("run_agent", (it) => {
       expect(approvalDecisions).toStrictEqual([{ requestId: "sub-approval", decision: "allow" }])
       const shown = pushes.filter((push) => push.type === "thread.event" && push.event.type === "approval_requested")
       expect(shown).toStrictEqual([])
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
       yield* threads.update({ id: a, accessMode })
     }),
   )
@@ -746,7 +756,7 @@ layer(testLayer)("run_agent", (it) => {
       expect(result).toMatchObject({ isError: true, text: "The user stopped this agent." })
       expect((yield* runner.subagents(a)).find((subagent) => subagent.id === running.id)?.status).toBe("stopped")
       expect((yield* runner.transcript(a)).messages.at(-1)?.completedAt).toBeNull()
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -781,7 +791,7 @@ layer(testLayer)("run_agent", (it) => {
         isError: true,
         text: "No agent not-an-agent runs in this thread's turn.",
       })
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -809,7 +819,7 @@ layer(testLayer)("run_agent", (it) => {
         yield* Effect.forkChild(callAs(connection, "wait_agent", { agentId: running?.id })),
       )
       expect(finished).toMatchObject({ isError: false, text: "Looks good." })
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -844,7 +854,7 @@ layer(testLayer)("run_agent", (it) => {
       expect(yield* ask()).toMatchObject({ isError: false })
       expect(turnInputs.at(-1)).toMatchObject({ model: "openrouter/a" })
       yield* settings.set({ modelPresets: defaultSettings.modelPresets })
-      yield* runner.interrupt(a)
+      yield* interruptTurn(a)
     }),
   )
 
@@ -956,6 +966,8 @@ const childOf = (callerId: string, title: string) =>
     const caller = yield* threads.get(callerId)
     return (yield* threads.create({ projectId: caller.projectId, title, provider: "claude", model: "m" })).id
   })
+
+const assistantReply = (rendered: string) => rendered.split("## assistant").slice(1).at(-1) ?? ""
 
 const callFrom = (threadId: string, name: string, args: Record<string, unknown> = {}) =>
   Effect.gen(function* () {
@@ -1088,6 +1100,106 @@ layer(testLayer)("thread controls", (it) => {
           Effect.orDie,
         ),
       )
+    }),
+  )
+
+  it.effect("wait_for_thread returns a thread's reply when its turn ends", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const created = yield* callFrom(a, "create_thread", { title: "Worker", prompt: "Reply Shipped. after 2 minutes" })
+      const child = createdThreadId(created.text)!
+      const waited = yield* settled(yield* Effect.forkChild(callFrom(a, "wait_for_thread", { threadId: child })))
+      expect(waited.isError).toBe(false)
+      expect(waited.text).not.toContain("Still running.")
+      expect(waited.text).toContain("status: idle")
+      expect(assistantReply(waited.text)).toContain("Shipped.")
+      expect((yield* callFrom(a, "read_thread", { threadId: child })).text).toBe(waited.text)
+    }),
+  )
+
+  it.effect("wait_for_thread says a turn is still running after four minutes", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const created = yield* callFrom(a, "create_thread", { title: "Slow", prompt: "Reply Late. after 6 minutes" })
+      const child = createdThreadId(created.text)!
+      const early = yield* settled(yield* Effect.forkChild(callFrom(a, "wait_for_thread", { threadId: child })))
+      expect(early.text.startsWith("Still running.\n\n<metadata>")).toBe(true)
+      expect(early.text).toContain("status: running")
+      const late = yield* settled(yield* Effect.forkChild(callFrom(a, "wait_for_thread", { threadId: child })))
+      expect(late.text).not.toContain("Still running.")
+      expect(assistantReply(late.text)).toContain("Late.")
+    }),
+  )
+
+  it.effect("a wait holds while a queued message hands the thread from one turn to the next", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const child = yield* childOf(a, "Handing over")
+      expect((yield* threads.get(child)).status).toBe("idle")
+      let polls = 0
+      let busy = true
+      const wait = yield* Effect.forkChild(
+        readWhenIdle({
+          runner: {
+            isBusy: () =>
+              Effect.sync(() => {
+                polls += 1
+                return busy
+              }),
+          },
+          threads,
+          threadId: child,
+          limit: "4 minutes",
+          read: Effect.succeed("read"),
+        }),
+      )
+      yield* advanceUntil(
+        "1 second",
+        Effect.sync(() => Option.liftPredicate(polls, (count) => count >= 3)),
+      )
+      busy = false
+      yield* advanceUntil(
+        "1 second",
+        Effect.sync(() => Option.fromNullishOr(wait.pollUnsafe())),
+      )
+      expect(yield* Fiber.join(wait)).toBe("read")
+    }),
+  )
+
+  it.effect("wait_for_thread returns when the thread waits on the user", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const child = yield* childOf(a, "Asking child")
+      yield* runner.send(child, "Begin", [])
+      const asking = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(child), "request_secret", { name: "wait.token", description: "A token" }),
+      )
+      yield* pendingSecretRequest(child)
+      const waited = yield* settled(yield* Effect.forkChild(callFrom(a, "wait_for_thread", { threadId: child })))
+      expect(waited.text).not.toContain("Still running.")
+      expect(waited.text).toContain("status: awaiting_approval")
+      expect(waited.text).toContain("Waiting on the user for:\n- secret: wait.token")
+      yield* runner.interrupt(child)
+      yield* Fiber.join(asking)
+    }),
+  )
+
+  it.effect("wait_for_thread refuses the caller itself and a thread that is gone", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      expect(yield* callFrom(a, "wait_for_thread", { threadId: a })).toStrictEqual({
+        text: "That is this thread. Its turn ends when you stop.",
+        isError: true,
+        images: [],
+      })
+      expect(yield* callFrom(a, "wait_for_thread", { threadId: "thread-gone" })).toStrictEqual({
+        text: "Thread thread-gone no longer exists.",
+        isError: true,
+        images: [],
+      })
     }),
   )
 
@@ -1239,6 +1351,7 @@ const VM_TOOLS = [
   "vm_exec",
   "vm_stop",
   "vm_pull_file",
+  "vm_hand_over",
 ]
 
 layer(testLayer)("tiny vm tools while the toggle is off", (it) => {
@@ -1268,6 +1381,20 @@ layer(testLayer)("tiny vm tools", (it) => {
       const { a } = yield* Seeded
       yield* setTinyVm(true)
       expect(yield* toolNames(yield* mcp.connectionFor(a))).toEqual(expect.arrayContaining(VM_TOOLS))
+    }),
+  )
+
+  it.effect("a new VM keeps text the user only selects out of this machine's clipboard", () =>
+    Effect.gen(function* () {
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      const execsBefore = fake.execs.length
+      yield* vm.start(a)
+      expect(fake.execs.slice(execsBefore).map((exec) => exec.script)).toContain(
+        "vncconfig -display :0 -set SendPrimary=0",
+      )
     }),
   )
 
@@ -1577,6 +1704,78 @@ layer(testLayer)("tiny vm tools", (it) => {
       expect(result.text).toContain("handed it back")
       expect(result.images).toHaveLength(1)
       expect(fake.inputs).toStrictEqual([])
+    }),
+  )
+
+  it.effect("vm_hand_over gives the user control with the request and returns the screen on hand back", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      fake.inputs.length = 0
+      const call = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(a), "vm_hand_over", { request: "Sign in to GitHub" }),
+      )
+      yield* until(
+        Effect.map(vm.get(a), (current) =>
+          current.status === "running" && current.control === "user" && current.agentWaiting
+            ? Option.some(current)
+            : Option.none(),
+        ),
+      )
+      expect(yield* vm.get(a)).toMatchObject({ control: "user", agentWaiting: true, request: "Sign in to GitHub" })
+      expect(call.pollUnsafe()).toBeUndefined()
+
+      yield* vm.setControl(a, "agent")
+      const result = yield* Fiber.join(call)
+      expect(result.isError).toBe(false)
+      expect(result.text).toContain("handed control back")
+      expect(result.images).toHaveLength(1)
+      expect(fake.inputs).toStrictEqual([])
+
+      const taken = yield* vm.setControl(a, "user")
+      expect(taken).toMatchObject({ control: "user" })
+      expect(taken).not.toHaveProperty("request")
+    }),
+  )
+
+  it.effect("closing the last screen during a hand over keeps control with the user", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      yield* vm.start(a)
+      const owner = new EventEmitter()
+      yield* vm.openScreen(a, "stream-hand-over", owner)
+      const call = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(a), "vm_hand_over", { request: "Solve the CAPTCHA" }),
+      )
+      yield* until(
+        Effect.map(vm.get(a), (current) =>
+          current.status === "running" && current.control === "user" && current.agentWaiting
+            ? Option.some(true)
+            : Option.none(),
+        ),
+      )
+      owner.emit("destroyed")
+      yield* until(
+        Effect.sync(() =>
+          pushes.some((push) => push.type === "vm.screen.closed" && push.streamId === "stream-hand-over")
+            ? Option.some(true)
+            : Option.none(),
+        ),
+      )
+      yield* TestClock.withLive(Effect.sleep("20 millis"))
+      yield* TestClock.adjust(HAND_BACK_GRACE)
+      yield* TestClock.withLive(Effect.sleep("20 millis"))
+      expect(yield* vm.get(a)).toMatchObject({ control: "user", request: "Solve the CAPTCHA" })
+      expect(call.pollUnsafe()).toBeUndefined()
+
+      yield* vm.setControl(a, "agent")
+      expect((yield* Fiber.join(call)).isError).toBe(false)
     }),
   )
 

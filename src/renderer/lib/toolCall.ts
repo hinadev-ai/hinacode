@@ -1,7 +1,7 @@
 import { Schema } from "effect"
 import { type AgentCommand, outputBlocks } from "../../shared/agent.ts"
 import { TOOL_SUMMARY_KEYS } from "../../shared/compactTranscript.ts"
-import { Attachment, type MessagePart, createsThread, publishesArtifact, spawnsSubagent } from "../../shared/domain.ts"
+import { Attachment, type MessagePart, rendersAsCard, spawnsSubagent } from "../../shared/domain.ts"
 import { type Todo, todosInCall } from "../../shared/todos.ts"
 import { ownToolName, unwrapShell } from "../../shared/toolNames.ts"
 import { m } from "../paraglide/messages.js"
@@ -23,6 +23,7 @@ const ownToolLabels = new Map<string, () => string>([
   ["search_threads", m.tool_own_search_threads],
   ["read_thread", m.tool_own_read_thread],
   ["send_to_thread", m.tool_own_send_to_thread],
+  ["wait_for_thread", m.tool_own_wait_for_thread],
   ["stop_thread", m.tool_own_stop_thread],
   ["list_terminals", m.tool_own_list_terminals],
   ["read_terminal", m.tool_own_read_terminal],
@@ -56,6 +57,7 @@ const ownToolLabels = new Map<string, () => string>([
   ["vm_exec", m.tool_own_vm_exec],
   ["vm_stop", m.tool_own_vm_stop],
   ["vm_pull_file", m.tool_own_vm_pull_file],
+  ["vm_hand_over", m.tool_own_vm_hand_over],
   ["device_screenshot", m.tool_own_device_screenshot],
   ["device_tap", m.tool_own_device_tap],
   ["device_swipe", m.tool_own_device_swipe],
@@ -64,6 +66,8 @@ const ownToolLabels = new Map<string, () => string>([
   ["device_launch", m.tool_own_device_launch],
   ["device_open_url", m.tool_own_device_open_url],
   ["device_describe_ui", m.tool_own_device_describe_ui],
+  ["device_install", m.tool_own_device_install],
+  ["device_logs", m.tool_own_device_logs],
 ])
 
 const OWN_SUMMARY_KEYS = ["title", "url", "query"]
@@ -134,8 +138,7 @@ export type TranscriptBlock =
   | { readonly type: "tools"; readonly parts: ReadonlyArray<ActivityPart>; readonly index: number }
 
 const isFoldable = (part: MessagePart): part is ActivityPart =>
-  part.type === "reasoning" ||
-  (part.type === "tool_call" && !spawnsSubagent(part) && !publishesArtifact(part) && !createsThread(part))
+  part.type === "reasoning" || (part.type === "tool_call" && !spawnsSubagent(part) && !rendersAsCard(part))
 
 export function groupToolCalls(parts: ReadonlyArray<MessagePart>, startIndex = 0): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []

@@ -13,6 +13,7 @@ import * as AppConnections from "./apps/AppConnections.ts"
 import * as AppServer from "./apps/server.ts"
 import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
+import { hubClaimsLayer } from "./services/devices/hubClaims.ts"
 import * as Mcp from "./mcp/index.ts"
 import { memoryGuardLayer } from "./memoryGuard.ts"
 import * as RemoteAccess from "./remote/access.ts"
@@ -31,6 +32,7 @@ import * as ArtifactInspector from "./services/ArtifactInspector.ts"
 import * as Artifacts from "./services/Artifacts.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Boat from "./services/boat/Boat.ts"
+import * as BoatMachines from "./services/boat/BoatMachines.ts"
 import * as Settle from "./services/Settle.ts"
 import * as Browser from "./services/Browser.ts"
 import * as Routines from "./services/routines/Routines.ts"
@@ -63,7 +65,7 @@ import type { Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 import { makeAndroidDriver } from "./services/devices/android.ts"
 import { devicesLayer } from "./services/devices/Devices.ts"
-import { makeIosDriver, simslimAvailable } from "./services/devices/ios.ts"
+import { makeIosDriver } from "./services/devices/ios.ts"
 import { simhelperSources } from "./services/devices/simhelperSources.ts"
 import { SpanLedger, traceLayer } from "./trace.ts"
 import { STALL_MS, watchdogLayer } from "./watchdog.ts"
@@ -145,7 +147,7 @@ export const makeAppLayer = ({
   artifactInspector = ArtifactInspector.unavailable,
 }: AppOptions) => {
   const providers = agentProviders(process.env)
-  const settings = Settings.layer(userData)
+  const settings = Settings.layer(userData, Settings.defaultsFor(process.env))
   const binaries = Layer.effect(
     AgentBinaries,
     Effect.gen(function* () {
@@ -173,7 +175,7 @@ export const makeAppLayer = ({
     ),
     ClientSettings.layer(userData),
     Messages.layer,
-    Attachments.layer(join(userData, "attachments")),
+    Attachments.layer(join(userData, "attachments"), { artifactsRoot: join(userData, "artifacts") }),
     Artifacts.layer(join(userData, "artifacts")),
     artifactInspector,
     Search.layer,
@@ -206,7 +208,7 @@ export const makeAppLayer = ({
       ios: makeIosDriver({ cacheDir: join(userData, "devices"), sources: simhelperSources }),
       android: makeAndroidDriver(),
     },
-    simslimAvailable: () => simslimAvailable(),
+    uploadsDir: join(userData, "devices", "uploads"),
   })
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
@@ -237,8 +239,8 @@ export const makeAppLayer = ({
     AppConnections.followRelayLayer,
     AppServer.layer.pipe(Layer.provide(Secrets.layer)),
     process.env["HINACODE_MEMORY_GUARD"] === "0" ? Layer.empty : memoryGuardLayer,
-  ).pipe(Layer.provideMerge(agents))
-  return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer).pipe(
+  ).pipe(Layer.provideMerge(BoatMachines.layer(process.env).pipe(Layer.provide(boat))), Layer.provideMerge(agents))
+  return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer, hubClaimsLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
     Layer.provide(providers.layer.pipe(Layer.provide(Layer.mergeAll(settings, Secrets.layer, binaries)))),

@@ -1,6 +1,7 @@
 // oxlint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/interactive-supports-focus -- the WAI-ARIA tree with aria-activedescendant: focus stays on the tree, which handles the keys for every row, so rows that scroll out of the virtual list never hold focus.
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { cn } from "cn"
+import { RiDownload2Line } from "react-icons/ri"
 import {
   createElement,
   type DragEvent,
@@ -22,6 +23,7 @@ import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
 import { toastError } from "../lib/errorMessage.ts"
 import { FILE_TREE_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
+import { downloadFile } from "../lib/downloadFile.ts"
 import { callPromise, onPushEvent } from "../lib/rpc.ts"
 import { inBrowser } from "../lib/runtime.ts"
 import { m } from "../paraglide/messages.js"
@@ -128,7 +130,9 @@ interface FileExplorerProps {
 }
 
 export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
-  const canReveal = useThreadEnvironment(thread.id) === null && !inBrowser()
+  const onCloud = useThreadEnvironment(thread.id) !== null
+  const canReveal = !onCloud && !inBrowser()
+  const canDownload = onCloud && !inBrowser()
   const rootName = nameOf(root)
   const tree = useExplorer((state) => state.byRoot[root] ?? emptyTree)
   const load = useExplorer((state) => state.load)
@@ -525,6 +529,12 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
                   <CopyIcon aria-hidden />
                   {m.explorer_copy_path()}
                 </DropdownMenuItem>
+                {canDownload && selectedEntry.kind === "file" && (
+                  <DropdownMenuItem onClick={() => void downloadFile(root, selectedEntry.path)}>
+                    <RiDownload2Line aria-hidden />
+                    {m.explorer_download()}
+                  </DropdownMenuItem>
+                )}
                 {canReveal && (
                   <OpenWithSubmenu
                     path={`${root}/${selectedEntry.path}`}
@@ -555,6 +565,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
               path={tree.opened}
               onClose={closeFile}
               onShowChanges={openedEntry && hasDiff(openedEntry) ? () => showChanges(openedEntry) : undefined}
+              onDownload={canDownload ? downloadFile : undefined}
             />
           </HighlightWorkerPool>
         </>

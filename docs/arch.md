@@ -248,7 +248,7 @@ sequenceDiagram
   Note over R,AR: Stop cancels the pending send; the setup script continues
   AR->>WT: exclusive(re-read thread, check cancellation, resolve cwd)
   Note over AR,WT: Resolving the cwd and marking the thread running happen in one critical section, so a worktree removal can't delete the directory mid-start
-  AR->>G: captureTurnBase(cwd)
+  AR->>G: captureWorkingTree(cwd)
   AR->>AR: recheck Stop and guarded delivery
   AR->>DB: recordTurnBase + insert user message + open assistant message
   AR-->>R: push message.created, thread.updated(running)
@@ -296,7 +296,8 @@ sequenceDiagram
     AR->>DB: close assistant msg, insert user msg, open new assistant msg
   end
   P-->>AR: turn_completed or turn_failed
-  AR->>DB: final persist
+  AR->>G: captureWorkingTree(cwd)
+  AR->>DB: recordTurnEnd + final persist
   AR-->>R: thread.updated(idle)
   opt turn completed, not stopped, queue not empty
     AR->>AR: pick the oldest queued message, keep the busyThreads claim
@@ -531,7 +532,7 @@ erDiagram
 - Settings are JSON files in the data dir, not rows: `settings.json` holds `Settings` (the environment: models, archive, worktree root, ...), `client-settings.json` holds `ClientSettings` (this desktop: locale, appearance, notifications), and `keybindings.json` holds its keybindings as a bare `{ commandId: chord }` record. Each file holds only the keys that were set, laid over the defaults on every read, so a hand edit applies on the next read. A cloud only reads `Settings`. Migration 0027 moved the old rows into the files.
 - `app_connection` (migration `0046_app_connection`) lists the outside apps that hold an access token for the app MCP server. Only the token's hash is stored. The waiting window, the requests waiting for an answer and the authorization codes waiting to be exchanged live in memory, so a restart drops them. Registered OAuth clients have no table: a `client_id` is the client's name and redirect URIs signed with the secret `apps.clientKey`.
 - `environment` (migration `0015_environments`) lists the clouds this desktop paired with. It is unrelated to the other tables: a cloud's projects and threads stay in the cloud's database.
-- `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
+- `Threads.captureWorkingTree` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null. `recordTurnBase` also clears `turn_end_tree`, which `finish` sets from a second snapshot. The latest turn's changes are the diff between the two trees, so edits made after the turn are not the turn's. While the turn runs they diff against the live working tree. An idle thread with no end tree, such as one whose turn the app quit in the middle of, has no turn changes.
 - `project.kind` is `chats` for exactly one row per machine (a partial unique index), made at startup in `<dataDir>/chats` by `Projects.ensureChats`. Each of its threads works in `<rootPath>/<threadId>`, which `makeActiveWorkspace` derives rather than stores. `Threads` makes that folder on create and unarchive, and deletes it on archive and delete. Chats start in conversation mode, and their composer shows only the machine picker.
 - A removed worktree keeps its row, and `thread.worktree_id` keeps pointing at it so history shows where the thread ran. Always resolve the working directory through `makeActiveWorkspace` (`services/workspace.ts`), which falls back to the project root.
 
@@ -663,7 +664,7 @@ flowchart LR
     secret["request_secret"]
     create["create_thread, list_machines"]
     run["run_agent, wait_agent"]
-    control["list_threads, search_threads, read_thread,<br/>send_to_thread, stop_thread"]
+    control["list_threads, search_threads, read_thread,<br/>wait_for_thread, send_to_thread, stop_thread"]
     terms["list_terminals, read_terminal"]
   end
   review --> ws["makeActiveWorkspace → git diff"]
@@ -677,7 +678,7 @@ flowchart LR
   terms --> scrollback["Terminals.list / attach<br/>the caller's terminals only, terminalText"]
 ```
 
-`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. `read_thread` and `search_threads` also reach threads of every other project on this machine. `run_agent` runs one turn of any provider as a sub-agent of the caller's running turn and returns its last text, or its id after four minutes for `wait_agent` to pick up, because Muse gives an MCP call 300 seconds; see [the feature doc](features/2026-10-30-run-agent.md). `read_terminal` reads the 256 KB scrollback `Terminals` keeps per session and turns it into plain text; it refuses a terminal of another thread. See [the feature doc](features/2026-11-04-terminal-mentions.md). Codex gets `tool_timeout_sec = 3600` and opencode `experimental.mcp_timeout` for this server so a user has time to answer.
+`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. `read_thread` and `search_threads` also reach threads of every other project on this machine. `wait_for_thread` holds the call until a thread on this machine stops working or waits on the user, then reads it, so an agent that started threads does not sleep and poll. It gives up after four minutes for the same reason `run_agent` does. `run_agent` runs one turn of any provider as a sub-agent of the caller's running turn and returns its last text, or its id after four minutes for `wait_agent` to pick up, because Muse gives an MCP call 300 seconds; see [the feature doc](features/2026-10-30-run-agent.md). `read_terminal` reads the 256 KB scrollback `Terminals` keeps per session and turns it into plain text; it refuses a terminal of another thread. See [the feature doc](features/2026-11-04-terminal-mentions.md). Codex gets `tool_timeout_sec = 3600` and opencode `experimental.mcp_timeout` for this server so a user has time to answer.
 
 Each tool's parameters are an Effect Schema. The same schema produces the JSON Schema shown to the agent and decodes its input.
 

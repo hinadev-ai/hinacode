@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import { Clock, Context, Deferred, Effect, Fiber, FiberMap, Layer, Option, Schedule, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { type RawData, WebSocket } from "ws"
-import { methodKind, type RpcEnvelope, type RpcMethod } from "../../shared/contract.ts"
+import { methodKind, type PushEvent, type RpcEnvelope, type RpcMethod, RpcMethods } from "../../shared/contract.ts"
 import { Environment, type EnvironmentStatus, type Environments as EnvironmentList } from "../../shared/domain.ts"
 import { clientProof, newNonce, serverProof } from "../../shared/proof.ts"
 import {
@@ -40,7 +40,7 @@ import { Secrets } from "./Secrets.ts"
 export class InvalidPairingUrl extends Schema.TaggedError<InvalidPairingUrl>()("InvalidPairingUrl", {
   message: Schema.String,
 }) {}
-class EnvironmentUnreachable extends Schema.TaggedError<EnvironmentUnreachable>()("EnvironmentUnreachable", {
+export class EnvironmentUnreachable extends Schema.TaggedError<EnvironmentUnreachable>()("EnvironmentUnreachable", {
   message: Schema.String,
 }) {}
 export class EnvironmentUnauthorized extends Schema.TaggedError<EnvironmentUnauthorized>()("EnvironmentUnauthorized", {
@@ -50,6 +50,12 @@ export class EnvironmentUnauthorized extends Schema.TaggedError<EnvironmentUnaut
 export interface ForwardedCall {
   readonly method: RpcMethod
   readonly payload: unknown
+}
+
+export interface CloudHooks {
+  readonly pushed: (environmentId: string, event: PushEvent) => Effect.Effect<void>
+  readonly answered: (environmentId: string, method: RpcMethod) => Effect.Effect<void>
+  readonly offlineMutation: (environmentId: string) => Effect.Effect<void>
 }
 
 export class Environments extends Context.Service<
@@ -64,6 +70,7 @@ export class Environments extends Context.Service<
       InvalidPairingUrl | EnvironmentUnreachable | EnvironmentUnauthorized | PersistenceError
     >
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
+    readonly rename: (id: string, name: string) => Effect.Effect<void, PersistenceError>
     readonly syncRelay: (machines: ReadonlyArray<RelayMachine>) => Effect.Effect<number, PersistenceError>
     readonly reconnect: (id: string) => Effect.Effect<void>
     readonly reconnectAll: Effect.Effect<void>
@@ -71,6 +78,7 @@ export class Environments extends Context.Service<
     readonly gather: (call: ForwardedCall) => Effect.Effect<ReadonlyArray<unknown>>
     readonly owner: (entity: Entity, id: string) => string | undefined
     readonly answerAsks: (answer: (call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>>) => Effect.Effect<void>
+    readonly hook: (hooks: CloudHooks) => Effect.Effect<void>
   }
 >()("hinacode/Environments") {}
 
@@ -94,6 +102,11 @@ const unauthorized = (name: string): RpcEnvelope<never> => ({
 const incompatible = (name: string): RpcEnvelope<never> => ({
   error: { tag: "EnvironmentIncompatible", message: `${name} runs a hinacode this desktop cannot talk to` },
 })
+const versionMismatch = (name: string): RpcEnvelope<never> => ({
+  error: { tag: "EnvironmentVersionMismatch", message: name },
+})
+const fitsThisVersion = (method: RpcMethod, result: unknown) =>
+  Option.isSome(Schema.decodeUnknownOption(RpcMethods[method].response as Schema.Codec<unknown, unknown>)(result))
 const unknownEnvironment = (id: string): RpcEnvelope<never> => ({
   error: { tag: "NotFoundError", message: `No environment with id ${id}` },
 })
@@ -382,6 +395,7 @@ const make = Effect.gen(function* () {
   const clouds = new Map<string, Cloud>()
   let nextCallId = 1
   let answer: (call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>> = () => Effect.succeed(notAnswering)
+  let hooks: CloudHooks = { pushed: () => Effect.void, answered: () => Effect.void, offlineMutation: () => Effect.void }
   const now = () => clock.currentTimeMillisUnsafe()
   const nowIso = () => new Date(now()).toISOString()
 
@@ -468,7 +482,7 @@ const make = Effect.gen(function* () {
     )
   }
 
-  const session = (cloud: Cloud, token: string, url: string, plainToken: boolean) =>
+  const session = (cloud: Cloud, token: string, url: string, plainToken: boolean, viaRelay: boolean) =>
     Effect.gen(function* () {
       const { id, name } = cloud.environment
       const closed = yield* Deferred.make<number>()
@@ -491,7 +505,7 @@ const make = Effect.gen(function* () {
                 }
                 connectedAt = now()
                 cloud.protocol = null
-                learnRelay(cloud, frame.relay ?? null)
+                learnRelay(cloud, frame.relay ?? (viaRelay ? cloud.environment.relay : null))
                 const live: Live = { socket, dedupesCalls: frame.features?.includes("call-keys") ?? false }
                 cloud.live = live
                 if (frame.features?.includes("asks")) sendFrame(socket, { type: "hub" })
@@ -513,6 +527,7 @@ const make = Effect.gen(function* () {
               }
               case "event":
                 learnFromPush(owners, id, frame.event)
+                runFork(hooks.pushed(id, frame.event))
                 return runFork(windows.send(stampPush(frame.event, id)))
               case "pong":
                 return
@@ -590,7 +605,7 @@ const make = Effect.gen(function* () {
         } else {
           const direct = plan.filter((planned) => planned.route === "direct")
           const hasRelay = plan.some((planned) => planned.route === "relay")
-          const opened = session(cloud, token, won.url, won.route === "relay" || !hasRelay)
+          const opened = session(cloud, token, won.url, won.route === "relay" || !hasRelay, won.route === "relay")
           const end =
             won.route === "relay" && round === "both" && direct.length > 0
               ? yield* Effect.raceFirst(opened, directAnswers(direct).pipe(Effect.as(null)))
@@ -720,6 +735,16 @@ const make = Effect.gen(function* () {
       owners.forget(id)
     })
 
+  const rename = (id: string, name: string) =>
+    Effect.gen(function* () {
+      yield* sql`UPDATE environment SET name = ${name} WHERE id = ${id}`.pipe(
+        Effect.mapError(persistence("environments.rename")),
+      )
+      const cloud = clouds.get(id)
+      if (cloud !== undefined) cloud.environment = { ...cloud.environment, name }
+      yield* events.publish({ type: "environments.changed" })
+    })
+
   const syncRelay = (machines: ReadonlyArray<RelayMachine>) =>
     Effect.gen(function* () {
       const failed = persistence("environments.syncRelay")
@@ -754,28 +779,20 @@ const make = Effect.gen(function* () {
           changed = true
           continue
         }
-        const environment: Environment = {
-          ...existing,
-          name: existing.source === "relay" ? name : existing.name,
-          host,
-          port,
-          relay,
-        }
+        const environment: Environment = { ...existing, host, port, relay }
         const redial =
           host !== existing.host ||
           port !== existing.port ||
           relay !== existing.relay ||
           token !== Option.getOrNull(yield* secrets.get(tokenSecret(id)))
-        if (!redial && environment.name === existing.name) continue
-        yield* sql`UPDATE environment SET name = ${environment.name}, host = ${host}, port = ${port}, relay = ${relay} WHERE id = ${id}`.pipe(
+        if (!redial) continue
+        yield* sql`UPDATE environment SET host = ${host}, port = ${port}, relay = ${relay} WHERE id = ${id}`.pipe(
           Effect.andThen(secrets.set(tokenSecret(id), token)),
           sql.withTransaction,
           Effect.catchTag("SqlError", (error) => Effect.fail(failed(error))),
         )
         changed = true
-        const cloud = clouds.get(id)
-        if (redial || cloud === undefined) yield* start(environment)
-        else cloud.environment = environment
+        yield* start(environment)
       }
       yield* Effect.forEach(drop, (row) => remove(row.id), { discard: true })
       if (changed) yield* events.publish({ type: "environments.changed" })
@@ -814,8 +831,11 @@ const make = Effect.gen(function* () {
           timer: null,
         }
         cloud.outbox.set(call.id, call)
-        if (cloud.live === null) startOfflineTimer(cloud, call)
-        else send(cloud.live, call)
+        if (cloud.live !== null) send(cloud.live, call)
+        else {
+          startOfflineTimer(cloud, call)
+          if (call.key !== undefined) runFork(hooks.offlineMutation(environmentId))
+        }
         return Effect.sync(() => {
           pauseOfflineTimer(call)
           cloud.outbox.delete(call.id)
@@ -823,12 +843,14 @@ const make = Effect.gen(function* () {
       }).pipe(
         Effect.map((envelope) => {
           if ("error" in envelope) return envelope
-          learnFromAnswer(owners, environmentId, method, payload, envelope.result)
+          runFork(hooks.answered(environmentId, method))
           const result = nameMachines(
             method,
             stampEnvironment(method, envelope.result, environmentId),
             cloud.environment.name,
           )
+          if (!fitsThisVersion(method, result)) return versionMismatch(name)
+          learnFromAnswer(owners, environmentId, method, payload, envelope.result)
           cloud.remembered.set(method, { payload: JSON.stringify(payload ?? null), result })
           return { result }
         }),
@@ -861,6 +883,7 @@ const make = Effect.gen(function* () {
     list,
     add,
     remove,
+    rename,
     syncRelay,
     reconnect,
     reconnectAll,
@@ -870,6 +893,10 @@ const make = Effect.gen(function* () {
     answerAsks: (answerWith) =>
       Effect.sync(() => {
         answer = answerWith
+      }),
+    hook: (next) =>
+      Effect.sync(() => {
+        hooks = next
       }),
   })
 })

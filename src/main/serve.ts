@@ -1,3 +1,4 @@
+import { copyFile, rename, rm, stat, truncate } from "node:fs/promises"
 import { Effect, Schema } from "effect"
 import { BindHost } from "../shared/domain.ts"
 import { RemoteAccess } from "./remote/access.ts"
@@ -40,6 +41,21 @@ export const restartCommand = (process: {
     args: [process.execPath, ...process.execArgv, ...process.argv.slice(1).filter((arg) => arg !== "--rotate-token")],
     env,
   }
+}
+
+export const SERVE_LOG_MAX_BYTES = 10 * 1024 * 1024
+
+export const boundServeLog = async (path: string, maxBytes = SERVE_LOG_MAX_BYTES) => {
+  const size = await stat(path).then(
+    (stats) => stats.size,
+    () => 0,
+  )
+  if (size <= maxBytes) return
+  const pending = `${path}.1.tmp`
+  await copyFile(path, pending)
+    .then(() => rename(pending, `${path}.1`))
+    .catch(() => rm(pending, { force: true }))
+  await truncate(path, 0)
 }
 
 export const autoUpdate = (env: NodeJS.ProcessEnv): boolean =>

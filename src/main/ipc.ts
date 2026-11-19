@@ -3,11 +3,13 @@ import { Effect, type ManagedRuntime } from "effect"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope } from "../shared/contract.ts"
 import { exportArtifact } from "./artifactExport.ts"
+import { startFileDrag } from "./dragFile.ts"
 import { route } from "./environments/route.ts"
 import { askNotificationPermission, notificationPermission } from "./notificationPermission.ts"
 import type { AppServices, DesktopCalls } from "./rpc.ts"
 import { listOpeners, openWith } from "./openers.ts"
 import { externalUrl, isTrustedSender } from "./security.ts"
+import { dispatchTouch, emulateTouch } from "./webviewTouch.ts"
 
 export const bringToFront = (window: BrowserWindow) => {
   if (window.isMinimized()) window.restore()
@@ -33,6 +35,16 @@ const desktopCalls = (window: BrowserWindow | null, openPullRequestWindow: OpenP
     Effect.sync(() => {
       nativeTheme.themeSource = scheme
     }),
+  emulateTouch: (webContentsId, enabled) =>
+    window === null
+      ? Effect.void
+      : Effect.tryPromise(() => emulateTouch(window.webContents, webContentsId, enabled)).pipe(
+          Effect.catch((error) => Effect.logWarning("could not emulate touch", error)),
+        ),
+  touch: (webContentsId, touch) =>
+    window === null
+      ? Effect.void
+      : Effect.tryPromise(() => dispatchTouch(window.webContents, webContentsId, touch)).pipe(Effect.ignore),
   reveal: (path) => Effect.sync(() => shell.showItemInFolder(path)),
   openExternal: (url) => {
     const allowed = externalUrl(url)
@@ -44,6 +56,14 @@ const desktopCalls = (window: BrowserWindow | null, openPullRequestWindow: OpenP
   },
   openers: listOpeners,
   openWith,
+  dragFile: (path) =>
+    Effect.tryPromise({
+      try: async () => {
+        if (window) await startFileDrag(window.webContents, path)
+      },
+      catch: (cause) => ({ _tag: "DragFailed", message: cause instanceof Error ? cause.message : String(cause) }),
+    }),
+  downloadsFolder: app.getPath("downloads"),
   pickFolder: Effect.map(showOpenDialog(window, { properties: ["openDirectory", "createDirectory"] }), (result) =>
     result.canceled ? null : (result.filePaths[0] ?? null),
   ),

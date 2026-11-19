@@ -77,7 +77,7 @@ const isPullRequestSection = (value: string): value is PullRequestSection =>
 
 const SIDE_PANEL_WIDTH_KEY = "hinacode.sidePanelWidth"
 
-interface UiState {
+export interface UiState {
   readonly sidebarOpen: boolean
   readonly sidebarWidth: number
   readonly sidePanelOpen: boolean

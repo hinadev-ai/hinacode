@@ -467,6 +467,57 @@ describe("desktop environments", () => {
     expect(result(await invoke("remote.status", undefined, cloudId))).toMatchObject({ listening: true, connected: 1 })
   })
 
+  test("a device hub on an older release is named as a version mismatch instead of a schema error", async () => {
+    const older = await scriptedCloud("older-hub", {})
+    result(await invoke("environments.add", { name: "", pairingUrl: older.pairingUrl }))
+    await pushedEventually(statusOf("older-hub", "connected"))
+    const setDevicesOn = (devicesOn: string | null) =>
+      desktop.runPromise(
+        Settings.use((settings) =>
+          Effect.flatMap(settings.get, ({ experimental }) =>
+            settings.set({ experimental: { ...experimental, devices: true, devicesOn } }),
+          ),
+        ),
+      )
+    await setDevicesOn("older-hub")
+    try {
+      const listed = invoke("devices.list", { threadId: localThread })
+      await vi.waitFor(() => expect(older.calls.map((call) => call.method)).toContain("devices.list"))
+      const call = older.calls.find((each) => each.method === "devices.list")!
+      const shapeBeforeChecks = {
+        ios: { kind: "ready" },
+        android: { kind: "ready" },
+        simslim: true,
+        devices: [],
+        models: [],
+      }
+      older.send({ type: "result", id: call.id, envelope: { result: shapeBeforeChecks } })
+
+      expect(failure(await listed)).toStrictEqual({ tag: "EnvironmentVersionMismatch", message: "older-hub" })
+    } finally {
+      await setDevicesOn(null)
+      await invoke("environments.remove", { id: "older-hub" })
+      older.stop()
+    }
+  })
+
+  test("a machine on another release drops out of a merged list instead of breaking it", async () => {
+    const older = await scriptedCloud("older-desk", {})
+    result(await invoke("environments.add", { name: "", pairingUrl: older.pairingUrl }))
+    await pushedEventually(statusOf("older-desk", "connected"))
+    try {
+      const listed = invoke("projects.list", undefined)
+      await vi.waitFor(() => expect(older.calls.map((call) => call.method)).toContain("projects.list"))
+      const call = older.calls.find((each) => each.method === "projects.list")!
+      older.send({ type: "result", id: call.id, envelope: { result: [{ id: "old", title: "from another release" }] } })
+
+      expect(result(await listed).map((project) => project.name)).toStrictEqual(["here", "there"])
+    } finally {
+      await invoke("environments.remove", { id: "older-desk" })
+      older.stop()
+    }
+  })
+
   test("removing a cloud forgets it and its token", async () => {
     result(await invoke("environments.remove", { id: cloudId }))
     expect(result(await invoke("environments.list", undefined))).toStrictEqual({ clouds: [] })
@@ -487,6 +538,7 @@ interface ScriptedOptions {
   readonly answeredUpgrades?: number
   readonly refuse?: boolean
   readonly noChallenge?: boolean
+  readonly silentRelay?: boolean
 }
 
 const SCRIPTED_TOKEN = "token"
@@ -536,7 +588,9 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
         auths.push(frame.proof === clientProof(SCRIPTED_TOKEN, challenge, frame.nonce) ? SCRIPTED_TOKEN : "wrong proof")
       if (options.refuse || auths.at(-1) === "wrong proof") return socket.close(CLOSE_UNAUTHORIZED)
       current = socket
-      const relay = options.relay ?? (options.tls === undefined ? undefined : `127.0.0.1:${port}`)
+      const relay = options.silentRelay
+        ? undefined
+        : (options.relay ?? (options.tls === undefined ? undefined : `127.0.0.1:${port}`))
       const proof =
         "nonce" in frame
           ? serverProof(forgeProof ? "not-the-token" : SCRIPTED_TOKEN, frame.nonce, challenge)
@@ -667,24 +721,24 @@ describe("desktop environments over a flaky link", () => {
 
   test("a mutation whose answer was lost is sent again once under the same key, ahead of calls made offline", async () => {
     const scripted = await pair("flaky")
-    const update = forward("flaky", { method: "threads.update", payload: { id: "t1", title: "once" } })
+    const update = forward("flaky", { method: "projects.delete", payload: { id: "p1" } })
     await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
     scripted.socket().terminate()
     await pushedEventually(statusOf("flaky", "offline"))
-    const read = forward("flaky", { method: "settings.get", payload: undefined })
+    const read = forward("flaky", { method: "projects.list", payload: undefined })
 
     await reconnectUntil(() => expect(scripted.calls).toHaveLength(3))
-    const [first, again, settings] = scripted.calls
+    const [first, again, list] = scripted.calls
     expect(first!.key).toStrictEqual(expect.any(String))
-    expect([again, settings].map((call) => [call!.method, call!.key])).toStrictEqual([
-      ["threads.update", first!.key],
-      ["settings.get", undefined],
+    expect([again, list].map((call) => [call!.method, call!.key])).toStrictEqual([
+      ["projects.delete", first!.key],
+      ["projects.list", undefined],
     ])
 
-    scripted.send({ type: "result", id: again!.id, envelope: { result: { id: "t1", title: "once" } } })
-    scripted.send({ type: "result", id: settings!.id, envelope: { result: { textGenerationModel: "m" } } })
-    expect(await update).toStrictEqual({ result: { id: "t1", title: "once" } })
-    expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+    scripted.send({ type: "result", id: again!.id, envelope: { result: null } })
+    scripted.send({ type: "result", id: list!.id, envelope: { result: [] } })
+    expect(await update).toStrictEqual({ result: null })
+    expect(await read).toStrictEqual({ result: [] })
     expect(scripted.calls.filter((call) => call.key === first!.key)).toHaveLength(2)
     await remove("flaky")
     scripted.stop()
@@ -896,13 +950,13 @@ describe("desktop environments over a flaky link", () => {
     const scripted = await pair("asleep")
     scripted.socket().terminate()
     await pushedEventually(statusOf("asleep", "offline"))
-    const read = forward("asleep", { method: "settings.get", payload: undefined })
+    const read = forward("asleep", { method: "projects.list", payload: undefined })
 
     await clocked.runPromise(Environments.use((environments) => environments.reconnectAll))
     await vi.waitFor(() => expect(electron.pushes.filter(statusOf("asleep", "connected"))).toHaveLength(2))
     await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
-    scripted.send({ type: "result", id: scripted.calls[0]!.id, envelope: { result: { textGenerationModel: "m" } } })
-    expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+    scripted.send({ type: "result", id: scripted.calls[0]!.id, envelope: { result: [] } })
+    expect(await read).toStrictEqual({ result: [] })
     await remove("asleep")
     scripted.stop()
   })
@@ -972,14 +1026,59 @@ describe("desktop environments over a flaky link", () => {
       expect(hung.held.length).toBeGreaterThan(0)
       await vi.waitFor(() => expect(hung.held.every((socket) => socket.destroyed)).toBe(true))
 
-      const read = forward("hung-direct", { method: "settings.get", payload: undefined })
+      const read = forward("hung-direct", { method: "projects.list", payload: undefined })
       await vi.waitFor(() => expect(relay.calls).toHaveLength(1))
-      relay.send({ type: "result", id: relay.calls[0]!.id, envelope: { result: { textGenerationModel: "m" } } })
-      expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+      relay.send({ type: "result", id: relay.calls[0]!.id, envelope: { result: [] } })
+      expect(await read).toStrictEqual({ result: [] })
     } finally {
       await remove("hung-direct")
       relay.stop()
       hung.stop()
+    }
+  })
+
+  test("a ready that names no relay keeps the relay it arrived through", async () => {
+    const relay = await scriptedCloud("quiet-relay", { tls, silentRelay: true })
+    await pairThenLoseDirect("quiet-relay", relay.relay)
+    try {
+      await connectedTimes("quiet-relay", 2)
+      expect(relay.auths).toStrictEqual(["token"])
+      expect(await listed("quiet-relay")).toMatchObject({ relay: relay.relay })
+    } finally {
+      await remove("quiet-relay")
+      relay.stop()
+    }
+  })
+
+  test("hooks hear a cloud's pushes, and mutations made while it is offline", async () => {
+    const pushed: Array<string> = []
+    const answered: Array<string> = []
+    const offline: Array<string> = []
+    await clocked.runPromise(
+      Environments.use((environments) =>
+        environments.hook({
+          pushed: (id, event) => Effect.sync(() => void pushed.push(`${id} ${event.type}`)),
+          answered: (id, method) => Effect.sync(() => void answered.push(`${id} ${method}`)),
+          offlineMutation: (id) => Effect.sync(() => void offline.push(id)),
+        }),
+      ),
+    )
+    const scripted = await pair("hooked")
+    try {
+      scripted.send({ type: "event", event: { type: "thread.removed", id: "t1" } })
+      await vi.waitFor(() => expect(pushed).toStrictEqual(["hooked thread.removed"]))
+      const settle = forward("hooked", { method: "threads.settle", payload: { threadId: "t1" } })
+      await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
+      scripted.send({ type: "result", id: scripted.calls[0]!.id, envelope: { result: { id: "t1" } } })
+      await settle
+      expect(answered).toStrictEqual(["hooked threads.settle"])
+      scripted.stop()
+      await pushedEventually(statusOf("hooked", "offline"))
+      void forward("hooked", { method: "settings.get", payload: undefined })
+      void forward("hooked", { method: "threads.update", payload: { id: "t1", title: "later" } })
+      await vi.waitFor(() => expect(offline).toStrictEqual(["hooked"]))
+    } finally {
+      await remove("hooked")
     }
   })
 
@@ -998,10 +1097,10 @@ describe("desktop environments over a flaky link", () => {
       await vi.waitFor(() => expect(direct.auths).toStrictEqual(["token"]))
       expect(direct.connections()).toBe(3)
       await vi.waitFor(() => expect(relaySession.readyState).toBe(WebSocket.CLOSED))
-      const read = forward("to-direct", { method: "settings.get", payload: undefined })
+      const read = forward("to-direct", { method: "projects.list", payload: undefined })
       await vi.waitFor(() => expect(direct.calls).toHaveLength(1))
-      direct.send({ type: "result", id: direct.calls[0]!.id, envelope: { result: { textGenerationModel: "m" } } })
-      expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+      direct.send({ type: "result", id: direct.calls[0]!.id, envelope: { result: [] } })
+      expect(await read).toStrictEqual({ result: [] })
       expect(relay.calls).toStrictEqual([])
     } finally {
       await remove("to-direct")
@@ -1228,6 +1327,20 @@ describe("desktop environments from the relay", () => {
     ])
     expect(await tokenOf("home-server")).toBe("token-home-server")
     expect(electron.pushes.filter((event) => event.type === "environments.changed").length).toBeGreaterThan(changes)
+  })
+
+  test("keeps the name the user gave a relay machine when the relay renames it", async () => {
+    const changes = electron.pushes.filter((event) => event.type === "environments.changed").length
+
+    await desktop.runPromise(Environments.use((environments) => environments.rename("home-server", "Studio")))
+    expect(electron.pushes.filter((event) => event.type === "environments.changed").length).toBeGreaterThan(changes)
+    await syncRelay([{ ...machine("home-server", { token: "rotated" }), name: "home-server.local" }])
+
+    expect((await listedClouds()).find((entry) => entry.id === "home-server")).toMatchObject({
+      name: "Studio",
+      source: "relay",
+    })
+    expect(await tokenOf("home-server")).toBe("rotated")
   })
 
   test("refreshes a paired machine's address and token, and keeps its name and source", async () => {

@@ -17,6 +17,7 @@ import { artifactFeedbackPrompt, feedbackTargets } from "../../shared/artifactFe
 import type { Attachment, Thread } from "../../shared/domain.ts"
 import { AgentRunner } from "./AgentRunner.ts"
 import { Artifacts } from "./Artifacts.ts"
+import { Attachments } from "./Attachments.ts"
 import { Events } from "./Events.ts"
 import { NotFoundError } from "./errors.ts"
 import { Messages } from "./Messages.ts"
@@ -99,6 +100,7 @@ const make = Effect.gen(function* () {
   const runner = yield* AgentRunner
   const threads = yield* Threads
   const messages = yield* Messages
+  const attachmentFiles = yield* Attachments
   const events = yield* Events
 
   const existing = (id: string) =>
@@ -131,10 +133,11 @@ const make = Effect.gen(function* () {
     const when = Effect.map(handedOver(threadId, messageId), (done) => !done)
     return threads.get(threadId).pipe(
       Effect.flatMap(reopenArchived),
-      Effect.andThen(
+      Effect.andThen(Effect.forEach(attachments, (attachment) => attachmentFiles.copyInto(threadId, attachment))),
+      Effect.flatMap((owned) =>
         runner
-          .steerWhen({ threadId, text: prompt, attachments, messageId, when })
-          .pipe(Effect.catchTag("AgentError", () => runner.queue(threadId, prompt, attachments, { messageId, when }))),
+          .steerWhen({ threadId, text: prompt, attachments: owned, messageId, when })
+          .pipe(Effect.catchTag("AgentError", () => runner.queue(threadId, prompt, owned, { messageId, when }))),
       ),
       Effect.as(true),
       Effect.catchTag("NotFoundError", (error) =>

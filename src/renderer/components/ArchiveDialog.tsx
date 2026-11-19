@@ -32,7 +32,7 @@ interface ArchiveDialogProps {
 export function ArchiveDialog({ thread, worktree, open, onOpenChange, onArchived }: ArchiveDialogProps) {
   const [error, archive, isPending] = useActionState(async () => {
     try {
-      onArchived(await callPromise("threads.archive", { threadId: thread.id }))
+      onArchived(await callPromise("threads.archive", { threadId: thread.id, discardChanges: true }))
     } catch (cause) {
       return errorMessage(cause)
     }

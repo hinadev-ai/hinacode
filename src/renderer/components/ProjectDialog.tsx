@@ -228,6 +228,7 @@ function ProjectForm({ project, initialEnvironment, source: initial, onSaved }: 
             )}
           </div>
           {repository && <RepositoryNotice repository={repository} />}
+          {!project && !repository && <FieldDescription>{m.project_root_create_hint()}</FieldDescription>}
         </Field>
         {repository && (
           <CloneTarget

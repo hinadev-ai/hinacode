@@ -12,6 +12,7 @@ import { threadCommands } from "./commands.ts"
 import { CliFailure, EXIT } from "./exit.ts"
 import { RpcError } from "./client.ts"
 import { cloudCommands } from "./serve.ts"
+import { service } from "./service.ts"
 import { DataDir } from "./session.ts"
 
 const { version } = packageJson
@@ -20,7 +21,7 @@ const hinacode = Command.make("hinacode").pipe(
   Command.withDescription(
     "Drive the agents HinaCode runs on every machine you reach, from scripts and other programs. Every command prints one JSON document on stdout, except watch, which prints one JSON line per event.",
   ),
-  Command.withSubcommands([run, ...threadCommands, inbox, watch, routines, ...cloudCommands]),
+  Command.withSubcommands([run, ...threadCommands, inbox, watch, routines, ...cloudCommands, service]),
   Command.withGlobalFlags([DataDir]),
 )
 

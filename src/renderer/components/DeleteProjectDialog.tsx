@@ -88,7 +88,9 @@ export function DeleteProjectDialog({ project, open, onOpenChange, focusAfterDel
       <AlertDialogContent finalFocus={() => (state.deleted ? focusAfterDelete.current : true)}>
         <AlertDialogHeader>
           <AlertDialogTitle>{m.project_delete_title({ project: project.name })}</AlertDialogTitle>
-          <AlertDialogDescription>{m.project_delete_body({ count: threads.length })}</AlertDialogDescription>
+          <AlertDialogDescription>
+            {threads.length === 0 ? m.project_delete_body_empty() : m.project_delete_body({ count: threads.length })}
+          </AlertDialogDescription>
           {worktrees.length > 0 && (
             <AlertDialogDescription>{m.project_delete_worktrees({ count: worktrees.length })}</AlertDialogDescription>
           )}

@@ -4,19 +4,22 @@ import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
 import {
   type Device,
+  type DeviceHolder,
   type DeviceHost,
   type DevicePlatform,
-  type PlatformSupport,
+  type Requirement,
   type SimulatorModel,
   threadDeviceId,
 } from "../../../../shared/device.ts"
 import type { Thread } from "../../../../shared/domain.ts"
 import { errorMessage } from "../../../lib/errorMessage.ts"
+import { formatRelativeTime } from "../../../lib/relativeTime.ts"
 import { callPromise, deviceHostAtom, threadDevicesAtom } from "../../../lib/rpc.ts"
+import { useNow } from "../../../lib/useNow.ts"
 import { m } from "../../../paraglide/messages.js"
 import { getLocale } from "../../../paraglide/runtime.js"
 import { useDeviceTabs } from "../../../stores/deviceTabs.ts"
-import { CopyButton } from "../../CopyButton.tsx"
+import { useLocale } from "../../../stores/locale.ts"
 import { Badge } from "../../ui/badge.tsx"
 import { Button } from "../../ui/button.tsx"
 import {
@@ -30,9 +33,11 @@ import {
 import { SkeletonList } from "../../ui/skeleton.tsx"
 import { IconAction, useVmAction } from "../TinyVmView.tsx"
 import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
+import { DeviceChecklist } from "./DeviceChecklist.tsx"
+import { lastValue, useDeviceHub } from "./deviceHub.ts"
 import { ChevronDownIcon, PlusIcon, RefreshIcon, StopCircleIcon, TrashIcon } from "@hinacode/icons"
 
-const SIMSLIM_INSTALL = "brew install mobai-app/tap/simslim"
+const STALE_HOLDER_MS = 2 * 60 * 1000
 
 const stateOrder: Record<Device["state"], number> = { booted: 0, booting: 1, shutdown: 2 }
 
@@ -80,11 +85,40 @@ export function DeviceList({ thread }: { thread: Thread }) {
       if (deviceId && useDeviceTabs.getState().selected[thread.id] === "new") select(deviceId)
     })
   }
+  const setUp = async (requirement: Requirement) => {
+    await callPromise("devices.setup", { threadId: thread.id, requirement })
+    refresh()
+  }
+  const release = (holder: DeviceHolder) =>
+    run(async () => {
+      await callPromise("devices.release", { threadId: thread.id, clientId: holder.clientId })
+      refresh()
+    })
+  const hubOffline = useDeviceHub(thread.id)?.offline === true
+  const lastHost = lastValue(host)
+  const sections = (value: DeviceHost) =>
+    (["ios", "android"] as const).map((platform) => (
+      <PlatformSection
+        key={platform}
+        platform={platform}
+        host={value}
+        threadId={thread.id}
+        attached={attached}
+        pending={pending}
+        rechecking={host.waiting}
+        onAttach={attach}
+        onShutdown={shutdown}
+        onDelete={setDeleting}
+        onRelease={release}
+        onSetup={setUp}
+        onRecheck={refresh}
+      />
+    ))
 
   return (
     <div className="flex min-h-0 flex-1 scrollbar-gutter-stable flex-col overflow-y-auto">
       <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        {iosReady && loaded.models.length > 0 && (
+        {!hubOffline && iosReady && loaded.models.length > 0 && (
           <NewSimulatorMenu models={loaded.models} disabled={pending} onCreate={create} />
         )}
         <div className="flex-1" />
@@ -95,42 +129,20 @@ export function DeviceList({ thread }: { thread: Thread }) {
           {error}
         </p>
       )}
-      {loaded && iosReady && !loaded.simslim && <SimslimNote />}
-      {AsyncResult.builder(host)
-        .onInitial(() => <SkeletonList label={m.devices_loading()} rows={3} rowClassName="h-10" className="p-3" />)
-        .onSuccess((value) => (
-          <>
-            <PlatformSection
-              platform="ios"
-              host={value}
-              threadId={thread.id}
-              attached={attached}
-              pending={pending}
-              onAttach={attach}
-              onShutdown={shutdown}
-              onDelete={setDeleting}
-            />
-            <PlatformSection
-              platform="android"
-              host={value}
-              threadId={thread.id}
-              attached={attached}
-              pending={pending}
-              onAttach={attach}
-              onShutdown={shutdown}
-              onDelete={setDeleting}
-            />
-          </>
-        ))
-        .onError((cause) => (
-          <div role="alert" className="flex flex-col items-start gap-2 p-3">
-            <p className="text-xs text-destructive">{m.devices_list_failed({ message: errorMessage(cause) })}</p>
-            <Button variant="outline" size="xs" disabled={host.waiting} onClick={refresh}>
-              {m.common_retry()}
-            </Button>
-          </div>
-        ))
-        .orElse(() => null)}
+      {hubOffline
+        ? lastHost && sections(lastHost)
+        : AsyncResult.builder(host)
+            .onInitial(() => <SkeletonList label={m.devices_loading()} rows={3} rowClassName="h-10" className="p-3" />)
+            .onSuccess(sections)
+            .onError((cause) => (
+              <div role="alert" className="flex flex-col items-start gap-2 p-3">
+                <p className="text-xs text-destructive">{m.devices_list_failed({ message: errorMessage(cause) })}</p>
+                <Button variant="outline" size="xs" disabled={host.waiting} onClick={refresh}>
+                  {m.common_retry()}
+                </Button>
+              </div>
+            ))
+            .orElse(() => null)}
       <DeleteDeviceDialog
         device={
           deleting && { name: deleting.name, platform: deleting.platform, owned: deleting.ownerThreadId === thread.id }
@@ -185,38 +197,19 @@ function NewSimulatorMenu({
   )
 }
 
-function SimslimNote() {
-  return (
-    <div className="flex flex-col gap-1 border-b border-border px-3 py-2 text-xs text-muted-foreground">
-      <p>{m.devices_simslim_note()}</p>
-      <div className="flex items-center gap-1">
-        <code className="min-w-0 truncate font-mono text-foreground">{SIMSLIM_INSTALL}</code>
-        <CopyButton value={SIMSLIM_INSTALL} label={m.devices_simslim_copy()} />
-      </div>
-    </div>
-  )
-}
-
-const supportMessage = (support: PlatformSupport) => {
-  switch (support.kind) {
-    case "ready":
-      return null
-    case "unsupported":
-      return m.devices_ios_not_mac()
-    case "missing":
-      return support.tool === "xcode" ? m.devices_missing_xcode() : m.devices_missing_android_sdk()
-  }
-}
-
 interface PlatformSectionProps {
   readonly platform: DevicePlatform
   readonly host: DeviceHost
   readonly threadId: string
   readonly attached: ReadonlySet<string>
   readonly pending: boolean
+  readonly rechecking: boolean
   readonly onAttach: (device: Device) => void
   readonly onShutdown: (device: Device) => void
   readonly onDelete: (device: Device) => void
+  readonly onRelease: (holder: DeviceHolder) => void
+  readonly onSetup: (requirement: Requirement) => Promise<void>
+  readonly onRecheck: () => void
 }
 
 function PlatformSection({
@@ -225,12 +218,15 @@ function PlatformSection({
   threadId,
   attached,
   pending,
+  rechecking,
   onAttach,
   onShutdown,
   onDelete,
+  onRelease,
+  onSetup,
+  onRecheck,
 }: PlatformSectionProps) {
-  const support = host[platform]
-  const unavailable = supportMessage(support)
+  const listable = host[platform].kind === "ready"
   const devices = host.devices.filter((device) => device.platform === platform).toSorted(byState)
   const running = devices.filter((device) => device.state !== "shutdown")
   const shutdown = devices.filter((device) => device.state === "shutdown")
@@ -243,9 +239,14 @@ function PlatformSection({
       <h3 id={titleId} className="px-3 py-1 text-xs font-medium text-muted-foreground">
         {platform === "ios" ? m.devices_ios() : m.devices_android()}
       </h3>
-      {unavailable ? (
-        <p className="px-3 py-1 text-xs text-pretty">{unavailable}</p>
-      ) : devices.length === 0 ? (
+      <DeviceChecklist
+        checks={host.checks}
+        platform={platform}
+        rechecking={rechecking}
+        onSetup={onSetup}
+        onRecheck={onRecheck}
+      />
+      {!listable ? null : devices.length === 0 ? (
         <p className="px-3 py-1 text-xs text-pretty text-muted-foreground">
           {platform === "ios" ? m.devices_ios_empty() : m.devices_android_empty()}
         </p>
@@ -262,6 +263,7 @@ function PlatformSection({
                 onAttach={() => onAttach(device)}
                 onShutdown={() => onShutdown(device)}
                 onDelete={() => onDelete(device)}
+                onRelease={onRelease}
               />
             ))}
           </ul>
@@ -296,40 +298,79 @@ interface DeviceRowProps {
   readonly onAttach: () => void
   readonly onShutdown: () => void
   readonly onDelete: () => void
+  readonly onRelease: (holder: DeviceHolder) => void
 }
 
-function DeviceRow({ device, threadId, attached, pending, onAttach, onShutdown, onDelete }: DeviceRowProps) {
+function DeviceRow({ device, threadId, attached, pending, onAttach, onShutdown, onDelete, onRelease }: DeviceRowProps) {
   const anotherThreads = device.ownerThreadId !== null && device.ownerThreadId !== threadId
   return (
-    <li className="flex items-center gap-3 px-3 py-1.5">
-      <DeviceSummary device={device} threadId={threadId} />
-      <Button
-        variant="outline"
-        size="xs"
-        disabled={pending || anotherThreads}
-        title={anotherThreads ? m.devices_owned_elsewhere() : undefined}
-        aria-label={
-          attached ? m.devices_show_label({ name: device.name }) : m.devices_attach_label({ name: device.name })
-        }
-        onClick={onAttach}
-      >
-        {attached ? m.devices_show() : m.devices_attach()}
-      </Button>
-      {device.state !== "shutdown" && (
+    <li className="flex flex-col gap-1 px-3 py-1.5">
+      <div className="flex items-center gap-3">
+        <DeviceSummary device={device} threadId={threadId} />
+        <Button
+          variant="outline"
+          size="xs"
+          disabled={pending || anotherThreads}
+          title={anotherThreads ? m.devices_owned_elsewhere() : undefined}
+          aria-label={
+            attached ? m.devices_show_label({ name: device.name }) : m.devices_attach_label({ name: device.name })
+          }
+          onClick={onAttach}
+        >
+          {attached ? m.devices_show() : m.devices_attach()}
+        </Button>
+        {device.state !== "shutdown" && (
+          <IconAction
+            icon={StopCircleIcon}
+            label={m.devices_shutdown_label({ name: device.name })}
+            onClick={onShutdown}
+            disabled={pending || anotherThreads}
+          />
+        )}
         <IconAction
-          icon={StopCircleIcon}
-          label={m.devices_shutdown_label({ name: device.name })}
-          onClick={onShutdown}
+          icon={TrashIcon}
+          label={m.devices_delete_tab({ name: device.name })}
+          onClick={onDelete}
           disabled={pending || anotherThreads}
         />
-      )}
-      <IconAction
-        icon={TrashIcon}
-        label={m.devices_delete_tab({ name: device.name })}
-        onClick={onDelete}
-        disabled={pending || anotherThreads}
-      />
+      </div>
+      {device.holders.map((holder) => (
+        <HolderLine key={holder.threadId} holder={holder} pending={pending} onRelease={() => onRelease(holder)} />
+      ))}
     </li>
+  )
+}
+
+function HolderLine({ holder, pending, onRelease }: { holder: DeviceHolder; pending: boolean; onRelease: () => void }) {
+  const now = useNow()
+  const locale = useLocale((state) => state.locale)
+  const stale = now - holder.seenAt > STALE_HOLDER_MS
+  const inUse = holder.threadTitle
+    ? m.devices_in_use_by({ client: holder.client, thread: holder.threadTitle })
+    : m.devices_in_use_by_client({ client: holder.client })
+  return (
+    <div className="flex min-w-0 flex-col text-xs text-muted-foreground">
+      <span className="truncate" title={inUse}>
+        {inUse}
+      </span>
+      {stale && (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate">
+            {m.devices_last_seen({ time: formatRelativeTime(new Date(holder.seenAt).toISOString(), now, locale) })}
+          </span>
+          <Button
+            variant="outline"
+            size="xs"
+            className="shrink-0"
+            disabled={pending}
+            aria-label={m.devices_release_label({ client: holder.client })}
+            onClick={onRelease}
+          >
+            {m.devices_release()}
+          </Button>
+        </div>
+      )}
+    </div>
   )
 }
 
