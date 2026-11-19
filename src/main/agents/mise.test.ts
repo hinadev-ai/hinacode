@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { Effect } from "effect"
 import { afterEach, describe, expect, it } from "vitest"
 import { miseOwnership } from "./mise.ts"
@@ -16,9 +16,9 @@ const executable = (path: string, body: string) => {
 const fakeMise = ({ requested = "latest", latest = "2.1.328" } = {}) => {
   const root = mkdtempSync(join(tmpdir(), "kk-mise-"))
   const bin = join(root, "bin")
-  const versionDir = join(root, "installs", "claude", "2.1.327")
-  const latestLink = join(root, "installs", "claude", "latest")
-  const wrappers = join(root, "command-wrappers", "bin")
+  const versionDir = join(root, "mise", "installs", "claude", "2.1.327")
+  const latestLink = join(root, "mise", "installs", "claude", "latest")
+  const wrappers = join(root, "mise", "command-wrappers", "bin")
   for (const dir of [bin, versionDir, wrappers]) mkdirSync(dir, { recursive: true })
   symlinkSync(versionDir, latestLink)
   writeFileSync(join(root, "version"), "2.1.327")
@@ -77,6 +77,37 @@ describe.skipIf(process.platform === "win32")("mise", () => {
     executable(script, 'mise use -g claude >/dev/null || exit 1\nexec mise x "claude" -- claude "$@"')
 
     expect((await ownership(script)).kind).toBe("upgradable")
+  })
+
+  it("follows a launcher that runs `mise x -- claude`, and leaves one that pins a version alone", async () => {
+    const mise = fakeMise()
+    const versionless = join(mise.root, "versionless", "claude")
+    const pinned = join(mise.root, "pinned", "claude")
+    mkdirSync(dirname(versionless))
+    mkdirSync(dirname(pinned))
+    executable(versionless, 'exec mise x -- claude "$@"')
+    executable(pinned, 'exec mise x claude@2.1.327 -- claude "$@"')
+
+    expect((await ownership(versionless)).kind).toBe("upgradable")
+    expect((await ownership(pinned)).kind).toBe("manual")
+  })
+
+  it("follows a symlink through the latest link, and not one into a version's directory", async () => {
+    const mise = fakeMise()
+    const throughLatest = join(mise.root, "through-latest")
+    const intoVersion = join(mise.root, "into-version")
+    symlinkSync(mise.latestLink, throughLatest)
+    symlinkSync(mise.versionDir, intoVersion)
+
+    expect((await ownership(throughLatest)).kind).toBe("upgradable")
+    expect((await ownership(intoVersion)).kind).toBe("manual")
+  })
+
+  it("never hands a binary under mise's installs to the CLI's own updater when mise cannot list it", async () => {
+    const mise = fakeMise()
+    writeFileSync(join(mise.root, "ls.json"), "not json")
+
+    expect((await ownership(mise.latestLink)).kind).toBe("manual")
   })
 
   it("leaves a pinned tool and a path into one version's directory to the developer", async () => {

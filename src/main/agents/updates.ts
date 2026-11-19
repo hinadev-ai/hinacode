@@ -33,7 +33,13 @@ const installedVersion = (provider: UpdatableProviderId) =>
   Effect.gen(function* () {
     const path = yield* installedBinary(provider, provider)
     const { stdout } = yield* Effect.tryPromise({
-      try: () => execFileAsync(path, ["--version"], { encoding: "utf8", timeout: 10_000, killSignal: "SIGKILL" }),
+      try: () =>
+        execFileAsync(path, ["--version"], {
+          cwd: homedir(),
+          encoding: "utf8",
+          timeout: 10_000,
+          killSignal: "SIGKILL",
+        }),
       catch: () => new AgentError({ provider, message: `Could not read the version of ${path}` }),
     })
     const version = parseVersion(stdout)
