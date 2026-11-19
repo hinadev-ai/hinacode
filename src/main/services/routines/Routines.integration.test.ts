@@ -12,6 +12,7 @@ import type { AgentEvent } from "../../../shared/agent.ts"
 import type { PushEvent } from "../../../shared/contract.ts"
 import { ClaudeProvider } from "../../agents/claude/index.ts"
 import { CodexProvider } from "../../agents/codex/index.ts"
+import { AntigravityProvider } from "../../agents/antigravity/index.ts"
 import { MagpieProvider } from "../../agents/magpie/index.ts"
 import { MuseProvider } from "../../agents/muse/index.ts"
 import { OpencodeProvider } from "../../agents/opencode/index.ts"
@@ -131,6 +132,7 @@ const makeLayer = ({ pushes, jobs }: Harness, port: number) => {
         Layer.succeed(MuseProvider, provider("muse")),
         Layer.succeed(OpencodeProvider, provider("opencode")),
         Layer.succeed(MagpieProvider, provider("magpie")),
+        Layer.succeed(AntigravityProvider, provider("antigravity")),
       ).pipe(
         Layer.provideMerge(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
       ),

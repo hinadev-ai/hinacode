@@ -200,6 +200,7 @@
   --color-provider-muse: var(--provider-muse);
   --color-provider-opencode: var(--provider-opencode);
   --color-provider-magpie: var(--provider-magpie);
+  --color-provider-antigravity: var(--provider-antigravity);
   --color-provider-deepseek: var(--provider-deepseek);
   --color-provider-kimi: var(--provider-kimi);
   --color-provider-glm: var(--provider-glm);
@@ -438,6 +439,7 @@
   --provider-grok: var(--foreground);
   --provider-opencode: var(--foreground);
   --provider-magpie: var(--foreground);
+  --provider-antigravity: var(--provider-gemini);
 }
 
 /*

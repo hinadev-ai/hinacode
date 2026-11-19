@@ -7,6 +7,7 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { mockScenarios, usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
+import { AntigravityProvider } from "./agents/antigravity/index.ts"
 import { MagpieProvider } from "./agents/magpie/index.ts"
 import { OpencodeProvider } from "./agents/opencode/index.ts"
 import * as AppConnections from "./apps/AppConnections.ts"
@@ -114,6 +115,10 @@ export const agentProviders = (env: NodeJS.ProcessEnv) => {
           MagpieProvider,
           ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "magpie" })),
         ),
+        Layer.effect(
+          AntigravityProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "antigravity" })),
+        ),
       ).pipe(Layer.provideMerge(everyAgent)),
     }
   const claude = simulatedClaude("HINACODE_MOCK_CLAUDE", env)
@@ -126,6 +131,7 @@ export const agentProviders = (env: NodeJS.ProcessEnv) => {
       MuseProvider.layer,
       OpencodeProvider.layer,
       MagpieProvider.layer,
+      AntigravityProvider.layer,
     ),
   }
 }

@@ -4,6 +4,7 @@ import { Effect, Layer } from "effect"
 import type { ClaudeProvider } from "./agents/claude/index.ts"
 import type { CodexProvider } from "./agents/codex/index.ts"
 import type { MuseProvider } from "./agents/muse/index.ts"
+import type { AntigravityProvider } from "./agents/antigravity/index.ts"
 import type { MagpieProvider } from "./agents/magpie/index.ts"
 import type { OpencodeProvider } from "./agents/opencode/index.ts"
 import * as AppConnections from "./apps/AppConnections.ts"
@@ -61,7 +62,9 @@ const routinesStub = Layer.succeed(Routines, {} as typeof Routines.Service)
 const updatesStub = Layer.succeed(Updates, unsupported("0.0.0"))
 
 interface TestAppOptions {
-  readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider | OpencodeProvider | MagpieProvider>
+  readonly providers: Layer.Layer<
+    ClaudeProvider | CodexProvider | MuseProvider | OpencodeProvider | MagpieProvider | AntigravityProvider
+  >
   readonly events?: Layer.Layer<Events | PushBroadcast | WindowPush>
   readonly relay?: Relay.RelayOptions
 }

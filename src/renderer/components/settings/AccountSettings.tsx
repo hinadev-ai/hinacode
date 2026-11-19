@@ -59,6 +59,7 @@ const signedOutHint = {
   muse: m.settings_account_signed_out_muse,
   opencode: m.settings_account_signed_out_opencode,
   magpie: m.settings_account_signed_out_magpie,
+  antigravity: m.settings_account_signed_out_antigravity,
 } satisfies Record<ProviderId, () => string>
 
 const addsAccounts = Schema.is(AccountProviderId)

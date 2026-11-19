@@ -98,8 +98,8 @@ export const indicatorGlyph = (theme: Palette, { icon, tone }: { icon: IconName;
 })
 
 export const ProviderColors = {
-  light: { claude: "#c15f3c", codex: Colors.light.text, muse: "#0064e0", opencode: "#a16207", magpie: Colors.light.text },
-  dark: { claude: "#d97757", codex: Colors.dark.text, muse: "#0081fb", opencode: "#eab308", magpie: Colors.dark.text },
+  light: { claude: "#c15f3c", codex: Colors.light.text, muse: "#0064e0", opencode: "#a16207", magpie: Colors.light.text, antigravity: "#3b79e0" },
+  dark: { claude: "#d97757", codex: Colors.dark.text, muse: "#0081fb", opencode: "#eab308", magpie: Colors.dark.text, antigravity: "#64a0ff" },
 } as const
 
 export const SyntaxColors = {

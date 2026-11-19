@@ -31,6 +31,7 @@ const providerMarks = {
   muse: { Icon: RiMetaFill, color: "text-provider-muse" },
   opencode: { Icon: OpencodeLogoIcon, color: "text-provider-opencode" },
   magpie: { Icon: MagpieLogoIcon, color: "text-provider-magpie" },
+  antigravity: { Icon: RiGeminiFill, color: "text-provider-antigravity" },
 } satisfies Record<ProviderId, Mark>
 
 const modelMarks = {
@@ -52,6 +53,7 @@ export const providerLabel = {
   muse: m.provider_muse,
   opencode: m.provider_opencode,
   magpie: m.provider_magpie,
+  antigravity: m.provider_antigravity,
 } satisfies Record<ProviderId, () => string>
 
 function Mark({ mark, muted, className }: { mark: Mark; muted: boolean; className?: string }) {
