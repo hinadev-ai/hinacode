@@ -105,15 +105,6 @@ export class PullRequestElsewhereError extends Schema.TaggedError<PullRequestEls
   }
 }
 
-export class WorktreeTakenError extends Schema.TaggedError<WorktreeTakenError>()("WorktreeTakenError", {
-  branch: Schema.String,
-  path: Schema.String,
-}) {
-  override get message(): string {
-    return `Branch ${this.branch} already has a worktree at ${this.path}`
-  }
-}
-
 export class ThreadStartedError extends Schema.TaggedError<ThreadStartedError>()("ThreadStartedError", {
   id: Schema.String,
 }) {
