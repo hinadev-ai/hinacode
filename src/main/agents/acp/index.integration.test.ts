@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, watch, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, realpathSync, watch, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -16,6 +16,7 @@ type Logged = {
   id?: number | string
   method?: string
   answered?: string
+  cwd?: string
   error?: { code: number }
   params?: { sessionId?: string; prompt?: Array<{ type: string; text?: string }>; [key: string]: unknown }
   result?: unknown
@@ -191,6 +192,16 @@ describe("makeAcpProvider", () => {
       expect(yield* provider.listCommands({ threadId: "t1", cwd: tmpdir(), home: null })).toStrictEqual([
         { trigger: "/", name: "review", description: "Review the diff", argumentHint: "branch" },
       ])
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("starts the agent in the thread's folder, where it resolves relative paths", () =>
+    Effect.gen(function* () {
+      const { provider: make, received } = setup()
+      const provider = yield* make
+      const cwd = realpathSync(mkdtempSync(join(tmpdir(), "kk-acp-thread-")))
+      yield* runToEnd(provider, input({ cwd }))
+      expect(received().find((message) => message.answered === "initialize")?.cwd).toBe(cwd)
     }).pipe(Effect.scoped),
   )
 
