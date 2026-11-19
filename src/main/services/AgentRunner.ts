@@ -61,6 +61,7 @@ import { pickedSubagentModel, spawningCallId, subagentChoices } from "../agents/
 import { subagentReport } from "../agents/subagentReport.ts"
 import { providerInfo } from "../../shared/providers.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { AntigravityProvider } from "../agents/antigravity/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
@@ -374,6 +375,7 @@ const make = Effect.gen(function* () {
     muse: yield* MuseProvider,
     opencode: yield* OpencodeProvider,
     magpie: yield* MagpieProvider,
+    antigravity: yield* AntigravityProvider,
   }
 
   const listedModels = (provider: AgentProvider) =>

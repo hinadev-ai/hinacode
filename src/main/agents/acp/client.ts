@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { Deferred, Duration, Effect, Option, Schema, Scope } from "effect"
 
@@ -64,11 +65,16 @@ export const makeAcpClient = (options: {
   readonly binaryPath: string
   readonly args: ReadonlyArray<string>
   readonly env: NodeJS.ProcessEnv
+  readonly cwd: string
 }) =>
   Effect.gen(function* () {
     const child = yield* Effect.acquireRelease(
       Effect.sync(() =>
-        spawn(options.binaryPath, [...options.args], { env: options.env, stdio: ["pipe", "pipe", "pipe"] }),
+        spawn(resolve(options.binaryPath), [...options.args], {
+          cwd: options.cwd,
+          env: options.env,
+          stdio: ["pipe", "pipe", "pipe"],
+        }),
       ),
       (proc) => Effect.sync(() => proc.kill()),
     )

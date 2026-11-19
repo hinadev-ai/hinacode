@@ -200,6 +200,7 @@
   --color-provider-muse: var(--provider-muse);
   --color-provider-opencode: var(--provider-opencode);
   --color-provider-magpie: var(--provider-magpie);
+  --color-provider-antigravity: var(--provider-antigravity);
   --color-provider-deepseek: var(--provider-deepseek);
   --color-provider-kimi: var(--provider-kimi);
   --color-provider-glm: var(--provider-glm);
@@ -432,12 +433,13 @@
   --sidebar-title-read: color-mix(in oklab, var(--sidebar-title) 60%, var(--sidebar-meta));
   --sidebar-row-hover: color-mix(in oklab, var(--sidebar-foreground) 4%, var(--sidebar));
   --sidebar-row-selected: color-mix(in oklab, var(--sidebar-foreground) 7%, var(--sidebar));
-  /* OpenAI's, Kimi's, Grok's, opencode's and magpie's marks are monochrome. */
+  /* OpenAI's, Kimi's, Grok's, opencode's, magpie's and Antigravity's marks are monochrome. */
   --provider-codex: var(--foreground);
   --provider-kimi: var(--foreground);
   --provider-grok: var(--foreground);
   --provider-opencode: var(--foreground);
   --provider-magpie: var(--foreground);
+  --provider-antigravity: var(--foreground);
 }
 
 /*

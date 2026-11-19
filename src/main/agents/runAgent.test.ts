@@ -103,11 +103,11 @@ const modelOf = (id: string): ModelInfo => ({
   autoMode: false,
 })
 const listing = Array.from({ length: 30 }, (_, index) => modelOf(`m${index}`))
-const noPresets = { claude: [], codex: [], muse: [], opencode: [], magpie: [] }
+const noPresets = { claude: [], codex: [], muse: [], opencode: [], magpie: [], antigravity: [] }
 
 test("offers the first 20 listed models of magpie and opencode until the user picks some", () => {
   const choices = subagentChoices(
-    { claude: null, codex: null, muse: null, opencode: listing, magpie: listing },
+    { claude: null, codex: null, muse: null, opencode: listing, magpie: listing, antigravity: null },
     { ...noPresets, magpie: ["m25"] },
     ["opencode", "magpie"],
   )
@@ -119,7 +119,7 @@ test("offers the first 20 listed models of magpie and opencode until the user pi
 
 test("leaves disabled providers out of the choices", () => {
   const choices = subagentChoices(
-    { claude: [modelOf("c")], codex: [modelOf("x")], muse: null, opencode: listing, magpie: null },
+    { claude: [modelOf("c")], codex: [modelOf("x")], muse: null, opencode: listing, magpie: null, antigravity: null },
     noPresets,
     ["codex"],
   )

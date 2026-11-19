@@ -13,6 +13,7 @@ import { type AgentEvent, unlistedModel } from "../../shared/agent.ts"
 import { defaultSettings } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
+import { AntigravityProvider } from "../agents/antigravity/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
@@ -92,6 +93,7 @@ const providers = Layer.mergeAll(
   Layer.succeed(MuseProvider, replyingProvider("muse")),
   Layer.succeed(OpencodeProvider, replyingProvider("opencode")),
   Layer.succeed(MagpieProvider, replyingProvider("magpie")),
+  Layer.succeed(AntigravityProvider, replyingProvider("antigravity")),
 )
 
 const HOST_CREDENTIAL = "host-credential"

@@ -50,6 +50,7 @@ import dropPullRequestObservedStatus from "./migrations/0048_drop_pull_request_o
 import threadDeviceGuest from "./migrations/0049_thread_device_guest.ts"
 import threadDeviceClient from "./migrations/0050_thread_device_client.ts"
 import turnEndTree from "./migrations/0051_turn_end_tree.ts"
+import antigravityProvider from "./migrations/0052_antigravity_provider.ts"
 
 const run = Migrator.make({})
 
@@ -105,6 +106,7 @@ export const runMigrations = run({
     "49_thread_device_guest": threadDeviceGuest,
     "50_thread_device_client": threadDeviceClient,
     "51_turn_end_tree": turnEndTree,
+    "52_antigravity_provider": antigravityProvider,
   }),
 }).pipe(
   Effect.tap((ran) =>

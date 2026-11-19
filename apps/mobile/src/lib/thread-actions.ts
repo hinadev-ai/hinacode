@@ -24,7 +24,7 @@ const remove: ThreadAction = {
   destructive: true,
 }
 
-const forksSessions = { claude: true, codex: true, muse: false, opencode: false, magpie: true } satisfies Record<ProviderId, boolean>
+const forksSessions = { claude: true, codex: true, muse: false, opencode: false, magpie: true, antigravity: false } satisfies Record<ProviderId, boolean>
 
 export function threadActions(thread: Thread): readonly ThreadAction[] {
   if (thread.status === "archived")
