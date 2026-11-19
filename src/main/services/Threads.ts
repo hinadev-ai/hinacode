@@ -89,10 +89,6 @@ export interface ArchiveOptions {
   readonly discardChanges?: boolean
 }
 
-export interface ArchiveOptions {
-  readonly discardChanges?: boolean
-}
-
 export interface UpdateThread {
   readonly id: string
   readonly title?: string | undefined
