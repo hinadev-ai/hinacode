@@ -3,6 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
 import { afterEach, describe, expect, it } from "vitest"
+import { miseOwnership } from "./mise.ts"
 import { availableUpdates, installUpdate } from "./updates.ts"
 
 const inherited = process.env["PATH"]
@@ -56,9 +57,41 @@ const fakeMise = ({ requested = "latest", latest = "2.1.328" } = {}) => {
   }
 }
 
+const ownership = (binary: string) => Effect.runPromise(miseOwnership(binary, "claude"))
+
 describe.skipIf(process.platform === "win32")("mise", () => {
   afterEach(() => {
     process.env["PATH"] = inherited
+  })
+
+  it("upgrades a tool requested as latest through a command wrapper, a shim or the latest link", async () => {
+    const mise = fakeMise()
+
+    expect(await ownership(mise.wrapper)).toStrictEqual({ kind: "upgradable", mise: join(mise.root, "bin", "mise") })
+    expect((await ownership(mise.latestLink)).kind).toBe("upgradable")
+  })
+
+  it("runs a launcher script that execs the tool through `mise x` as mise would resolve it", async () => {
+    const mise = fakeMise()
+    const script = join(mise.root, "claude")
+    executable(script, 'mise use -g claude >/dev/null || exit 1\nexec mise x "claude" -- claude "$@"')
+
+    expect((await ownership(script)).kind).toBe("upgradable")
+  })
+
+  it("leaves a pinned tool and a path into one version's directory to the developer", async () => {
+    expect((await ownership(fakeMise({ requested: "2.1.327" }).wrapper)).kind).toBe("manual")
+    expect((await ownership(fakeMise().versionDir)).kind).toBe("manual")
+  })
+
+  it("does not claim a CLI that mise did not install", async () => {
+    const mise = fakeMise()
+    const npmGlobal = join(mise.root, "npm-claude")
+    executable(npmGlobal, "echo 2.1.327")
+
+    expect((await ownership(npmGlobal)).kind).toBe("none")
+    process.env["PATH"] = mkdtempSync(join(tmpdir(), "kk-no-mise-"))
+    expect((await ownership(npmGlobal)).kind).toBe("none")
   })
 
   it("offers the version mise would install and updates with `mise upgrade`, never `claude update`", async () => {
