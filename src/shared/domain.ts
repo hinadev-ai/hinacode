@@ -622,7 +622,7 @@ export const ArchiveSettings = Schema.Struct({
   whenMerged: Schema.Boolean,
   removeWorktree: Schema.Boolean,
   settleAfterIdleDays: Days.pipe(Schema.withDecodingDefaultKey(Effect.succeed(7))),
-  archiveAfterSettledDays: Days.pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  archiveAfterSettledDays: Days.pipe(Schema.withDecodingDefaultKey(Effect.succeed(14))),
 })
 export type ArchiveSettings = typeof ArchiveSettings.Type
 
@@ -850,7 +850,7 @@ export const defaultSettings: Settings = {
   textGenerationModel: "claude-sonnet-5-5",
   pullRequestGuide: { enabled: false, model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
-  archive: { whenMerged: true, removeWorktree: false, settleAfterIdleDays: 7, archiveAfterSettledDays: null },
+  archive: { whenMerged: true, removeWorktree: true, settleAfterIdleDays: 7, archiveAfterSettledDays: 14 },
   experimental: {
     tinyVm: false,
     tinyVmProvider: "boat",
