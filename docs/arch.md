@@ -1,6 +1,6 @@
 # Architecture
 
-hinacode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex, Muse Code and opencode over child processes and to Claude through the Agent SDK. magpie runs Claude Code through its gateway on the same harness. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-hinacode-foundation.md`](features/2026-10-11-hinacode-foundation.md).
+hinacode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex, Muse Code, opencode and Antigravity over child processes and to Claude through the Agent SDK. magpie runs Claude Code through its gateway on the same harness. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-hinacode-foundation.md`](features/2026-10-11-hinacode-foundation.md).
 
 ## System overview
 
@@ -196,7 +196,7 @@ classDiagram
     approval mode from the thread's access mode, set live
   }
   class AcpProvider {
-    one opencode acp process per turn
+    one opencode acp or agy acp process per turn, started in the thread's folder
     one ACP session per thread, session/load to resume
     hinacode answers session/request_permission from the access mode
   }
@@ -452,7 +452,7 @@ erDiagram
   thread {
     text id PK
     text worktree_id FK "SET NULL"
-    text provider "claude|codex|muse|opencode|magpie"
+    text provider "claude|codex|muse|opencode|magpie|antigravity"
     text account_id FK "null = CLI login, delete refused"
     text model
     text provider_session_id
@@ -686,7 +686,7 @@ How each agent gets its credential ([ADR 0007](adr/0007-per-thread-mcp-credentia
 - **Claude** connects through an in-process forwarder (`agents/claude/mcp.ts`), so the CLI never sees the credential.
 - **Codex** receives it as a header in its thread config over stdin. Codex asks before each MCP call with `mcpServer/elicitation/request`, which hinacode shows as an approval.
 - **Muse Code** receives it as a header in the session's `config.mcpServers` over stdin, which needs the `sessionMcp` capability. Muse treats the server as required and fails the turn if it cannot reach it.
-- **opencode** receives it as a header of the `http` entry in ACP `session/new` and `session/load`.
+- **opencode** and **Antigravity** receive it as a header of the `http` entry in ACP `session/new` and `session/load`.
 - **magpie** runs the Claude harness, so it connects through the same forwarder.
 
 ## App MCP server

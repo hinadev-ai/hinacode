@@ -6,7 +6,7 @@
 
 **Run many agents. Know which one needs you.**
 
-A delightful workstation for running Claude Code, Codex, Muse Code, opencode, and magpie in parallel, each in its own worktree, each visible at a glance.
+A delightful workstation for running Claude Code, Codex, Muse Code, opencode, Antigravity, and magpie in parallel, each in its own worktree, each visible at a glance.
 
 [![CI](https://github.com/hinadev-ai/hinacode/actions/workflows/ci.yml/badge.svg)](https://github.com/hinadev-ai/hinacode/actions/workflows/ci.yml)
 [![Build](https://github.com/hinadev-ai/hinacode/actions/workflows/build.yml/badge.svg)](https://github.com/hinadev-ai/hinacode/actions/workflows/build.yml)
@@ -38,7 +38,7 @@ Running one agent in a terminal works. Running five stops working: you lose trac
 HinaCode is a **delightful workstation for coding agents**. It handles the work around each agent: where it runs, when it needs you, what it changed, and how it ships. That way you can run agents in parallel and stay in control.
 
 - **Free and open source** under the MIT license. No markup, no proxy.
-- **Uses the agents you already pay for.** HinaCode runs the `claude`, `codex`, `muse`, and `opencode` CLIs you are signed in to, and runs `claude` through your magpie gateway for magpie threads. Usage goes to those plans, API keys, or gateway, exactly as it does in a terminal.
+- **Uses the agents you already pay for.** HinaCode runs the `claude`, `codex`, `muse`, `opencode`, and `agy` CLIs you are signed in to, and runs `claude` through your magpie gateway for magpie threads. Usage goes to those plans, API keys, or gateway, exactly as it does in a terminal.
 - **Local by default.** Your code only goes where those CLIs already send it. HinaCode keeps its data in a single SQLite file on your machine.
 - **Built with HinaCode, every day.** If the workflow hurts, we feel it first.
 
@@ -47,7 +47,7 @@ HinaCode is a **delightful workstation for coding agents**. It handles the work 
 ## Features
 
 - **A worktree per thread.** Branch from `main`, any branch, or an open pull request. Your setup script runs before the agent starts.
-- **Five agents, one sidebar.** Pick Claude Code, Codex, Muse Code, opencode, or magpie per thread, and switch mid-thread.
+- **Six agents, one sidebar.** Pick Claude Code, Codex, Muse Code, opencode, Antigravity, or magpie per thread, and switch mid-thread.
 - **Inbox.** Every active thread in one list, with approvals and questions marked.
 - **Inline approvals and questions.** Allow, deny with a note, or answer without leaving the thread.
 - **Steer or queue.** Change the agent's course mid-turn, or queue the next task behind it.
@@ -72,6 +72,7 @@ Install each CLI you want to use, sign in, and keep it on your `PATH`. HinaCode 
 | [Codex](https://openai.com/codex/)                    | `codex`    | `codex` (follow the login flow)  | App-server protocol           |
 | Muse Code                                             | `muse`     | `muse login`                     | MSP                           |
 | [opencode](https://opencode.ai)                       | `opencode` | `opencode auth login`            | Agent Client Protocol (ACP)   |
+| [Antigravity](https://antigravity.google)             | `agy`      | `agy` (sign in with Google)      | Agent Client Protocol (ACP)   |
 | [magpie](https://usemagpie.ai)                        | `claude`   | run magpie                       | Agent SDK through the gateway |
 
 Adding a backend takes one `AgentProvider` implementation in `src/main/agents/` plus registration in the runner. See the [agent provider guide](docs/agent-providers.md).
@@ -121,7 +122,7 @@ The daemon prints pairing URLs on startup. Add the machine in **Settings** on th
 ### Prerequisites
 
 - **Node** 24.22.1 or later (26.12.1 or later on Node 26) and **pnpm**
-- The agent CLIs you want to run (`claude`, `codex`, `muse`, and/or `opencode`), signed in and on your `PATH`. magpie threads need `claude` and a running magpie gateway.
+- The agent CLIs you want to run (`claude`, `codex`, `muse`, `opencode`, and/or `agy`), signed in and on your `PATH`. magpie threads need `claude` and a running magpie gateway.
 - **ripgrep** (`rg`) on your `PATH`, for global file search and its integration tests
 - Chrome or Chromium, only for Remote Browser tabs and their integration tests (`pnpm exec playwright install --with-deps chromium`)
 
@@ -222,7 +223,7 @@ Contributions are welcome. Read [AGENTS.md](AGENTS.md) first, then:
 Nothing. Every feature is free, and the code is open source under the MIT license.
 
 **Which agents does it run?**
-Claude Code, Codex, Muse Code, opencode, and magpie. Install each CLI you want to use and sign in to it. magpie runs Claude Code through its gateway.
+Claude Code, Codex, Muse Code, opencode, Antigravity, and magpie. Install each CLI you want to use and sign in to it. magpie runs Claude Code through its gateway.
 
 **Does my code leave my machine?**
 Only where the agent CLIs already send it. HinaCode runs locally and keeps its data in a SQLite file on your machine.
