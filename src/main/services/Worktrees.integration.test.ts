@@ -997,22 +997,25 @@ describe("thread changes", () => {
     ),
   )
 
-  it.live("the turn scope diffs against the stored turn base, and is null without one", () =>
+  it.live("the turn scope diffs the stored turn base against the turn end, and is null without them", () =>
     withRepo(({ root, projectId }) =>
       Effect.gen(function* () {
         const thread = yield* createThread(projectId, "turn")
         writeFileSync(join(root, "before-turn.txt"), "old\n")
         expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
 
-        const captured = yield* Threads.use((threads) => threads.captureTurnBase(root))
+        const captured = yield* Threads.use((threads) => threads.captureWorkingTree(root))
         expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
         yield* Threads.use((threads) => threads.recordTurnBase({ threadId: thread.id, tree: captured }))
         writeFileSync(join(root, "during-turn.txt"), "new\n")
+        expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
+        yield* endTurn(thread.id, root)
+        writeFileSync(join(root, "after-turn.txt"), "mine\n")
 
         const changes = yield* Threads.use((threads) => threads.changes(thread.id, "turn"))
         expect(changes?.files).toStrictEqual([{ path: "during-turn.txt", status: "added" }])
 
-        const missing = yield* Threads.use((threads) => threads.captureTurnBase(join(root, "missing")))
+        const missing = yield* Threads.use((threads) => threads.captureWorkingTree(join(root, "missing")))
         expect(missing).toBeNull()
         expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toStrictEqual(changes)
         yield* Threads.use((threads) => threads.recordTurnBase({ threadId: thread.id, tree: missing }))
@@ -1029,19 +1032,20 @@ describe("thread changes", () => {
         writeFileSync(join(root, "deleted.txt"), "keep me\n")
         git(root, "add", "edited.txt", "deleted.txt")
         writeFileSync(join(root, "untouched.txt"), "mine\n")
-        const base = yield* Threads.use((threads) => threads.captureTurnBase(root))
+        const base = yield* Threads.use((threads) => threads.captureWorkingTree(root))
         yield* Threads.use((threads) => threads.recordTurnBase({ threadId: thread.id, tree: base }))
 
         writeFileSync(join(root, "edited.txt"), "after\n")
         rmSync(join(root, "deleted.txt"))
         writeFileSync(join(root, "added.txt"), "new\n")
+        yield* endTurn(thread.id, root)
         yield* Threads.use((threads) => threads.undoTurn(thread.id))
 
         expect(readFileSync(join(root, "edited.txt"), "utf8")).toBe("before\n")
         expect(readFileSync(join(root, "deleted.txt"), "utf8")).toBe("keep me\n")
         expect(existsSync(join(root, "added.txt"))).toBe(false)
         expect(readFileSync(join(root, "untouched.txt"), "utf8")).toBe("mine\n")
-        expect((yield* Threads.use((threads) => threads.changes(thread.id, "turn")))?.files).toStrictEqual([])
+        expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
       }),
     ),
   )
@@ -1052,18 +1056,19 @@ describe("thread changes", () => {
         const thread = yield* createThread(projectId, "file-to-directory")
         writeFileSync(join(root, "config"), "file\n")
         git(root, "add", "config")
-        const base = yield* Threads.use((threads) => threads.captureTurnBase(root))
+        const base = yield* Threads.use((threads) => threads.captureWorkingTree(root))
         yield* Threads.use((threads) => threads.recordTurnBase({ threadId: thread.id, tree: base }))
 
         rmSync(join(root, "config"))
         mkdirSync(join(root, "config"))
         writeFileSync(join(root, "config", "app.json"), "{}\n")
         writeFileSync(join(root, "added.txt"), "new\n")
+        yield* endTurn(thread.id, root)
         yield* Threads.use((threads) => threads.undoTurn(thread.id))
 
         expect(readFileSync(join(root, "config"), "utf8")).toBe("file\n")
         expect(existsSync(join(root, "added.txt"))).toBe(false)
-        expect((yield* Threads.use((threads) => threads.changes(thread.id, "turn")))?.files).toStrictEqual([])
+        expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
       }),
     ),
   )
@@ -1075,21 +1080,27 @@ describe("thread changes", () => {
         mkdirSync(join(root, "config"))
         writeFileSync(join(root, "config", "app.json"), "{}\n")
         git(root, "add", "config")
-        const base = yield* Threads.use((threads) => threads.captureTurnBase(root))
+        const base = yield* Threads.use((threads) => threads.captureWorkingTree(root))
         yield* Threads.use((threads) => threads.recordTurnBase({ threadId: thread.id, tree: base }))
 
         rmSync(join(root, "config"), { recursive: true })
         writeFileSync(join(root, "config"), "file\n")
         writeFileSync(join(root, "added.txt"), "new\n")
+        yield* endTurn(thread.id, root)
         yield* Threads.use((threads) => threads.undoTurn(thread.id))
 
         expect(readFileSync(join(root, "config", "app.json"), "utf8")).toBe("{}\n")
         expect(existsSync(join(root, "added.txt"))).toBe(false)
-        expect((yield* Threads.use((threads) => threads.changes(thread.id, "turn")))?.files).toStrictEqual([])
+        expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
       }),
     ),
   )
 })
+
+const endTurn = (threadId: string, cwd: string) =>
+  Threads.use((threads) =>
+    threads.captureWorkingTree(cwd).pipe(Effect.flatMap((tree) => threads.recordTurnEnd({ threadId, tree }))),
+  )
 
 const commit = (cwd: string, message: string) => {
   git(cwd, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", message)

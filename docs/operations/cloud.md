@@ -29,6 +29,7 @@ Options, flags first, then environment, then stored settings:
 | `--rotate-token`        | `HINACODE_SERVE_ROTATE_TOKEN=1` | Replace the pairing token at boot and disconnect every client |
 | `--relay`, `--no-relay` | `HINACODE_SERVE_RELAY`          | Link the cloud to the HinaCode relay, or unlink it            |
 |                         | `HINACODE_SERVE_AUTO_UPDATE=0`  | Do not install new releases on its own when idle              |
+|                         | `HINACODE_SERVE_LOG`            | File the service manager writes output to, kept under 10 MB   |
 
 Nothing compiles at install: `node-pty` ships prebuilds for macOS, Linux and Windows on x64 and arm64.
 
@@ -67,8 +68,9 @@ The cloud then prints the pairing block with its relay hostname in every URL, an
 
 - Install it once instead of resolving it on every boot: `npm install -g --allow-scripts=node-pty hinacode`, then run `hinacode serve`. npm 11 skips node-pty's install script without that flag, and the terminal then fails to start.
 - A cloud installed with `npm install -g` updates itself: it checks npm every 4 hours and installs a new release once no turn, queued message, setup script or terminal is running. To update right away, use Settings, Connections, `Update all` on the desktop. The cloud installs the release into the same npm prefix and restarts itself under the same pid, so a systemd or launchd service keeps running it. A cloud started with `npx` or from a checkout does not update itself. By hand, run `npm install -g --allow-scripts=node-pty hinacode@latest` and restart.
-- systemd user unit: `ExecStart=/usr/bin/env hinacode serve`, `Environment=PATH=...` with the directories of `node`, `claude`, `codex` and `gh`, `Restart=on-failure`, `StandardOutput=append:%h/.hinacode-cloud/serve.log`. Run `loginctl enable-linger $USER` so it starts at boot without a login. `SIGTERM` is handled: running turns persist before exit, at most 5 seconds.
-- launchd: `hinacode serve`, `KeepAlive` true, stdout to a log file so the pairing URL survives the boot.
+- Run it as a service: `hinacode service install` writes a user service for the `hinacode` you ran it with, starts it at login, and restarts it when it stops. Run `hinacode serve` in a terminal once first to pair or link the relay, since the service runs with the settings stored in the data directory. It carries the PATH of the shell you install from and `HINACODE_USER_DATA`, so install from a shell that finds `node`, `claude`, `codex` and `gh`. Running it again rewrites the service and restarts it. `hinacode service uninstall` removes it and keeps the data. It refuses an `npx` cache path, and waits for, then refuses, another `hinacode serve` on the same data directory.
+  - macOS: `~/Library/LaunchAgents/ai.hinacode.serve.plist`, logging to `~/Library/Logs/hinacode/serve.log`. The cloud keeps that file under 10 MB: past it, it copies the file to `serve.log.1` and empties it in place, checking at boot and every 10 minutes.
+  - Linux: `~/.config/systemd/user/hinacode.service`, logging to the journal (`journalctl --user -u hinacode -f`). Run `loginctl enable-linger $USER` so it starts at boot without a login; the install prints this when it is off. `SIGTERM` is handled: running turns persist before exit, at most 5 seconds.
 - Agent logins belong to the cloud: run `claude login`, `codex login`, `muse login` and `gh auth login` in a shell on that machine, once. hinacode never signs in for you.
 - A firewall must let the listener port in. With `ufw`, open it on the Tailscale interface only: `sudo ufw allow in on tailscale0 to any port 48081 proto tcp`.
 

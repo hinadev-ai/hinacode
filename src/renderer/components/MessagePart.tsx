@@ -16,6 +16,7 @@ import {
   type Message,
   type MessagePart,
   createsThread,
+  handsOverVm,
   publishesArtifact,
   spawnsSubagent,
   type Thread,
@@ -50,6 +51,7 @@ import { providerInfo } from "../../shared/providers.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { ArtifactCard } from "./ArtifactCard.tsx"
+import { VmHandOverCard } from "./VmHandOverCard.tsx"
 import { AttachmentView, formatBytes } from "./AttachmentView.tsx"
 import { CopyButton } from "./CopyButton.tsx"
 import { FindPartContext, FindPatternContext, Highlighted } from "./FindHighlight.tsx"
@@ -200,6 +202,7 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
   if (linksSubagents && spawnsSubagent(part)) return <SubagentCallPart part={part} />
   if (publishesArtifact(part)) return <ArtifactCallPart part={part} />
   if (createsThread(part)) return <ThreadCallPart part={part} />
+  if (handsOverVm(part)) return <VmHandOverCallPart part={part} />
   return (
     <div className="my-2">
       <ToolRow call={part} reveal={null} />
@@ -296,6 +299,11 @@ function ArtifactCallPart({ part }: { part: ToolCall }) {
       onOpen={(id) => openArtifact(threadId, id)}
     />
   )
+}
+
+function VmHandOverCallPart({ part }: { part: ToolCall }) {
+  const { threadId } = use(PartMessage)
+  return <VmHandOverCard threadId={threadId} call={part} />
 }
 
 const threadCard = "my-2 flex w-full max-w-sm min-w-0 items-center gap-3 rounded-lg border border-border px-3 py-2.5"

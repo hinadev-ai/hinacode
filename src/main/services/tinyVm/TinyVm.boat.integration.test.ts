@@ -336,7 +336,7 @@ const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(fu
   }
 })
 
-const makeRuntime = (fake: FakeBoat, dir: string) =>
+const makeRuntime = (fake: FakeBoat, dir: string, env: Readonly<Record<string, string>> = {}) =>
   ManagedRuntime.make(
     Layer.unwrap(
       Effect.gen(function* () {
@@ -344,7 +344,7 @@ const makeRuntime = (fake: FakeBoat, dir: string) =>
         yield* settings.set({
           experimental: { ...defaultSettings.experimental, tinyVm: true, tinyVmProvider: "boat" },
         })
-        const boat = Boat.layer({ BOAT_API_KEY: "test-key", BOAT_API_BASE: fake.url }).pipe(
+        const boat = Boat.layer({ BOAT_API_KEY: "test-key", BOAT_API_BASE: fake.url, ...env }).pipe(
           Layer.provide(Secrets.layer),
         )
         return layer({ configPath: join(dir, "no-sbx-login.json"), env: {} }, dir).pipe(Layer.provide(boat))
@@ -466,6 +466,33 @@ it.effect("a key name xdotool does not know fails like it does on sbx instead of
         Effect.flip(TinyVm.use((vm) => vm.act("thread-1", [{ type: "key", keys: "ctrl+capslock" }]))),
       )
       expect(error.message).toContain('Unknown key "capslock" in "ctrl+capslock"')
+    }),
+  ),
+)
+
+it.effect("inside a boat sandbox, every thread's VM is that sandbox, and stopping the VM leaves it running", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fake = yield* startFakeBoat
+      const dir = mkdtempSync(join(tmpdir(), "hinacode-boat-vm-host-"))
+      const runtime = yield* Effect.acquireRelease(
+        Effect.sync(() => makeRuntime(fake, dir, { BOAT_ID: "bx_host" })),
+        (value) => Effect.promise(() => value.dispose()),
+      )
+      const run = <A, E>(effect: Effect.Effect<A, E, TinyVm>) => Effect.promise(() => runtime.runPromise(effect))
+      expect(yield* run(TinyVm.use((vm) => vm.start("thread-1")))).toMatchObject({
+        status: "running",
+        provider: "boat",
+        sandboxId: "bx_host",
+      })
+      expect(yield* run(TinyVm.use((vm) => vm.start("thread-2")))).toMatchObject({ sandboxId: "bx_host" })
+      expect(fake.created()).toBe(0)
+      expect(fake.commands.some((command) => command.includes("apt-get"))).toBe(false)
+      yield* run(TinyVm.use((vm) => vm.act("thread-1", [{ type: "click", x: 3, y: 4, button: "left", clicks: 1 }])))
+      expect(fake.commands.some((command) => command.includes("xdotool mousemove 3 4"))).toBe(true)
+      yield* run(TinyVm.use((vm) => vm.stop("thread-1")))
+      expect(yield* run(TinyVm.use((vm) => vm.get("thread-1")))).toEqual({ status: "none" })
+      expect(fake.stops()).toBe(0)
     }),
   ),
 )

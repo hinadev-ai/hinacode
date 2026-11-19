@@ -2,11 +2,13 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
 import { toast } from "sonner"
-import { type Changes, isThreadBusy } from "../../shared/domain.ts"
+import { type Changes, isThreadBusy, type UndoneTurn } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { lineCounts } from "../lib/patch.ts"
 import { callPromise, threadChangesAtom, turnChangesAtom, turnChangesKey } from "../lib/rpc.ts"
+import { conjunctionFormat } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
+import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { FileDiffIcon, UndoIcon } from "@hinacode/icons"
@@ -19,18 +21,24 @@ export function TurnChanges({ threadId, messageId }: { threadId: string; message
   const refresh = useAtomRefresh(atom)
   const refreshPanel = useAtomRefresh(threadChangesAtom(`${threadId}\nturn`))
   const busy = useThreads((state) => isThreadBusy(state.byId[threadId]?.status ?? "idle"))
-  const [undoneCount, setUndoneCount] = useState<number | null>(null)
+  const [undone, setUndone] = useState<UndoneTurn | null>(null)
 
-  if (undoneCount !== null) {
-    return <p className="my-3 text-sm text-muted-foreground">{m.turn_changes_undone({ count: undoneCount })}</p>
+  if (undone !== null) {
+    return (
+      <div className="my-3 text-sm text-muted-foreground">
+        <p>{m.turn_changes_undone({ count: undone.undone.length })}</p>
+        {undone.kept.length > 0 && (
+          <p>{m.turn_changes_kept({ files: conjunctionFormat(getLocale()).format(undone.kept) })}</p>
+        )}
+      </div>
+    )
   }
   if (changes === null || changes.files.length === 0) return null
 
   const { added, removed } = lineCounts(changes.patch)
   const undo = async () => {
     try {
-      await callPromise("threads.undoTurn", { threadId })
-      setUndoneCount(changes.files.length)
+      setUndone(await callPromise("threads.undoTurn", { threadId }))
       refresh()
       refreshPanel()
     } catch (error) {

@@ -84,30 +84,29 @@ Then("the sidebar is {int} pixels wide", async ({ app }, width: number) => {
   await expect.poll(() => widthOf(sidebar(app.page))).toBe(width)
 })
 
+const dragShield = (page: Page) => page.locator("[data-workspace-shield]")
+
 When("I start dragging {string}", async ({ app }, name: string) => {
   const box = await handle(app.page, name).boundingBox()
   if (!box) throw new Error(`${name} is not visible`)
-  await app.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  await app.page.mouse.move(x, y)
   await app.page.mouse.down()
-  await expect.poll(() => app.page.evaluate(() => document.body.style.userSelect)).toBe("none")
+  await app.page.mouse.move(x - 20, y)
+  await expect(dragShield(app.page)).toBeAttached()
 })
 
 Then("no resize drag is active", async ({ app }) => {
   try {
-    await expect
-      .poll(() =>
-        app.page.evaluate(() => ({ cursor: document.body.style.cursor, select: document.body.style.userSelect })),
-      )
-      .toEqual({ cursor: "", select: "" })
+    await expect(dragShield(app.page)).not.toBeAttached()
   } finally {
     await app.page.mouse.up()
   }
 })
 
-Then("the resize maximum matches the displayed panel width", async ({ app }) => {
-  await expect
-    .poll(async () => Number(await handle(app.page, "Resize thread details").getAttribute("aria-valuemax")))
-    .toBe(await widthOf(detailsView(app.page)))
+Then("the thread details edge has no resize maximum", async ({ app }) => {
+  await expect(handle(app.page, "Resize thread details")).not.toHaveAttribute("aria-valuemax")
 })
 
 When("I press ArrowLeft {int} times on {string}", async ({ app }, count: number, name: string) => {

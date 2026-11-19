@@ -32,12 +32,17 @@ const stampLegacyValues = (path: string) => {
   }
 }
 
-export const layer = (dataDir: string) =>
+export const defaultsFor = (env: Readonly<Record<string, string | undefined>>): SettingsSchema =>
+  env["BOAT_ID"]
+    ? { ...defaultSettings, experimental: { ...defaultSettings.experimental, tinyVm: true, tinyVmProvider: "boat" } }
+    : defaultSettings
+
+export const layer = (dataDir: string, defaults: SettingsSchema = defaultSettings) =>
   Layer.effect(
     Settings,
     Effect.gen(function* () {
       const path = join(dataDir, "settings.json")
       yield* Effect.sync(() => stampLegacyValues(path))
-      return yield* makeSettingStore(SettingsSchema, defaultSettings, { path })
+      return yield* makeSettingStore(SettingsSchema, defaults, { path })
     }),
   )

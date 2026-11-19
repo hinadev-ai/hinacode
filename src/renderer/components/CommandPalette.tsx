@@ -77,7 +77,7 @@ function PaletteResult({ entry, onChoose }: { entry: RankedItem; onChoose: (item
     >
       <span className="flex size-4 shrink-0 items-center justify-center">{item.icon}</span>
       <span className="flex min-w-0 flex-1 items-baseline gap-2">
-        <span className="shrink-0 truncate">
+        <span className="min-w-0 truncate">
           <Highlighted text={item.title} matches={entry.titleMatches} />
         </span>
         {item.cloud && (
@@ -87,7 +87,7 @@ function PaletteResult({ entry, onChoose }: { entry: RankedItem; onChoose: (item
           </span>
         )}
         {item.subtitle && (
-          <span className="min-w-0 truncate text-xs text-muted-foreground">
+          <span className="min-w-20 flex-1 truncate text-xs text-muted-foreground">
             <Highlighted text={item.subtitle} matches={entry.subtitleMatches} />
           </span>
         )}

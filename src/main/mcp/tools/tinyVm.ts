@@ -118,6 +118,15 @@ export const VmTools = Toolkit.make(
       keys: Schema.String.annotate({ description: "For example `ctrl+a BackSpace` or `Return`." }),
     }),
   }),
+  McpTool.make("vm_hand_over", {
+    description: `Hand the tiny VM to the user for a step only a person should do, such as signing in, entering a 2FA code or solving a CAPTCHA. HinaCode shows the user a card with your request and a shortcut to the screen, gives them control, and this call waits until they hand it back. ${STARTS} Returns a screenshot taken once they hand it back.`,
+    parameters: Schema.Struct({
+      request: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)).annotate({
+        description:
+          "What the user should do, as one short instruction, like `Sign in to GitHub, then hand back`. Shown on the card and above the screen. At most 500 characters.",
+      }),
+    }),
+  }),
   McpTool.make("vm_exec", {
     description: `Run a bash script in the tiny VM as \`user\` (passwordless sudo, DISPLAY=:0) and return its exit code, stdout and stderr. Start GUI programs and servers with \`background: true\`. ${STARTS}`,
     parameters: Schema.Struct({
@@ -206,6 +215,13 @@ export const vmToolsLayer = VmTools.toLayer(
         ),
       vm_type: ({ text }) => actAndLook({ type: "type", text }, `Typed ${[...text].length} characters.`),
       vm_key: ({ keys }) => actAndLook({ type: "key", keys }, `Pressed ${keys}.`),
+      vm_hand_over: ({ request }) =>
+        McpTool.CallingThread.use((threadId) =>
+          Effect.andThen(
+            tinyVm.handOver(threadId, request),
+            screen(threadId, "The user handed control back. Look at the screenshot before you continue."),
+          ),
+        ),
       vm_exec: ({ command, timeoutSeconds = 120, background = false }) =>
         McpTool.CallingThread.use((threadId) =>
           Effect.gen(function* () {

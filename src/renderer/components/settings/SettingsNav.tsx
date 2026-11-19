@@ -1,10 +1,10 @@
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router"
-import { useRef, useState } from "react"
+import { useState } from "react"
 import { usePanelLayout } from "../../lib/panelLayout.ts"
 import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../../lib/panelSize.ts"
 import { m } from "../../paraglide/messages.js"
 import { useUi } from "../../stores/ui.ts"
-import { ResizeHandle } from "../ResizeHandle.tsx"
+import { WorkspaceSash } from "../WorkspaceSash.tsx"
 import { Button } from "../ui/button.tsx"
 import { Input } from "../ui/input.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
@@ -176,7 +176,6 @@ export function SettingsNav() {
   const sidebarOpen = useUi((state) => state.sidebarOpen)
   const sidebarWidth = useUi((state) => state.sidebarWidth)
   const setSidebarWidth = useUi((state) => state.setSidebarWidth)
-  const navRef = useRef<HTMLElement>(null)
   const [query, setQuery] = useState("")
   const trimmed = query.trim().toLocaleLowerCase()
   const results: ReadonlyArray<SearchResult> =
@@ -184,11 +183,11 @@ export function SettingsNav() {
 
   return (
     <nav
-      ref={navRef}
       aria-label={m.settings_sections()}
       hidden={!compact && !sidebarOpen}
+      data-workspace-pane={compact ? undefined : "sidebar"}
       data-compact={compact}
-      style={compact ? undefined : { width: sidebarWidth }}
+      style={compact ? undefined : { width: sidebarWidth, minWidth: SIDEBAR_BOUNDS.min, maxWidth: SIDEBAR_BOUNDS.max }}
       className="relative flex min-h-0 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground data-[compact=false]:flex-1 data-[compact=true]:w-52 glass:bg-sidebar/(--glass-chrome-alpha)"
     >
       <div className="flex flex-col gap-1 px-2 pt-2 pb-1">
@@ -238,12 +237,12 @@ export function SettingsNav() {
         )}
       </ScrollArea>
       {!compact && sidebarOpen && (
-        <ResizeHandle
+        <WorkspaceSash
           label={m.sidebar_resize()}
+          pane="sidebar"
           edge="right"
-          targetRef={navRef}
           bounds={SIDEBAR_BOUNDS}
-          onResize={setSidebarWidth}
+          width={sidebarWidth}
           onReset={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
         />
       )}

@@ -1,5 +1,8 @@
-import { describe, expect, test } from "@effect/vitest"
-import { autoUpdate, browserCommand, linkInstructions, restartCommand, serveConfig } from "./serve.ts"
+import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { afterEach, describe, expect, test } from "@effect/vitest"
+import { autoUpdate, boundServeLog, browserCommand, linkInstructions, restartCommand, serveConfig } from "./serve.ts"
 
 const none = { rotateToken: false }
 
@@ -128,4 +131,36 @@ test("linkInstructions puts the URL on its own line, so it can be clicked or cop
   expect(linkInstructions("https://relay.test/link?code=abc").split("\n")).toContain(
     "  https://relay.test/link?code=abc",
   )
+})
+
+describe("boundServeLog", () => {
+  const dirs: Array<string> = []
+  const logIn = () => {
+    const dir = mkdtempSync(join(tmpdir(), "hinacode-serve-log-"))
+    dirs.push(dir)
+    return join(dir, "serve.log")
+  }
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  })
+
+  test("leaves a log under the limit alone", async () => {
+    const log = logIn()
+    writeFileSync(log, "booted\n")
+    await boundServeLog(log, 16)
+    expect(readFileSync(log, "utf8")).toBe("booted\n")
+    expect(existsSync(`${log}.1`)).toBe(false)
+  })
+
+  test("moves a full log aside while the service manager keeps appending to the same file", async () => {
+    const log = logIn()
+    writeFileSync(`${log}.1`, "an older copy\n")
+    const launchd = openSync(log, "a")
+    writeSync(launchd, "line one of a long week\n")
+    await boundServeLog(log, 16)
+    writeSync(launchd, "after\n")
+    closeSync(launchd)
+    expect(readFileSync(`${log}.1`, "utf8")).toBe("line one of a long week\n")
+    expect(readFileSync(log, "utf8")).toBe("after\n")
+  })
 })

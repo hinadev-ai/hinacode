@@ -28,7 +28,10 @@ export async function startThread(project: Project, navigate: ReturnType<typeof 
 }
 
 export async function moveDraft(thread: Thread, projectId: string, navigate: ReturnType<typeof useNavigate>) {
-  const target = await callPromise("threads.draft", { projectId })
+  await moveDraftTo(thread, await callPromise("threads.draft", { projectId }), navigate)
+}
+
+export async function moveDraftTo(thread: Thread, target: Thread, navigate: ReturnType<typeof useNavigate>) {
   useThreads.getState().upsert(target)
   const { text, comments } = useDrafts.getState().take(thread.id)
   useDrafts.getState().restore(target.id, { ...emptyDraft, text, comments })

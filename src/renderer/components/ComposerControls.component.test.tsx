@@ -1,3 +1,4 @@
+import { RegistryProvider } from "@effect/atom-react"
 import { beforeEach, expect, test, vi } from "vitest"
 import { page, userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
@@ -28,6 +29,7 @@ const account = (id: string) => ({
 
 let listedModels = [model("first"), model("second"), model("third")]
 let codexModels: ReadonlyArray<ModelInfo> | null = null
+const listingOverrides = new Map<string, () => Promise<unknown>>()
 const accountLimits = [
   {
     provider: "claude",
@@ -46,10 +48,12 @@ const rpc = vi.fn(async (method: string, payload?: unknown) => {
     return { result: { ...thread, accountId: (payload as { accountId: string }).accountId } }
   if (method === "threads.update") return { result: thread }
   if (method === "limits.list") return { result: accountLimits }
-  if (method === "models.list")
-    return {
-      result: (payload as { provider: string }).provider === "codex" ? (codexModels ?? listedModels) : listedModels,
-    }
+  if (method === "models.list") {
+    const provider = (payload as { provider: string }).provider
+    const override = listingOverrides.get(provider)
+    if (override) return override()
+    return { result: provider === "codex" ? (codexModels ?? listedModels) : listedModels }
+  }
   return { error: { tag: "NotStubbed", message: method } }
 })
 vi.stubGlobal("hinacode", { rpc, onEvent: () => () => {}, pathForFile: () => "", liquidGlass: false })
@@ -84,6 +88,7 @@ const thread: Thread = {
 
 beforeEach(() => {
   useThreads.setState({ byId: {} } as never)
+  listingOverrides.clear()
 })
 
 const openPicker = async () => {
@@ -236,6 +241,33 @@ test("typing filters the models instead of running shortcuts", async () => {
   await expect.element(page.getByText("No matching models")).toBeVisible()
   expect(selectedTab()).toContain("one")
   expect(rpc.mock.calls.some(([method]) => method === "threads.update")).toBe(false)
+})
+
+const exitMessage =
+  "/home/someone/.local/share/opencode/bin/opencode acp exited (code 1, signal null). opencode: no providers configured"
+
+test.each([
+  ["while its models load", () => new Promise<never>(() => {}), "Loading models…"],
+  [
+    "when listing its models fails",
+    async () => ({ error: { tag: "AgentError", message: exitMessage } }),
+    `Could not list models: The agent failed: ${exitMessage}`,
+  ],
+  ["when it lists no models", async () => ({ result: [] }), "This agent listed no models"],
+])("tells why an agent's list is empty %s", async (_, listing, notice) => {
+  listingOverrides.set("opencode", listing)
+  await render(
+    <RegistryProvider>
+      <ThreadPicker thread={thread} canSwitchAgent onError={() => {}} />
+    </RegistryProvider>,
+  )
+  await page.getByRole("button", { name: /second/ }).click()
+  await page.getByRole("tab", { name: "opencode" }).click()
+  await expect.element(page.getByText(notice)).toBeVisible()
+  expect(document.querySelectorAll("[role=option]")).toHaveLength(0)
+  const noticeBottom = page.getByText(notice).element().getBoundingClientRect().bottom
+  const accessTop = page.getByRole("button", { name: "Supervised" }).element().getBoundingClientRect().top
+  expect(noticeBottom).toBeLessThanOrEqual(accessTop)
 })
 
 test("Alt+L moves to the next account and keeps its tab in view", async () => {

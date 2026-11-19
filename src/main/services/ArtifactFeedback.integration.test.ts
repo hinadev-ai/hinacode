@@ -15,6 +15,7 @@ import { makeTestAppLayer } from "../testing.ts"
 import { AgentRunner } from "./AgentRunner.ts"
 import { ArtifactFeedback } from "./ArtifactFeedback.ts"
 import { Artifacts } from "./Artifacts.ts"
+import { Attachments } from "./Attachments.ts"
 import { Events, PushBroadcast, WindowPush } from "./Events.ts"
 import { Messages } from "./Messages.ts"
 import { Threads } from "./Threads.ts"
@@ -146,6 +147,29 @@ layer(makeTestAppLayer(join(base, "hinacode.sqlite"), { providers, events: quiet
       const refused = yield* Effect.flip(feedback.comment({ id: document.id, comment: "c_gone", body: "Hi" }))
       expect(refused._tag).toBe("ArtifactFeedbackError")
       expect((yield* Effect.flip(feedback.feedback("gone")))._tag).toBe("NotFoundError")
+    }),
+  )
+
+  it.effect("gives a mentioned thread its own copy of the comment's attachment", () =>
+    Effect.gen(function* () {
+      const { owner, sibling } = yield* ownerAndSibling
+      const document = yield* documentOf(owner)
+      const selection = yield* Attachments.use((attachments) =>
+        attachments.stage(owner, { dataUrl: "data:image/png;base64,iVBORw0KGgo=", name: "selection.png" }),
+      )
+
+      yield* ArtifactFeedback.use((feedback) =>
+        feedback.comment({ id: document.id, body: `@thread:${sibling} look at this`, attachments: [selection] }),
+      )
+
+      expect((yield* Queue.take(delivered)).threadId).toBe(sibling)
+      const sent = (yield* Messages.use((messages) => messages.list(sibling)))
+        .flatMap((message) => message.parts)
+        .flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
+      expect(sent).toHaveLength(1)
+      expect(sent[0]?.name).toBe("selection.png")
+      expect(sent[0]?.path).toContain(sibling)
+      expect(readFileSync(sent[0]!.path)).toStrictEqual(readFileSync(selection.path))
     }),
   )
 

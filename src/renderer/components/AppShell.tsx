@@ -55,7 +55,7 @@ export function AppShell() {
           {docked && onSettings && <SettingsNav />}
           <Sidebar compact={compact} replaced={onSettings} finalFocus={sidebarButtonRef} />
         </div>
-        <main className="flex min-w-0 flex-1 flex-col bg-background">
+        <main data-workspace-pane="content" className="flex min-w-0 flex-1 flex-col bg-background">
           <Outlet />
         </main>
       </div>
