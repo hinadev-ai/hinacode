@@ -171,7 +171,7 @@ const providerMark: Record<ProviderId, IconName> = {
   muse: "RiMetaFill",
   opencode: "OpencodeMark",
   magpie: "MagpieMark",
-  antigravity: "RiGeminiFill",
+  antigravity: "AntigravityMark",
 }
 
 const providerName: Record<ProviderId, string> = {
