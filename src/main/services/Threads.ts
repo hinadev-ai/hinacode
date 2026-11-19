@@ -134,18 +134,13 @@ export class Threads extends Context.Service<
     readonly list: Effect.Effect<ReadonlyArray<Thread>, PersistenceError>
     readonly onAccount: (accountId: string) => Effect.Effect<ReadonlyArray<Thread>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
-    readonly create: (
-      input: CreateThread,
-    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError>
+    readonly create: (input: CreateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError>
     readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly writes: Effect.Effect<Stream.Stream<Thread>, never, Scope.Scope>
     readonly fork: (
       threadId: string,
       messageId?: string,
-    ) => Effect.Effect<
-      Thread,
-      PersistenceError | NotFoundError | CommandError | PlatformError.PlatformError
-    >
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | PlatformError.PlatformError>
     readonly sidechat: (threadId: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly sidechatOf: (threadId: string) => Effect.Effect<Option.Option<Thread>, PersistenceError>
     readonly rebaseSidechat: (
@@ -157,9 +152,7 @@ export class Threads extends Context.Service<
       id: string,
     ) => Effect.Effect<ReadonlyArray<string>, PersistenceError | NotFoundError | FolderMissingError | CommandError>
     readonly started: (id: string) => Effect.Effect<boolean, PersistenceError>
-    readonly draft: (
-      input: DraftThread,
-    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError>
+    readonly draft: (input: DraftThread) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError>
     readonly promoteDraft: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly prepareWorkspace: (
       id: string,
