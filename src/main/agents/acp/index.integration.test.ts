@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, realpathSync, watch, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, relative } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, Fiber, PubSub, Stream } from "effect"
 import { TestClock } from "effect/testing"
@@ -22,12 +22,12 @@ type Logged = {
   result?: unknown
 }
 
-const setup = (env: Record<string, string> = {}) => {
+const setup = (env: Record<string, string> = {}, binary = process.execPath) => {
   const logPath = join(mkdtempSync(join(tmpdir(), "kk-fake-acp-")), "log.jsonl")
   writeFileSync(logPath, "")
   const provider = makeAcpProvider({
     id: "opencode",
-    binary: process.execPath,
+    binary,
     args: [FAKE_AGENT],
     env: { FAKE_ACP_LOG: logPath, ...env },
     loginCommand: "fake login",
@@ -202,6 +202,16 @@ describe("makeAcpProvider", () => {
       const cwd = realpathSync(mkdtempSync(join(tmpdir(), "kk-acp-thread-")))
       yield* runToEnd(provider, input({ cwd }))
       expect(received().find((message) => message.answered === "initialize")?.cwd).toBe(cwd)
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("finds a CLI path relative to the app's folder from a thread in another folder", () =>
+    Effect.gen(function* () {
+      const { provider: make } = setup({}, relative(process.cwd(), process.execPath))
+      const provider = yield* make
+      const cwd = mkdtempSync(join(tmpdir(), "kk-acp-thread-"))
+      const events = yield* runToEnd(provider, input({ cwd }))
+      expect(types(events)).toContain("turn_completed")
     }).pipe(Effect.scoped),
   )
 
