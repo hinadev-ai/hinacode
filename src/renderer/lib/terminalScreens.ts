@@ -77,10 +77,14 @@ const start = async (id: string, screen: Screen) => {
       }),
     )
   }
+  let replaying = true
   const term = new WTerm(element, {
     core,
     renderingPaused: screen.paused,
     onData: (data) => void callPromise("terminal.write", { id, data }).catch(ignore),
+    onClipboardWrite: (text) => {
+      if (!replaying) void navigator.clipboard.writeText(text).catch(ignore)
+    },
     onResize: resize,
   })
   await term.init()
@@ -91,6 +95,7 @@ const start = async (id: string, screen: Screen) => {
   const replay = screen.backlog.drain()
   for (const data of replay.chunks) term.write(data)
   if (replay.truncated) term.write(`\r\n\x1b[0m\x1b[2m${m.terminal_output_truncated()}\x1b[22m\r\n`)
+  replaying = false
   if (screen.wantsFocus) term.focus()
 }
 
