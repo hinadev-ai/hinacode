@@ -9,7 +9,7 @@ When HinaCode quits, crashes, or `hinacode serve` restarts in the middle of a tu
 
 ## User flow
 
-A thread that was running or waiting on an approval when HinaCode stopped comes back as Interrupted. Its sidebar row shows a stop mark in the attention color, the Inbox counts it, and the thread view shows "HinaCode stopped before this turn finished" above the composer with a Continue button. Continue sends one short prompt on the thread's provider session, so the agent resumes with its context. Typing a message works too. Either one starts a turn, and the marker goes away.
+A thread that was running or waiting on an approval when HinaCode stopped comes back as Interrupted. Its sidebar row shows a stop mark in the attention color, the Inbox counts it, and the thread view shows "HinaCode stopped before this turn finished" above the composer with a Continue button. Continue sends one short prompt on the thread's provider session, so the agent resumes with its context. Typing a message works too. Either one starts a turn, and the marker goes away. A side chat cut the same way shows the callout above its own composer.
 
 From a terminal, `hinacode inbox` lists the thread as an `interrupted` ask, `hinacode ls --status interrupted` finds them all, and `hinacode continue <ref>` resumes one.
 
@@ -24,7 +24,7 @@ Two paths set it:
 
 `threads.continue { threadId }` calls `AgentRunner.continueInterrupted`. It does nothing while the thread is busy, and otherwise sends `CONTINUE_PROMPT` with `sendWhen`, whose guard checks for `interrupted` under the thread lock. A double click, two CLI calls, or a second restart start at most one turn. The route table sends the call to the machine that owns the thread, so it works for threads on a paired `hinacode serve`.
 
-The pull request watcher holds wakes for an interrupted thread as it does for a limited one, so a CI update does not resume work on its own.
+The pull request watcher holds wakes for an interrupted thread as it does for a limited one, so a CI update does not resume work on its own. Settling an interrupted thread by hand puts it on the same auto-archive clock as an idle one.
 
 ## Out of scope
 
