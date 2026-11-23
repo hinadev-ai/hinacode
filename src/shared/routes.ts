@@ -201,6 +201,7 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.transcript": thread,
   "threads.toolOutput": thread,
   "threads.send": thread,
+  "threads.continue": thread,
   "threads.steer": thread,
   "threads.queue": thread,
   "threads.unqueue": thread,

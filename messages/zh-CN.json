@@ -58,6 +58,8 @@
   "thread_status_pr_conflicting": "拉取请求存在合并冲突",
   "thread_status_pr_checks_failing": "拉取请求检查未通过",
   "thread_status_pr_changes_requested": "拉取请求被要求修改",
+  "thread_interrupted_continue": "继续",
+  "thread_interrupted_title": "HinaCode 在这一轮完成前停止了",
   "thread_usage_limit_title": "已达到用量上限",
   "thread_usage_limit_reset": "将于 {time} 重置。",
   "thread_usage_limit_was_reset": "已于 {time} 重置。",

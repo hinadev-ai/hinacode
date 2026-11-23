@@ -295,6 +295,7 @@ const handlers: Handlers = {
     ),
 
   "threads.resumeAtReset": ({ id, enabled }) => AgentRunner.use((runner) => runner.resumeAtReset(id, enabled)),
+  "threads.continue": ({ threadId }) => AgentRunner.use((runner) => runner.continueInterrupted(threadId)),
   "threads.switchAccount": ({ id, accountId, resend }) =>
     AgentRunner.use((runner) => runner.switchAccount(id, accountId, { resend: resend ?? false })).pipe(
       Effect.tap(rememberNewThreadOptions),

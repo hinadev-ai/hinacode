@@ -109,6 +109,7 @@ import { initialTurnState, step, type TurnEffect } from "./turnState.ts"
 const PERSIST_INTERVAL_MS = 500
 const RUN_AGENT_WAIT = Duration.minutes(4)
 const PERSIST_BYTES_PER_SECOND = 256 * 1024
+export const CONTINUE_PROMPT = "HinaCode stopped before your last turn finished. Continue where you left off."
 const interruptedSend = () => new AgentError({ provider: "hinacode", message: "Message send interrupted" })
 
 interface AgentRequest {
@@ -222,6 +223,7 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       enabled: boolean,
     ) => Effect.Effect<Thread, AgentError | PersistenceError | NotFoundError | ThreadStartedError>
+    readonly continueInterrupted: (threadId: string) => Effect.Effect<void, SendError>
     readonly switchAccount: (
       threadId: string,
       accountId: string | null,
@@ -1409,6 +1411,19 @@ const make = Effect.gen(function* () {
       })
     }).pipe(exclusive(threadId))
 
+  const isInterrupted = (threadId: string) =>
+    threads.get(threadId).pipe(
+      Effect.map(({ status }) => status === "interrupted"),
+      Effect.catchTag("NotFoundError", () => Effect.succeed(false)),
+    )
+
+  const continueInterrupted = (threadId: string) =>
+    Effect.suspend(() =>
+      busyThreads.has(threadId)
+        ? Effect.void
+        : sendWhen(threadId, CONTINUE_PROMPT, [], {}, isInterrupted(threadId)).pipe(Effect.asVoid),
+    )
+
   const consumeDueResume = (threadId: string, now: string) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
@@ -1903,6 +1918,7 @@ const make = Effect.gen(function* () {
     unschedule,
     sendDueSchedules,
     resumeAtReset,
+    continueInterrupted,
     switchAccount,
     removeAccount,
     switchAgent,
