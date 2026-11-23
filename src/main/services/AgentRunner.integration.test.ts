@@ -88,6 +88,7 @@ interface Probe {
   readonly storedMessages: (threadId: string) => Promise<ReadonlyArray<Message>>
   readonly failNextInsert: (matches: (message: Message) => boolean) => void
   readonly refreshed: Array<string>
+  readonly shutDown: () => Promise<void>
 }
 
 const streamedWords = Array.from({ length: 400 }, (_, index) => `word${index} `)
@@ -633,6 +634,7 @@ const withPreparingThread = async (
           failingInsert = matches
         },
         refreshed,
+        shutDown: () => runnerRuntime.dispose(),
         turnBase: () =>
           domainRuntime.runPromise(
             sql<{
@@ -1416,6 +1418,18 @@ it("closes the session after Stop when a wakeup is pending, so the wakeup never 
       { provider: "claude", call: "closeSession" },
     ])
     expect(stops).toStrictEqual([])
+  })
+})
+
+it("marks a turn that shutdown cut off as interrupted", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, shutDown }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "waits for Stop", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
+
+    await shutDown()
+
+    expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("interrupted")
   })
 })
 

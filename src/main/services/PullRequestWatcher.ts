@@ -14,6 +14,9 @@ const MAX_FAILURES = 15
 
 const isPutAway = (thread: Thread) => thread.status === "archived" || thread.settledAt !== null
 
+const waitsOnUser = (thread: Thread) =>
+  thread.status === "awaiting_approval" || thread.status === "interrupted" || thread.status === "limited"
+
 export class PullRequestWatcher extends Context.Service<PullRequestWatcher, { readonly sweep: Effect.Effect<void> }>()(
   "hinacode/PullRequestWatcher",
 ) {}
@@ -64,7 +67,7 @@ const make = Effect.gen(function* () {
   const stopWithWake = (link: PullRequestLink, watch: PullRequestWatch, reason: string) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(link.threadId)
-      if (!isPutAway(thread) && thread.status !== "awaiting_approval" && thread.status !== "limited") {
+      if (!isPutAway(thread) && !waitsOnUser(thread)) {
         if (yield* stillCurrent(link.id, watch.generation)) {
           yield* wake(link, watch.generation, watchStoppedMessage(link.url, reason))
         }
@@ -109,7 +112,7 @@ const make = Effect.gen(function* () {
           : record(link, watch, { snapshot, failures: 0, lastPolledAt: now })
         return
       }
-      if (thread.status === "awaiting_approval" || thread.status === "limited") {
+      if (waitsOnUser(thread)) {
         yield* record(link, watch, { failures: 0, lastPolledAt: now })
         return
       }

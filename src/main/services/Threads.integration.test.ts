@@ -96,6 +96,26 @@ describe("Threads", () => {
     }).pipe(Effect.provide(threadsLayer)),
   )
 
+  it.effect("marks only the threads a quit or crash left mid-turn as interrupted", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const statuses = ["running", "awaiting_approval", "idle", "limited", "interrupted"] as const
+      const ids = yield* Effect.forEach(statuses, (status) =>
+        Effect.gen(function* () {
+          const { threadId } = yield* seedThread({ rootPath: `/reset-${status}` })
+          yield* threads.update({ id: threadId, status })
+          return threadId
+        }),
+      )
+
+      yield* threads.resetInterrupted
+      yield* threads.resetInterrupted
+
+      const after = yield* Effect.forEach(ids, (id) => Effect.map(threads.get(id), (thread) => thread.status))
+      expect(after).toStrictEqual(["interrupted", "interrupted", "idle", "limited", "interrupted"])
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
   it.effect("forks a thread with the transcript up to the chosen turn", () =>
     Effect.gen(function* () {
       const threads = yield* Threads

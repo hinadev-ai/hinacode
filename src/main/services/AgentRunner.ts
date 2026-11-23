@@ -858,6 +858,7 @@ const make = Effect.gen(function* () {
 
     let next: QueuedMessage | undefined
     let finishing = false
+    let cutByShutdown = false
     const opened = Deferred.makeUnsafe<void>()
     const ended = Deferred.makeUnsafe<void>()
     const withdraw = (event: AgentEvent) => publishTranscript({ type: "thread.event", threadId: thread.id, event })
@@ -890,8 +891,13 @@ const make = Effect.gen(function* () {
       setTurnMessages(replaceLast(turnMessages, closed))
       yield* persist
       if (closed !== last) yield* publishTranscript({ type: "message.updated", message: closed })
-      if (isThreadBusy(state.status))
-        yield* Effect.andThen(recordTurnEnd, updateThread({ id: thread.id, status: "idle" }))
+      if (isThreadBusy(state.status)) {
+        const interrupted = cutByShutdown && !(yield* Deferred.isDone(stop))
+        yield* Effect.andThen(
+          recordTurnEnd,
+          updateThread({ id: thread.id, status: interrupted ? "interrupted" : "idle" }),
+        )
+      }
       if (state.outcome !== "completed" || (yield* Deferred.isDone(stop))) return
       next = yield* nextQueued(thread.id)
     }).pipe(
@@ -919,6 +925,7 @@ const make = Effect.gen(function* () {
           }),
         ),
         Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
+        Effect.onInterrupt(() => Effect.sync(() => (cutByShutdown = true))),
         Effect.ensuring(finish),
       )
 

@@ -186,6 +186,7 @@ const threadStatus = {
   RiHourglassFill: HourglassFillIcon,
   RiPulseLine: PulseIcon,
   RiQuestionFill: QuestionFillIcon,
+  RiStopCircleLine: StopCircleIcon,
   RiTimeLine: ClockIcon,
 } satisfies Record<string, IconComponent>
 

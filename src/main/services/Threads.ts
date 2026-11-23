@@ -124,7 +124,8 @@ const arranging = new Set([
 ])
 
 const startsWork = (from: ThreadStatus, to: ThreadStatus) =>
-  ((from === "idle" || from === "limited") && to === "running") || (from === "archived" && to !== "archived")
+  ((from === "idle" || from === "interrupted" || from === "limited") && to === "running") ||
+  (from === "archived" && to !== "archived")
 
 const onlyArranges = (input: UpdateThread) =>
   Object.entries(input).every(([key, value]) => arranging.has(key) || value === undefined)
@@ -968,7 +969,7 @@ const make = Effect.gen(function* () {
     workStartedAt,
     remove,
     resetInterrupted: sql`
-      UPDATE thread SET status = 'idle' WHERE status IN ('running', 'awaiting_approval')
+      UPDATE thread SET status = 'interrupted', snoozed_until = NULL WHERE status IN ('running', 'awaiting_approval')
     `.pipe(Effect.asVoid, Effect.mapError(persistence("threads.resetInterrupted"))),
   })
 })
