@@ -57,6 +57,15 @@ export const providerLabel = {
   pi: m.provider_pi,
 } satisfies Record<ProviderId, () => string>
 
+export const providerSignInHint = {
+  claude: m.settings_account_signed_out_claude,
+  codex: m.settings_account_signed_out_codex,
+  muse: m.settings_account_signed_out_muse,
+  opencode: m.settings_account_signed_out_opencode,
+  magpie: m.settings_account_signed_out_magpie,
+  pi: m.settings_account_signed_out_pi,
+} satisfies Record<ProviderId, () => string>
+
 function Mark({ mark, muted, className }: { mark: Mark; muted: boolean; className?: string }) {
   const { Icon, color } = mark
   return <Icon aria-hidden className={cn("size-3.5 shrink-0", muted ? "text-muted-foreground" : color, className)} />

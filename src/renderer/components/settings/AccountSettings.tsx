@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog.tsx"
-import { providerLabel } from "../ProviderIcon.tsx"
+import { providerLabel, providerSignInHint } from "../ProviderIcon.tsx"
 import { SettingsPanelSection } from "./SettingsSection.tsx"
 import { RenameDialog } from "../RenameDialog.tsx"
 import { Button } from "../ui/button.tsx"
@@ -52,15 +52,6 @@ import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from ".
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { MoreIcon, PencilIcon, PlusIcon, RefreshIcon, TrashIcon } from "@hinacode/icons"
-
-const signedOutHint = {
-  claude: m.settings_account_signed_out_claude,
-  codex: m.settings_account_signed_out_codex,
-  muse: m.settings_account_signed_out_muse,
-  opencode: m.settings_account_signed_out_opencode,
-  magpie: m.settings_account_signed_out_magpie,
-  pi: m.settings_account_signed_out_pi,
-} satisfies Record<ProviderId, () => string>
 
 const addsAccounts = Schema.is(AccountProviderId)
 
@@ -282,7 +273,7 @@ function describeAccount(provider: ProviderId, account: AgentAccount, cliLogin: 
     case "external":
       return m.settings_account_external({ service: account.service })
     case "signedOut":
-      return cliLogin ? signedOutHint[provider]() : m.settings_account_signed_out()
+      return cliLogin ? providerSignInHint[provider]() : m.settings_account_signed_out()
   }
 }
 
