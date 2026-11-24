@@ -352,7 +352,12 @@ describe("the account's machines", () => {
   })
 })
 
-const PAIRING = { hosts: ["192.168.1.20", "home-mac.local"], port: 48081, token: "pairing-token" }
+const PAIRING = {
+  hosts: ["192.168.1.20", "home-mac.local"],
+  port: 48081,
+  key: "dGhpcyBpcyB0aGUgbWFjaGluZSBwdWJsaWMga2V5IQA",
+}
+const ROTATED_KEY = "cm90YXRlZCBhZnRlciByZXNldHRpbmcgcGFpcmluZyE"
 
 const publish = (credential: string, pairing: unknown = PAIRING) =>
   call("PUT", "/v1/host/pairing", { bearer: credential, body: pairing })
@@ -434,8 +439,39 @@ describe("the machines the owner's devices see", () => {
   it("replaces the pairing when the machine publishes again", async () => {
     const credential = await linkMachine()
     await publish(credential)
-    expect((await publish(credential, { ...PAIRING, hosts: ["10.0.0.5"], token: "rotated" })).status).toBe(204)
-    expect(await machines()).toMatchObject([{ pairing: { hosts: ["10.0.0.5"], port: 48081, token: "rotated" } }])
+    expect((await publish(credential, { ...PAIRING, hosts: ["10.0.0.5"], key: ROTATED_KEY })).status).toBe(204)
+    expect(await machines()).toMatchObject([{ pairing: { hosts: ["10.0.0.5"], port: 48081, key: ROTATED_KEY } }])
+  })
+
+  it("hands out the machine's public key and never a token", async () => {
+    await publish(await linkMachine())
+    const [machine] = (await machines()) as { pairing: Record<string, unknown> }[]
+    expect(machine?.pairing.key).toBe(PAIRING.key)
+    expect(machine?.pairing).not.toHaveProperty("token")
+  })
+
+  it("refuses a pairing from an older HinaCode that still sends a token, and stores nothing", async () => {
+    const credential = await linkMachine()
+    for (const token of ["pairing-token", "", null]) {
+      const response = await publish(credential, { ...PAIRING, token })
+      expect(response.status).toBe(400)
+      expect(((await response.json()) as { error: string }).error).toMatch(/^Update HinaCode on this machine\./)
+    }
+    expect(await env.DB.prepare("SELECT pairing FROM host").first("pairing")).toBeNull()
+    expect(await machines()).toEqual([])
+  })
+
+  it("erases every stored pairing with its token in the 0009 migration", async () => {
+    await linkMachine()
+    const legacy = JSON.stringify({ hosts: ["192.168.1.20"], port: 48081, token: "pairing-token" })
+    await env.DB.prepare("UPDATE host SET pairing = ?").bind(legacy).run()
+    const migration = env.TEST_MIGRATIONS.find(({ name }) => name === "0009_pairing_without_token.sql")
+    await env.DB.batch(migration!.queries.map((query) => env.DB.prepare(query)))
+    expect(await env.DB.prepare("SELECT pairing FROM host").first("pairing")).toBeNull()
+    const { hosts } = (await (await call("GET", "/v1/hosts", { bearer: "alice-session" })).json()) as {
+      hosts: { published: boolean }[]
+    }
+    expect(hosts).toMatchObject([{ published: false }])
   })
 
   it("takes a pairing only from a linked machine", async () => {
@@ -463,8 +499,13 @@ describe("the machines the owner's devices see", () => {
       { ...PAIRING, port: 0 },
       { ...PAIRING, port: 65536 },
       { ...PAIRING, port: 80.5 },
-      { ...PAIRING, token: "" },
-      { ...PAIRING, token: "t".repeat(257) },
+      { ...PAIRING, key: "" },
+      { ...PAIRING, key: PAIRING.key.slice(0, 42) },
+      { ...PAIRING, key: `${PAIRING.key}A` },
+      { ...PAIRING, key: `${PAIRING.key.slice(0, 42)}B` },
+      { ...PAIRING, key: `${PAIRING.key.slice(0, 42)}=` },
+      { ...PAIRING, key: `${PAIRING.key.slice(0, 41)}+A` },
+      { ...PAIRING, key: 32 },
       { hosts: PAIRING.hosts, port: PAIRING.port },
       "not an object",
     ]) {

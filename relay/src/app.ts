@@ -1,4 +1,4 @@
-import { Option, Schema } from "effect"
+import { Option, Predicate, Schema } from "effect"
 import { Hono, type Context } from "hono"
 import { cors } from "hono/cors"
 import { CloudflareError, makeCloudflare, type Fetch } from "./cloudflare"
@@ -28,6 +28,9 @@ const DEVICE_LINK_NEEDS_SESSION = "Approve this sign-in on the relay page in you
 const SIGN_IN_CODE_GONE = "The sign-in expired or was already used. Sign in again."
 const tooManyMachines = (name: string) => `Your account already has ${MAX_HOSTS} machines. Remove one to link ${name}.`
 const ALREADY_DECIDED = "This request was already approved or denied."
+const SEND_PAIRING =
+  "Send hosts (1 to 16 addresses without spaces, slashes, brackets or @), port (1 to 65535) and key (the machine's 32-byte public key as 43 base64url characters)."
+const PAIRING_WITH_TOKEN = `Update HinaCode on this machine. The relay no longer stores a token. ${SEND_PAIRING}`
 
 const Label = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(64))
 const NewLink = Schema.Struct({
@@ -51,7 +54,7 @@ const Pairing = Schema.Struct({
     Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(255), Schema.isPattern(/^[^\s/?#@[\]\\]+$/)),
   ).check(Schema.isMaxLength(16)),
   port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
-  token: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(256)),
+  key: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/)),
 })
 const StoredPairing = Schema.fromJsonString(Pairing)
 const HostChange = Schema.Struct({ enabled: Schema.Boolean })
@@ -382,14 +385,10 @@ export const makeApp = (deps: Deps) => {
   app.put("/v1/host/pairing", async (c) => {
     const host = await machine(c)
     if (Option.isNone(host)) return fail(c, 401, "This machine is not linked. Link it again.")
-    const input = await body(c, Pairing)
-    if (Option.isNone(input)) {
-      return fail(
-        c,
-        400,
-        "Send hosts (1 to 16 addresses without spaces, slashes, brackets or @), port (1 to 65535) and token (1 to 256 characters).",
-      )
-    }
+    const sent = await c.req.json().catch(() => undefined)
+    if (Predicate.hasProperty(sent, "token")) return fail(c, 400, PAIRING_WITH_TOKEN)
+    const input = Schema.decodeUnknownOption(Pairing)(sent)
+    if (Option.isNone(input)) return fail(c, 400, SEND_PAIRING)
     await runStore(c.env.DB, (store) => store.setPairing(host.value.id, JSON.stringify(input.value)))
     return c.body(null, 204)
   })
