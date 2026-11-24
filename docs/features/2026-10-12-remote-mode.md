@@ -80,7 +80,7 @@ Pairing URL: `hinacode://connect?host=<host>&port=<port>&token=<token>`, with `h
 
 ### Trust boundary
 
-The listener is reachable from the network when `bindHost` is not loopback. The boundary is the token: 32 random bytes, compared with `timingSafeEqual`, held by whoever scanned the QR code. Frames are decoded with `ClientFrame` before anything is dispatched, and dispatch runs the same request schema as the Electron channel. The transport is plain `ws`; over Tailscale that is encrypted end to end by WireGuard, and on a LAN it is as exposed as the automation webhook already is. TLS is out of scope for this slice and the settings copy says so.
+The listener is reachable from the network when `bindHost` is not loopback. The boundary is the token: 32 random bytes, compared with `timingSafeEqual`, held by whoever scanned the QR code. Frames are decoded with `ClientFrame` before anything is dispatched, and dispatch runs the same request schema as the Electron channel. The transport was plain `ws` at first. Since [ADR 0027](../adr/0027-end-to-end-encryption-with-a-pinned-host-key.md) every frame after a Noise handshake to the pinned host key is encrypted, on the LAN as well as over the relay.
 
 The pairing and every `ready` frame carry `hosts`, the addresses the listener answers on now. A phone stores the ones a `ready` reports and swaps its dial plan without dropping the socket. Connected through the relay, it checks a new direct address at once, so a phone paired over Tailscale or the relay moves to the LAN as soon as the desktop reports a LAN address.
 
