@@ -391,6 +391,7 @@ export class Transport {
   }
 
   private receiveFrame(frame: ServerFrame) {
+    if (frame.type !== "ready" && this.status !== "connected") return
     switch (frame.type) {
       case "ready":
         return this.ready(frame)
