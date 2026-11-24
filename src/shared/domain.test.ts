@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
+import type { ProviderId } from "./agent.ts"
 import { RpcMethods } from "./contract.ts"
 import {
   chatFolder,
@@ -17,10 +18,9 @@ const legacySettings = Object.fromEntries(
   Object.entries(defaultSettings).filter(([key]) => key !== "defaultAccountName"),
 )
 
-const withoutOpencode = (value: unknown) => {
+const withoutProvider = (provider: ProviderId) => (value: unknown) => {
   if (typeof value !== "object" || value === null || !("claude" in value)) return value
-  const { opencode: _opencode, ...rest } = value as Record<string, unknown>
-  return rest
+  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== provider))
 }
 
 const legacyThread: Thread = {
@@ -59,18 +59,22 @@ describe("older cloud responses", () => {
       muse: null,
       opencode: null,
       magpie: null,
+      antigravity: null,
     })
   })
 
-  it("gives opencode empty defaults in settings saved before it existed", () => {
-    const beforeOpencode = Object.fromEntries(
-      Object.entries(defaultSettings).map(([key, value]) => [key, withoutOpencode(value)]),
-    )
-    const settings = Schema.decodeUnknownSync(Settings)(beforeOpencode)
-    expect(settings.defaultModel.opencode).toBeNull()
-    expect(settings.modelPresets.opencode).toStrictEqual([])
-    expect(settings.defaultFastMode.opencode).toBe(false)
-  })
+  it.each(["opencode", "antigravity"] as const)(
+    "gives %s empty defaults in settings saved before it existed",
+    (provider) => {
+      const before = Object.fromEntries(
+        Object.entries(defaultSettings).map(([key, value]) => [key, withoutProvider(provider)(value)]),
+      )
+      const settings = Schema.decodeUnknownSync(Settings)(before)
+      expect(settings.defaultModel[provider]).toBeNull()
+      expect(settings.modelPresets[provider]).toStrictEqual([])
+      expect(settings.defaultFastMode[provider]).toBe(false)
+    },
+  )
 
   it("has no global actions when settings predate them", () => {
     const { actions: _actions, ...withoutActions } = defaultSettings
@@ -168,14 +172,21 @@ describe("listener settings", () => {
 })
 
 describe("enabledProviders", () => {
-  const installed = { claude: false, codex: true, muse: false, opencode: true, magpie: false }
+  const installed = { claude: false, codex: true, muse: false, opencode: true, magpie: false, antigravity: false }
 
   it("leaves out an agent whose CLI is missing, whatever its switch says", () => {
     expect(enabledProviders(defaultSettings, installed)).toStrictEqual(["codex", "opencode"])
   })
 
   it("keeps every switched-on agent while the machine has not answered yet", () => {
-    expect(enabledProviders(defaultSettings)).toStrictEqual(["claude", "codex", "muse", "opencode", "magpie"])
+    expect(enabledProviders(defaultSettings)).toStrictEqual([
+      "claude",
+      "codex",
+      "muse",
+      "opencode",
+      "magpie",
+      "antigravity",
+    ])
   })
 
   it("starts new threads on the first installed agent when the default one is missing", () => {

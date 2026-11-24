@@ -58,4 +58,13 @@ export const providerInfo: Record<ProviderId, ProviderInfo> = {
     movesCommandsToBackground: true,
     subagentModels: "picked",
   },
+  antigravity: {
+    name: "Antigravity",
+    binary: "agy",
+    installUrl: "https://antigravity.google",
+    steersRunningTurn: false,
+    autoCompacts: false,
+    movesCommandsToBackground: false,
+    subagentModels: "picked",
+  },
 }

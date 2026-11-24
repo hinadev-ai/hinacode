@@ -5,6 +5,7 @@ import { AgentAccount, type AgentProfile, ProviderId } from "../../shared/agent.
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { AntigravityProvider } from "../agents/antigravity/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentError, AgentProvider } from "../agents/provider.ts"
@@ -75,6 +76,7 @@ const make = (cacheDir: string) =>
       muse: yield* MuseProvider,
       opencode: yield* OpencodeProvider,
       magpie: yield* MagpieProvider,
+      antigravity: yield* AntigravityProvider,
     }
 
     yield* accounts.list.pipe(

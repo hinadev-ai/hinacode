@@ -184,11 +184,11 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       }
     }
 
-    const startAgent = (tmpDirectory: string | null) =>
+    const startAgent = (cwd: string, tmpDirectory: string | null) =>
       Effect.gen(function* () {
         const binaryPath = config.binary ?? (yield* installedBinary(config.id, providerInfo[config.id].binary))
         const env = { ...process.env, ...config.env, ...tmpEnv(tmpDirectory) }
-        const client = yield* makeAcpClient({ binaryPath, args: config.args, env })
+        const client = yield* makeAcpClient({ binaryPath, args: config.args, env, cwd })
         const initialized = yield* call(
           client,
           "initialize",
@@ -382,7 +382,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
         Effect.gen(function* () {
           if (input.home !== null) return yield* agentError(`${name} runs on its CLI login only`)
           accessModes.set(input.threadId, input.accessMode)
-          const { client, capabilities } = yield* startAgent(input.tmpDirectory)
+          const { client, capabilities } = yield* startAgent(input.cwd, input.tmpDirectory)
           yield* Effect.acquireRelease(
             Effect.sync(() => registerAgentPid(input.threadId, client.pid)),
             (unregister) => Effect.sync(unregister),
@@ -434,7 +434,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       )
 
     const probeModels = Effect.gen(function* () {
-      const { client } = yield* startAgent(null)
+      const { client } = yield* startAgent(homedir(), null)
       const probe = yield* call(client, "session/new", { cwd: homedir(), mcpServers: [] }, NewSessionResponse)
       const selector = modelSelector(probe)
       const efforts = new Map<string, ReadonlyArray<string>>()
@@ -467,7 +467,7 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
 
     const probeCommands = (cwd: string) =>
       Effect.gen(function* () {
-        const { client } = yield* startAgent(null)
+        const { client } = yield* startAgent(cwd, null)
         const announced = yield* Deferred.make<ReadonlyArray<AgentCommand>>()
         yield* client.subscribe((message) => {
           const update = commandsOf(message)

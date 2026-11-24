@@ -242,6 +242,7 @@ const handle = (message: Message) => {
   switch (message.method) {
     case "initialize":
       if (silentInitialize) return
+      appendFileSync(logPath ?? "/dev/null", `${JSON.stringify({ answered: "initialize", cwd: process.cwd() })}\n`)
       return send({
         id: message.id,
         result: {

@@ -14,6 +14,7 @@ import type { ProviderId, Subagent } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { modelBrand, type ModelBrand } from "../lib/modelBrand.ts"
 import { m } from "../paraglide/messages.js"
+import { AntigravityLogoIcon } from "./icons/AntigravityLogoIcon.tsx"
 import { MagpieLogoIcon } from "./icons/MagpieLogoIcon.tsx"
 import { MistralLogoIcon } from "./icons/MistralLogoIcon.tsx"
 import { MoonshotLogoIcon } from "./icons/MoonshotLogoIcon.tsx"
@@ -31,6 +32,7 @@ const providerMarks = {
   muse: { Icon: RiMetaFill, color: "text-provider-muse" },
   opencode: { Icon: OpencodeLogoIcon, color: "text-provider-opencode" },
   magpie: { Icon: MagpieLogoIcon, color: "text-provider-magpie" },
+  antigravity: { Icon: AntigravityLogoIcon, color: "text-provider-antigravity" },
 } satisfies Record<ProviderId, Mark>
 
 const modelMarks = {
@@ -52,6 +54,7 @@ export const providerLabel = {
   muse: m.provider_muse,
   opencode: m.provider_opencode,
   magpie: m.provider_magpie,
+  antigravity: m.provider_antigravity,
 } satisfies Record<ProviderId, () => string>
 
 function Mark({ mark, muted, className }: { mark: Mark; muted: boolean; className?: string }) {

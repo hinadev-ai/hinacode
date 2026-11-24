@@ -48,6 +48,7 @@ const bridge: HinacodeBridge = {
           muse: { installed: false, path: null },
           opencode: { installed: false, path: null },
           magpie: { installed: false, path: null },
+          antigravity: { installed: false, path: null },
         },
       }
     if (method === "models.list") return { result: models }

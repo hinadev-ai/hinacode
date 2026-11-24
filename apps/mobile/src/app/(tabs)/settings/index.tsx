@@ -197,6 +197,7 @@ const agents: readonly { provider: ProviderId; label: string; icon: IconName }[]
   { provider: "muse", label: copy("mobile_settings_agent_muse"), icon: "RiMetaFill" },
   { provider: "opencode", label: copy("mobile_settings_agent_opencode"), icon: "OpencodeMark" },
   { provider: "magpie", label: copy("mobile_settings_agent_magpie"), icon: "MagpieMark" },
+  { provider: "antigravity", label: copy("mobile_settings_agent_antigravity"), icon: "AntigravityMark" },
 ]
 
 const settingsAtom = rpcFamily("settings.get")

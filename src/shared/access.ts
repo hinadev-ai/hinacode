@@ -19,6 +19,7 @@ const behaviors: Record<ProviderId, Record<AccessMode, AccessBehavior>> = {
   codex: { supervised: "askUnlessReadOnly", auto: "sandboxed", full: "bypass" },
   muse: { supervised: "askProtectedWrites", auto: "aiReview", full: "unrestricted" },
   opencode: { supervised: "askEveryTool", auto: "acceptEdits", full: "bypass" },
+  antigravity: { supervised: "askEveryTool", auto: "acceptEdits", full: "bypass" },
 }
 
 export const accessBehavior = (
