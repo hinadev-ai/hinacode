@@ -10,7 +10,7 @@ Issue #5: two threads on the same branch shared one checkout. Settling either th
 ## Decision
 
 - Worktrees live in `<parent>/.hinacode-worktrees/<project>/`, and each folder name ends with the worktree id.
-- A branch has at most one live worktree (`WorktreeTakenError`).
+- A branch has at most one live worktree. Asking for a branch another checkout holds creates `<branch>-<5 hex>` from it, or from the pull request head when opening a pull request.
 - Removal fails with `WorktreeBusyError` while setup runs, while any thread in the checkout is mid-turn, or while another open thread uses it.
 - Create, remove and turn start share one lock, so a removal can't land between a turn resolving its directory and starting in it.
 - A removed worktree keeps its row. Every caller resolves the working directory through `makeActiveWorkspace`, which falls back to the project root (#18).

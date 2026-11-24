@@ -88,7 +88,6 @@ import {
   type PullRequestElsewhereError,
   type RootBusyError,
   ThreadStartedError,
-  type WorktreeTakenError,
 } from "./errors.ts"
 import { Git, type CommandError } from "./Git.ts"
 import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
@@ -140,7 +139,6 @@ type SendError =
   | PersistenceError
   | NotFoundError
   | CommandError
-  | WorktreeTakenError
   | ThreadStartedError
   | GitHubError
   | Schema.SchemaError

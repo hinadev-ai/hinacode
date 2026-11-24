@@ -474,26 +474,32 @@ const isAlive = (pid: number) => {
 }
 
 describe("worktree ownership", () => {
-  it.live("a second thread on the same branch is refused instead of sharing the checkout", () =>
+  it.live("a second thread on a taken branch gets its own branch and checkout", () =>
     withRepo(({ projectId }) =>
       Effect.gen(function* () {
         const first = yield* createThread(projectId, "first", "kk/shared")
-        const error = yield* Effect.flip(createThread(projectId, "second", "kk/shared"))
-        expect(error._tag).toBe("WorktreeTakenError")
-        const all = yield* Threads.use((threads) => threads.list)
-        expect(all.map((thread) => thread.id)).toStrictEqual([first.id])
+        const second = yield* createThread(projectId, "second", "kk/shared")
+        const [a, b] = yield* Effect.all([worktreeOf(first.worktreeId), worktreeOf(second.worktreeId)])
+        expect(a.branch).toBe("kk/shared")
+        expect(b.branch).toMatch(/^kk\/shared-[0-9a-f]{5}$/)
+        expect(b.path).not.toBe(a.path)
+        expect(git(b.path, "rev-parse", "HEAD")).toBe(git(a.path, "rev-parse", "HEAD"))
       }),
     ),
   )
 
-  it.live("concurrent creation of the same branch hands the checkout to one thread", () =>
+  it.live("concurrent creation of the same branch gives each thread its own checkout", () =>
     withRepo(({ projectId }) =>
       Effect.gen(function* () {
-        const results = yield* Effect.all(
-          [createThread(projectId, "a", "kk/race"), createThread(projectId, "b", "kk/race")].map(Effect.result),
-          { concurrency: "unbounded" },
+        const threads = yield* Effect.all(
+          [createThread(projectId, "a", "kk/race"), createThread(projectId, "b", "kk/race")],
+          {
+            concurrency: "unbounded",
+          },
         )
-        expect(results.filter((result) => result._tag === "Success").length).toBe(1)
+        const worktrees = yield* Effect.all(threads.map((thread) => worktreeOf(thread.worktreeId)))
+        expect(new Set(worktrees.map((worktree) => worktree.branch)).size).toBe(2)
+        expect(worktrees.map((worktree) => worktree.branch)).toContain("kk/race")
       }),
     ),
   )
@@ -1163,6 +1169,24 @@ describe("worktrees from pull requests", () => {
         )
         expect(worktree.branch).toBe("hinacode/pr-8")
         expect(git(worktree.path, "rev-parse", "HEAD").trim()).toBe(forkHead)
+      }),
+    ),
+  )
+
+  it.live("opens a pull request whose branch another worktree holds on a new branch at the pull request's head", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const { branchHead } = withOrigin(root)
+        const first = yield* Worktrees.use((worktrees) =>
+          worktrees.createFromPullRequest(projectId, pullRequestHead({})),
+        )
+        commit(first.path, "unpushed work")
+
+        const second = yield* Worktrees.use((worktrees) =>
+          worktrees.createFromPullRequest(projectId, pullRequestHead({})),
+        )
+        expect(second.branch).toMatch(/^feature\/login-[0-9a-f]{5}$/)
+        expect(git(second.path, "rev-parse", "HEAD").trim()).toBe(branchHead)
       }),
     ),
   )
