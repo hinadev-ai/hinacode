@@ -633,7 +633,7 @@
   "home_setup_agent": "登录一个代理",
   "home_setup_agent_hint": "HinaCode 运行你已经在用的编程代理。登录其中一个就够了。",
   "home_setup_agents": "这台电脑上的代理",
-  "home_setup_agent_none": "这台电脑上没有找到代理。请安装 Claude Code、Codex、Muse Code、opencode 或 magpie，然后重新检查。",
+  "home_setup_agent_none": "这台电脑上没有找到代理。请安装 Claude Code、Codex、Muse Code、opencode、magpie 或 pi，然后重新检查。",
   "home_setup_agent_settings": "代理设置",
   "home_setup_signed_in": "已登录",
   "home_setup_project": "添加项目",

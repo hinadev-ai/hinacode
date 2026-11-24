@@ -642,7 +642,7 @@
   "home_setup_agent": "Sign in to an agent",
   "home_setup_agent_hint": "HinaCode runs the coding agents you already use. One signed-in agent is enough.",
   "home_setup_agents": "Agents on this computer",
-  "home_setup_agent_none": "No agent found on this computer. Install Claude Code, Codex, Muse Code, opencode or magpie, then check again.",
+  "home_setup_agent_none": "No agent found on this computer. Install Claude Code, Codex, Muse Code, opencode, magpie or pi, then check again.",
   "home_setup_agent_settings": "Agent settings",
   "home_setup_signed_in": "Signed in",
   "home_setup_project": "Add a project",

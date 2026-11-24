@@ -642,7 +642,7 @@
   "home_setup_agent": "登入一個代理",
   "home_setup_agent_hint": "HinaCode 會執行你原本就在用的程式代理。登入其中一個就夠了。",
   "home_setup_agents": "這台電腦上的代理",
-  "home_setup_agent_none": "這台電腦上找不到代理。請安裝 Claude Code、Codex、Muse Code、opencode 或 magpie，然後重新檢查。",
+  "home_setup_agent_none": "這台電腦上找不到代理。請安裝 Claude Code、Codex、Muse Code、opencode、magpie 或 pi，然後重新檢查。",
   "home_setup_agent_settings": "代理設定",
   "home_setup_signed_in": "已登入",
   "home_setup_project": "新增專案",

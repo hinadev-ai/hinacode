@@ -642,7 +642,7 @@
   "home_setup_agent": "エージェントにサインイン",
   "home_setup_agent_hint": "HinaCode は普段使っているコーディングエージェントを動かします。サインイン済みのエージェントが 1 つあれば十分です。",
   "home_setup_agents": "このコンピュータのエージェント",
-  "home_setup_agent_none": "このコンピュータにエージェントが見つかりません。Claude Code、Codex、Muse Code、opencode、magpie のいずれかをインストールしてから再確認してください。",
+  "home_setup_agent_none": "このコンピュータにエージェントが見つかりません。Claude Code、Codex、Muse Code、opencode、magpie、pi のいずれかをインストールしてから再確認してください。",
   "home_setup_agent_settings": "エージェント設定",
   "home_setup_signed_in": "サインイン済み",
   "home_setup_project": "プロジェクトを追加",
