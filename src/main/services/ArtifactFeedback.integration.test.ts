@@ -9,6 +9,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { PiProvider } from "../agents/pi/index.ts"
 import { AgentError, type AgentProvider } from "../agents/provider.ts"
 import { seedThread } from "../db/testing.ts"
 import { makeTestAppLayer } from "../testing.ts"
@@ -83,6 +84,7 @@ const providers = Layer.mergeAll(
   Layer.succeed(MuseProvider, provider("muse")),
   Layer.succeed(OpencodeProvider, provider("opencode")),
   Layer.succeed(MagpieProvider, provider("magpie")),
+  Layer.succeed(PiProvider, provider("pi")),
 )
 
 const quietEvents = Layer.mergeAll(

@@ -7,6 +7,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { PiProvider } from "../agents/pi/index.ts"
 import type { AgentError, AgentProvider } from "../agents/provider.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import type { NotFoundError, PersistenceError } from "./errors.ts"
@@ -75,6 +76,7 @@ const make = (cacheDir: string) =>
       muse: yield* MuseProvider,
       opencode: yield* OpencodeProvider,
       magpie: yield* MagpieProvider,
+      pi: yield* PiProvider,
     }
 
     yield* accounts.list.pipe(

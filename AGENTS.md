@@ -1,6 +1,6 @@
 # HinaCode
 
-HinaCode is a desktop UI for coding agents. It runs Claude Code (Agent SDK), Codex (app-server protocol), Muse Code (MSP), opencode (Agent Client Protocol) and magpie (Claude Code through its gateway) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
+HinaCode is a desktop UI for coding agents. It runs Claude Code (Agent SDK), Codex (app-server protocol), Muse Code (MSP), opencode (Agent Client Protocol), pi (its RPC mode) and magpie (Claude Code through its gateway) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
 
 We are building a harness, not a chat app. Our features help a developer manage the agent loop: a worktree per thread, inline approvals, steering a running turn, a built-in MCP server (`review_changes`, `link_pull_request`, Linear tools), PR links with merge state, a ports panel, and routines that start threads on a cron schedule or from a webhook. Read `README.md` for the full feature list.
 
@@ -30,7 +30,7 @@ Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI run
 
 ```
 src/main      Main process. One Effect layer graph (app.ts), run by Electron (index.ts) or as the Node cloud daemon (daemon.ts).
-  agents/     AgentProvider implementations: claude/, which magpie/ reuses, codex/, muse/, and acp/, which opencode/ configures. Registered in services/AgentRunner.ts.
+  agents/     AgentProvider implementations: claude/, which magpie/ reuses, codex/, muse/, pi/, and acp/, which opencode/ configures. Registered in services/AgentRunner.ts.
   services/   Effect services (Threads, Worktrees, Projects, Git, PullRequests, Secrets, Scheduler, routines/, ...)
   mcp/        HTTP MCP server on 127.0.0.1, one bearer credential per thread
   apps/       OAuth and a second MCP server for apps the developer connects, reached through the relay

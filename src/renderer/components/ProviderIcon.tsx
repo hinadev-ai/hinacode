@@ -1,3 +1,4 @@
+import { PiIcon } from "@hinacode/icons"
 import { cn } from "cn"
 import type { ComponentType } from "react"
 import {
@@ -31,6 +32,7 @@ const providerMarks = {
   muse: { Icon: RiMetaFill, color: "text-provider-muse" },
   opencode: { Icon: OpencodeLogoIcon, color: "text-provider-opencode" },
   magpie: { Icon: MagpieLogoIcon, color: "text-provider-magpie" },
+  pi: { Icon: PiIcon, color: "text-provider-pi" },
 } satisfies Record<ProviderId, Mark>
 
 const modelMarks = {
@@ -52,6 +54,7 @@ export const providerLabel = {
   muse: m.provider_muse,
   opencode: m.provider_opencode,
   magpie: m.provider_magpie,
+  pi: m.provider_pi,
 } satisfies Record<ProviderId, () => string>
 
 export const providerSignInHint = {
@@ -60,6 +63,7 @@ export const providerSignInHint = {
   muse: m.settings_account_signed_out_muse,
   opencode: m.settings_account_signed_out_opencode,
   magpie: m.settings_account_signed_out_magpie,
+  pi: m.settings_account_signed_out_pi,
 } satisfies Record<ProviderId, () => string>
 
 function Mark({ mark, muted, className }: { mark: Mark; muted: boolean; className?: string }) {

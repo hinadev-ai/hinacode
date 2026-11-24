@@ -63,6 +63,7 @@ import { providerInfo } from "../../shared/providers.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { PiProvider } from "../agents/pi/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import {
   AgentError,
@@ -376,6 +377,7 @@ const make = Effect.gen(function* () {
     muse: yield* MuseProvider,
     opencode: yield* OpencodeProvider,
     magpie: yield* MagpieProvider,
+    pi: yield* PiProvider,
   }
 
   const listedModels = (provider: AgentProvider) =>

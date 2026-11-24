@@ -554,6 +554,7 @@ const providers: Record<ProviderId, { label: string; icon: IconName }> = {
   muse: { label: copy("mobile_provider_muse"), icon: "RiMetaFill" },
   opencode: { label: copy("mobile_provider_opencode"), icon: "OpencodeMark" },
   magpie: { label: copy("mobile_provider_magpie"), icon: "MagpieMark" },
+  pi: { label: copy("mobile_provider_pi"), icon: "PiMark" },
 }
 
 const effortLabels: Record<string, string> = {
