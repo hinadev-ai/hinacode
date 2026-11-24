@@ -8,6 +8,7 @@ import {
   refusalText,
   repairsFromRelay,
   useCloud,
+  useClouds,
   useThreadEnvironment,
 } from "../lib/environments.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
@@ -25,6 +26,18 @@ export function CloudNotice({ threadId }: { threadId: string }) {
   const cloud = useCloud(useThreadEnvironment(threadId))
   if (cloud === undefined || cloud.status === "connected") return null
   return <CloudNoticeBody cloud={cloud} />
+}
+
+export function MachineApprovalNotices({ className }: { className?: string }) {
+  const waiting = useClouds().filter((cloud) => cloud.status === "approval")
+  if (waiting.length === 0) return null
+  return (
+    <div className={className}>
+      {waiting.map((cloud) => (
+        <CloudNoticeBody key={cloud.id} cloud={cloud} />
+      ))}
+    </div>
+  )
 }
 
 const noticeText = (cloud: Cloud, now: number, locale: string) => {
