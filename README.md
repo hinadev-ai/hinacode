@@ -56,7 +56,7 @@ HinaCode is a **delightful workstation for coding agents**. It handles the work 
 - **Linked pull requests.** See checks and review state next to the thread. HinaCode tells the agent when checks fail or a review lands.
 - **Merge and clean up.** Squash and merge from the thread, and HinaCode removes the worktree.
 - **Routines.** Run a prompt on a schedule, from a webhook, or from the CLI, in the project folder or a new worktree.
-- **Built-in MCP server.** Agents can ask you for secrets, hand work to other threads, drive a disposable VM or mobile simulators, and use Linear.
+- **Built-in MCP server.** Agents can ask you for secrets, hand work to other threads, drive a disposable VM or mobile simulators, use Linear, and chain these tools in a sandboxed script.
 - **Remote machines and your phone.** Run `npx hinacode serve` on another machine, then approve, steer, and merge from the phone app.
 - **Other apps.** Add your machine's URL to a chat app or agent harness that speaks remote MCP, approve it with a one-time code, then start, read, and steer threads from there.
 

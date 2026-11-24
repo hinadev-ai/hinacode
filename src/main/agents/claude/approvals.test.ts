@@ -98,6 +98,15 @@ describe("Claude session approvals", () => {
     expect((await call("Read", { file_path: "/home/me/.ssh/id_ed25519" })).prompted).toBe(true)
   })
 
+  test("allowing run_script for the session still asks about the next script", async () => {
+    const { call } = setup()
+    await call("mcp__hinacode__run_script", { code: "return await tools.list_threads({})" }, "allow_for_session")
+
+    const next = await call("mcp__hinacode__run_script", { code: "await tools.vm_exec({ command: 'rm -rf ~' })" })
+    expect(next.prompted).toBe(true)
+    expect(next.result.behavior).toBe("deny")
+  })
+
   test("the approval card is told what allow for session covers", async () => {
     const { call } = setup()
     const scopeOf = async (toolName: string, input: Record<string, unknown>) =>

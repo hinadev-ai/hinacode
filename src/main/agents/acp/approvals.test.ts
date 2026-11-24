@@ -98,3 +98,17 @@ describe("toApprovalRequest", () => {
     })
   })
 })
+
+describe("run_script approvals", () => {
+  test("offer no allow for session, because a later script could call any hinacode tool", () => {
+    const params: RequestPermissionParams = {
+      sessionId: "s1",
+      toolCall: { toolCallId: "call_3", title: "hinacode_run_script", kind: "other", rawInput: { code: "return 1" } },
+      options,
+    }
+    const tool = mergePermissionTool(undefined, params)
+    expect(toApprovalRequest({ id: "a3", threadId: "t1", provider: "opencode", tool, params }).allowForSession).toBe(
+      false,
+    )
+  })
+})

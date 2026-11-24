@@ -1,5 +1,11 @@
 import { Predicate } from "effect"
-import type { ApprovalDecision, ApprovalKind, ApprovalRequest, SessionScope } from "../../../shared/agent.ts"
+import {
+  type ApprovalDecision,
+  type ApprovalKind,
+  type ApprovalRequest,
+  grantsForSession,
+  type SessionScope,
+} from "../../../shared/agent.ts"
 import { toolInput, toolName } from "./items.ts"
 import type { ApprovalChoice, ApprovalRequestParams } from "./protocol.ts"
 
@@ -62,11 +68,14 @@ const describe = ({ subject, rawArgs, toolName: tool }: ApprovalRequestParams) =
   }
 }
 
-export const toApprovalRequest = (params: ApprovalRequestParams, id: string, threadId: string): ApprovalRequest => ({
-  id,
-  threadId,
-  provider: "muse",
-  ...describe(params),
-  input: toolInput(params.rawArgs),
-  sessionScope: sessionScope(params),
-})
+export const toApprovalRequest = (params: ApprovalRequestParams, id: string, threadId: string): ApprovalRequest => {
+  const scope = sessionScope(params)
+  return {
+    id,
+    threadId,
+    provider: "muse",
+    ...describe(params),
+    input: toolInput(params.rawArgs),
+    ...(grantsForSession(scope.tool) ? { sessionScope: scope } : { allowForSession: false }),
+  }
+}

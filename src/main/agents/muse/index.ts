@@ -26,6 +26,7 @@ import type {
   RunTurnInput,
   SessionScope,
 } from "../../../shared/agent.ts"
+import { sessionDecision } from "../../../shared/agent.ts"
 import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { installedBinary } from "../binary.ts"
@@ -645,9 +646,11 @@ const make = Effect.gen(function* () {
             request: toApprovalRequest(params, approval.id, threadId),
           })
           yield* Deferred.await(deferred).pipe(
-            Effect.flatMap((decision) => {
+            Effect.flatMap((chosen) => {
+              const scope = sessionScope(approval.params)
+              const decision = sessionDecision(scope.tool, chosen)
               approval.decision = decision
-              if (decision === "allow_for_session") threadGrants.add(grantKey(sessionScope(approval.params)))
+              if (decision === "allow_for_session") threadGrants.add(grantKey(scope))
               return decide(approval, decision)
             }),
             Effect.forkScoped,

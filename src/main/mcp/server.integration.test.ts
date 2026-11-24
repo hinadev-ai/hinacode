@@ -471,6 +471,63 @@ layer(testLayer)("mcp server transport", (it) => {
   )
 })
 
+layer(testLayer)("run_script", (it) => {
+  it.effect("calls the caller's tools in parallel and returns only what the script prints and returns", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const pullRequests = yield* PullRequests.PullRequests
+      const { a, b } = yield* Seeded
+      yield* pullRequests.link(a, "https://github.com/o/r/pull/31")
+      yield* pullRequests.link(b, "https://github.com/o/r/pull/32")
+      const code = `
+        const [linked, published] = await Promise.all([
+          tools.list_thread_pull_requests(),
+          tools.publish_document({ title: "Notes", markdown: "# Notes" }),
+        ])
+        console.log(published.split(":")[0])
+        return { linked, artifacts: JSON.parse(await tools.list_artifacts()).map((artifact) => artifact.title) }`
+      const result = yield* callAs(yield* mcp.connectionFor(a), "run_script", { code })
+      expect(result.isError).toBe(false)
+      const [printed, ...returned] = result.text.split("\n")
+      expect(printed).toMatch(/^Published document [a-z0-9-]+ version 1$/)
+      expect(JSON.parse(returned.join("\n"))).toEqual({
+        linked: "- https://github.com/o/r/pull/31",
+        artifacts: ["Notes"],
+      })
+    }),
+  )
+
+  it.effect("cannot call itself or a tool the caller cannot see", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const connection = yield* (yield* McpCredentials).connectionFor(a)
+      const code = `return [typeof tools.run_script, typeof tools.vm_screenshot, typeof tools.list_threads].join(",")`
+      expect(yield* callAs(connection, "run_script", { code })).toMatchObject({
+        isError: false,
+        text: "undefined,undefined,function",
+      })
+      expect(yield* callAs(connection, "run_script", { code: `return typeof __call` })).toMatchObject({
+        isError: false,
+        text: "undefined",
+      })
+    }),
+  )
+
+  it.effect("fails with the output so far and the failing tool's message", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const connection = yield* (yield* McpCredentials).connectionFor(a)
+      const code = `console.log("reading"); await tools.read_artifact({ id: "missing", path: "index.html" })`
+      const result = yield* callAs(connection, "run_script", { code })
+      expect(result.isError).toBe(true)
+      expect(result.text).toMatch(/^reading\n\nScript error: Error: .+/)
+      expect(result.text).toMatch(
+        /Tool calls that finished before this took effect and were not undone\. Check which calls already ran, fix the script, and run only what is left\.$/,
+      )
+    }),
+  )
+})
+
 layer(testLayer)("artifact tools", (it) => {
   it.effect("a thread publishes an artifact, finds it in the list and reads it back", () =>
     Effect.gen(function* () {
