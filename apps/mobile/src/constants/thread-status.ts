@@ -6,6 +6,7 @@ export const threadStatusLabel: Record<ThreadStatus, string> = {
   idle: copy("mobile_status_idle"),
   running: copy("mobile_status_running"),
   awaiting_approval: copy("mobile_status_awaiting"),
+  interrupted: copy("mobile_status_interrupted"),
   limited: copy("mobile_status_limited"),
   archived: copy("mobile_status_archived"),
 }

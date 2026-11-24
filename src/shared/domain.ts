@@ -425,7 +425,15 @@ export const PullRequestMatch = Schema.Struct({
 })
 export type PullRequestMatch = typeof PullRequestMatch.Type
 
-export const ThreadStatus = Schema.Literals(["draft", "idle", "running", "awaiting_approval", "limited", "archived"])
+export const ThreadStatus = Schema.Literals([
+  "draft",
+  "idle",
+  "running",
+  "awaiting_approval",
+  "interrupted",
+  "limited",
+  "archived",
+])
 export type ThreadStatus = typeof ThreadStatus.Type
 
 export const isThreadBusy = (status: ThreadStatus) => status === "running" || status === "awaiting_approval"
@@ -622,7 +630,7 @@ export const ArchiveSettings = Schema.Struct({
   whenMerged: Schema.Boolean,
   removeWorktree: Schema.Boolean,
   settleAfterIdleDays: Days.pipe(Schema.withDecodingDefaultKey(Effect.succeed(7))),
-  archiveAfterSettledDays: Days.pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  archiveAfterSettledDays: Days.pipe(Schema.withDecodingDefaultKey(Effect.succeed(14))),
 })
 export type ArchiveSettings = typeof ArchiveSettings.Type
 
@@ -766,9 +774,9 @@ export const BindHost = Schema.String.check(Schema.isPattern(/^(?!(?:0\.0\.0\.0|
 
 const ListenPort = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))
 
-const perProvider = <S extends Schema.Top>(value: S, fallback: S["Encoded"]) => {
+export const perProvider = <S extends Schema.Top>(value: S, fallback: S["Encoded"]) => {
   const field = value.pipe(Schema.withDecodingDefaultKey(Effect.succeed(fallback)))
-  return Schema.Struct({ claude: field, codex: field, muse: field, opencode: field, magpie: field })
+  return Schema.Struct({ claude: field, codex: field, muse: field, opencode: field, magpie: field, pi: field })
 }
 
 const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
@@ -777,7 +785,10 @@ const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
   muse: value,
   opencode: value,
   magpie: value,
+  pi: value,
 })
+
+export const DEFAULT_BRANCH_NAMING_INSTRUCTIONS = "Start with hinacode/."
 
 export const Settings = Schema.Struct({
   defaultProvider: ProviderId,
@@ -802,6 +813,9 @@ export const Settings = Schema.Struct({
   ),
   remote: Schema.Struct({ enabled: Schema.Boolean, bindHost: BindHost, port: ListenPort }),
   textGenerationModel: Schema.String,
+  branchNamingInstructions: Schema.String.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_BRANCH_NAMING_INSTRUCTIONS)),
+  ),
   pullRequestGuide: Schema.Struct({
     enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
     model: Schema.String,
@@ -848,9 +862,10 @@ export const defaultSettings: Settings = {
   routines: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: PRIVATE_NETWORKS, port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",
+  branchNamingInstructions: DEFAULT_BRANCH_NAMING_INSTRUCTIONS,
   pullRequestGuide: { enabled: false, model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
-  archive: { whenMerged: true, removeWorktree: false, settleAfterIdleDays: 7, archiveAfterSettledDays: null },
+  archive: { whenMerged: true, removeWorktree: true, settleAfterIdleDays: 7, archiveAfterSettledDays: 14 },
   experimental: {
     tinyVm: false,
     tinyVmProvider: "boat",

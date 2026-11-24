@@ -44,7 +44,7 @@ const isIdleFor = (thread: Thread, days: number, now: number) =>
   canAutoSettle(thread) && thread.status === "idle" && olderThan(lastActivity(thread), days, now)
 
 const isSettledFor = (thread: Thread, days: number, now: number) =>
-  thread.status === "idle" &&
+  (thread.status === "idle" || thread.status === "interrupted") &&
   thread.pinnedAt === null &&
   thread.settledAt !== null &&
   olderThan(thread.settledAt, days, now)

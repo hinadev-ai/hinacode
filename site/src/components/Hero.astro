@@ -1,6 +1,6 @@
 ---
 import { RiClaudeFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
-import { MagpieLogoIcon, OpencodeLogoIcon } from "../icons.ts"
+import { MagpieLogoIcon, OpencodeLogoIcon, PiIcon } from "../icons.ts"
 import { translator, type Locale } from "../i18n.ts"
 import { RELEASES_URL } from "../links.ts"
 import AgentField from "./AgentField.astro"
@@ -23,6 +23,7 @@ const providers = [
   { Icon: RiMetaFill, name: t("provider_muse"), color: "text-[#0081fb]" },
   { Icon: OpencodeLogoIcon, name: t("provider_opencode"), color: "text-paper" },
   { Icon: MagpieLogoIcon, name: t("provider_magpie"), color: "text-paper" },
+  { Icon: PiIcon, name: t("provider_pi"), color: "text-paper" },
 ]
 ---
 

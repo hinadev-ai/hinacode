@@ -9,14 +9,14 @@ A thread without a pull request never settles by itself. The renderer showed a r
 
 ## User flow
 
-1. In Settings, Finished threads, the developer enters a number of days, 1 to 365, for **Settle a quiet thread after** (default 7) and **Archive a settled thread after** (default never). An empty field means never.
+1. In Settings, Finished threads, the developer enters a number of days, 1 to 365, for **Settle a quiet thread after** (default 7) and **Archive a settled thread after** (default 14). An empty field means never.
 2. A thread that has been idle that long, has no open or draft pull request, and has nothing running settles, and its processes stop, as a manual settle does.
 3. A thread that has stayed settled for the second number of days is archived. Archiving closes its terminals and removes its scratch folder, and its worktree when **Remove the worktree when archiving** is on.
 4. Pinning a thread keeps it out of both. Any new activity or Reopen restarts the count.
 
 ## Design
 
-- `ArchiveSettings` gains `settleAfterIdleDays` and `archiveAfterSettledDays`, each a whole number of days or `null` for never. Saved settings decode with the defaults, 7 and `null`.
+- `ArchiveSettings` gains `settleAfterIdleDays` and `archiveAfterSettledDays`, each a whole number of days or `null` for never. Saved settings decode with the defaults, 7 and 14. **Remove the worktree when archiving** is on by default. A clean worktree goes when its pull request merges, and an idle one when the thread is archived two weeks after it settles, together with its scratch folder. A developer who changed any Finished threads setting keeps the values they saved.
 - The existing `Settle` sweep runs every 3 minutes and adds two passes after the merge pass. Idle counts from `updatedAt`, or from `snoozedUntil` while that is later. Settled time counts from `settledAt`.
 - The idle pass applies the same "quiet" test as the merge pass: no background task, running sub-agent or listening port. It reads pull requests only for threads that are already idle long enough, then re-reads the thread and settles it only if `updatedAt` has not moved. After the release cleanup, `Threads.settleIf` checks the row again inside the worktree lock, so a pin set while listeners were stopping keeps the thread.
 - The archive pass skips a thread whose worktree has uncommitted changes when worktree removal is on, because no one is there to see the changes go. It releases the thread first, so nothing is left writing to the worktree, then `Threads.archiveIf` rechecks inside the worktree lock that the thread is clean, still settled for the number of days the setting holds now, and not pinned. Pin and Reopen take the same lock, so one that arrives during that check waits and applies after it, and one that arrived earlier keeps the thread. Choosing Never during the sweep stops the archive too. The check also asks `AgentRunner.isBusy`, because a send that arrives during cleanup claims the thread and waits for the lock. Archiving under it would refuse the message, and the send is the newer intent.

@@ -220,7 +220,7 @@ function ThreadActionsButton({ thread, onOpenTerminal }: { thread: Thread; onOpe
 }
 
 const statusColor = (theme: Palette, status: ThreadStatus) =>
-  status === "awaiting_approval" || status === "limited"
+  status === "awaiting_approval" || status === "interrupted" || status === "limited"
     ? theme.attention
     : status === "running"
       ? theme.running

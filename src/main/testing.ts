@@ -6,6 +6,7 @@ import type { CodexProvider } from "./agents/codex/index.ts"
 import type { MuseProvider } from "./agents/muse/index.ts"
 import type { MagpieProvider } from "./agents/magpie/index.ts"
 import type { OpencodeProvider } from "./agents/opencode/index.ts"
+import type { PiProvider } from "./agents/pi/index.ts"
 import * as AppConnections from "./apps/AppConnections.ts"
 import * as AppServer from "./apps/server.ts"
 import * as Db from "./db/client.ts"
@@ -61,7 +62,9 @@ const routinesStub = Layer.succeed(Routines, {} as typeof Routines.Service)
 const updatesStub = Layer.succeed(Updates, unsupported("0.0.0"))
 
 interface TestAppOptions {
-  readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider | OpencodeProvider | MagpieProvider>
+  readonly providers: Layer.Layer<
+    ClaudeProvider | CodexProvider | MuseProvider | OpencodeProvider | MagpieProvider | PiProvider
+  >
   readonly events?: Layer.Layer<Events | PushBroadcast | WindowPush>
   readonly relay?: Relay.RelayOptions
 }

@@ -15,6 +15,7 @@ import { CodexProvider } from "../../agents/codex/index.ts"
 import { MagpieProvider } from "../../agents/magpie/index.ts"
 import { MuseProvider } from "../../agents/muse/index.ts"
 import { OpencodeProvider } from "../../agents/opencode/index.ts"
+import { PiProvider } from "../../agents/pi/index.ts"
 import type { AgentProvider } from "../../agents/provider.ts"
 import * as Db from "../../db/client.ts"
 import { McpCredentials, layer as credentialsLayer } from "../../mcp/credentials.ts"
@@ -131,6 +132,7 @@ const makeLayer = ({ pushes, jobs }: Harness, port: number) => {
         Layer.succeed(MuseProvider, provider("muse")),
         Layer.succeed(OpencodeProvider, provider("opencode")),
         Layer.succeed(MagpieProvider, provider("magpie")),
+        Layer.succeed(PiProvider, provider("pi")),
       ).pipe(
         Layer.provideMerge(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
       ),

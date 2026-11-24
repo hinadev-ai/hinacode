@@ -24,6 +24,7 @@ import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { PiProvider } from "../agents/pi/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
@@ -183,6 +184,7 @@ const stubs = Layer.mergeAll(
   Layer.succeed(MuseProvider, fakeProvider("muse")),
   Layer.succeed(OpencodeProvider, fakeProvider("opencode")),
   Layer.succeed(MagpieProvider, fakeProvider("magpie")),
+  Layer.succeed(PiProvider, fakeProvider("pi")),
   Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
   Layer.succeed(PushBroadcast, { subscribe: () => Effect.void }),
   Layer.mock(Environments, { list: Effect.succeed({ clouds: [] }), owner: () => undefined }),

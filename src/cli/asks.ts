@@ -7,6 +7,7 @@ export const Ask = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("approval"), threadId: Schema.String, request: ApprovalRequest }),
   Schema.Struct({ kind: Schema.Literal("question"), threadId: Schema.String, request: QuestionRequest }),
   Schema.Struct({ kind: Schema.Literal("secret"), threadId: Schema.String, request: SecretRequest }),
+  Schema.Struct({ kind: Schema.Literal("interrupted"), thread: Thread }),
   Schema.Struct({ kind: Schema.Literal("limited"), thread: Thread }),
 ])
 export type Ask = typeof Ask.Type
@@ -24,6 +25,7 @@ export const asksFrom = (
   transcripts: ReadonlyMap<string, Pending>,
 ): ReadonlyArray<Ask> =>
   threads.flatMap((thread): ReadonlyArray<Ask> => {
+    if (thread.status === "interrupted") return [{ kind: "interrupted", thread }]
     if (thread.status === "limited") return [{ kind: "limited", thread }]
     const pending = transcripts.get(thread.id)
     return thread.status === "awaiting_approval" && pending !== undefined ? pendingAsks(thread.id, pending) : []

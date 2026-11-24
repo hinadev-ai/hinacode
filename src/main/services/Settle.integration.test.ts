@@ -555,6 +555,21 @@ describe("Settle", () => {
       }),
     )
 
+    it.effect("archives a settled thread a restart interrupted", () =>
+      Effect.gen(function* () {
+        const { threadId } = yield* seedThread({ rootPath: "/archive-interrupted" })
+        yield* Threads.use((threads) => threads.update({ id: threadId, status: "interrupted" }))
+        yield* TestClock.setTime(Date.parse((yield* Threads.use((threads) => threads.get(threadId))).updatedAt))
+        yield* Settle.use((settle) => settle.settle(threadId))
+        yield* Settings.use((settings) => settings.set({ archive: archiveSettings({ archiveAfterSettledDays: 1 }) }))
+
+        yield* TestClock.adjust("1 day")
+        yield* Settle.use((settle) => settle.sweep)
+
+        expect(yield* statusOf(threadId)).toBe("archived")
+      }),
+    )
+
     it.effect("keeps a settled thread when auto archive is turned off while the sweep releases it", () =>
       Effect.gen(function* () {
         const { threadId } = yield* seedThread({ rootPath: "/archive-turned-off" })
@@ -827,11 +842,11 @@ describe("worktree cleanup across threads", () => {
       }),
     )
 
-    it.effect("removes the worktree of a fork's pull request, checked out as kk/pr-N, once it merges", () =>
+    it.effect("removes the worktree of a fork's pull request, checked out as hinacode/pr-N, once it merges", () =>
       Effect.gen(function* () {
         yield* cleanupOn
         const { projectId } = yield* project("fork")
-        const fork = yield* worktreeThread(projectId, `kk/pr-${nextNumber()}`)
+        const fork = yield* worktreeThread(projectId, `hinacode/pr-${nextNumber()}`)
         yield* linkPullRequest(fork, "contributor/feature", "merged")
 
         yield* sweep

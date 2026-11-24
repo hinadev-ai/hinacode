@@ -14,6 +14,7 @@ import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { PiProvider } from "../agents/pi/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
@@ -36,11 +37,13 @@ import * as Threads from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
 
 const prompts = vi.hoisted((): Array<string> => [])
+const systemPrompts = vi.hoisted((): Array<string> => [])
 
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@anthropic-ai/claude-agent-sdk")>()),
-  query: async function* ({ prompt }: { prompt: string }) {
+  query: async function* ({ prompt, options }: { prompt: string; options: { systemPrompt: string } }) {
     prompts.push(prompt)
+    systemPrompts.push(options.systemPrompt)
     if (prompt.startsWith("/")) {
       yield { type: "result", subtype: "success", result: "Command completed", local_command: "code_review" }
       return
@@ -49,7 +52,11 @@ vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
       yield { type: "result", subtype: "success", is_error: true, result: "API Error: Rate limit reached" }
       return
     }
-    yield { type: "result", subtype: "success", structured_output: { title: "Review login", branch: "review-login" } }
+    yield {
+      type: "result",
+      subtype: "success",
+      structured_output: { title: "Review login", branch: "feat/Review Login" },
+    }
   },
 }))
 
@@ -150,6 +157,7 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
         Layer.succeed(MuseProvider, provider("muse")),
         Layer.succeed(OpencodeProvider, provider("opencode")),
         Layer.succeed(MagpieProvider, provider("magpie")),
+        Layer.succeed(PiProvider, provider("pi")),
         Layer.succeed(Events, { publish: (event) => Effect.asVoid(PubSub.publish(pushes, event)) }),
       ),
     ),
@@ -200,7 +208,11 @@ const inspect = (threadId: string) =>
 const nameAfter = <E>(
   act: (
     threadId: string,
-  ) => Effect.Effect<void, E, AgentRunner.AgentRunner | Threads.Threads | PullRequests.PullRequests>,
+  ) => Effect.Effect<
+    void,
+    E,
+    AgentRunner.AgentRunner | Threads.Threads | PullRequests.PullRequests | Settings.Settings
+  >,
 ) =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(
@@ -251,13 +263,13 @@ describe("naming a thread from its first message", () => {
     }),
   )
 
-  it.live("keeps a fork's pull request on its kk/pr-<number> branch", () =>
+  it.live("keeps a fork's pull request on its hinacode/pr-<number> branch", () =>
     Effect.gen(function* () {
       const named = yield* nameAfter((threadId) => send(threadId, { _tag: "pullRequest", selector: "8" }))
       expect({ title: named.title, branch: named.branch, recordedBranch: named.recordedBranch }).toStrictEqual({
         title: "Review login",
-        branch: "kk/pr-8",
-        recordedBranch: "kk/pr-8",
+        branch: "hinacode/pr-8",
+        recordedBranch: "hinacode/pr-8",
       })
     }),
   )
@@ -283,14 +295,50 @@ describe("naming a thread from its first message", () => {
     }),
   )
 
-  it.live("renames a branch created for the new task", () =>
+  it.live("renames a branch created for the new task to the branch the model suggests", () =>
     Effect.gen(function* () {
       const named = yield* nameAfter((threadId) => send(threadId, { _tag: "branch", ref: "main" }))
       expect({ title: named.title, branch: named.branch, recordedBranch: named.recordedBranch }).toStrictEqual({
         title: "Review login",
-        branch: "kk/review-login",
-        recordedBranch: "kk/review-login",
+        branch: "feat/review-login",
+        recordedBranch: "feat/review-login",
       })
+    }),
+  )
+})
+
+const branchRulesSent = (branchNamingInstructions: string) =>
+  Effect.gen(function* () {
+    systemPrompts.length = 0
+    yield* nameAfter((threadId) =>
+      Effect.gen(function* () {
+        yield* Settings.Settings.use((settings) => settings.set({ branchNamingInstructions }))
+        yield* send(threadId, { _tag: "branch", ref: "main" })
+      }),
+    )
+    return systemPrompts.at(-1)?.match(/<branch_naming>\n([\s\S]*)\n<\/branch_naming>/)?.[1] ?? null
+  })
+
+describe("branch naming rules", () => {
+  it.live("asks the model for a hinacode/ branch by default", () =>
+    Effect.gen(function* () {
+      systemPrompts.length = 0
+      yield* nameAfter((threadId) => send(threadId, { _tag: "branch", ref: "main" }))
+      expect(systemPrompts.at(-1)).toContain("<branch_naming>\nStart with hinacode/.\n</branch_naming>")
+    }),
+  )
+
+  it.live("hands the developer's own rules to the model", () =>
+    Effect.gen(function* () {
+      expect(yield* branchRulesSent("  Start with feat/ for features and fix/ for bug fixes.\n")).toBe(
+        "Start with feat/ for features and fix/ for bug fixes.",
+      )
+    }),
+  )
+
+  it.live("sends no branch rules when the developer clears them", () =>
+    Effect.gen(function* () {
+      expect(yield* branchRulesSent("   ")).toBeNull()
     }),
   )
 })

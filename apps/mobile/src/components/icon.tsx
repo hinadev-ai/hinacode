@@ -55,6 +55,7 @@ import {
   PackageIcon,
   PencilIcon,
   PhoneIcon,
+  PiIcon,
   PinIcon,
   PlayIcon,
   PlugIcon,
@@ -147,6 +148,7 @@ const hinacode = {
   Package: PackageIcon,
   Pencil: PencilIcon,
   Phone: PhoneIcon,
+  PiMark: PiIcon,
   Pin: PinIcon,
   Play: PlayIcon,
   Plug: PlugIcon,
@@ -186,6 +188,7 @@ const threadStatus = {
   RiHourglassFill: HourglassFillIcon,
   RiPulseLine: PulseIcon,
   RiQuestionFill: QuestionFillIcon,
+  RiStopCircleLine: StopCircleIcon,
   RiTimeLine: ClockIcon,
 } satisfies Record<string, IconComponent>
 

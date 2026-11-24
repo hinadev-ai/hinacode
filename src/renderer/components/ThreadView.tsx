@@ -29,6 +29,7 @@ import { SecretRequestCard } from "./SecretRequestCard.tsx"
 import { SubagentTranscript, useSubagentLabel } from "./SubagentView.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { PutAwayCallout, putAwayOf, putAwayStates } from "./PutAwayCallout.tsx"
+import { InterruptedCallout } from "./InterruptedCallout.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
 import { AccountLimitNotice } from "./AccountSwitch.tsx"
 import { WorktreePreparation } from "./WorktreePreparation.tsx"
@@ -123,6 +124,7 @@ function ThreadStateNotice({ thread }: { thread: Thread }) {
   const putAway = putAwayOf(thread)
   if (thread.status === "limited" && thread.usageLimit !== null)
     return <UsageLimitCallout thread={thread} limit={thread.usageLimit} />
+  if (thread.status === "interrupted") return <InterruptedCallout threadId={thread.id} />
   if (putAway !== null) return <PutAwayCallout threadId={thread.id} putAway={putAway} />
   return <AccountLimitNotice thread={thread} />
 }

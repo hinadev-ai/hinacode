@@ -115,7 +115,7 @@ const checkoutsDir = (rootPath: string, worktreeRoot: string | null) =>
 const checkoutPath = (checkouts: string, branch: string, id: string) =>
   join(checkouts, `${branch.replaceAll("/", "-")}-${id.slice(0, 8)}`)
 
-export const forkPullRequestBranch = (number: number) => `kk/pr-${number}`
+export const forkPullRequestBranch = (number: number) => `hinacode/pr-${number}`
 
 const removalKey = (projectId: string, branch: string) => `${projectId}\0${branch}`
 

@@ -11,8 +11,8 @@ Starting a thread meant filling in a dialog: title, agent, model, worktree toggl
 
 1. Press `mod+n` or the `+` next to a project. A thread opens at once with a placeholder title like `thread-q3qcy`, and the composer has focus.
 2. While the thread has no messages, the model picker lists every agent's models under the agent's name, so picking a Codex model switches the thread to Codex in one step. Its trigger shows the agent as an icon and the model by name. Below the input is a workspace picker: `Local` or `New worktree`. `New worktree` adds a base ref input that defaults to the project's current branch.
-3. Send the first message. With `New worktree`, main creates the worktree on branch `kk/thread-q3qcy` before the turn starts.
-4. In the background, the text generation model reads the message and returns a title and a branch slug. The thread is renamed, and the branch becomes `kk/<slug>`.
+3. Send the first message. With `New worktree`, main creates the worktree on branch `hinacode/thread-q3qcy` before the turn starts.
+4. In the background, the text generation model reads the message and returns a title and a branch slug. The thread is renamed, and the branch becomes the suggested name, which follows the Branch naming rules in Settings > Worktrees (see `2026-11-18-branch-naming-rules.md`).
 5. After the first message the workspace picker disappears, and the model picker lists only the thread's agent. To use another agent, start a new thread.
 
 ## Design

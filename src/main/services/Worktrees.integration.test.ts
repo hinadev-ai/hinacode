@@ -612,6 +612,7 @@ describe("worktree ownership", () => {
       Effect.gen(function* () {
         const thread = yield* createThread(projectId, "paused", "kk/paused")
         yield* waitUntilSetUp(thread.worktreeId)
+        yield* Settings.use((settings) => settings.set({ archive: { removeWorktree: false } }))
         const archived = yield* Threads.use((threads) => threads.archive(thread.id))
         expect(archived.status).toBe("archived")
         const worktree = yield* worktreeOf(thread.worktreeId)
@@ -1156,7 +1157,7 @@ describe("worktrees from pull requests", () => {
     ),
   )
 
-  it.live("checks out a fork's pull request on a local kk/pr-<number> branch", () =>
+  it.live("checks out a fork's pull request on a local hinacode/pr-<number> branch", () =>
     withRepo(({ root, projectId }) =>
       Effect.gen(function* () {
         const { forkHead } = withOrigin(root)
@@ -1166,7 +1167,7 @@ describe("worktrees from pull requests", () => {
             pullRequestHead({ number: 8, headRefName: "fork-work", isCrossRepository: true }),
           ),
         )
-        expect(worktree.branch).toBe("kk/pr-8")
+        expect(worktree.branch).toBe("hinacode/pr-8")
         expect(git(worktree.path, "rev-parse", "HEAD").trim()).toBe(forkHead)
       }),
     ),
@@ -1228,7 +1229,7 @@ describe("project root checkout", () => {
     ),
   )
 
-  it.live("checks out a fork's pull request in the root on a local kk/pr-<number> branch", () =>
+  it.live("checks out a fork's pull request in the root on a local hinacode/pr-<number> branch", () =>
     withRepo(({ root, projectId }) =>
       Effect.gen(function* () {
         const { forkHead } = withOrigin(root)
@@ -1240,7 +1241,7 @@ describe("project root checkout", () => {
             thread.id,
           ),
         )
-        expect(git(root, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("kk/pr-8")
+        expect(git(root, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("hinacode/pr-8")
         expect(git(root, "rev-parse", "HEAD").trim()).toBe(forkHead)
       }),
     ),

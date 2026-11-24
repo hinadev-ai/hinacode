@@ -13,6 +13,7 @@ import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { PiProvider } from "../agents/pi/index.ts"
 import { MagpieProvider } from "../agents/magpie/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { dispatch } from "../rpc.ts"
@@ -56,6 +57,7 @@ const providers = Layer.mergeAll(
   Layer.succeed(MuseProvider, provider("muse")),
   Layer.succeed(OpencodeProvider, provider("opencode")),
   Layer.succeed(MagpieProvider, provider("magpie")),
+  Layer.succeed(PiProvider, provider("pi")),
 )
 
 const makeDesktop = (dataDir: string) => {

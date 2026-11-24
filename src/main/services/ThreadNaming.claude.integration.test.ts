@@ -40,7 +40,9 @@ describe.skipIf(!claudeInstalled)("naming a thread with the real Claude Code", (
     "reports the API error instead of a schema error when Anthropic refuses the request",
     () =>
       Effect.gen(function* () {
-        const error = yield* Effect.flip(suggest("claude-haiku-5-5", "Fix the login form"))
+        const error = yield* Effect.flip(
+          suggest({ textGenerationModel: "claude-haiku-5-5", branchNamingInstructions: "" }, "Fix the login form"),
+        )
         expect(error.message).toBe("Failed to name thread: API Error: 400 prompt is invalid")
       }),
     60_000,

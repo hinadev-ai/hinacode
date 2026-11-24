@@ -11,8 +11,8 @@ Starting a thread in a worktree meant picking "New worktree" from a menu and typ
 
 1. Under the composer of a thread that has not started, a pill shows the project root's branch and a Worktree checkbox.
 2. Ticking Worktree turns the branch into a field filled with origin's default branch (`origin/main` from `origin/HEAD`, else `main`). Focusing it suggests open pull requests and branches.
-3. The field takes a branch or ref to fork a new `kk/<title>` branch from, or a pull request as `123`, `#123` or its URL. The leading icon turns into a pull request icon when the text names one.
-4. Sending the first message creates the worktree. A pull request's branch is checked out at its head and tracks `origin`, so the agent's pushes update the pull request, and the pull request is linked to the thread. A fork's pull request lands on a local `kk/pr-<number>` branch.
+3. The field takes a branch or ref to fork a new `hinacode/<title>` branch from, or a pull request as `123`, `#123` or its URL. The leading icon turns into a pull request icon when the text names one.
+4. Sending the first message creates the worktree. A pull request's branch is checked out at its head and tracks `origin`, so the agent's pushes update the pull request, and the pull request is linked to the thread. A fork's pull request lands on a local `hinacode/pr-<number>` branch.
 
 ## Design
 
