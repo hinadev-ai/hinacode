@@ -1145,6 +1145,22 @@ describe("Transport", () => {
       expect(read).toEqual({})
     })
 
+    it("passes on no event or result before the developer answers Yes", async () => {
+      const transport = awaitCode({ verified: false })
+      const read = track(transport.call("threads.list", undefined))
+      latest().receive({ type: "event", event: { type: "thread.removed", id: "t1" } })
+      latest().ready()
+      latest().receive({ type: "event", event: { type: "thread.removed", id: "t1" } })
+      latest().result(1, ["forged"])
+      await vi.advanceTimersByTimeAsync(0)
+      expect(received).toBe(0)
+      expect(read).toEqual({})
+
+      transport.confirmHost(true)
+      latest().receive({ type: "event", event: { type: "thread.removed", id: "t1" } })
+      expect(received).toBe(1)
+    })
+
     it("asks to verify an unverified key, and sends calls only after the developer answers Yes", async () => {
       const transport = awaitCode({ verified: false })
       expect(latest().hello()).toMatchObject({ verify: true })
