@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { getRandomBytes } from "expo-crypto"
 import { openAuthSessionAsync } from "expo-web-browser"
-import { Image, Platform, StyleSheet, Text, TextInput, View } from "react-native"
+import { Image, StyleSheet, Text, TextInput, View } from "react-native"
 import { Spinner } from "@/components/motion"
 import { SettingsGroup, SettingsRow } from "@/components/settings-rows"
 import { Button, Notice } from "@/components/ui"
@@ -10,6 +10,7 @@ import { useNow } from "@/hooks/use-now"
 import { useTheme } from "@/hooks/use-theme"
 import { confirmAction } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
+import { deviceName } from "@/lib/device"
 import { DEFAULT_RELAY_URL } from "@/lib/relay-account"
 import { relativeTime } from "@/lib/relative-time"
 import { useRelayAccount } from "@/stores/relay-account"
@@ -94,8 +95,6 @@ function RelayStatus({ serviceUrl }: { serviceUrl: string }) {
     </>
   )
 }
-
-const deviceName = Platform.OS === "ios" ? "iPhone" : Platform.OS === "android" ? "Android" : "Phone"
 
 const authenticate = async (url: string, redirectUri: string) => {
   const result = await openAuthSessionAsync(url, redirectUri)

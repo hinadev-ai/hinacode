@@ -1,12 +1,24 @@
 import { Array as Arr, Schema } from "effect"
 import { isArrayNonEmpty, type NonEmptyReadonlyArray } from "effect/Array"
 import { PushEvent, type RpcMethod } from "./contract.ts"
+import { decodeKey } from "./noise.ts"
 
 export const REMOTE_PATH = "/remote"
 
 export const REMOTE_MAX_FRAME_BYTES = 16 * 1024 * 1024
 
-export const REMOTE_PROTOCOL_VERSION = 1
+export const REMOTE_SEALED_FRAME_BYTES = REMOTE_MAX_FRAME_BYTES + 16
+
+export const REMOTE_PRE_READY_MAX_BYTES = 1024
+
+export const REMOTE_PROTOCOL_VERSION = 2
+
+export const CLOSE_UNAUTHORIZED = 4001
+export const CLOSE_PAIRING_RESET = 4002
+export const CLOSE_LISTENER_STOPPED = 4003
+export const CLOSE_AUTH_TIMEOUT = 4004
+export const CLOSE_MALFORMED_FRAME = 4005
+export const CLOSE_HANDSHAKE_FAILED = 4006
 
 export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks", "watch"] as const
 export type RemoteFeature = (typeof RemoteFeature)[number]
@@ -32,18 +44,19 @@ const Envelope = Schema.Union([
   Schema.Struct({ result: Schema.optionalKey(Schema.Unknown) }),
 ])
 
+const Nonce = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/))
+
+export const DeviceName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))
+
 export const ClientFrame = Schema.Union([
   Schema.Struct({
-    type: Schema.Literal("auth"),
-    nonce: Schema.String,
-    proof: Schema.String,
+    type: Schema.Literal("hello"),
+    name: DeviceName,
+    secret: Schema.optionalKey(Schema.String),
+    verify: Schema.optionalKey(Schema.Boolean),
     compactEvents: Schema.optionalKey(Schema.Boolean),
   }),
-  Schema.Struct({
-    type: Schema.Literal("auth"),
-    token: Schema.String,
-    compactEvents: Schema.optionalKey(Schema.Boolean),
-  }),
+  Schema.Struct({ type: Schema.Literal("approval"), nonce: Nonce }),
   Schema.Struct({
     type: Schema.Literal("call"),
     id: Schema.Int,
@@ -59,7 +72,8 @@ export const ClientFrame = Schema.Union([
 export type ClientFrame = typeof ClientFrame.Type
 
 export const ServerFrame = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("challenge"), nonce: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("pending"), commitment: Nonce }),
+  Schema.Struct({ type: Schema.Literal("approval"), nonce: Nonce }),
   Schema.Struct({
     type: Schema.Literal("ready"),
     version: Schema.Int,
@@ -67,7 +81,6 @@ export const ServerFrame = Schema.Union([
     features: Schema.optionalKey(Schema.Array(Schema.String)),
     hosts: Schema.optionalKey(Schema.NonEmptyArray(Schema.String)),
     relay: Schema.optionalKey(Schema.String),
-    proof: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({ type: Schema.Literal("result"), id: Schema.Int, envelope: Envelope }),
   Schema.Struct({ type: Schema.Literal("event"), event: PushEvent }),
@@ -80,6 +93,31 @@ export const ServerFrame = Schema.Union([
   }),
 ])
 export type ServerFrame = typeof ServerFrame.Type
+
+export const LegacyChallenge = Schema.Struct({ type: Schema.Literal("challenge"), nonce: Schema.String })
+
+export const LegacyAuth = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("auth"), nonce: Schema.String, proof: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("auth"), token: Schema.String }),
+])
+export type LegacyAuth = typeof LegacyAuth.Type
+
+export const LegacyReady = Schema.Struct({
+  type: Schema.Literal("ready"),
+  version: Schema.Int,
+  proof: Schema.optionalKey(Schema.String),
+})
+
+const CONFUSABLES: Readonly<Record<string, string>> = { O: "0", I: "1", L: "1" }
+
+export const normalizeApprovalCode = (text: string): string | null => {
+  const characters = text
+    .toUpperCase()
+    .replace(/[\s-]/g, "")
+    .replace(/[OIL]/g, (letter) => CONFUSABLES[letter]!)
+  if (!/^[0-9A-HJKMNP-TV-Z]{6}$/.test(characters)) return null
+  return `${characters.slice(0, 3)}-${characters.slice(3)}`
+}
 
 export const noticeEvents: ReadonlySet<string> = new Set([
   "turn_completed",
@@ -106,16 +144,18 @@ export const reachesPhone = (event: typeof PushEvent.Encoded, watching: Readonly
 export interface PairingTarget {
   readonly hosts: NonEmptyReadonlyArray<string>
   readonly port: number
-  readonly token: string
   readonly relay: string | null
+  readonly key: string
+  readonly secret: string | null
 }
 
-export const pairingUrl = ({ hosts, port, token, relay }: PairingTarget) => {
+export const pairingUrl = ({ hosts, port, relay, key, secret }: PairingTarget) => {
   const url = new URL("hinacode://connect")
   if (relay !== null) url.searchParams.set("relay", relay)
   for (const host of hosts) url.searchParams.append("host", host)
   url.searchParams.set("port", String(port))
-  url.searchParams.set("token", token)
+  url.searchParams.set("key", key)
+  if (secret !== null) url.searchParams.set("secret", secret)
   return url.toString()
 }
 
@@ -139,14 +179,12 @@ export const DIRECT_CHECK_INTERVAL_MS = 60_000
 
 export const DIRECT_CHECK_TIMEOUT_MS = 2_000
 
-export const CHALLENGE_WAIT_MS = 1_000
-
 export const isTailscaleHost = (host: string) => {
   const [first, second] = host.split(".")
   return first === "100" && Number(second) >= 64 && Number(second) <= 127
 }
 
-export const dialPlan = (target: Omit<PairingTarget, "token">): NonEmptyReadonlyArray<Dial> => {
+export const dialPlan = (target: Pick<PairingTarget, "hosts" | "port" | "relay">): NonEmptyReadonlyArray<Dial> => {
   const hasLan = !target.hosts.every(isTailscaleHost)
   const direct = Arr.map(target.hosts, (host): Dial => ({
     url: remoteWebSocketUrl({ host, port: target.port }),
@@ -169,12 +207,13 @@ export const parsePairingUrl = (text: string): PairingTarget | null => {
   if (!url || url.protocol !== "hinacode:" || url.host !== "connect") return null
   const hosts = url.searchParams.getAll("host")
   const port = Number(url.searchParams.get("port"))
-  const token = url.searchParams.get("token")
+  const key = url.searchParams.get("key")
+  const secret = url.searchParams.get("secret") || null
   const relay = url.searchParams.get("relay")
   if (!isArrayNonEmpty(hosts) || !hosts.every(isAuthorityOnlyHost)) return null
-  if (!token || !Number.isInteger(port) || port < 1 || port > 65535) return null
+  if (key === null || decodeKey(key) === null || !Number.isInteger(port) || port < 1 || port > 65535) return null
   if (relay !== null && !isRelayHostname(relay)) return null
-  return { hosts, port, token, relay }
+  return { hosts, port, relay, key, secret }
 }
 
 export const isPortInUse = (listenError: string) => listenError.includes("EADDRINUSE")

@@ -6,7 +6,7 @@ export const RelayMachine = Schema.Struct({
   pairing: Schema.Struct({
     hosts: Schema.NonEmptyArray(Schema.String),
     port: Schema.Int,
-    token: Schema.String,
+    key: Schema.String,
     relay: Schema.String,
   }),
 })

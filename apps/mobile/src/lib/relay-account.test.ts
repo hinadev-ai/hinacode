@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
+import { encodeKey, generateKeyPair } from "@shared/noise.ts"
 import type { RelayMachine } from "@shared/relayMachines.ts"
 import { copy } from "@/lib/copy"
 import {
+  adoptRelayKey,
   applyRelayMachines,
   codeFromCallback,
   exchangeSignInCode,
@@ -14,13 +16,18 @@ import type { StoredServer } from "./stored-target"
 
 const newId = () => "new"
 
+const PINNED_KEY = encodeKey(generateKeyPair().publicKey)
+const RELAY_KEY = encodeKey(generateKeyPair().publicKey)
+
 const server = (overrides: Partial<StoredServer> = {}): StoredServer => ({
   id: "a",
   name: "studio",
   environmentId: "env-a",
   hosts: ["192.168.1.5"],
   port: 47821,
-  token: "abc",
+  key: PINNED_KEY,
+  secret: null,
+  verified: true,
   relay: "studio.relay.example.com",
   source: "pairing",
   ...overrides,
@@ -29,12 +36,12 @@ const server = (overrides: Partial<StoredServer> = {}): StoredServer => ({
 const machine = (overrides: Partial<RelayMachine> = {}): RelayMachine => ({
   environmentId: "env-a",
   name: "Studio",
-  pairing: { hosts: ["100.64.0.2"], port: 47822, token: "rotated", relay: "studio.relay.example.com" },
+  pairing: { hosts: ["100.64.0.2"], port: 47822, key: RELAY_KEY, relay: "studio.relay.example.com" },
   ...overrides,
 })
 
 describe("applyRelayMachines", () => {
-  it("adds a machine it has not seen as a relay server", () => {
+  it("adds a machine it has not seen as an unverified relay server with the relay's key", () => {
     expect(applyRelayMachines([], [machine()], newId)).toEqual([
       {
         id: "new",
@@ -42,18 +49,23 @@ describe("applyRelayMachines", () => {
         environmentId: "env-a",
         hosts: ["100.64.0.2"],
         port: 47822,
-        token: "rotated",
         relay: "studio.relay.example.com",
+        key: RELAY_KEY,
+        secret: null,
+        verified: false,
         source: "relay",
       },
     ])
   })
 
-  it("refreshes a QR-paired server's pairing by environment id and keeps its name and source", () => {
+  it("refreshes a QR-paired server's addresses by environment id and keeps its pinned key, name and source", () => {
     const paired = server({ relay: null })
-    expect(applyRelayMachines([paired], [machine()], newId)).toEqual([
-      server({ hosts: ["100.64.0.2"], port: 47822, token: "rotated" }),
-    ])
+    expect(applyRelayMachines([paired], [machine()], newId)).toEqual([server({ hosts: ["100.64.0.2"], port: 47822 })])
+  })
+
+  it("never fills in a key for a pairing saved before encryption", () => {
+    const [refreshed] = applyRelayMachines([server({ key: null, source: "relay" })], [machine()], newId)
+    expect(refreshed).toMatchObject({ key: null })
   })
 
   it("keeps the name of a relay server when the relay renames it", () => {
@@ -64,12 +76,25 @@ describe("applyRelayMachines", () => {
   it("matches by relay hostname when the server's environment id is unknown", () => {
     const [refreshed, ...rest] = applyRelayMachines([server({ environmentId: null })], [machine()], newId)
     expect(rest).toEqual([])
-    expect(refreshed).toMatchObject({ id: "a", environmentId: "env-a", token: "rotated", source: "pairing" })
+    expect(refreshed).toMatchObject({ id: "a", environmentId: "env-a", port: 47822, key: PINNED_KEY, source: "pairing" })
   })
 
   it("drops a relay server the list no longer has", () => {
     const servers = [server({ source: "relay" }), server({ id: "b", environmentId: "env-b", relay: null })]
     expect(applyRelayMachines(servers, [], newId).map((entry) => entry.id)).toEqual(["b"])
+  })
+})
+
+describe("adoptRelayKey", () => {
+  it("pairs a refused server again with the relay's current key, unverified", () => {
+    const refused = server({ source: "relay", secret: "left-over" })
+    expect(adoptRelayKey([refused], "a", [machine()])).toEqual([
+      server({ source: "relay", key: RELAY_KEY, secret: null, verified: false }),
+    ])
+  })
+
+  it("changes nothing when the relay no longer lists the machine", () => {
+    expect(adoptRelayKey([server({ source: "relay" })], "a", [])).toBeNull()
   })
 })
 

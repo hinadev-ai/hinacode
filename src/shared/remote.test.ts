@@ -1,8 +1,11 @@
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
+import { encodeKey, generateKeyPair } from "./noise.ts"
 import {
   ClientFrame,
   isPortInUse,
+  LegacyAuth,
+  normalizeApprovalCode,
   pairingUrl,
   parsePairingUrl,
   dialPlan,
@@ -12,20 +15,40 @@ import {
   ServerFrame,
 } from "./remote.ts"
 
+const KEY = encodeKey(generateKeyPair().publicKey)
+
 describe("remote frames", () => {
-  it.each([
-    { type: "auth", token: "token" },
-    { type: "auth", nonce: "nonce", proof: "proof" },
-  ])("keeps the compact-events choice for $type authentication", (auth) => {
+  it("keeps the compact-events choice in hello", () => {
     for (const compactEvents of [true, false]) {
-      const frame = { ...auth, compactEvents }
+      const frame = { type: "hello", name: "phone", compactEvents }
       expect(Schema.decodeUnknownSync(ClientFrame)(frame)).toEqual(frame)
     }
-    expect(Schema.decodeUnknownOption(ClientFrame)({ ...auth, compactEvents: "true" })._tag).toBe("None")
+    expect(Schema.decodeUnknownOption(ClientFrame)({ type: "hello", name: "phone", compactEvents: "true" })._tag).toBe(
+      "None",
+    )
+  })
+
+  it("refuses a hello without a name or with a name longer than 64 characters", () => {
+    expect(Schema.decodeUnknownOption(ClientFrame)({ type: "hello", name: "" })._tag).toBe("None")
+    expect(Schema.decodeUnknownOption(ClientFrame)({ type: "hello", name: "a".repeat(65) })._tag).toBe("None")
+  })
+
+  it("takes approval nonces only as 64 lowercase hex characters", () => {
+    const nonce = "ab".repeat(32)
+    expect(Schema.decodeUnknownSync(ClientFrame)({ type: "approval", nonce })).toEqual({ type: "approval", nonce })
+    expect(Schema.decodeUnknownOption(ClientFrame)({ type: "approval", nonce: "ab" })._tag).toBe("None")
+    expect(Schema.decodeUnknownOption(ServerFrame)({ type: "pending", commitment: "AB".repeat(32) })._tag).toBe("None")
+  })
+
+  it("keeps the old auth frames out of the session protocol", () => {
+    const auth = { type: "auth", token: "token" }
+    expect(Schema.decodeUnknownOption(ClientFrame)(auth)._tag).toBe("None")
+    expect(Schema.decodeUnknownSync(LegacyAuth)(auth)).toEqual(auth)
+    expect(Schema.decodeUnknownOption(ServerFrame)({ type: "challenge", nonce: "n" })._tag).toBe("None")
   })
 
   it("keeps known capabilities when ready advertises a future feature", () => {
-    const ready = { type: "ready", version: 1, features: ["heartbeat", "some-future-feature"] }
+    const ready = { type: "ready", version: 2, features: ["heartbeat", "some-future-feature"] }
     const frame = Schema.decodeUnknownSync(ServerFrame)(ready)
     expect(frame).toEqual(ready)
     expect(frame.type).toBe("ready")
@@ -69,77 +92,100 @@ describe("isPortInUse", () => {
   })
 })
 
+describe("approval codes", () => {
+  it.each([
+    ["K7Q-F2M", "K7Q-F2M"],
+    ["k7qf2m", "K7Q-F2M"],
+    [" k7q f2m ", "K7Q-F2M"],
+    ["O1L-I00", "011-100"],
+  ])("reads %j as %s", (typed, code) => {
+    expect(normalizeApprovalCode(typed)).toBe(code)
+  })
+
+  it.each(["K7Q-F2", "K7Q-F2MM", "K7Q-F2U", "K7Q_F2M", ""])("refuses %j", (typed) => {
+    expect(normalizeApprovalCode(typed)).toBeNull()
+  })
+})
+
 describe("pairing URLs", () => {
-  it("round-trips every host in order", () => {
+  it("round-trips every host in order, the host key and the secret", () => {
     const target = {
       hosts: ["100.64.0.2", "192.168.1.5", "mac.local", "fd7a:115c::2"],
       port: 47821,
-      token: "t/k+n",
       relay: null,
+      key: KEY,
+      secret: "s/c+t",
     } as const
     const url = pairingUrl(target)
     expect(url).toBe(
-      "hinacode://connect?host=100.64.0.2&host=192.168.1.5&host=mac.local&host=fd7a%3A115c%3A%3A2&port=47821&token=t%2Fk%2Bn",
+      `hinacode://connect?host=100.64.0.2&host=192.168.1.5&host=mac.local&host=fd7a%3A115c%3A%3A2&port=47821&key=${KEY}&secret=s%2Fc%2Bt`,
     )
     expect(parsePairingUrl(url)).toEqual(target)
   })
 
-  it("reads the single-host form that older desktops print", () => {
-    expect(parsePairingUrl(" hinacode://connect?host=192.168.1.5&port=47821&token=abc\n")).toEqual({
-      hosts: ["192.168.1.5"],
+  it("leaves the secret out for a machine learned through the relay", () => {
+    const target = {
+      hosts: ["100.64.0.2"],
       port: 47821,
-      token: "abc",
-      relay: null,
-    })
+      relay: "hinacode-1a2b3c4d.example.com",
+      key: KEY,
+      secret: null,
+    } as const
+    const url = pairingUrl(target)
+    expect(url).toBe(`hinacode://connect?relay=hinacode-1a2b3c4d.example.com&host=100.64.0.2&port=47821&key=${KEY}`)
+    expect(parsePairingUrl(url)).toEqual(target)
   })
 
-  it("round-trips the relay ahead of the hosts", () => {
-    const target = { hosts: ["100.64.0.2"], port: 47821, token: "abc", relay: "hinacode-1a2b3c4d.example.com" } as const
-    const url = pairingUrl(target)
-    expect(url).toBe("hinacode://connect?relay=hinacode-1a2b3c4d.example.com&host=100.64.0.2&port=47821&token=abc")
-    expect(parsePairingUrl(url)).toEqual(target)
+  it("never writes a token, and ignores one in a URL it reads", () => {
+    const url = pairingUrl({ hosts: ["a"], port: 1, relay: null, key: KEY, secret: "s" })
+    expect(url).not.toContain("token")
+    expect(parsePairingUrl(`${url}&token=old`)).toEqual({ hosts: ["a"], port: 1, relay: null, key: KEY, secret: "s" })
   })
 
   it("finds the URL inside the lines hinacode serve prints", () => {
     const printed = [
       "hinacode serve is listening on port 47821",
       "pair a desktop with one of:",
-      "  hinacode://connect?host=100.64.0.2&host=192.0.2.10&port=47821&token=abc",
-      "  hinacode://connect?host=192.0.2.10&port=47821&token=abc",
+      `  hinacode://connect?host=100.64.0.2&host=192.0.2.10&port=47821&key=${KEY}&secret=abc`,
+      `  hinacode://connect?host=192.0.2.10&port=47821&key=${KEY}&secret=abc`,
     ].join("\n")
     expect(parsePairingUrl(printed)).toEqual({
       hosts: ["100.64.0.2", "192.0.2.10"],
       port: 47821,
-      token: "abc",
       relay: null,
+      key: KEY,
+      secret: "abc",
     })
   })
 
   it("finds the URL between words on one line", () => {
-    expect(parsePairingUrl("pair with hinacode://connect?host=a&port=1&token=t\tthen connect")).toEqual({
+    expect(parsePairingUrl(`pair with hinacode://connect?host=a&port=1&key=${KEY}\tthen connect`)).toEqual({
       hosts: ["a"],
       port: 1,
-      token: "t",
       relay: null,
+      key: KEY,
+      secret: null,
     })
   })
 
   it.each([
     ["text without a pairing URL", "pair a desktop with one of:"],
-    ["a pairing URL glued to a word", "url:hinacode://connect?host=a&port=1&token=t"],
-    ["another scheme", "https://connect?host=a&port=1&token=t"],
-    ["another action", "hinacode://pair?host=a&port=1&token=t"],
-    ["no host", "hinacode://connect?port=1&token=t"],
-    ["an empty host", "hinacode://connect?host=a&host=&port=1&token=t"],
-    ["a host with a path", "hinacode://connect?host=a%2Fb&port=1&token=t"],
-    ["a host with credentials", "hinacode://connect?host=evil%40a&port=1&token=t"],
-    ["a bracketed host", "hinacode://connect?host=%5B%3A%3A1%5D&port=1&token=t"],
-    ["an invalid IPv6 address", "hinacode://connect?host=1%3A%3A2%3A%3A3&port=1&token=t"],
-    ["a port out of range", "hinacode://connect?host=a&port=65536&token=t"],
-    ["no token", "hinacode://connect?host=a&port=1"],
-    ["a relay with a port", "hinacode://connect?relay=r.example.com%3A8443&host=a&port=1&token=t"],
-    ["a relay with a path", "hinacode://connect?relay=r.example.com%2Fx&host=a&port=1&token=t"],
-    ["a relay that is not a domain name", "hinacode://connect?relay=localhost&host=a&port=1&token=t"],
+    ["a pairing URL glued to a word", `url:hinacode://connect?host=a&port=1&key=${KEY}`],
+    ["another scheme", `https://connect?host=a&port=1&key=${KEY}`],
+    ["another action", `hinacode://pair?host=a&port=1&key=${KEY}`],
+    ["no host", `hinacode://connect?port=1&key=${KEY}`],
+    ["an empty host", `hinacode://connect?host=a&host=&port=1&key=${KEY}`],
+    ["a host with a path", `hinacode://connect?host=a%2Fb&port=1&key=${KEY}`],
+    ["a host with credentials", `hinacode://connect?host=evil%40a&port=1&key=${KEY}`],
+    ["a bracketed host", `hinacode://connect?host=%5B%3A%3A1%5D&port=1&key=${KEY}`],
+    ["an invalid IPv6 address", `hinacode://connect?host=1%3A%3A2%3A%3A3&port=1&key=${KEY}`],
+    ["a port out of range", `hinacode://connect?host=a&port=65536&key=${KEY}`],
+    ["no key, as every pairing before encryption", "hinacode://connect?host=a&port=1&token=t"],
+    ["a key that is not 32 bytes", `hinacode://connect?host=a&port=1&key=${KEY.slice(0, 40)}`],
+    ["a padded key", `hinacode://connect?host=a&port=1&key=${KEY}%3D`],
+    ["a relay with a port", `hinacode://connect?relay=r.example.com%3A8443&host=a&port=1&key=${KEY}`],
+    ["a relay with a path", `hinacode://connect?relay=r.example.com%2Fx&host=a&port=1&key=${KEY}`],
+    ["a relay that is not a domain name", `hinacode://connect?relay=localhost&host=a&port=1&key=${KEY}`],
   ])("refuses %s", (_, text) => {
     expect(parsePairingUrl(text)).toBeNull()
   })

@@ -371,6 +371,9 @@ const handlers: Handlers = {
   "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
   "environments.rename": ({ id, name }) => Environments.use((environments) => environments.rename(id, name)),
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
+  "environments.confirmHost": ({ id, accepted }) =>
+    Environments.use((environments) => environments.confirmHost(id, accepted)),
+  "environments.repair": ({ id }) => Environments.use((environments) => environments.repair(id)),
   "boatMachines.options": () => BoatMachines.use((machines) => machines.options),
   "boatMachines.connect": (input) => BoatMachines.use((machines) => machines.connect(input)),
   "boatMachines.forThread": (input) => BoatMachines.use((machines) => machines.forThread(input)),
@@ -666,7 +669,10 @@ const handlers: Handlers = {
     }),
   "remote.status": () => RemoteAccess.use((remote) => remote.status),
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
-  "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),
+  "remote.resetPairing": () => RemoteAccess.use((remote) => remote.resetPairing),
+  "remote.devices": () => RemoteAccess.use((remote) => remote.devices),
+  "remote.devices.approve": ({ code }) => RemoteAccess.use((remote) => remote.approve(code)),
+  "remote.devices.remove": ({ key }) => RemoteAccess.use((remote) => remote.remove(key)),
 }
 
 export const RpcCall = Schema.Struct({

@@ -10,7 +10,13 @@ import {
   type ResourceSample,
 } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
-import { type Cloud, environmentOf, useClouds, useCloudStateText } from "../lib/environments.ts"
+import {
+  type Cloud,
+  environmentOf,
+  needsYou as needsAttention,
+  useClouds,
+  useCloudStateText,
+} from "../lib/environments.ts"
 import { type EnvironmentId, machineResourcesAtom, projectsAtom, RpcError } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
@@ -123,7 +129,7 @@ function MachineTable() {
 function CloudRow({ cloud }: { cloud: Cloud }) {
   const state = useCloudStateText(cloud)
   const Icon = state === null ? CloudIcon : CloudOffIcon
-  const needsYou = cloud.status === "unauthorized" || cloud.status === "incompatible"
+  const needsYou = needsAttention(cloud)
   return (
     <MachineRow
       environment={cloud.id}

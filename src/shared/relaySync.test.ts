@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest"
+import { encodeKey, generateKeyPair } from "./noise.ts"
 import type { RelayMachine } from "./relayMachines.ts"
 import { planRelaySync, type SyncedEntry } from "./relaySync.ts"
 
-const machine = (environmentId: string, hosts: [string, ...string[]] = ["192.168.1.20"]): RelayMachine => ({
+const HOST_KEY = encodeKey(generateKeyPair().publicKey)
+
+const machine = (
+  environmentId: string,
+  hosts: [string, ...string[]] = ["192.168.1.20"],
+  key = HOST_KEY,
+): RelayMachine => ({
   environmentId,
   name: environmentId,
-  pairing: { hosts, port: 48081, token: `token-${environmentId}`, relay: `${environmentId}.hinacode.app` },
+  pairing: { hosts, port: 48081, key, relay: `${environmentId}.hinacode.app` },
 })
 
 const entry = (environmentId: string | null, source: SyncedEntry["source"]) => ({ environmentId, source })
@@ -22,6 +29,11 @@ describe("planRelaySync", () => {
 
   it("skips a machine whose pairing no socket can use", () => {
     const { upsert } = planRelaySync([], [machine("broken", ["has space"]), machine("home-server")], null)
+    expect(upsert.map(({ environmentId }) => environmentId)).toStrictEqual(["home-server"])
+  })
+
+  it("skips a machine whose key is not a public key", () => {
+    const { upsert } = planRelaySync([], [machine("broken", undefined, "token"), machine("home-server")], null)
     expect(upsert.map(({ environmentId }) => environmentId)).toStrictEqual(["home-server"])
   })
 

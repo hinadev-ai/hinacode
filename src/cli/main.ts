@@ -4,6 +4,7 @@ import { Cause, Effect, Exit } from "effect"
 import { CliConfig, CliError, Command, GlobalFlag } from "effect/cli"
 import { getErrorExitCode } from "effect/Runtime"
 import packageJson from "../../package.json" with { type: "json" }
+import { devices } from "./commands/devices.ts"
 import { inbox } from "./commands/inbox.ts"
 import { routines } from "./commands/routines.ts"
 import { run } from "./commands/run.ts"
@@ -21,7 +22,7 @@ const hinacode = Command.make("hinacode").pipe(
   Command.withDescription(
     "Drive the agents HinaCode runs on every machine you reach, from scripts and other programs. Every command prints one JSON document on stdout, except watch, which prints one JSON line per event.",
   ),
-  Command.withSubcommands([run, ...threadCommands, inbox, watch, routines, ...cloudCommands, service]),
+  Command.withSubcommands([run, ...threadCommands, inbox, watch, routines, ...cloudCommands, devices, service]),
   Command.withGlobalFlags([DataDir]),
 )
 

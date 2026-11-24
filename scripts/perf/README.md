@@ -466,9 +466,9 @@ app went to the background.
 ```sh
 DATA=/tmp/kk-battery PORT=48190
 HINACODE_USER_DATA=$DATA HINACODE_MOCK_CLAUDE=stream HINACODE_SERVE_RELAY=off HINACODE_SERVE_AUTO_UPDATE=0 \
-  node bin/hinacode.mjs serve --host 127.0.0.1 --port $PORT   # prints the token in its pairing URL
+  node bin/hinacode.mjs serve --host 127.0.0.1 --port $PORT   # prints its pairing URL
 
-export BATTERY_DAEMON_PORT=$PORT BATTERY_TOKEN=<token>
+export BATTERY_DATA_DIR=$DATA BATTERY_PAIRING_URL='<pairing URL>'
 BATTERY_PLATFORM=android BATTERY_SERIAL=emulator-5580 node scripts/perf/battery.ts run android-base-1
 BATTERY_PLATFORM=ios BATTERY_UDID=<simulator udid> node scripts/perf/battery.ts run ios-base-1
 node scripts/perf/battery.ts compare android-base android-after
@@ -477,7 +477,8 @@ node scripts/perf/battery.ts check android-base android-after
 
 Install the Release build first: the APK from `pnpm install:android`, or the `.app` from the `xcodebuild` line in
 "Profile the phone app" with `simctl install`. The first run pairs the app through a `hinacode://connect` link to the
-proxy, so launch the iOS app once by hand before it. `BATTERY_STREAMS` (3) sets how many threads stream and
+proxy, so launch the iOS app once by hand before it. The link carries the pairing URL's one-time secret, so copy the
+new pairing URL from `hinacode serve` for each fresh install. The mock workload drives the daemon over its CLI socket. `BATTERY_STREAMS` (3) sets how many threads stream and
 `BATTERY_GAP_MS` (4000) the pause between their turns. `compare` pools every `<label>-<n>` run and prints medians per
 minute, CPU ranges, and host load. `check` requires three runs per build and fails unless background bytes and
 foreground frames decrease by at least 90%. On Android it also requires 90% less background CPU. A simulator's
@@ -517,7 +518,7 @@ from the phones over the same Wi-Fi network, pair both apps with its LAN address
 running:
 
 ```sh
-BATTERY_DAEMON_PORT=<daemon port> BATTERY_TOKEN=<token> node scripts/perf/battery.ts load
+BATTERY_DATA_DIR=<daemon data dir> node scripts/perf/battery.ts load
 ```
 
 Collect Android snapshots around the workload. No global battery statistics are reset. The snapshots record

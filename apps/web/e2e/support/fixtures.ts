@@ -4,12 +4,14 @@ import { join } from "node:path"
 import {
   closeMachine,
   createRepo,
+  enrollBrowser,
   type Machine,
   type Relay,
   relayListing,
   serveWebApp,
   startMachine,
   startRelay,
+  type TrustedBrowser,
 } from "./stack.ts"
 import { stubClerk } from "./app.ts"
 
@@ -17,6 +19,7 @@ export interface WebStack {
   readonly appUrl: string
   readonly relay: Relay
   readonly machine: Machine
+  readonly browser: TrustedBrowser
 }
 
 interface TestFixtures {
@@ -38,7 +41,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const relay = await startRelay([relayListing(machine)])
       const webApp = await serveWebApp()
       try {
-        await use({ appUrl: webApp.url, relay, machine })
+        await use({ appUrl: webApp.url, relay, machine, browser: await enrollBrowser(machine) })
       } finally {
         await webApp.close()
         await relay.close()
@@ -51,8 +54,16 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     await stubClerk(page)
     await use(page)
   },
-  web: async ({ stack }, use) => {
+  web: async ({ stack, page }, use) => {
     await stack.machine.start()
+    await page.addInitScript(
+      ({ origin, deviceKey, hostKeys }) => {
+        if (location.origin !== origin) return
+        localStorage.setItem("hinacode.deviceKey", deviceKey)
+        localStorage.setItem("hinacode.hostKeys", JSON.stringify(hostKeys))
+      },
+      { origin: new URL(stack.appUrl).origin, ...stack.browser },
+    )
     await use(stack)
   },
   uniqueName: async ({}, use) => {

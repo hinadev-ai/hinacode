@@ -35,9 +35,11 @@ const serve = Command.make(
       ),
       Flag.optional,
     ),
-    rotateToken: Flag.Boolean("rotate-token").pipe(
+    resetPairing: Flag.Boolean("reset-pairing").pipe(
       Flag.withDefault(false),
-      Flag.withDescription("Replace the token, which unpairs every client, or HINACODE_SERVE_ROTATE_TOKEN=1."),
+      Flag.withDescription(
+        "Replace the cloud's key and pairing secret and remove every device, so each must pair again, or HINACODE_SERVE_RESET_PAIRING=1.",
+      ),
     ),
     relay: Flag.Boolean("relay").pipe(
       Flag.withDescription(
@@ -54,7 +56,7 @@ const serve = Command.make(
             port: Option.getOrUndefined(flags.port),
             host: Option.getOrUndefined(flags.host),
             relay: Option.getOrUndefined(Option.map(flags.relay, (on) => (on ? "on" : "off"))),
-            rotateToken: flags.rotateToken,
+            resetPairing: flags.resetPairing,
           },
           userData,
         ),

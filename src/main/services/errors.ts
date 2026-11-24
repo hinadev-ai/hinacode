@@ -156,3 +156,11 @@ export const persistence =
   (operation: string) =>
   (cause: unknown): PersistenceError =>
     new PersistenceError({ operation, cause })
+
+export class NoWaitingDeviceError extends Schema.TaggedError<NoWaitingDeviceError>()("NoWaitingDeviceError", {
+  code: Schema.String,
+}) {
+  override get message(): string {
+    return "No waiting device shows that code"
+  }
+}

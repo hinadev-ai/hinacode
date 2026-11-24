@@ -1,4 +1,5 @@
 import type { RememberedAnswers } from "./connection"
+import { DEVICE_KEY, newDeviceKey, readDeviceKey } from "./device-key"
 import { parseRelayAccount, RELAY_ACCOUNT_KEY, type RelayAccount } from "./relay-account"
 import { parsePreferences, PREFERENCES_KEY, type Preferences } from "./preferences"
 import { LEGACY_KEY, newServerId, parseStoredServers, SERVERS_KEY, type StoredServer } from "./stored-target"
@@ -15,6 +16,14 @@ export async function loadServers() {
 
 export const saveServers = async (servers: readonly StoredServer[]) =>
   localStorage.setItem(SERVERS_KEY, JSON.stringify(servers))
+
+export async function loadDeviceKey() {
+  const stored = readDeviceKey(localStorage.getItem(DEVICE_KEY))
+  if (stored !== null) return stored
+  const created = newDeviceKey()
+  localStorage.setItem(DEVICE_KEY, created.stored)
+  return created.key
+}
 
 export const loadPreferences = async () => parsePreferences(localStorage.getItem(PREFERENCES_KEY))
 

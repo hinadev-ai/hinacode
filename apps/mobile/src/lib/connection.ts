@@ -9,6 +9,8 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "@shared/contract.ts"
+import type { HostApproval, HostRefusal } from "@shared/domain.ts"
+import type { KeyPair } from "@shared/noise.ts"
 import { learnFromAnswer, learnFromPush, makeOwners, type Owners, stampEnvironment } from "@shared/owners.ts"
 import { dialPlan, pairingUrl, parsePairingUrl } from "@shared/remote.ts"
 import { type Entity, routes } from "@shared/routes.ts"
@@ -30,6 +32,8 @@ export type ConnectionStatus = TransportStatus
 export interface Server extends StoredServer {
   readonly status: ConnectionStatus
   readonly error: string | null
+  readonly refusal: HostRefusal | null
+  readonly approval: HostApproval | null
   readonly features: ReadonlySet<string>
   readonly generation: number
   readonly listed: boolean
@@ -43,7 +47,13 @@ interface ConnectionState {
   readonly features: ReadonlySet<string>
 }
 
-const statusRank: Record<ConnectionStatus, number> = { connected: 3, connecting: 2, offline: 1, unauthorized: 0 }
+const statusRank: Record<ConnectionStatus, number> = {
+  connected: 4,
+  approval: 3,
+  connecting: 2,
+  offline: 1,
+  unauthorized: 0,
+}
 
 const summarize = (servers: readonly Server[]): ConnectionState => {
   const connected = servers.filter((server) => server.status === "connected")
@@ -115,32 +125,52 @@ export function onRemembered(listener: (serverId: string, answers: RememberedAns
   }
 }
 
-const sameTarget = (a: StoredServer, b: StoredServer) => a.port === b.port && a.token === b.token
+const sameTarget = (a: StoredServer, b: StoredServer) =>
+  a.port === b.port && a.key === b.key && (b.secret === null || b.secret === a.secret) && (b.verified || !a.verified)
 
 const sameDials = (a: StoredServer, b: StoredServer) => a.relay === b.relay && a.hosts.join(" ") === b.hosts.join(" ")
 
-const transportMessages: TransportMessages = {
+const transportMessages = (machine: string): TransportMessages => ({
   notSent: copy("mobile_transport_not_sent"),
   mayHaveRun: copy("mobile_transport_may_have_run"),
   lostReply: copy("mobile_transport_lost_reply"),
   disconnected: copy("mobile_transport_disconnected"),
   notConnected: copy("mobile_transport_not_connected"),
-  tokenRotated: copy("mobile_transport_token_rotated"),
-  tokenRefused: copy("mobile_transport_token_refused"),
+  refusal: (refusal) => copy(`mobile_transport_refusal_${refusal}`, { machine }),
   protocolMismatch: (server, client) =>
     copy("mobile_transport_protocol_mismatch", { desktop: String(server), app: String(client) }),
+})
+
+export interface Device {
+  readonly key: KeyPair
+  readonly name: string
+}
+
+let device: Device | null = null
+
+export function setDevice(next: Device) {
+  device = next
 }
 
 function open(server: StoredServer) {
+  if (device === null) throw new Error("setDevice runs before any server connects")
+  const live = (patch: Partial<Server>) => {
+    if (transports.get(server.id) === transport) updateServer(server.id, patch)
+  }
   const transport = new Transport({
     dials: dialPlan(server),
-    token: server.token,
-    messages: transportMessages,
+    hostKey: server.key,
+    device: device.key,
+    name: device.name,
+    secret: server.secret,
+    verified: server.verified,
+    messages: transportMessages(server.name ?? server.hosts[0]),
     compact: true,
     isMutation: (method) => mutations.has(method),
-    onStatus: (status, error) => {
-      if (transports.get(server.id) === transport) updateServer(server.id, { status, error })
-    },
+    onStatus: (status, error, refusal) => live({ status, error, refusal }),
+    onSecretUsed: () => live({ secret: null }),
+    onApproval: (approval) => live({ approval }),
+    onVerified: () => live({ verified: true }),
     onReady: (features, environment, relay, reported) => {
       if (transports.get(server.id) !== transport) return
       updateServer(server.id, (current) => ({
@@ -155,8 +185,11 @@ function open(server: StoredServer) {
       )
       const self = servers.find((other) => other.id === server.id)
       if (self === undefined) return
-      const hosts =
-        reported === undefined ? self.hosts : (parsePairingUrl(pairingUrl({ ...self, hosts: reported }))?.hosts ?? self.hosts)
+      const valid =
+        reported === undefined || self.key === null
+          ? null
+          : parsePairingUrl(pairingUrl({ ...self, key: self.key, hosts: reported }))
+      const hosts = valid?.hosts ?? self.hosts
       if (olderPairingOfSameMachine !== undefined || !sameDials(self, { ...self, relay, hosts }))
         setServers(
           servers
@@ -182,16 +215,18 @@ function close(id: string) {
   remembered.delete(id)
 }
 
-const toStored = ({ id, name, environmentId, hosts, port, token, relay, source }: StoredServer): StoredServer => ({
+const toStored = ({
   id,
   name,
   environmentId,
   hosts,
   port,
-  token,
   relay,
+  key,
+  secret,
+  verified,
   source,
-})
+}: StoredServer): StoredServer => ({ id, name, environmentId, hosts, port, relay, key, secret, verified, source })
 
 export const storedServers = () => useConnection.getState().servers.map(toStored)
 
@@ -210,6 +245,8 @@ export function setServers(servers: readonly StoredServer[]) {
       ...stored,
       status: foreground ? "connecting" : "offline",
       error: null,
+      refusal: null,
+      approval: null,
       features: new Set(),
       generation: 0,
       listed: false,
@@ -218,6 +255,16 @@ export function setServers(servers: readonly StoredServer[]) {
   useConnection.setState(summarize(next))
   for (const server of next) if (!transports.has(server.id)) open(server)
 }
+
+export function reopen(id: string) {
+  const server = useConnection.getState().servers.find((candidate) => candidate.id === id)
+  if (server === undefined) return
+  close(id)
+  updateServer(id, { status: foreground ? "connecting" : "offline", error: null, refusal: null, approval: null })
+  open(server)
+}
+
+export const confirmHost = (id: string, accepted: boolean) => transports.get(id)?.confirmHost(accepted)
 
 export function reconnectNow(id?: string) {
   for (const [serverId, transport] of transports) if (id === undefined || id === serverId) transport.reconnectNow()

@@ -3,12 +3,12 @@ import { createConnection } from "node:net"
 import { dirname } from "node:path"
 import { Cause, Effect, Layer } from "effect"
 import type { WebSocket } from "ws"
-import { RemoteFeature } from "../../shared/remote.ts"
+import { CLOSE_MALFORMED_FRAME, REMOTE_MAX_FRAME_BYTES, RemoteFeature } from "../../shared/remote.ts"
 import { route } from "../environments/route.ts"
 import { WindowBroadcast } from "../services/Events.ts"
-import { CLOSE_MALFORMED_FRAME, RemoteAccess } from "./access.ts"
+import { RemoteAccess } from "./access.ts"
 import { cliSocketPath } from "./cliSocketPath.ts"
-import { listenWebSockets, makeSessions, readFrame } from "./session.ts"
+import { listenWebSockets, makeSessions, readFrame, socketChannel } from "./session.ts"
 
 const someoneAnswers = (socketPath: string) =>
   Effect.callback<boolean, Error>((resume) => {
@@ -39,18 +39,20 @@ const make = (dataDir: string) =>
       subscribe: windows.subscribe,
       environment: access.identity,
       features: RemoteFeature.filter((feature) => feature !== "asks"),
+      remote: false,
     })
 
     const accept = (socket: WebSocket) => {
+      const channel = socketChannel(socket)
       socket.on("error", () => {})
       socket.on("message", (raw, isBinary) => {
         const frame = readFrame(socket, raw, isBinary)
         if (frame === undefined) return
-        if (frame.type === "auth" || frame.type === "hub" || frame.type === "answer")
-          return socket.close(CLOSE_MALFORMED_FRAME, "malformed frame")
-        sessions.receive(socket, frame)
+        if (frame.type === "call" || frame.type === "ping" || frame.type === "watch")
+          return sessions.receive(channel, frame)
+        socket.close(CLOSE_MALFORMED_FRAME, "malformed frame")
       })
-      sessions.attach(socket, { compactEvents: true })
+      sessions.attach(channel, { compactEvents: true })
     }
 
     yield* Effect.gen(function* () {
@@ -62,7 +64,7 @@ const make = (dataDir: string) =>
       yield* listenWebSockets({
         listen: (server, listening) => server.listen(socketPath, listening),
         accept,
-        perMessageDeflate: false,
+        maxPayload: REMOTE_MAX_FRAME_BYTES,
       })
       chmodSync(socketPath, 0o600)
       yield* Effect.logInfo("cli socket listening", socketPath)

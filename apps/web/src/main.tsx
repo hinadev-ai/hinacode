@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client"
 import { applyAppearance } from "@/lib/appearance.ts"
 import { m } from "@/paraglide/messages.js"
 import { useLocale } from "@/stores/locale.ts"
+import type { HostRefusal } from "../../../src/shared/domain.ts"
 import type { RelayMachine } from "../../../src/shared/relayMachines.ts"
 import type { TransportMessages } from "../../../src/shared/transport.ts"
 import {
@@ -22,17 +23,23 @@ import { readSettings } from "./browser.ts"
 import { Gate } from "./Gate.tsx"
 import { serveResources } from "./resources.ts"
 
-const transportMessages: TransportMessages = {
+const refusals: Record<HostRefusal, (inputs: { name: string }) => string> = {
+  refused: m.environment_refusal_refused,
+  removed: m.environment_refusal_removed,
+  reset: m.environment_refusal_reset,
+  predates: m.environment_refusal_predates,
+}
+
+const transportMessages = (name: string): TransportMessages => ({
   notSent: m.web_transport_not_sent(),
   mayHaveRun: m.web_transport_may_have_run(),
   lostReply: m.web_transport_lost_reply(),
   disconnected: m.web_transport_disconnected(),
   notConnected: m.web_transport_not_connected(),
-  tokenRotated: m.web_transport_token_rotated(),
-  tokenRefused: m.web_transport_token_refused(),
+  refusal: (refusal) => refusals[refusal]({ name }),
   protocolMismatch: (server, client) =>
     m.web_transport_protocol_mismatch({ machine: String(server), app: String(client) }),
-}
+})
 
 const start = async (account: RelayAccount, machines: ReadonlyArray<RelayMachine>) => {
   const bridge = connectMachines({

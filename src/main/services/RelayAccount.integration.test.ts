@@ -7,6 +7,7 @@ import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
 import { Duration, Effect, Fiber, Layer, Option } from "effect"
 import { TestClock } from "effect/testing"
+import { encodeKey, generateKeyPair } from "../../shared/noise.ts"
 import type { RelayHost, RelayMachine } from "../../shared/relayMachines.ts"
 import * as Db from "../db/client.ts"
 import * as RemoteAccess from "../remote/access.ts"
@@ -23,7 +24,12 @@ const CREDENTIAL = "device-credential"
 const homeServer: RelayMachine = {
   environmentId: "home-server",
   name: "home-server",
-  pairing: { hosts: ["192.0.2.1"], port: 48081, token: "machine-token", relay: "home-server.relay.invalid" },
+  pairing: {
+    hosts: ["192.0.2.1"],
+    port: 48081,
+    key: encodeKey(generateKeyPair().publicKey),
+    relay: "home-server.relay.invalid",
+  },
 }
 
 const homeServerHost: RelayHost = {

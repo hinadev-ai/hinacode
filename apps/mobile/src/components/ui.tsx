@@ -146,6 +146,7 @@ type Status = { label: string; tone: Tone; icon?: IconName }
 const connectionLabel: Record<ConnectionStatus, Status> = {
   connected: { label: copy("mobile_connection_connected"), tone: "running", icon: "Cloud" },
   connecting: { label: copy("mobile_connection_connecting"), tone: "neutral", icon: "Spinner" },
+  approval: { label: copy("mobile_connection_approval"), tone: "attention", icon: "ShieldKeyhole" },
   offline: { label: copy("mobile_connection_offline"), tone: "attention", icon: "CloudOff" },
   unauthorized: { label: copy("mobile_connection_unauthorized"), tone: "danger", icon: "Unlink" },
 }

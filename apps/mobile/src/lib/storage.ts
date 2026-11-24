@@ -1,6 +1,7 @@
 import { File, Paths } from "expo-file-system"
 import * as SecureStore from "expo-secure-store"
 import type { RememberedAnswers } from "./connection"
+import { DEVICE_KEY, newDeviceKey, readDeviceKey } from "./device-key"
 import { parseRelayAccount, RELAY_ACCOUNT_KEY, type RelayAccount } from "./relay-account"
 import { parsePreferences, PREFERENCES_KEY, type Preferences } from "./preferences"
 import { LEGACY_KEY, newServerId, parseStoredServers, SERVERS_KEY, type StoredServer } from "./stored-target"
@@ -17,6 +18,14 @@ export async function loadServers() {
 
 export const saveServers = (servers: readonly StoredServer[]) =>
   SecureStore.setItemAsync(SERVERS_KEY, JSON.stringify(servers))
+
+export async function loadDeviceKey() {
+  const stored = readDeviceKey(await SecureStore.getItemAsync(DEVICE_KEY))
+  if (stored !== null) return stored
+  const created = newDeviceKey()
+  await SecureStore.setItemAsync(DEVICE_KEY, created.stored)
+  return created.key
+}
 
 export const loadPreferences = async () => parsePreferences(await SecureStore.getItemAsync(PREFERENCES_KEY))
 

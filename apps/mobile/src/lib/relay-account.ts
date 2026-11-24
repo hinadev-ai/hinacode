@@ -149,15 +149,36 @@ export function applyRelayMachines(
     const same =
       next.find((server) => server.environmentId === machine.environmentId) ??
       next.find((server) => server.relay === machine.pairing.relay)
+    const { hosts, port, relay, key } = machine.pairing
     if (same === undefined) {
       next = [
         ...next,
-        { id: newId(), name: machine.name, environmentId: machine.environmentId, ...machine.pairing, source: "relay" },
+        {
+          id: newId(),
+          name: machine.name,
+          environmentId: machine.environmentId,
+          hosts,
+          port,
+          relay,
+          key,
+          secret: null,
+          verified: false,
+          source: "relay",
+        },
       ]
       continue
     }
-    const refreshed: StoredServer = { ...same, ...machine.pairing, environmentId: machine.environmentId }
+    const refreshed: StoredServer = { ...same, hosts, port, relay, environmentId: machine.environmentId }
     next = next.map((server) => (server === same ? refreshed : server))
   }
   return next
+}
+
+export function adoptRelayKey(servers: readonly StoredServer[], id: string, machines: readonly RelayMachine[]) {
+  const server = servers.find((candidate) => candidate.id === id)
+  const machine = machines.find((candidate) => candidate.environmentId === server?.environmentId)
+  if (server === undefined || machine === undefined) return null
+  return servers.map((candidate) =>
+    candidate === server ? { ...server, key: machine.pairing.key, secret: null, verified: false } : candidate,
+  )
 }

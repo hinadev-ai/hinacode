@@ -200,6 +200,14 @@ export const renameEnvironmentAtom = Atom.fn((input: RpcRequest<"environments.re
 
 export const reconnectEnvironmentAtom = Atom.fn((id: string) => call("environments.reconnect", { id }))
 
+export const confirmHostAtom = Atom.fn((input: RpcRequest<"environments.confirmHost">) =>
+  call("environments.confirmHost", input).pipe(Effect.tap(() => Atom.refresh(environmentsAtom))),
+)
+
+export const repairEnvironmentAtom = Atom.fn((id: string) =>
+  call("environments.repair", { id }).pipe(Effect.tap(() => Atom.refresh(environmentsAtom))),
+)
+
 export const relayAccountAtom = Atom.make(call("relayAccount.status", undefined))
 
 const relayAccountAction = <A>(effect: Effect.Effect<A, RpcError>) =>

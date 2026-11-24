@@ -27,7 +27,15 @@ import { Button, ConnectionBadge, Notice, SegmentedControl, type Segment } from 
 import { serverName } from "@/hooks/use-server"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { HIT, mono, type Palette, ProviderColors, radius } from "@/constants/theme"
-import { call, type ConnectionStatus, reconnectNow, type RpcError, type Server, useConnection } from "@/lib/connection"
+import {
+  call,
+  confirmHost,
+  type ConnectionStatus,
+  reconnectNow,
+  type RpcError,
+  type Server,
+  useConnection,
+} from "@/lib/connection"
 import { confirmAction } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
@@ -40,6 +48,7 @@ import type { Appearance, Preferences } from "@/lib/preferences"
 import { rpcFamily } from "@/lib/remote"
 import { modelsLoadAtom, modelsOn, modelsSheetAtom, useModels } from "@/stores/models"
 import { usePreferences } from "@/stores/preferences"
+import { useRelayAccount } from "@/stores/relay-account"
 
 export default function SettingsScreen() {
   const theme = useTheme()
@@ -485,6 +494,7 @@ function ServerSettings() {
 const connectionLabel: Record<ConnectionStatus, string> = {
   connected: copy("mobile_connection_connected"),
   connecting: copy("mobile_connection_connecting"),
+  approval: copy("mobile_connection_approval"),
   offline: copy("mobile_connection_offline"),
   unauthorized: copy("mobile_connection_unauthorized"),
 }
@@ -492,6 +502,7 @@ const connectionLabel: Record<ConnectionStatus, string> = {
 const connectionColor = (theme: Palette): Record<ConnectionStatus, string> => ({
   connected: theme.running,
   connecting: theme.textMuted,
+  approval: theme.attention,
   offline: theme.attention,
   unauthorized: theme.danger,
 })
@@ -579,6 +590,7 @@ function ServerDetails({
         )}
       </View>
       {server.error !== null && <Notice tone="danger" text={server.error} />}
+      <HostApproval server={server} />
       {server.relay !== null && <Text style={[styles.address, { color: theme.textMuted }]}>{server.relay}</Text>}
       {server.hosts.map((host) => (
         <Text key={host} style={[styles.address, { color: theme.textMuted }]}>{`${host}:${server.port}`}</Text>
@@ -590,7 +602,15 @@ function ServerDetails({
           onPress={() => reconnectNow(server.id)}
         />
       )}
-      {server.status === "unauthorized" && (
+      {server.status === "unauthorized" && server.source === "relay" && (
+        <Button
+          icon="Refresh"
+          variant="primary"
+          label={copy("mobile_settings_server_pair_again")}
+          onPress={() => void useRelayAccount.getState().pairAgain(server.id)}
+        />
+      )}
+      {server.status === "unauthorized" && server.source === "pairing" && (
         <Button
           icon="RiQrScanLine"
           variant="primary"
@@ -612,6 +632,34 @@ function ServerDetails({
           onPress={() => confirmForget(serverName(server), onForget)}
         />
       )}
+    </>
+  )
+}
+
+function HostApproval({ server }: { server: Server }) {
+  const theme = useTheme()
+  const { approval } = server
+  if (approval === null) return null
+  const machine = serverName(server)
+  if (!approval.accepted) {
+    return <Notice tone="attention" text={copy("mobile_server_enter_code", { code: approval.code, machine })} />
+  }
+  return (
+    <>
+      <Text style={[styles.question, { color: theme.text }]}>{copy("mobile_server_confirm_host", { machine })}</Text>
+      <View style={styles.answers}>
+        <Button
+          style={styles.answer}
+          variant="primary"
+          label={copy("mobile_server_confirm_yes")}
+          onPress={() => confirmHost(server.id, true)}
+        />
+        <Button
+          style={styles.answer}
+          label={copy("mobile_server_confirm_no")}
+          onPress={() => confirmHost(server.id, false)}
+        />
+      </View>
     </>
   )
 }
@@ -640,5 +688,8 @@ const styles = StyleSheet.create({
   serverStatus: { flexShrink: 1, fontSize: 14 },
   source: { fontSize: 13 },
   address: { fontFamily: mono, fontSize: 13 },
+  question: { fontSize: 15, fontWeight: "600" },
+  answers: { flexDirection: "row", gap: 8 },
+  answer: { flex: 1 },
   serverPicker: { padding: 8 },
 })

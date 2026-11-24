@@ -8,7 +8,7 @@ import { WebSocket } from "ws"
 import { unlistedModel } from "../../shared/agent.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
-import { type ClientFrame, pairingUrl, type ServerFrame } from "../../shared/remote.ts"
+import { type ClientFrame, CLOSE_MALFORMED_FRAME, pairingUrl, type ServerFrame } from "../../shared/remote.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
@@ -21,7 +21,7 @@ import { Environments } from "../services/Environments.ts"
 import { Events, makeEventsLayer } from "../services/Events.ts"
 import { Settings } from "../services/Settings.ts"
 import { makeTestAppLayer } from "../testing.ts"
-import { CLOSE_MALFORMED_FRAME, RemoteAccess } from "./access.ts"
+import { RemoteAccess } from "./access.ts"
 import { cliSocketPath } from "./cliSocketPath.ts"
 import * as CliSocket from "./cliSocket.ts"
 import { unusedLoopbackPort } from "./testing.ts"
@@ -180,8 +180,8 @@ beforeAll(async () => {
   ).id
 
   desktop = makeDesktop(join(dir, "desktop"))
-  const { port, token } = await cloud.runPromise(RemoteAccess.use((remote) => remote.pairing))
-  const url = pairingUrl({ hosts: ["127.0.0.1"], port, token, relay: null })
+  const { port, key, secret } = await cloud.runPromise(RemoteAccess.use((remote) => remote.pairing))
+  const url = pairingUrl({ hosts: ["127.0.0.1"], port, relay: null, key, secret })
   await desktop.runPromise(Environments.use((environments) => environments.add({ name: "cloud", pairingUrl: url })))
   await vi.waitFor(async () =>
     expect((await desktop.runPromise(Environments.use((environments) => environments.list))).clouds).toMatchObject([
@@ -246,12 +246,12 @@ test("revealing a cloud thread reaches the desktop's windows", async () => {
   client.socket.close()
 })
 
-test("desktop-only methods are refused, and auth frames close the socket", async () => {
+test("desktop-only methods are refused, and remote handshake frames close the socket", async () => {
   const client = cli(socketPath)
   expect(await client.call("environments.list", undefined)).toStrictEqual({
     error: { tag: "DesktopOnly", message: "environments.list is only available in the desktop window" },
   })
-  await client.send({ type: "auth", token: "anything" })
+  await client.send({ type: "hello", name: "anything" })
   expect(await client.closed()).toBe(CLOSE_MALFORMED_FRAME)
 })
 

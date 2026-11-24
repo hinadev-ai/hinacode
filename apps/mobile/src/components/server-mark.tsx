@@ -7,6 +7,7 @@ import { copy } from "@/lib/copy"
 
 const statusLabel = {
   connecting: copy("mobile_connection_connecting"),
+  approval: copy("mobile_connection_approval"),
   offline: copy("mobile_connection_offline"),
   unauthorized: copy("mobile_connection_unauthorized"),
 } as const

@@ -326,7 +326,7 @@ function PairingDetails({ pairing, onRotated }: PairingDetailsProps) {
     startTransition(async () => {
       setError(null)
       try {
-        await callPromise("remote.rotateToken", undefined)
+        await callPromise("remote.resetPairing", undefined)
         onRotated()
       } catch (cause) {
         setError(errorMessage(cause))

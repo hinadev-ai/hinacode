@@ -10,7 +10,7 @@ import { Settings } from "./services/Settings.ts"
 export interface ServeConfig {
   readonly bindHost?: string
   readonly port?: number
-  readonly rotateToken: boolean
+  readonly resetPairing: boolean
   readonly relay?: "on" | "off"
 }
 
@@ -35,10 +35,10 @@ export const restartCommand = (process: {
   readonly argv: ReadonlyArray<string>
   readonly env: NodeJS.ProcessEnv
 }) => {
-  const { HINACODE_SERVE_ROTATE_TOKEN: _rotated, ...env } = process.env
+  const { HINACODE_SERVE_RESET_PAIRING: _reset, ...env } = process.env
   return {
     file: process.execPath,
-    args: [process.execPath, ...process.execArgv, ...process.argv.slice(1).filter((arg) => arg !== "--rotate-token")],
+    args: [process.execPath, ...process.execArgv, ...process.argv.slice(1).filter((arg) => arg !== "--reset-pairing")],
     env,
   }
 }
@@ -65,7 +65,7 @@ export interface ServeFlags {
   readonly port?: number | undefined
   readonly host?: string | undefined
   readonly relay?: "on" | "off" | undefined
-  readonly rotateToken: boolean
+  readonly resetPairing: boolean
 }
 
 const relayFromEnv = (env: NodeJS.ProcessEnv) => {
@@ -95,7 +95,7 @@ export const serveConfig = (flags: ServeFlags, env: NodeJS.ProcessEnv): ServeCon
     ...(bindHost !== undefined && { bindHost }),
     ...(port !== undefined && { port }),
     ...(relay !== undefined && { relay }),
-    rotateToken: flags.rotateToken || envFlag(env, "HINACODE_SERVE_ROTATE_TOKEN"),
+    resetPairing: flags.resetPairing || envFlag(env, "HINACODE_SERVE_RESET_PAIRING"),
   }
 }
 
@@ -108,7 +108,7 @@ export const applyServeConfig = (config: ServeConfig): Effect.Effect<void, Persi
     if (next.enabled !== current.enabled || next.bindHost !== current.bindHost || next.port !== current.port) {
       yield* settings.set({ remote: next })
     }
-    if (config.rotateToken) yield* RemoteAccess.use((remote) => remote.rotateToken)
+    if (config.resetPairing) yield* RemoteAccess.use((remote) => remote.resetPairing)
   })
 
 export const applyServeRelay = (

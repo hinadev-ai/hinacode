@@ -4,11 +4,11 @@ import { join } from "node:path"
 import { afterEach, describe, expect, test } from "@effect/vitest"
 import { autoUpdate, boundServeLog, browserCommand, linkInstructions, restartCommand, serveConfig } from "./serve.ts"
 
-const none = { rotateToken: false }
+const none = { resetPairing: false }
 
 describe("serveConfig", () => {
   test("reads the serve command with no overrides", () => {
-    expect(serveConfig(none, {})).toStrictEqual({ rotateToken: false })
+    expect(serveConfig(none, {})).toStrictEqual({ resetPairing: false })
   })
 
   test("reads host, port and rotation from the environment", () => {
@@ -16,18 +16,18 @@ describe("serveConfig", () => {
       serveConfig(none, {
         HINACODE_SERVE_HOST: "127.0.0.1",
         HINACODE_SERVE_PORT: "49000",
-        HINACODE_SERVE_ROTATE_TOKEN: "true",
+        HINACODE_SERVE_RESET_PAIRING: "true",
       }),
-    ).toStrictEqual({ bindHost: "127.0.0.1", port: 49000, rotateToken: true })
+    ).toStrictEqual({ bindHost: "127.0.0.1", port: 49000, resetPairing: true })
   })
 
   test("flags override the environment", () => {
     expect(
       serveConfig(
-        { port: 49100, host: "100.64.0.2", rotateToken: true },
+        { port: 49100, host: "100.64.0.2", resetPairing: true },
         { HINACODE_SERVE_PORT: "49000", HINACODE_SERVE_HOST: "127.0.0.1" },
       ),
-    ).toStrictEqual({ bindHost: "100.64.0.2", port: 49100, rotateToken: true })
+    ).toStrictEqual({ bindHost: "100.64.0.2", port: 49100, resetPairing: true })
   })
 
   test("refuses a host that would listen on every network", () => {
@@ -43,12 +43,12 @@ describe("serveConfig", () => {
 
   test("reads the relay switch from the flag before the environment", () => {
     expect(serveConfig({ ...none, relay: "on" }, { HINACODE_SERVE_RELAY: "off" })).toStrictEqual({
-      rotateToken: false,
+      resetPairing: false,
       relay: "on",
     })
-    expect(serveConfig(none, { HINACODE_SERVE_RELAY: "off" })).toStrictEqual({ rotateToken: false, relay: "off" })
+    expect(serveConfig(none, { HINACODE_SERVE_RELAY: "off" })).toStrictEqual({ resetPairing: false, relay: "off" })
     expect(serveConfig({ ...none, relay: "off" }, { HINACODE_SERVE_RELAY: "1" })).toStrictEqual({
-      rotateToken: false,
+      resetPairing: false,
       relay: "off",
     })
   })
@@ -57,8 +57,8 @@ describe("serveConfig", () => {
     expect(() => serveConfig(none, { HINACODE_SERVE_RELAY: "1" })).toThrow("HINACODE_SERVE_RELAY must be on or off")
   })
 
-  test("refuses an unknown HINACODE_SERVE_ROTATE_TOKEN value instead of guessing", () => {
-    expect(() => serveConfig(none, { HINACODE_SERVE_ROTATE_TOKEN: "yes" })).toThrow(/HINACODE_SERVE_ROTATE_TOKEN/)
+  test("refuses an unknown HINACODE_SERVE_RESET_PAIRING value instead of guessing", () => {
+    expect(() => serveConfig(none, { HINACODE_SERVE_RESET_PAIRING: "yes" })).toThrow(/HINACODE_SERVE_RESET_PAIRING/)
   })
 })
 
@@ -79,8 +79,8 @@ describe("restartCommand", () => {
   const running = {
     execPath: "/usr/bin/node",
     execArgv: ["--enable-source-maps"],
-    argv: ["/usr/bin/node", "/opt/hinacode/bin/hinacode", "serve", "--rotate-token", "--port", "47441"],
-    env: { PATH: "/usr/bin", HINACODE_SERVE_ROTATE_TOKEN: "1", HINACODE_USER_DATA: "/srv/cloud" },
+    argv: ["/usr/bin/node", "/opt/hinacode/bin/hinacode", "serve", "--reset-pairing", "--port", "47441"],
+    env: { PATH: "/usr/bin", HINACODE_SERVE_RESET_PAIRING: "1", HINACODE_USER_DATA: "/srv/cloud" },
   }
 
   test("boots the same command with the same node flags", () => {
@@ -92,7 +92,7 @@ describe("restartCommand", () => {
 
   test("does not rotate the token again, so paired clients stay paired", () => {
     const { args, env } = restartCommand(running)
-    expect(args).not.toContain("--rotate-token")
+    expect(args).not.toContain("--reset-pairing")
     expect(env).toStrictEqual({ PATH: "/usr/bin", HINACODE_USER_DATA: "/srv/cloud" })
   })
 })

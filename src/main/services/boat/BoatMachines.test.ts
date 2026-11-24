@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest"
 import * as Db from "../../db/client.ts"
 import { type PushEvent, type RpcMethod, RpcMethods } from "../../../shared/contract.ts"
 import type { BoatMachineCreate, Environment, Thread } from "../../../shared/domain.ts"
+import { encodeKey, generateKeyPair } from "../../../shared/noise.ts"
 import { parsePairingUrl } from "../../../shared/remote.ts"
 import { type CloudHooks, Environments, type ForwardedCall } from "../Environments.ts"
 import * as Secrets from "../Secrets.ts"
@@ -14,10 +15,12 @@ import { layer as boatLayer } from "./Boat.ts"
 import { BoatMachines, layer as boatMachinesLayer } from "./BoatMachines.ts"
 import { API_KEY, type FakeBoat, withFake } from "./testing.ts"
 
+const HOST_KEY = encodeKey(generateKeyPair().publicKey)
+
 const PAIR_OUTPUT = [
   "HinaCode cloud 0.3.0",
   "Pair a desktop: Settings > Connections > Add environment, with one of:",
-  "  hinacode://connect?host=127.0.0.1&port=48081&token=cloud-token",
+  `  hinacode://connect?host=127.0.0.1&port=48081&key=${HOST_KEY}&secret=cloud-secret`,
   "",
 ].join("\n")
 
@@ -177,8 +180,9 @@ describe("BoatMachines", () => {
       expect(parsePairingUrl(added[0]!.pairingUrl)).toEqual({
         hosts: ["sb-created-1-48081.boat.dev"],
         port: 443,
-        token: "cloud-token",
         relay: "sb-created-1-48081.boat.dev",
+        key: HOST_KEY,
+        secret: "cloud-secret",
       })
     })
   })
@@ -222,14 +226,14 @@ describe("BoatMachines", () => {
     })
   })
 
-  it("keeps the pairing token out of the error when HinaCode does not start", async () => {
+  it("keeps the pairing secret out of the error when HinaCode does not start", async () => {
     await withFake(async (fake) => {
       fake.seedSandbox("sb-live", "ready")
       const leaked = ["pairing", "credential", "7f3a"].join("-")
       const journal = [
         "hinacode serve did not start",
         "Nov 17 10:00:00 boat bash[42]: HinaCode cloud 0.3.0",
-        `Nov 17 10:00:00 boat bash[42]:   hinacode://connect?host=127.0.0.1&port=48081&token=${leaked}`,
+        `Nov 17 10:00:00 boat bash[42]:   hinacode://connect?host=127.0.0.1&port=48081&key=${HOST_KEY}&secret=${leaked}`,
         `Nov 17 10:00:00 boat bash[42]:   http://127.0.0.1:48081/?token=${leaked} open in a browser`,
         "Nov 17 10:00:01 boat systemd[1]: hinacode.service: Main process exited",
       ].join("\n")
@@ -240,6 +244,7 @@ describe("BoatMachines", () => {
       expect(result._tag).toBe("BoatMachineError")
       expect(result.message).toContain("Main process exited")
       expect(result.message).not.toContain(leaked)
+      expect(result.message).toContain("secret=REDACTED")
       expect(result.message).toContain("token=REDACTED")
       const script = fake.commands.find((command) => command.includes("hinacode pair")) ?? ""
       expect(script).toMatch(/journalctl[^\n]*\| sed /)

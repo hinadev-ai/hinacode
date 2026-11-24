@@ -1,40 +1,72 @@
+import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { serverProof } from "@shared/proof.ts"
+import {
+  approvalCode,
+  type Channel,
+  commitment,
+  encodeKey,
+  generateKeyPair,
+  newNonce,
+  REMOTE_PROLOGUE,
+  respond,
+} from "@shared/noise.ts"
 import { RELAY_DELAY_MS } from "@shared/remote.ts"
 import type { RememberedAnswers } from "./connection"
 import type { StoredServer } from "./stored-target"
 
+const HOST = generateKeyPair()
+const HOST_KEY = encodeKey(HOST.publicKey)
+const utf8 = new TextDecoder()
+
 class FakeSocket {
   static all: FakeSocket[] = []
+  binaryType = "blob"
   onopen: (() => void) | null = null
   onmessage: ((message: { data: unknown }) => void) | null = null
   onclose: ((event: { code: number }) => void) | null = null
+  readonly raw: Uint8Array[] = []
   readonly sent: { type: string; id?: number; method?: string; payload?: unknown; nonce?: string }[] = []
+  channel: Channel | null = null
+  serverNonce = newNonce()
 
   constructor(readonly url: string) {
     FakeSocket.all.push(this)
   }
-  send(data: string) {
-    this.sent.push(JSON.parse(data))
+  send(data: Uint8Array) {
+    this.raw.push(data)
+    if (this.channel !== null) this.sent.push(JSON.parse(utf8.decode(this.channel.decrypt(data))))
   }
   close() {}
 
-  ready(environment?: { id: string; name: string }, relay?: string, hosts?: readonly string[]) {
+  handshake() {
     this.onopen?.()
-    this.receive({ type: "challenge", nonce: "server-nonce" })
-    const proof = serverProof("t", this.sent.find((frame) => frame.type === "auth")!.nonce!, "server-nonce")
+    const { message, channel } = respond({ prologue: REMOTE_PROLOGUE, local: HOST, message: this.raw[0]! }).reply(
+      new Uint8Array(0),
+    )
+    this.channel = channel
+    this.onmessage?.({ data: message.slice().buffer })
+  }
+  pend() {
+    this.receive({ type: "pending", commitment: bytesToHex(commitment(this.serverNonce)) })
+    this.receive({ type: "approval", nonce: bytesToHex(this.serverNonce) })
+  }
+  code() {
+    const sent = this.sent.find((frame) => frame.type === "approval")!
+    return approvalCode(this.channel!.handshakeHash, hexToBytes(sent.nonce!), this.serverNonce)
+  }
+  ready(environment?: { id: string; name: string }, relay?: string, hosts?: readonly string[]) {
+    if (this.channel === null) this.handshake()
     this.receive({
       type: "ready",
-      version: 1,
+      version: 2,
       features: ["call-keys"],
       ...(environment && { environment }),
       relay,
       hosts,
-      proof,
     })
   }
   receive(frame: unknown) {
-    this.onmessage?.({ data: JSON.stringify(frame) })
+    this.onmessage?.({ data: this.channel!.encrypt(utf8ToBytes(JSON.stringify(frame))).slice().buffer })
   }
   calls(method: string) {
     return this.sent.filter((frame) => frame.type === "call" && frame.method === method)
@@ -49,8 +81,20 @@ class FakeSocket {
 
 vi.stubGlobal("WebSocket", FakeSocket)
 
-const { call, onRemembered, reconnectNow, restoreAnswers, setForeground, setServers, useConnection } =
-  await import("./connection")
+const {
+  call,
+  confirmHost,
+  onRemembered,
+  reconnectNow,
+  restoreAnswers,
+  setDevice,
+  setForeground,
+  setServers,
+  storedServers,
+  useConnection,
+} = await import("./connection")
+
+setDevice({ key: generateKeyPair(), name: "iPhone" })
 
 const server = (id: string, port: number): StoredServer => ({
   id,
@@ -58,12 +102,16 @@ const server = (id: string, port: number): StoredServer => ({
   environmentId: null,
   hosts: ["127.0.0.1"],
   port,
-  token: "t",
   relay: null,
+  key: HOST_KEY,
+  secret: null,
+  verified: true,
   source: "pairing",
 })
 
 const socketOf = (port: number) => FakeSocket.all.findLast((socket) => socket.url.includes(`:${port}/`))!
+
+const serverState = (id: string) => useConnection.getState().servers.find((entry) => entry.id === id)!
 
 const project = (id: string) => ({
   id,
@@ -466,7 +514,7 @@ describe("servers", () => {
       expect(check).toBeDefined()
 
       check.onopen?.()
-      expect(check.sent).toEqual([])
+      expect(check.raw).toEqual([])
       const lan = FakeSocket.all.at(-1)!
       expect(lan.url).toBe("ws://192.168.1.5:1003/remote")
       expect(lan).not.toBe(check)
@@ -479,5 +527,35 @@ describe("servers", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("uses up the pairing secret and keeps the rest of the pairing", () => {
+    setServers([...useConnection.getState().servers, { ...server("c", 1003), secret: "one-time" }])
+    const socket = socketOf(1003)
+    socket.ready({ id: "env-c", name: "laptop" })
+    expect(socket.sent[0]).toEqual({ type: "hello", name: "iPhone", secret: "one-time", compactEvents: true })
+    expect(storedServers().find((entry) => entry.id === "c")).toMatchObject({ secret: null, key: HOST_KEY })
+    expect(FakeSocket.all.at(-1)).toBe(socket)
+  })
+
+  it("shows the code for a relay machine, asks whether the machine accepted it, and remembers Yes", () => {
+    setServers([{ ...server("c", 1003), verified: false, source: "relay" }])
+    const socket = socketOf(1003)
+    socket.handshake()
+    socket.pend()
+    expect(serverState("c")).toMatchObject({ status: "approval", approval: { code: socket.code(), accepted: false } })
+
+    socket.ready({ id: "env-c", name: "laptop" })
+    expect(serverState("c")).toMatchObject({ status: "approval", approval: { code: socket.code(), accepted: true } })
+
+    confirmHost("c", true)
+    expect(serverState("c")).toMatchObject({ status: "connected", approval: null, verified: true })
+    expect(FakeSocket.all.at(-1)).toBe(socket)
+  })
+
+  it("never dials a pairing saved before encryption", () => {
+    setServers([{ ...server("c", 1003), key: null }])
+    expect(FakeSocket.all.filter((socket) => socket.url.includes(":1003/"))).toEqual([])
+    expect(useConnection.getState().servers[0]).toMatchObject({ status: "unauthorized", refusal: "predates" })
   })
 })

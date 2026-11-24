@@ -1,6 +1,7 @@
 import { createServer } from "node:net"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
+import { REMOTE_MAX_FRAME_BYTES } from "../../shared/remote.ts"
 import { listenWebSockets, retryUntilAddressIsUp } from "./session.ts"
 import { unusedLoopbackPort } from "./testing.ts"
 
@@ -14,7 +15,7 @@ const listenOn = (port: number, hosts: Array<string>, attempts: Array<string>) =
       server.listen(port, host, listening)
     },
     accept: () => {},
-    perMessageDeflate: false,
+    maxPayload: REMOTE_MAX_FRAME_BYTES,
   })
 
 describe("retryUntilAddressIsUp", () => {

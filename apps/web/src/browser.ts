@@ -5,6 +5,8 @@ import {
   ClientSettings,
   defaultClientSettings,
   type EnvironmentStatus,
+  type HostApproval,
+  type HostRefusal,
   type NotificationPermission,
   type SettingsPatch,
 } from "../../../src/shared/domain.ts"
@@ -41,7 +43,11 @@ export interface BrowserContext {
   readonly account: RelayAccount
   readonly machines: ReadonlyArray<RelayMachine>
   readonly statusOf: (environmentId: string) => EnvironmentStatus
+  readonly approvalOf: (environmentId: string) => HostApproval | undefined
+  readonly refusalOf: (environmentId: string) => HostRefusal | undefined
   readonly reconnect: (environmentId: string) => void
+  readonly confirmHost: (environmentId: string, accepted: boolean) => void
+  readonly repair: (environmentId: string) => void
   readonly emit: (event: typeof PushEvent.Encoded) => void
   readonly signedOut: () => void
 }
@@ -133,9 +139,14 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
         createdAt: new Date(0).toISOString(),
         status: context.statusOf(machine.environmentId),
         lastSeenAt: null,
+        approval: context.approvalOf(machine.environmentId),
+        refusal: context.refusalOf(machine.environmentId),
       })),
     }),
     "environments.reconnect": ({ id }: { id: string }) => context.reconnect(id),
+    "environments.confirmHost": ({ id, accepted }: { id: string; accepted: boolean }) =>
+      context.confirmHost(id, accepted),
+    "environments.repair": ({ id }: { id: string }) => context.repair(id),
     "environments.rename": ({ id, name }: { id: string; name: string }) => {
       renameMachine(id, name)
       location.reload()

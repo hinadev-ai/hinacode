@@ -11,6 +11,7 @@ import { SqlClient } from "effect/sql"
 import { TestClock } from "effect/testing"
 import { RemoteStatus, type RelayStatus } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
+import { makeEventsLayer } from "../services/Events.ts"
 import * as SecretsModule from "../services/Secrets.ts"
 import { Secrets } from "../services/Secrets.ts"
 import * as SettingsModule from "../services/Settings.ts"
@@ -174,7 +175,13 @@ const base = RemoteAccessModule.layer.pipe(
   Layer.provideMerge(SecretsModule.layer),
   Layer.provideMerge(Layer.suspend(() => SettingsModule.layer(mkdtempSync(join(tmpdir(), "kk-relay-settings-"))))),
   Layer.provideMerge(Db.layer(":memory:")),
-  Layer.provide(Layer.mergeAll(NodeServices.layer, SecretsModule.noKeyring)),
+  Layer.provide(
+    Layer.mergeAll(
+      NodeServices.layer,
+      SecretsModule.noKeyring,
+      makeEventsLayer(() => {}),
+    ),
+  ),
 )
 
 const remoteOn = Settings.use((settings) =>
@@ -184,8 +191,8 @@ const remoteOn = Settings.use((settings) =>
 const linkedBefore = Secrets.use((secrets) => secrets.set(CREDENTIAL_SECRET, "credential-1"))
 
 const currentPairing = Effect.gen(function* () {
-  const { hosts, port, token } = yield* RemoteAccess.use((access) => access.pairing)
-  const body = { hosts, port, token }
+  const { hosts, port, key } = yield* RemoteAccess.use((access) => access.pairing)
+  const body = { hosts, port, key }
   return { body, fingerprint: sha256(Buffer.from(JSON.stringify(body))) }
 })
 
@@ -636,7 +643,7 @@ describe("Relay", () => {
     }).pipe(Effect.provide(base)),
   )
 
-  it.effect("publishes the pairing once linked through the browser, and again after the token rotates", () =>
+  it.effect("publishes the pairing once linked through the browser, and again after pairing is reset", () =>
     Effect.gen(function* () {
       yield* remoteOn
       const service = fakeService()
@@ -652,11 +659,12 @@ describe("Relay", () => {
           ])
           yield* published(linked.fingerprint)
 
-          const { token } = yield* RemoteAccess.use((access) => access.rotateToken)
+          const { key } = yield* RemoteAccess.use((access) => access.resetPairing)
+          expect(key).not.toBe(linked.body.key)
           yield* advanceUntil(() => service.pairings().length === 2)
           expect(service.pairings()[1]).toStrictEqual({
             call: "PUT /v1/host/pairing",
-            body: { ...linked.body, token },
+            body: { ...linked.body, key },
             credential: "credential-1",
           })
           yield* published((yield* currentPairing).fingerprint)

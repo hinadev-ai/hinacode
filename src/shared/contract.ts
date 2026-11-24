@@ -92,6 +92,9 @@ import {
   LinearIssue,
   MachineResources,
   NetworkAddress,
+  RemoteDevice,
+  RemoteDevices,
+  RemoteDevicesChange,
   RemotePairing,
   RemoteStatus,
   AppConnectionsStatus,
@@ -529,6 +532,8 @@ export const RpcMethods = {
   "environments.remove": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "environments.rename": rpc(Schema.Struct({ id: Schema.String, name: MachineName }), Schema.Void),
   "environments.reconnect": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "environments.confirmHost": rpc(Schema.Struct({ id: Schema.String, accepted: Schema.Boolean }), Schema.Void),
+  "environments.repair": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "boatMachines.options": rpc(Schema.Void, BoatMachineOptions),
   "boatMachines.connect": rpc(BoatMachineConnect, Environment),
   "boatMachines.forThread": rpc(BoatThreadMachine, Thread),
@@ -883,7 +888,10 @@ export const RpcMethods = {
   "system.resources": rpc(Schema.Void, MachineResources),
   "remote.status": rpc(Schema.Void, RemoteStatus),
   "remote.pairing": rpc(Schema.Void, RemotePairing),
-  "remote.rotateToken": rpc(Schema.Void, RemotePairing),
+  "remote.resetPairing": rpc(Schema.Void, RemotePairing),
+  "remote.devices": rpc(Schema.Void, RemoteDevices),
+  "remote.devices.approve": rpc(Schema.Struct({ code: Schema.String }), RemoteDevice),
+  "remote.devices.remove": rpc(Schema.Struct({ key: Schema.String }), Schema.Void),
 }
 
 export type RpcMethod = keyof typeof RpcMethods
@@ -985,6 +993,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "environments.remove": "mutation",
   "environments.rename": "mutation",
   "environments.reconnect": "mutation",
+  "environments.confirmHost": "mutation",
+  "environments.repair": "mutation",
   "boatMachines.options": "read",
   "boatMachines.connect": "mutation",
   "boatMachines.forThread": "mutation",
@@ -1131,7 +1141,10 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "system.resources": "read",
   "remote.status": "read",
   "remote.pairing": "read",
-  "remote.rotateToken": "mutation",
+  "remote.resetPairing": "mutation",
+  "remote.devices": "read",
+  "remote.devices.approve": "mutation",
+  "remote.devices.remove": "mutation",
 }
 
 export const mutations: ReadonlySet<string> = new Set(
@@ -1165,7 +1178,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "vm.screen.open",
   "vm.files.drop",
   "remote.pairing",
-  "remote.rotateToken",
+  "remote.resetPairing",
   "clientSettings.get",
   "clientSettings.set",
   "environments.list",
@@ -1173,6 +1186,8 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "environments.remove",
   "environments.rename",
   "environments.reconnect",
+  "environments.confirmHost",
+  "environments.repair",
   "boatMachines.options",
   "boatMachines.connect",
   "boatMachines.forThread",
@@ -1189,7 +1204,13 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "appConnections.remove",
   "agents.update",
 ])
+export const machineOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
+  "remote.devices",
+  "remote.devices.approve",
+  "remote.devices.remove",
+])
 export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEvent["type"]>([
+  "remote.devices.changed",
   "vm.screen.data",
   "vm.screen.closed",
   "fs.changed",
@@ -1290,6 +1311,11 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("environment.status"), id: Schema.String, status: EnvironmentStatus }),
   Schema.Struct({ type: Schema.Literal("environments.changed") }),
   Schema.Struct({ type: Schema.Literal("appConnections.changed"), status: AppConnectionsStatus }),
+  Schema.Struct({
+    type: Schema.Literal("remote.devices.changed"),
+    reason: RemoteDevicesChange,
+    name: Schema.optionalKey(Schema.String),
+  }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   Schema.Struct({ type: Schema.Literal("device.updated"), threadId: Schema.String, devices: ThreadDevices }),
   Schema.Struct({

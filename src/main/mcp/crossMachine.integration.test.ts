@@ -228,7 +228,7 @@ beforeAll(async () => {
   desktopMachine = await desktop.runPromise(RemoteAccess.use((remote) => Effect.succeed(remote.identity)))
 
   const pairing = await cloud.runPromise(RemoteAccess.use((remote) => remote.pairing))
-  const url = pairingUrl({ hosts: ["127.0.0.1"], port: pairing.port, token: pairing.token, relay: null })
+  const url = pairingUrl({ ...pairing, hosts: ["127.0.0.1"], relay: null })
   cloudId = result(await invoke("environments.add", { name: "cloud", pairingUrl: url })).id
   await vi.waitFor(async () =>
     expect(result(await invoke("environments.list", undefined)).clouds).toMatchObject([{ status: "connected" }]),
@@ -314,7 +314,7 @@ describe("devices on another machine", () => {
       expect((await desktop.runPromise(RemoteAccess.use((remote) => remote.status))).listening).toBe(true),
     )
     const pairing = await desktop.runPromise(RemoteAccess.use((remote) => remote.pairing))
-    const url = pairingUrl({ hosts: ["127.0.0.1"], port: pairing.port, token: pairing.token, relay: null })
+    const url = pairingUrl({ ...pairing, hosts: ["127.0.0.1"], relay: null })
     const viewer = await cloud.runPromise(
       Environments.use((environments) => environments.add({ name: "desktop", pairingUrl: url })),
     )
@@ -355,7 +355,7 @@ describe("devices on another machine", () => {
       expect((await desktop.runPromise(RemoteAccess.use((remote) => remote.status))).listening).toBe(true),
     )
     const pairing = await desktop.runPromise(RemoteAccess.use((remote) => remote.pairing))
-    const url = pairingUrl({ hosts: ["127.0.0.1"], port: pairing.port, token: pairing.token, relay: null })
+    const url = pairingUrl({ ...pairing, hosts: ["127.0.0.1"], relay: null })
     const hub = await cloud.runPromise(
       Environments.use((environments) => environments.add({ name: "desktop", pairingUrl: url })),
     )

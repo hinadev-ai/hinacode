@@ -5,15 +5,27 @@ import { desktopOnlyMethods, type RpcMethod } from "../../../src/shared/contract
 import { addProject, openFile, openSignedIn, sendMessage, startThread } from "./support/app.ts"
 import { expect, test } from "./support/fixtures.ts"
 
-const recordMachineCalls = (page: Page) => {
+// FIXME: every frame to a machine is encrypted, so the test reads each call's JSON as the cipher's UTF-8 encoder sees it
+const recordMachineCalls = async (page: Page) => {
   const methods = new Set<string>()
+  const textFrames: Array<string> = []
   page.on("websocket", (socket) =>
     socket.on("framesent", ({ payload }) => {
-      const frame = typeof payload === "string" ? (JSON.parse(payload) as { type?: string; method?: string }) : {}
-      if (frame.type === "call" && frame.method !== undefined) methods.add(frame.method)
+      if (typeof payload === "string") textFrames.push(payload)
     }),
   )
-  return methods
+  await page.exposeFunction("recordMachineCall", (method: string) => methods.add(method))
+  await page.addInitScript(() => {
+    const encode = TextEncoder.prototype.encode
+    TextEncoder.prototype.encode = function (input) {
+      if (input?.startsWith('{"type":"call"')) {
+        const { method } = JSON.parse(input) as { method: string }
+        ;(window as unknown as { recordMachineCall: (method: string) => void }).recordMachineCall(method)
+      }
+      return encode.call(this, input)
+    }
+  })
+  return { methods, textFrames }
 }
 
 const recordLocalLoads = (page: Page) => {
@@ -62,7 +74,7 @@ test.describe("the web app is a client of remote machines", () => {
   test("it sends a machine only the rpc a machine serves", async ({ page, web, repo, uniqueName }) => {
     const project = uniqueName("client")
     writeFileSync(join(repo, "notes.md"), "# Notes\n")
-    const methods = recordMachineCalls(page)
+    const { methods, textFrames } = await recordMachineCalls(page)
     const localLoads = recordLocalLoads(page)
     const violations = recordPolicyViolations(page)
 
@@ -77,6 +89,7 @@ test.describe("the web app is a client of remote machines", () => {
 
     expect(methods).toContain("projects.create" satisfies RpcMethod)
     expect([...methods].filter((method) => desktopOnlyMethods.has(method as RpcMethod))).toEqual([])
+    expect(textFrames).toEqual([])
     expect(localLoads).toEqual([])
     expect(violations).toEqual([])
   })
@@ -100,7 +113,7 @@ test.describe("the web app is a client of remote machines", () => {
   })
 
   test("it keeps its own settings in the browser", async ({ page, web }) => {
-    const methods = recordMachineCalls(page)
+    const { methods } = await recordMachineCalls(page)
     await openSignedIn(page, web)
     await openSettings(page)
     await settingsSections(page).getByRole("button", { name: "Appearance", exact: true }).click()

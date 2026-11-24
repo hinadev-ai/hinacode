@@ -59,7 +59,15 @@ const bridge: HinacodeBridge = {
         result: environment === AGENT ? [{ name: "tailscale0", address: TAILSCALE }] : [],
       }
     if (method === "remote.pairing")
-      return { result: { hosts: ["192.168.1.2"], port: 48081, token: "token", relay: null } }
+      return {
+        result: {
+          hosts: ["192.168.1.2"],
+          port: 48081,
+          relay: null,
+          key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          secret: "secret",
+        },
+      }
     if (method === "relayAccount.status") return { result: { state: "signedOut" } }
     if (method === "updates.status") return { result: { current: "1.0.0", state: { type: "idle" } } }
     if (method === "updates.check") return { result: undefined }

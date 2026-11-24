@@ -1,9 +1,9 @@
 import type { RelayMachine } from "@shared/relayMachines.ts"
-import { AppState } from "react-native"
 import { create } from "zustand"
-import { setServers, storedServers, useConnection } from "@/lib/connection"
+import { reopen, setServers, storedServers, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import {
+  adoptRelayKey,
   applyRelayMachines,
   codeFromCallback,
   exchangeSignInCode,
@@ -36,10 +36,10 @@ interface RelayAccountState {
     readonly authenticate: (url: string, redirectUri: string) => Promise<string | null>
   }) => Promise<string | null>
   readonly sync: () => Promise<void>
+  readonly pairAgain: (serverId: string) => Promise<void>
   readonly signOut: () => Promise<void>
 }
 
-const REFUSED_SYNC_INTERVAL_MS = 15_000
 const SIGN_IN_REDIRECT = "hinacode://signed-in"
 
 const signedOut = {
@@ -55,9 +55,10 @@ const signedOut = {
 let account: RelayAccount | null = null
 let inFlight: Promise<void> | null = null
 let signInAttempt = 0
-let refusedSyncTimer: ReturnType<typeof setInterval> | undefined
+let listed: readonly RelayMachine[] = []
 
 function applyMachines(machines: readonly RelayMachine[]) {
+  listed = machines
   const before = storedServers()
   const after = applyRelayMachines(before, machines, newServerId)
   if (JSON.stringify(after) === JSON.stringify(before)) return
@@ -139,6 +140,13 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
       })
       return inFlight
     },
+    pairAgain: async (serverId) => {
+      await get().sync()
+      const next = adoptRelayKey(storedServers(), serverId, listed)
+      if (next === null) return
+      setServers(next)
+      reopen(serverId)
+    },
     signOut: async () => {
       signInAttempt++
       if (account !== null) void signOutRelayDevice(account, fetch)
@@ -149,25 +157,3 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
     },
   }
 })
-
-// oxlint-disable-next-line hinacode/no-comments
-// A machine that rotates its token closes the phone's sockets with 4002 and publishes the new token to the relay a moment later, so a refused relay server is synced until the new token arrives.
-function syncWhileRefused() {
-  const refused =
-    account !== null &&
-    !useRelayAccount.getState().unauthorized &&
-    useConnection.getState().servers.some((server) => server.source === "relay" && server.status === "unauthorized")
-  if (!refused) {
-    clearInterval(refusedSyncTimer)
-    refusedSyncTimer = undefined
-    return
-  }
-  if (refusedSyncTimer !== undefined) return
-  refusedSyncTimer = setInterval(() => {
-    if (AppState.currentState === "active") void useRelayAccount.getState().sync()
-  }, REFUSED_SYNC_INTERVAL_MS)
-  void useRelayAccount.getState().sync()
-}
-
-useConnection.subscribe(syncWhileRefused)
-useRelayAccount.subscribe(syncWhileRefused)
