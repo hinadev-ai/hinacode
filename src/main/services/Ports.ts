@@ -293,20 +293,41 @@ export const belongsToWorkspace =
 
 type PidOf = () => number | undefined
 
-const agentPidsByThread = new Map<string, Set<PidOf>>()
+type PidRegistry = Map<string, Set<PidOf>>
 
-export const registerAgentPid = (threadId: string, pidOf: PidOf): (() => void) => {
-  const pids = agentPidsByThread.get(threadId) ?? new Set()
-  pids.add(pidOf)
-  agentPidsByThread.set(threadId, pids)
-  return () => {
-    pids.delete(pidOf)
-    if (pids.size === 0) agentPidsByThread.delete(threadId)
+const agentPidsBySessionId: PidRegistry = new Map()
+const terminalPidsByThread: PidRegistry = new Map()
+
+const register =
+  (registry: PidRegistry) =>
+  (key: string, pidOf: PidOf): (() => void) => {
+    const pids = registry.get(key) ?? new Set()
+    pids.add(pidOf)
+    registry.set(key, pids)
+    return () => {
+      pids.delete(pidOf)
+      if (pids.size === 0) registry.delete(key)
+    }
   }
-}
 
-export const agentPidsOf = (threadId: string) =>
-  new Set([...(agentPidsByThread.get(threadId) ?? [])].map((pidOf) => pidOf()).filter((pid) => pid !== undefined))
+const livePids = (pids: Iterable<PidOf> = []) =>
+  new Set([...pids].map((pidOf) => pidOf()).filter((pid) => pid !== undefined))
+
+export const registerAgentPid = register(agentPidsBySessionId)
+
+export const registerTerminalPid = register(terminalPidsByThread)
+
+export const agentPidsOf = (threadId: string) => livePids(agentPidsBySessionId.get(threadId))
+
+export const agentPidsBySession = (): ReadonlyMap<string, ReadonlySet<number>> =>
+  new Map(
+    [...agentPidsBySessionId]
+      .map(([sessionId, pids]) => [sessionId, livePids(pids)] as const)
+      .filter(([, pids]) => pids.size > 0),
+  )
+
+const launchedPidsOf = (threadId: string) =>
+  livePids([...(agentPidsBySessionId.get(threadId) ?? []), ...(terminalPidsByThread.get(threadId) ?? [])])
 
 const scanners: Partial<Record<NodeJS.Platform, ListeningScanner>> = {
   linux: findListeningPortsWithSs,
@@ -367,7 +388,7 @@ const make = Effect.gen(function* () {
       const listening = yield* scanListening(
         belongsToWorkspace({
           workspacePath,
-          agentPids: agentPidsOf(threadId),
+          agentPids: launchedPidsOf(threadId),
           selfPid: process.pid,
         }),
         fresh,
