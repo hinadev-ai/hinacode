@@ -79,9 +79,10 @@ test("each switch sends only its own field", async () => {
 test("an empty field shows Never without a unit", async () => {
   await renderSettings()
   const archiveUnit = page.elementLocator(archiveDays().element().closest("form")!).getByText("days")
+  await expect.element(archiveDays()).toHaveValue(defaultSettings.archive.archiveAfterSettledDays)
+  await expect.element(archiveUnit).toBeVisible()
+
+  await archiveDays().fill("")
   await expect.element(archiveDays()).toHaveAttribute("placeholder", "Never")
   await expect.element(archiveUnit).not.toBeVisible()
-
-  await archiveDays().fill("30")
-  await expect.element(archiveUnit).toBeVisible()
 })
