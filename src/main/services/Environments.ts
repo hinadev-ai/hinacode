@@ -650,6 +650,7 @@ const make = Effect.gen(function* () {
             },
             onFrame: (frame) => {
               heard()
+              if (frame.type !== "ready" && cloud.live?.link !== link) return
               switch (frame.type) {
                 case "ready":
                   return ready(frame)
