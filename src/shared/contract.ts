@@ -115,6 +115,7 @@ import {
   WorkspaceChoice,
   OpenPullRequest,
   PullRequestMatch,
+  perProvider,
   type SettingsPatch,
 } from "./domain.ts"
 import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } from "./github.ts"
@@ -553,7 +554,7 @@ export const RpcMethods = {
     AgentAccount,
   ),
   "agents.updates": rpc(Schema.Void, Schema.Array(AgentUpdate)),
-  "agents.binaries": rpc(Schema.Void, Schema.Record(ProviderId, AgentBinaryStatus)),
+  "agents.binaries": rpc(Schema.Void, perProvider(AgentBinaryStatus, { installed: false, path: null })),
   "magpie.test": rpc(
     Schema.Struct({ endpoint: Schema.NullOr(Schema.String), key: Schema.NullOr(Schema.String) }),
     Schema.Struct({ version: Schema.NullOr(Schema.String), models: Schema.Number }),

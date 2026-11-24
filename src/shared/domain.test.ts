@@ -59,6 +59,7 @@ describe("older cloud responses", () => {
       muse: null,
       opencode: null,
       magpie: null,
+      pi: null,
     })
   })
 
@@ -70,6 +71,14 @@ describe("older cloud responses", () => {
     expect(settings.defaultModel.opencode).toBeNull()
     expect(settings.modelPresets.opencode).toStrictEqual([])
     expect(settings.defaultFastMode.opencode).toBe(false)
+  })
+
+  it("marks pi as not installed when an older cloud lists its agent binaries without it", () => {
+    const installed = { installed: true, path: "/usr/bin/agent" }
+    const beforePi = { claude: installed, codex: installed, muse: installed, opencode: installed, magpie: installed }
+    const binaries = Schema.decodeUnknownSync(RpcMethods["agents.binaries"].response)(beforePi)
+    expect(binaries.pi).toStrictEqual({ installed: false, path: null })
+    expect(binaries.claude).toStrictEqual(installed)
   })
 
   it("has no global actions when settings predate them", () => {
@@ -168,14 +177,14 @@ describe("listener settings", () => {
 })
 
 describe("enabledProviders", () => {
-  const installed = { claude: false, codex: true, muse: false, opencode: true, magpie: false }
+  const installed = { claude: false, codex: true, muse: false, opencode: true, magpie: false, pi: false }
 
   it("leaves out an agent whose CLI is missing, whatever its switch says", () => {
     expect(enabledProviders(defaultSettings, installed)).toStrictEqual(["codex", "opencode"])
   })
 
   it("keeps every switched-on agent while the machine has not answered yet", () => {
-    expect(enabledProviders(defaultSettings)).toStrictEqual(["claude", "codex", "muse", "opencode", "magpie"])
+    expect(enabledProviders(defaultSettings)).toStrictEqual(["claude", "codex", "muse", "opencode", "magpie", "pi"])
   })
 
   it("starts new threads on the first installed agent when the default one is missing", () => {

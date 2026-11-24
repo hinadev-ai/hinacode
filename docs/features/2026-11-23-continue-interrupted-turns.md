@@ -15,7 +15,7 @@ From a terminal, `hinacode inbox` lists the thread as an `interrupted` ask, `hin
 
 ## Design
 
-`ThreadStatus` gains `interrupted`, next to `limited`. Migration 52 widens the status check in place, the way migration 33 added `draft`. A status rather than a flag means a new turn clears it with no extra write, and a thread can't be interrupted and running at once.
+`ThreadStatus` gains `interrupted`, next to `limited`. Migration 53 widens the status check in place, the way migration 33 added `draft`. A status rather than a flag means a new turn clears it with no extra write, and a thread can't be interrupted and running at once.
 
 Two paths set it:
 

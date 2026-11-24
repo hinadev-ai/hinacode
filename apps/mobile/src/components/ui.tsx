@@ -171,6 +171,7 @@ const providerMark: Record<ProviderId, IconName> = {
   muse: "RiMetaFill",
   opencode: "OpencodeMark",
   magpie: "MagpieMark",
+  pi: "PiMark",
 }
 
 const providerName: Record<ProviderId, string> = {
@@ -179,6 +180,7 @@ const providerName: Record<ProviderId, string> = {
   muse: copy("mobile_provider_muse"),
   opencode: copy("mobile_provider_opencode"),
   magpie: copy("mobile_provider_magpie"),
+  pi: copy("mobile_provider_pi"),
 }
 
 export function ProviderLabel({ provider, size = 13 }: { provider: ProviderId; size?: number }) {

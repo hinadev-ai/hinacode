@@ -2,7 +2,7 @@ import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { SqlClient } from "effect/sql"
 import * as Db from "./client.ts"
-import threadInterrupted from "./migrations/0052_thread_interrupted.ts"
+import threadInterrupted from "./migrations/0053_thread_interrupted.ts"
 import { seedThread } from "./testing.ts"
 
 it.effect("allows the interrupted status and keeps every thread's state and related rows", () =>

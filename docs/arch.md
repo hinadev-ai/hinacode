@@ -1,6 +1,6 @@
 # Architecture
 
-hinacode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex, Muse Code and opencode over child processes and to Claude through the Agent SDK. magpie runs Claude Code through its gateway on the same harness. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-hinacode-foundation.md`](features/2026-10-11-hinacode-foundation.md).
+hinacode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex, Muse Code, opencode and pi over child processes and to Claude through the Agent SDK. magpie runs Claude Code through its gateway on the same harness. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-hinacode-foundation.md`](features/2026-10-11-hinacode-foundation.md).
 
 ## System overview
 
@@ -200,11 +200,17 @@ classDiagram
     one ACP session per thread, session/load to resume
     hinacode answers session/request_permission from the access mode
   }
+  class PiProvider {
+    one pi --mode rpc process per turn, --session to resume
+    hinacode's extension adds the MCP server and asks before each tool call
+    the provider answers from the access mode, read at each tool call
+  }
   AgentProvider <|.. ClaudeProvider
   AgentProvider <|.. CodexProvider
   AgentProvider <|.. MuseProvider
   AgentProvider <|.. AcpProvider
   AgentProvider <|.. MagpieProvider
+  AgentProvider <|.. PiProvider
 ```
 
 An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the login and the transcripts. A thread with `account_id` null runs on the CLI's own login; otherwise its turns get `home = { dir, binary }`, the config directory and CLI the user gave when adding the account. hinacode never signs in or out: the user runs the CLI's login in a terminal, and `AgentLogins` only probes who each home is signed in as. Token usage and plan limits are read from the same home, so `threads.usage` and `limits.list` follow the account. `threads.switchAccount` moves a started thread by copying its session files into the new home with `AgentProvider.copySession`, then resuming the same session id there. It is refused while a turn runs, because the transcript is still being written. `SessionImports` reads the other direction: it lists the sessions every home recorded in a project's folder, including ones a terminal started, and adopts one as a thread on the account whose home holds it, with its history replayed and a `session_import` rule after it. Muse Code has no home variable, so it runs on its CLI login only, and `AccountProviderId` leaves it out of added accounts. [`muse-integration-guide.md`](muse-integration-guide.md) explains how the Muse provider speaks MSP.
@@ -219,7 +225,7 @@ Adding a backend touches, besides its `AgentProvider` in `src/main/agents/`:
 
 - `ProviderId`, and `AccountProviderId` if it can have added accounts.
 - The `providers` records in `AgentRunner.ts`, `AgentLogins.ts` and, for an agent with a home, `SessionImports.ts`, the layer in `src/main/app.ts`, and the fake providers of the integration tests that build those layers.
-- A migration widening the `provider` CHECK on `thread`, as `0045_magpie_provider` does.
+- A migration widening the `provider` CHECK on `thread`, as `0052_pi_provider` does.
 - The per-agent keys of `Settings.defaultModel` and `defaultAccount`.
 - `ProviderIcon.tsx` for the icon and `providerLabel`, the access hints in `ComposerControls.tsx`, `signedOutHint` in `AccountSettings.tsx`, and their messages in both catalogs.
 - The capability checklist in [`agent-providers.md`](agent-providers.md), so no harness feature is silently missing.
@@ -452,7 +458,7 @@ erDiagram
   thread {
     text id PK
     text worktree_id FK "SET NULL"
-    text provider "claude|codex|muse|opencode|magpie"
+    text provider "claude|codex|muse|opencode|magpie|pi"
     text account_id FK "null = CLI login, delete refused"
     text model
     text provider_session_id
@@ -651,6 +657,7 @@ stateDiagram-v2
 - **Settle** settles a thread the developer picks, and sweeps every 3 minutes while `settings.archive.whenMerged` is on. The sweep asks `gh` for each linked pull request of threads that are neither archived nor mid-turn, settles the threads that are done and quiet (no background task, running sub-agent or listening port), and pushes `thread.updated`. Both paths then release the thread: `AgentRunner.release` stops its sub-agents and tasks and closes its session, then its terminals close and `Ports.closeThread` stops what still listens. A thread in a worktree is done once its own branch's pull request is merged or closed; other pull requests it linked hold it only while it watches them. Removing a worktree then deletes every removed worktree's merged branch in the project, merged locally or on GitHub, except branches a live worktree checks out or forks from.
 - **ArtifactFeedback** saves the developer's comments into the artifact's `feedback.json`, then steers the owning thread, or the threads a comment mentions, with the prompt from `src/shared/artifactFeedback.ts`. A failed steer is logged and never undoes the save. Each message is saved marked `undelivered` and the mark is cleared once the thread has it, so a quit or a failed delivery leaves the mark, and the next start hands the comment over again. Delivery is skipped, under the thread's lock, when the thread's transcript or queue already has the comment's id. The Artifacts watcher pushes `artifact.feedback` whoever wrote the file. See [Artifact feedback](features/2026-11-08-artifact-feedback.md).
 - **PullRequestWatcher** sweeps every minute over links whose `watch` JSON is set. It diffs a fresh `gh` detail read against the snapshot the thread was last told about (`services/pullRequestWatch.ts`), and wakes the thread through `AgentRunner.steerWhen` when checks fail or pass, the review changes, the branch conflicts, or the pull request merges or closes. Each watch start has a fresh UUID generation. The runner rechecks thread eligibility and generation inside the thread semaphore for active steering, or inside the worktree lock for an idle turn. Queued news cannot revive an archived thread or bypass a new approval or usage limit. Stopped watches cannot deliver unaccepted news, while accepted delivery can finish after a stop. Poll writes compare the generation in their SQL update, so they cannot overwrite a replacement watch. The snapshot only moves when its news was delivered or a poll found no news. A watch ends on merge or close, after 25 wakes, or after 15 unreadable polls in a row. See [the feature doc](features/2026-10-14-pull-request-watch.md).
+- **Memory guard** (`memoryGuard.ts`, Linux only) reads memory pressure and free memory every second. When the machine is about to run out, it stops the running thread whose agent processes and their children hold the most: `SIGKILL` to the children, then `AgentRunner.abort`, which fails the turn with the reason and closes the session. The thread keeps its `providerSessionId` and resumes on the next message. Codex and Muse threads share an app server and are never measured. See [the feature doc](features/2026-11-13-memory-guard.md).
 - **Removal is refused** (`WorktreeBusyError`) while a thread in the checkout is mid-turn, or while another open thread uses it. A branch has at most one live worktree (`WorktreeTakenError`). See [ADR 0006](adr/0006-worktree-ownership.md).
 - **PullRequestGuides** keeps one rule. When main learns a pull request's head, a guide for that head exists or is being written. It learns heads from a sweep every 3 minutes over the open pull requests linked to unarchived threads, and from every `github.pullRequestDetail` call. A guide is pulls.review's prompt (`@pulls.review/core`) run through the Claude Agent SDK with structured output, at the model and effort in `settings.pullRequestGuide`. One runs at a time, and a new head interrupts the one for the head it replaced. The newest finished guide is stored per url. Running and failed jobs live in memory, so a failed head is tried again only on Retry, a new head or a restart. See [the feature doc](features/2026-10-23-pull-request-guide.md).
 - A user's thread starts as its project's draft, titled `thread-xxxxx` and kept out of every list until its first message (`docs/features/2026-11-01-draft-threads.md`). Its agent and workspace stay editable in the composer until its first message (`ThreadStartedError` after). That message can move it into a new worktree, and `ThreadNaming` then titles the thread and renames the branch in the background (only the title for a thread already linked to a pull request when naming starts, such as a pull request checkout, whose branch must keep its name), using the Claude model in `settings.textGenerationModel`. A title the user edited in the meantime is kept. Automation threads skip naming.
@@ -694,6 +701,7 @@ How each agent gets its credential ([ADR 0007](adr/0007-per-thread-mcp-credentia
 - **Muse Code** receives it as a header in the session's `config.mcpServers` over stdin, which needs the `sessionMcp` capability. Muse treats the server as required and fails the turn if it cannot reach it.
 - **opencode** receives it as a header of the `http` entry in ACP `session/new` and `session/load`.
 - **magpie** runs the Claude harness, so it connects through the same forwarder.
+- **pi** gets the URL and header in `HINACODE_MCP_URL` and `HINACODE_MCP_AUTHORIZATION`, which HinaCode's pi extension passes to `pi.registerMcpServer`, so the credential stays out of argv.
 
 ## App MCP server
 
@@ -789,3 +797,4 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | Artifacts store, watcher and MCP tools    | `src/main/services/Artifacts.ts`, `packages/artifacts/`    |
 | Artifact comments                         | `src/main/services/ArtifactFeedback.ts`                    |
 | Development resource monitor              | `src/main/resourceMonitor.ts`, `tools/resource-monitor/`   |
+| Memory guard                              | `src/main/memoryGuard.ts`                                  |

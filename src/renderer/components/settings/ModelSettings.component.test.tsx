@@ -20,6 +20,7 @@ const binaries = () => ({
   muse: { installed: true, path: "/usr/bin/muse" },
   opencode: { installed: true, path: "/usr/bin/opencode" },
   magpie: { installed: true, path: "/usr/bin/claude" },
+  pi: { installed: true, path: "/usr/bin/pi" },
 })
 
 const bridge: HinacodeBridge = {

@@ -1,7 +1,7 @@
 ---
 import { RiClaudeFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
 import Layout from "../layouts/Layout.astro"
-import { CheckIcon, OpencodeLogoIcon } from "../icons.ts"
+import { CheckIcon, OpencodeLogoIcon, PiIcon } from "../icons.ts"
 import { translator, type Locale, type StringKey } from "../i18n.ts"
 import Download from "./Download.astro"
 import Faq from "./Faq.astro"
@@ -19,6 +19,7 @@ const agents = [
   { Icon: RiOpenaiFill, name: t("provider_codex"), color: "text-ink" },
   { Icon: RiMetaFill, name: t("provider_muse"), color: "text-provider-muse" },
   { Icon: OpencodeLogoIcon, name: t("provider_opencode"), color: "text-ink" },
+  { Icon: PiIcon, name: t("provider_pi"), color: "text-ink" },
 ]
 ---
 

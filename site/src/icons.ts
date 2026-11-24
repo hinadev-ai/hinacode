@@ -13,6 +13,7 @@ export {
   KeyIcon,
   LockIcon,
   PhoneIcon,
+  PiIcon,
   ServerIcon,
   TerminalIcon,
   TranslateIcon,

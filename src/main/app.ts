@@ -9,12 +9,14 @@ import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
 import { MagpieProvider } from "./agents/magpie/index.ts"
 import { OpencodeProvider } from "./agents/opencode/index.ts"
+import { PiProvider } from "./agents/pi/index.ts"
 import * as AppConnections from "./apps/AppConnections.ts"
 import * as AppServer from "./apps/server.ts"
 import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
 import { hubClaimsLayer } from "./services/devices/hubClaims.ts"
 import * as Mcp from "./mcp/index.ts"
+import { memoryGuardLayer } from "./memoryGuard.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import * as CliSocket from "./remote/cliSocket.ts"
 import * as Peers from "./remote/peers.ts"
@@ -114,6 +116,10 @@ export const agentProviders = (env: NodeJS.ProcessEnv) => {
           MagpieProvider,
           ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "magpie" })),
         ),
+        Layer.effect(
+          PiProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "pi" })),
+        ),
       ).pipe(Layer.provideMerge(everyAgent)),
     }
   const claude = simulatedClaude("HINACODE_MOCK_CLAUDE", env)
@@ -126,6 +132,7 @@ export const agentProviders = (env: NodeJS.ProcessEnv) => {
       MuseProvider.layer,
       OpencodeProvider.layer,
       MagpieProvider.layer,
+      PiProvider.layer,
     ),
   }
 }
@@ -237,6 +244,7 @@ export const makeAppLayer = ({
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
     AppConnections.followRelayLayer,
     AppServer.layer.pipe(Layer.provide(Secrets.layer)),
+    process.env["HINACODE_MEMORY_GUARD"] === "0" ? Layer.empty : memoryGuardLayer,
   ).pipe(Layer.provideMerge(BoatMachines.layer(process.env).pipe(Layer.provide(boat))), Layer.provideMerge(agents))
   return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer, hubClaimsLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
