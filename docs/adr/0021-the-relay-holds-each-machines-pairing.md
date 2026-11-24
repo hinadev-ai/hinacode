@@ -1,6 +1,6 @@
 # 0021. The relay holds each machine's pairing and hands it to the owner's devices
 
-Status: Accepted
+Status: Superseded by [0027](0027-end-to-end-encryption-with-a-pinned-host-key.md). The relay now holds addresses and public keys, never a token.
 Date: 2026-10-24
 
 ## Context
