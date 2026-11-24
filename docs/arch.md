@@ -247,7 +247,7 @@ sequenceDiagram
   R->>AR: rpc threads.send
   AR->>AR: claim busyThreads (reject a second send)
   opt first message with a workspace choice
-    AR->>WT: Threads.prepareWorkspace (local: git switch in the root; worktree: branch kk/<placeholder title>)
+    AR->>WT: Threads.prepareWorkspace (local: git switch in the root; worktree: branch hinacode/<placeholder title>)
   end
   AR->>WT: whenPrepared (outside the transcript lock)
   WT-->>R: worktree.setupLog, worktree.updated

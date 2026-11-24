@@ -827,11 +827,11 @@ describe("worktree cleanup across threads", () => {
       }),
     )
 
-    it.effect("removes the worktree of a fork's pull request, checked out as kk/pr-N, once it merges", () =>
+    it.effect("removes the worktree of a fork's pull request, checked out as hinacode/pr-N, once it merges", () =>
       Effect.gen(function* () {
         yield* cleanupOn
         const { projectId } = yield* project("fork")
-        const fork = yield* worktreeThread(projectId, `kk/pr-${nextNumber()}`)
+        const fork = yield* worktreeThread(projectId, `hinacode/pr-${nextNumber()}`)
         yield* linkPullRequest(fork, "contributor/feature", "merged")
 
         yield* sweep
