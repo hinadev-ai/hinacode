@@ -1,6 +1,6 @@
 # Prefer the local network over the relay
 
-Status: Shipped
+Status: Shipped. [End-to-end encryption](2026-11-25-relay-e2ee.md) replaced the pairing token with a pinned host key.
 Date: 2026-10-24
 
 ## Problem
@@ -52,6 +52,6 @@ A direct address can belong to someone else on another network: `192.168.1.20` a
 ## Verification
 
 - `src/shared/remote.test.ts`: the plan lists direct addresses at once and the relay after the delay.
-- `specs/RelayRouting.tla`: the client gives up only on a stale token, recovers after moves and rotations, and settles on the direct address at home, on the desktop (`RelayRouting.cfg`) and the phone (`RelayRouting.Phone.cfg`). Both also check that the token reaches the machine only (`TokenStaysWithMachine`).
+- `specs/RelayRouting.tla`: the client gives up only when it is refused, recovers after moves and resets, and settles on the direct address at home, on the desktop (`RelayRouting.cfg`) and the phone (`RelayRouting.Phone.cfg`). Both also check that the pairing secret reaches the machine only (`SecretStaysWithMachine`).
 - `src/main/services/Environments.integration.test.ts` and `src/shared/transport.test.ts`: the direct address wins when both answer, the relay wins when the direct address does not, the loser never receives `auth`, a relay connection moves to the direct address once it answers, a stranger's refusal or a direct address that drops or never says `ready` leaves the link on the relay, and a direct address slower than the relay does not make the link drop every minute. `apps/mobile/src/stores/relay-account.test.ts`: a refused relay server syncs until its token changes.
 - By hand: a desktop instance and a `hinacode serve` instance linked to a local relay with real tunnels. The desktop connects direct. With the direct address unreachable it connects through the relay, and once the address answers again it moves back.
