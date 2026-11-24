@@ -31,7 +31,7 @@ import { AgentError, type AgentProvider, type SessionInput, type SteerPriority, 
 import * as Db from "../db/client.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
-import { AgentRunner, layer } from "./AgentRunner.ts"
+import { AgentRunner, CONTINUE_PROMPT, layer } from "./AgentRunner.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
@@ -90,6 +90,7 @@ interface Probe {
   readonly storedMessages: (threadId: string) => Promise<ReadonlyArray<Message>>
   readonly failNextInsert: (matches: (message: Message) => boolean) => void
   readonly refreshed: Array<string>
+  readonly shutDown: () => Promise<void>
 }
 
 const streamedWords = Array.from({ length: 400 }, (_, index) => `word${index} `)
@@ -637,6 +638,7 @@ const withPreparingThread = async (
           failingInsert = matches
         },
         refreshed,
+        shutDown: () => runnerRuntime.dispose(),
         turnBase: () =>
           domainRuntime.runPromise(
             sql<{
@@ -1420,6 +1422,48 @@ it("closes the session after Stop when a wakeup is pending, so the wakeup never 
       { provider: "claude", call: "closeSession" },
     ])
     expect(stops).toStrictEqual([])
+  })
+})
+
+it("marks a turn that shutdown cut off as interrupted", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, shutDown }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "waits for Stop", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
+
+    await shutDown()
+
+    expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("interrupted")
+  })
+})
+
+it("continues an interrupted thread once, on its session", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, turns }) => {
+    release()
+    await Effect.runPromise(
+      threads.update({ id: thread.id, status: "interrupted", providerSessionId: "claude-session-cut" }),
+    )
+
+    await Promise.all([
+      Effect.runPromise(runner.continueInterrupted(thread.id)),
+      Effect.runPromise(runner.continueInterrupted(thread.id)),
+    ])
+    await Effect.runPromise(runner.continueInterrupted(thread.id))
+
+    expect(turns).toHaveLength(1)
+    expect(turns[0]?.input).toMatchObject({ prompt: CONTINUE_PROMPT, resumeSessionId: "claude-session-cut" })
+    expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running")
+  })
+})
+
+it("does not continue a thread that was not interrupted", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, turns }) => {
+    release()
+
+    await Effect.runPromise(runner.continueInterrupted(thread.id))
+
+    expect(turns).toStrictEqual([])
+    expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle")
   })
 })
 

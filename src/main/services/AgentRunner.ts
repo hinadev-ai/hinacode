@@ -111,6 +111,7 @@ import { initialTurnState, step, type TurnEffect } from "./turnState.ts"
 const PERSIST_INTERVAL_MS = 500
 const RUN_AGENT_WAIT = Duration.minutes(4)
 const PERSIST_BYTES_PER_SECOND = 256 * 1024
+export const CONTINUE_PROMPT = "HinaCode stopped before your last turn finished. Continue where you left off."
 const interruptedSend = () => new AgentError({ provider: "hinacode", message: "Message send interrupted" })
 
 interface AgentRequest {
@@ -225,6 +226,7 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       enabled: boolean,
     ) => Effect.Effect<Thread, AgentError | PersistenceError | NotFoundError | ThreadStartedError>
+    readonly continueInterrupted: (threadId: string) => Effect.Effect<void, SendError>
     readonly switchAccount: (
       threadId: string,
       accountId: string | null,
@@ -869,6 +871,7 @@ const make = Effect.gen(function* () {
 
     let next: QueuedMessage | undefined
     let finishing = false
+    let cutByShutdown = false
     const opened = Deferred.makeUnsafe<void>()
     const ended = Deferred.makeUnsafe<void>()
     const withdraw = (event: AgentEvent) => publishTranscript({ type: "thread.event", threadId: thread.id, event })
@@ -901,8 +904,13 @@ const make = Effect.gen(function* () {
       setTurnMessages(replaceLast(turnMessages, closed))
       yield* persist
       if (closed !== last) yield* publishTranscript({ type: "message.updated", message: closed })
-      if (isThreadBusy(state.status))
-        yield* Effect.andThen(recordTurnEnd, updateThread({ id: thread.id, status: "idle" }))
+      if (isThreadBusy(state.status)) {
+        const interrupted = cutByShutdown && !(yield* Deferred.isDone(stop))
+        yield* Effect.andThen(
+          recordTurnEnd,
+          updateThread({ id: thread.id, status: interrupted ? "interrupted" : "idle" }),
+        )
+      }
       if (state.outcome !== "completed" || (yield* Deferred.isDone(stop))) return
       next = yield* nextQueued(thread.id)
     }).pipe(
@@ -930,6 +938,7 @@ const make = Effect.gen(function* () {
           }),
         ),
         Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
+        Effect.onInterrupt(() => Effect.sync(() => (cutByShutdown = true))),
         Effect.ensuring(finish),
       )
 
@@ -1414,6 +1423,19 @@ const make = Effect.gen(function* () {
         usageLimit: { ...limit, reset: { ...limit.reset, autoResume: enabled } },
       })
     }).pipe(exclusive(threadId))
+
+  const isInterrupted = (threadId: string) =>
+    threads.get(threadId).pipe(
+      Effect.map(({ status }) => status === "interrupted"),
+      Effect.catchTag("NotFoundError", () => Effect.succeed(false)),
+    )
+
+  const continueInterrupted = (threadId: string) =>
+    Effect.suspend(() =>
+      busyThreads.has(threadId)
+        ? Effect.void
+        : sendWhen(threadId, CONTINUE_PROMPT, [], {}, isInterrupted(threadId)).pipe(Effect.asVoid),
+    )
 
   const consumeDueResume = (threadId: string, now: string) =>
     Effect.gen(function* () {
@@ -1923,6 +1945,7 @@ const make = Effect.gen(function* () {
     unschedule,
     sendDueSchedules,
     resumeAtReset,
+    continueInterrupted,
     switchAccount,
     removeAccount,
     switchAgent,

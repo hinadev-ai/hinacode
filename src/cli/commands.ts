@@ -119,6 +119,14 @@ const stop = Command.make("stop", { thread: threadArgument }, (args) =>
   ),
 ).pipe(Command.withDescription("Interrupt a thread's turn."))
 
+const continueThread = Command.make("continue", { thread: threadArgument }, (args) =>
+  emit(
+    withThread(args.thread, (client, thread) =>
+      Effect.as(client.call("threads.continue", { threadId: thread.id }), succeed({ threadId: thread.id })),
+    ),
+  ),
+).pipe(Command.withDescription("Continue a turn a restart interrupted."))
+
 const open = Command.make("open", { thread: threadArgument }, (args) =>
   emit(
     withThread(args.thread, (client, thread) =>
@@ -176,4 +184,4 @@ const log = Command.make("log", { thread: threadArgument }, (args) =>
   ),
 ).pipe(Command.withDescription("Print a thread's transcript."))
 
-export const threadCommands = [ls, send, stop, log, open, machines, rpc] as const
+export const threadCommands = [ls, send, stop, continueThread, log, open, machines, rpc] as const

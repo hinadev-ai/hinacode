@@ -90,7 +90,7 @@ const make = Effect.gen(function* () {
       SELECT ${messageColumns} FROM message
       WHERE role = 'assistant'
       AND thread_id IN (
-        SELECT id FROM thread WHERE status IN ('running', 'awaiting_approval', 'limited')
+        SELECT id FROM thread WHERE status IN ('running', 'awaiting_approval', 'interrupted', 'limited')
         UNION SELECT thread_id FROM message WHERE completed_at IS NULL
       )
       AND (

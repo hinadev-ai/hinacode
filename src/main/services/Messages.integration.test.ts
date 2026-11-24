@@ -32,6 +32,7 @@ describe("Messages.closeInterrupted", () => {
       Effect.gen(function* () {
         const open = yield* threadWithTurn("running", null)
         const steered = yield* threadWithTurn("awaiting_approval", "2026-10-31T00:00:01.000Z")
+        const quit = yield* threadWithTurn("interrupted", "2026-10-31T00:00:02.000Z")
         const messages = yield* Messages.Messages
 
         yield* messages.closeInterrupted
@@ -42,6 +43,8 @@ describe("Messages.closeInterrupted", () => {
         const [settled] = yield* messages.list(steered)
         expect(settled?.completedAt).toBe("2026-10-31T00:00:01.000Z")
         expect(settled?.parts).toStrictEqual([{ ...runningCall, status: "error" }])
+        const [cut] = yield* messages.list(quit)
+        expect(cut?.parts).toStrictEqual([{ ...runningCall, status: "error" }])
       }),
     ),
   )

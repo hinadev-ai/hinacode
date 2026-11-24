@@ -12,6 +12,7 @@ import { m } from "../../paraglide/messages.js"
 import { useMessages } from "../../stores/messages.ts"
 import { useThreads } from "../../stores/threads.ts"
 import { Composer } from "../Composer.tsx"
+import { InterruptedCallout } from "../InterruptedCallout.tsx"
 import { MessageList } from "../MessageList.tsx"
 import { SubagentLinks } from "../MessagePart.tsx"
 import { providerLabel } from "../ProviderIcon.tsx"
@@ -61,6 +62,7 @@ function SidechatTranscript({ sidechat }: { sidechat: Thread }) {
       </ThreadRepository>
       <div data-sidechat className="contents">
         <Composer thread={sidechat}>
+          {sidechat.status === "interrupted" && <InterruptedCallout threadId={sidechat.id} />}
           <PendingRequests thread={sidechat} />
         </Composer>
       </div>

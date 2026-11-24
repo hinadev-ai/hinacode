@@ -46,6 +46,7 @@ const statusLabel: Record<IndicatedState, string> = {
   running: copy("mobile_status_running"),
   background: copy("mobile_status_background"),
   awaiting_approval: copy("mobile_status_awaiting"),
+  interrupted: copy("mobile_status_interrupted"),
   limited: copy("mobile_status_limited"),
   unseen_completed: copy("mobile_status_unseen_completed"),
   unseen_failed: copy("mobile_status_unseen_failed"),
