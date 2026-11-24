@@ -606,6 +606,7 @@ describe("worktree ownership", () => {
       Effect.gen(function* () {
         const thread = yield* createThread(projectId, "paused", "kk/paused")
         yield* waitUntilSetUp(thread.worktreeId)
+        yield* Settings.use((settings) => settings.set({ archive: { removeWorktree: false } }))
         const archived = yield* Threads.use((threads) => threads.archive(thread.id))
         expect(archived.status).toBe("archived")
         const worktree = yield* worktreeOf(thread.worktreeId)
