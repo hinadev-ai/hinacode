@@ -778,6 +778,26 @@ describe("desktop environments over a flaky link", () => {
     scripted.stop()
   })
 
+  test("an ask that arrives before ready is never answered", async () => {
+    const scripted = await pair("asks-early", { features: ["heartbeat", "call-keys", "asks"] })
+    scripted.holdReady()
+    scripted.socket().terminate()
+    await pushedEventually(statusOf("asks-early", "offline"))
+    try {
+      await reconnectUntil(() => expect(scripted.hasHeldReady()).toBe(true))
+      scripted.send({ type: "ask", id: 1, method: "projects.list" })
+      scripted.releaseReady()
+      await pushedEventually(statusOf("asks-early", "connected"))
+      scripted.send({ type: "ask", id: 2, method: "projects.list" })
+      const answered = () => scripted.received.flatMap((frame) => (frame.type === "answer" ? [frame.id] : []))
+      await reconnectUntil(() => expect(answered()).toContain(2))
+      expect(answered()).toStrictEqual([2])
+    } finally {
+      await remove("asks-early")
+      scripted.stop()
+    }
+  })
+
   test("an overdue offline call is not dispatched when ready arrives before its delayed timeout", async () => {
     const scripted = await pair("late-ready")
     scripted.holdReady()
