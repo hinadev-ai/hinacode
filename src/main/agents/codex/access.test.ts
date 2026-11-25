@@ -54,6 +54,21 @@ test("the profile keeps the network access and writable roots the user gave the 
   })
 })
 
+test("the profile keeps the temporary folders the user took out of the workspace sandbox read-only", () => {
+  const userSandbox = {
+    sandbox_workspace_write: {
+      writable_roots: [],
+      network_access: false,
+      exclude_tmpdir_env_var: true,
+      exclude_slash_tmp: true,
+    },
+  }
+  expect(profileOf(threadAccess("auto", [], userSandbox))?.filesystem).toEqual({
+    ":tmpdir": "read",
+    ":slash_tmp": "read",
+  })
+})
+
 test("the profile builds on the user's own default permission profile", () => {
   const userSandbox = {
     default_permissions: "mine",

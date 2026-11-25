@@ -230,7 +230,10 @@ const make = Effect.gen(function* () {
   const subagentClients = new Map<string, CodexClient>()
   const threadsInTurn = new Set<string>()
   const subagentChanges = yield* Queue.unbounded<SubagentChange>()
-  const loadedThreads = new Map<string, { readonly autoCompactTokens: number | null; readonly instructions: string }>()
+  const loadedThreads = new Map<
+    string,
+    { readonly autoCompactTokens: number | null; readonly instructions: string; readonly sandboxed: boolean }
+  >()
   const loadedSessions = new Map<string, { readonly client: CodexClient; readonly codexThreadId: string }>()
   const terminalsByThread = new Map<string, Terminals>()
   const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
@@ -566,7 +569,10 @@ const make = Effect.gen(function* () {
           } satisfies ThreadStartParams
           const resumed = input.resumeSessionId
           const loaded = resumed === null ? undefined : loadedThreads.get(resumed)
-          const reloads = loaded !== undefined && loaded.autoCompactTokens !== input.autoCompactTokens
+          const sandboxed = access.config !== undefined
+          const reloads =
+            loaded !== undefined &&
+            (loaded.autoCompactTokens !== input.autoCompactTokens || loaded.sandboxed !== sandboxed)
           if (resumed !== null && reloads) {
             // FIXME: Codex ignores thread/resume config for a thread it has loaded
             yield* client.request("thread/unsubscribe", { threadId: resumed })
@@ -598,7 +604,11 @@ const make = Effect.gen(function* () {
               } satisfies ThreadInjectItemsParams)
               .pipe(Effect.ignore)
           }
-          loadedThreads.set(thread.id, { autoCompactTokens: input.autoCompactTokens, instructions: input.instructions })
+          loadedThreads.set(thread.id, {
+            autoCompactTokens: input.autoCompactTokens,
+            instructions: input.instructions,
+            sandboxed,
+          })
           loadedSessions.set(input.threadId, { client, codexThreadId: thread.id })
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 

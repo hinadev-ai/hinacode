@@ -53,7 +53,14 @@ export const ConfigReadResponse = Schema.Struct({
   config: Schema.Struct({
     default_permissions: Schema.optional(Schema.NullOr(Schema.String)),
     sandbox_workspace_write: Schema.optional(
-      Schema.NullOr(Schema.Struct({ writable_roots: Schema.Array(Schema.String), network_access: Schema.Boolean })),
+      Schema.NullOr(
+        Schema.Struct({
+          writable_roots: Schema.Array(Schema.String),
+          network_access: Schema.Boolean,
+          exclude_tmpdir_env_var: Schema.optional(Schema.Boolean),
+          exclude_slash_tmp: Schema.optional(Schema.Boolean),
+        }),
+      ),
     ),
   }),
 })

@@ -45,6 +45,8 @@ const permissionProfile = (
     ...(workspaceWrite !== null && { network: { enabled: workspaceWrite.network_access } }),
     filesystem: Object.fromEntries([
       ...(workspaceWrite?.writable_roots ?? []).map((root) => [root, "write"]),
+      ...(workspaceWrite?.exclude_tmpdir_env_var ? [[":tmpdir", "read"]] : []),
+      ...(workspaceWrite?.exclude_slash_tmp ? [[":slash_tmp", "read"]] : []),
       ...unreadablePaths.map((path) => [path, "deny"]),
     ]),
   }

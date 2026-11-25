@@ -1931,11 +1931,15 @@ const make = Effect.gen(function* () {
       const pending = secretRequests.get(requestId)
       if (pending === undefined) return
       const { threadId, name } = pending.request
+      const turn = activeTurns.get(threadId)
       if (value !== null) yield* secrets.set(`${threadSecretPrefix(threadId)}${name}`, value)
       const path =
         value === null
           ? Option.none()
           : Option.some(yield* scratch.writeSecret(yield* threads.get(threadId), name, value))
+      const current = activeTurns.get(threadId)
+      const turnEndedWhileWriting = current === undefined || (current === turn && current.isFinishing())
+      if (Option.isSome(path) && turnEndedWhileWriting) yield* scratch.removeSecrets(threadId)
       yield* resolveSecret(requestId)
       yield* Deferred.succeed(pending.answer, path)
     })
