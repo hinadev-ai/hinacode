@@ -22,6 +22,7 @@ import { Projects, layer as projectsLayer } from "./Projects.ts"
 import { SessionImports, layer as importsLayer } from "./SessionImports.ts"
 import { layer as settingsLayer } from "./Settings.ts"
 import * as Scratch from "./Scratch.ts"
+import * as Secrets from "./Secrets.ts"
 import * as Terminals from "./Terminals.ts"
 import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
@@ -91,6 +92,7 @@ const setup = (options: { history?: SessionHistory } = {}) => {
         Layer.provideMerge(accountsLayer),
         Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-import-settings-")))),
         Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
+        Layer.provideMerge(Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))),
       ),
     ),
     Layer.provideMerge(messagesLayer),

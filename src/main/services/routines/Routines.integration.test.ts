@@ -98,6 +98,7 @@ const makeLayer = ({ pushes, jobs }: Harness, port: number) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-routines-scratch-")))),
+      Layer.provideMerge(secrets),
       Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
@@ -106,7 +107,6 @@ const makeLayer = ({ pushes, jobs }: Harness, port: number) => {
     ),
     Messages.layer,
     Attachments.layer(join(dataDir, "attachments")),
-    secrets,
     Linear.layer.pipe(Layer.provide(secrets)),
     credentialsLayer,
   )

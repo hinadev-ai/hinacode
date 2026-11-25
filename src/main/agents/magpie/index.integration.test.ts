@@ -212,6 +212,7 @@ const turn = (overrides: Partial<RunTurnInput>): RunTurnInput => ({
   home: null,
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
   instructions: "",
+  unreadablePaths: [],
   ...overrides,
 })
 

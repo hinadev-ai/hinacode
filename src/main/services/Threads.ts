@@ -50,6 +50,7 @@ import { type CommandError, Git } from "./Git.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
 import { Scratch } from "./Scratch.ts"
+import { Secrets, threadSecretPrefix } from "./Secrets.ts"
 import { changedPaths, diffTrees, diffWorkingTree, snapshotWorkingTree } from "./workingTree.ts"
 import { Settings } from "./Settings.ts"
 import { Terminals } from "./Terminals.ts"
@@ -238,6 +239,7 @@ const make = Effect.gen(function* () {
   const accounts = yield* AgentAccounts
   const terminals = yield* Terminals
   const scratch = yield* Scratch
+  const secrets = yield* Secrets
   const events = yield* Events
   const activeWorkspace = yield* makeActiveWorkspace
   const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
@@ -848,6 +850,7 @@ const make = Effect.gen(function* () {
         yield* detachChildren(id)
         yield* syncChatFolder(thread, false)
         yield* scratch.remove(id)
+        yield* secrets.clearUnder(threadSecretPrefix(id))
         return Option.some(yield* get(id))
       }),
     )
@@ -927,6 +930,7 @@ const make = Effect.gen(function* () {
       yield* sql`DELETE FROM thread WHERE id = ${id}`.pipe(Effect.mapError(persistence("threads.delete")))
       yield* syncChatFolder(thread, false)
       yield* scratch.remove(id)
+      yield* secrets.clearUnder(threadSecretPrefix(id))
     })
 
   return Threads.of({

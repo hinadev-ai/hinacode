@@ -116,6 +116,7 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   fastMode: false,
   autoCompactTokens: null,
   accessMode: "auto",
+  unreadablePaths: ["/data/hinacode.sqlite*", "/data/scratch/other-thread/**"],
   resumeSessionId: null,
   forkAt: null,
   home,
@@ -338,6 +339,29 @@ describe("Codex auto-compact", () => {
         yield* provider.runTurn(input("default-compact")).pipe(Stream.runDrain)
         const started = received().find((message) => message.method === "thread/start")
         expect(started?.params?.config).not.toHaveProperty("model_auto_compact_token_limit")
+      }),
+    ),
+  )
+})
+
+describe("Codex sandbox", () => {
+  it.live("starts a sandboxed thread on a permission profile that denies the unreadable paths", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        yield* provider.runTurn(input("sandboxed")).pipe(Stream.runDrain)
+        const params = sent("thread/start")[0]?.params
+        expect(params).not.toHaveProperty("sandbox")
+        expect(params?.config).toMatchObject({
+          default_permissions: "hinacode",
+          permissions: {
+            hinacode: {
+              extends: ":workspace",
+              network: { enabled: true },
+              filesystem: { "/data/hinacode.sqlite*": "deny", "/data/scratch/other-thread/**": "deny" },
+            },
+          },
+        })
       }),
     ),
   )

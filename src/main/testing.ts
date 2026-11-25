@@ -76,6 +76,7 @@ export const makeTestAppLayer = (
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(Scratch.layer(join(dirname(dbPath), "scratch"), { tmpRoot: join(dirname(dbPath), "tmp") })),
+      Layer.provideMerge(Secrets.layer),
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),

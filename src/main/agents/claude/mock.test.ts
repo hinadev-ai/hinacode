@@ -21,6 +21,7 @@ const turnInput = (prompt: string): RunTurnInput => ({
   home: null,
   mcpServer: { url: "http://127.0.0.1:9/mcp", headers: { authorization: "Bearer mock" } },
   instructions: "",
+  unreadablePaths: [],
 })
 
 describe("mock Claude", () => {

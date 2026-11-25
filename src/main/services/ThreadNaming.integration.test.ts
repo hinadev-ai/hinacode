@@ -132,6 +132,7 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(Scratch.layer(join(dirname(dbPath), "scratch"))),
+      Layer.provideMerge(Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))),
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
@@ -140,7 +141,6 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
     ),
     Messages.layer,
     Attachments.layer(join(dirname(dbPath), "attachments")),
-    Secrets.layer.pipe(Layer.provide(Secrets.noKeyring)),
     credentialsLayer,
   )
   return AgentRunner.layer.pipe(

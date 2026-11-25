@@ -97,6 +97,7 @@ import { PullRequests } from "./PullRequests.ts"
 import { Attachments, extensionForMime } from "./Attachments.ts"
 import { Environments } from "./Environments.ts"
 import { Scratch } from "./Scratch.ts"
+import { Secrets, threadSecretPrefix } from "./Secrets.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import { Projects } from "./Projects.ts"
@@ -349,6 +350,8 @@ const withImagesSaved = (
   ).pipe(Effect.map((entries) => Object.fromEntries(entries)))
 }
 
+type TurnEnvironment = AgentEnvironment & { readonly unreadablePaths: ReadonlyArray<string> }
+
 const replaceLast = (messages: ReadonlyArray<Message>, message: Message) => [...messages.slice(0, -1), message]
 
 const make = Effect.gen(function* () {
@@ -356,6 +359,7 @@ const make = Effect.gen(function* () {
   const threads = yield* Threads
   const worktrees = yield* Worktrees
   const scratch = yield* Scratch
+  const secrets = yield* Secrets
   const attachments = yield* Attachments
   const git = yield* Git
   const pullRequests = yield* PullRequests
@@ -584,6 +588,15 @@ const make = Effect.gen(function* () {
       Effect.option,
     )
 
+  const writeThreadSecrets = (thread: Thread) =>
+    Effect.gen(function* () {
+      const prefix = threadSecretPrefix(thread.id)
+      for (const name of yield* secrets.namesUnder(prefix)) {
+        const value = yield* secrets.get(`${prefix}${name}`)
+        if (Option.isSome(value)) yield* scratch.writeSecret(thread, name, value.value)
+      }
+    }).pipe(Effect.catch((error) => Effect.logWarning("thread secrets could not be written", thread.id, error)))
+
   const readEnvironment = (thread: Thread, { cwd, rootPath }: ActiveWorkspace) =>
     Effect.all(
       [
@@ -591,10 +604,11 @@ const make = Effect.gen(function* () {
         gitOutput(cwd, ["remote", "get-url", "origin"]),
         scratch.ensure(thread),
         scratch.ensureTmp(thread.id),
+        scratch.unreadableBy(thread.id),
       ],
       { concurrency: "unbounded" },
     ).pipe(
-      Effect.map(([branch, remote, scratchDirectory, tmpDirectory]): AgentEnvironment => ({
+      Effect.map(([branch, remote, scratchDirectory, tmpDirectory, unreadablePaths]): TurnEnvironment => ({
         gitRepository: Option.isSome(branch),
         branch: Option.getOrNull(branch) || null,
         cwd,
@@ -603,6 +617,7 @@ const make = Effect.gen(function* () {
         platform: process.platform,
         scratchDirectory,
         tmpDirectory,
+        unreadablePaths,
       })),
     )
 
@@ -611,7 +626,7 @@ const make = Effect.gen(function* () {
     provider: AgentProvider,
     cwd: string,
     home: AccountHome | null,
-    environment: AgentEnvironment,
+    environment: TurnEnvironment,
   ) =>
     Effect.gen(function* () {
       const [mcpServer, { experimental, autoCompactTokens }] = yield* Effect.all([
@@ -632,6 +647,7 @@ const make = Effect.gen(function* () {
         home,
         mcpServer,
         instructions: yield* subagentInstructions(experimental, environment),
+        unreadablePaths: environment.unreadablePaths,
       }
       return input
     })
@@ -875,6 +891,7 @@ const make = Effect.gen(function* () {
     const withdraw = (event: AgentEvent) => publishTranscript({ type: "thread.event", threadId: thread.id, event })
     const finish = Effect.gen(function* () {
       finishing = true
+      yield* scratch.removeSecrets(thread.id)
       yield* deltas.flush
       for (const [id, request] of approvals) {
         if (request.threadId !== thread.id) continue
@@ -927,7 +944,8 @@ const make = Effect.gen(function* () {
     )
 
     const follow = (events: Stream.Stream<AgentEvent, AgentError | PersistenceError>) =>
-      Stream.runForEach(events, handle).pipe(
+      writeThreadSecrets(thread).pipe(
+        Effect.andThen(Stream.runForEach(events, handle)),
         Effect.catchTag("AgentError", ({ message, loginCommand }) =>
           handle({
             type: "turn_failed",
@@ -940,7 +958,7 @@ const make = Effect.gen(function* () {
         Effect.ensuring(finish),
       )
 
-    const run = (prompt: string, attachments: ReadonlyArray<Attachment>, environment: AgentEnvironment) =>
+    const run = (prompt: string, attachments: ReadonlyArray<Attachment>, environment: TurnEnvironment) =>
       follow(
         Stream.unwrap(
           Effect.gen(function* () {
@@ -1118,6 +1136,7 @@ const make = Effect.gen(function* () {
           home,
           mcpServer,
           instructions,
+          unreadablePaths: environment.unreadablePaths,
         })
         .pipe(
           Stream.runForEach(forward),
@@ -1912,6 +1931,7 @@ const make = Effect.gen(function* () {
       const pending = secretRequests.get(requestId)
       if (pending === undefined) return
       const { threadId, name } = pending.request
+      if (value !== null) yield* secrets.set(`${threadSecretPrefix(threadId)}${name}`, value)
       const path =
         value === null
           ? Option.none()

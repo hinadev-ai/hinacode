@@ -9,6 +9,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { NodeServices } from "@effect/platform-node"
 import { Context, Deferred, type Duration, Effect, Fiber, Layer, Option, Stream } from "effect"
+import { SqlClient } from "effect/sql"
 import { TestClock } from "effect/testing"
 import {
   type ApprovalDecision,
@@ -45,7 +46,7 @@ import * as Messages from "../services/Messages.ts"
 import * as Projects from "../services/Projects.ts"
 import * as PullRequests from "../services/PullRequests.ts"
 import { layer as linearLayer } from "../services/Linear.ts"
-import { noKeyring, layer as secretsLayer } from "../services/Secrets.ts"
+import { layer as secretsLayer, safeStorageKeyring } from "../services/Secrets.ts"
 import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
 import { decodeTar, encodeTar } from "../services/tinyVm/tar.ts"
@@ -62,6 +63,15 @@ import * as Scratch from "../services/Scratch.ts"
 import * as Search from "../services/Search.ts"
 
 const pushes: Array<PushEvent> = []
+const reversingKeyring = safeStorageKeyring(
+  {
+    isEncryptionAvailable: () => true,
+    getSelectedStorageBackend: () => "gnome_libsecret",
+    encryptString: (value) => Buffer.from(Buffer.from(value).toReversed()),
+    decryptString: (sealed) => Buffer.from(sealed.toReversed()).toString(),
+  },
+  "linux",
+)
 const turnInputs: Array<RunTurnInput> = []
 const modelLookupStarted = Deferred.makeUnsafe<void>()
 const modelLookupResume = Deferred.makeUnsafe<void>()
@@ -200,6 +210,7 @@ const stubs = Layer.mergeAll(
 const core = Layer.mergeAll(
   threadsLayer.pipe(
     Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
+    Layer.provideMerge(secretsLayer.pipe(Layer.provide(reversingKeyring))),
     Layer.provideMerge(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),
@@ -210,7 +221,6 @@ const core = Layer.mergeAll(
   Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),
   Artifacts.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "artifacts")),
   ArtifactInspector.unavailable,
-  secretsLayer.pipe(Layer.provide(noKeyring)),
   credentialsLayer,
   Search.layer,
 )
@@ -633,6 +643,43 @@ layer(testLayer)("request_secret", (it) => {
         expect.arrayContaining(["secret_requested", "secret_resolved"]),
       )
       yield* interruptTurn(a)
+    }),
+  )
+
+  it.effect("keeps the value sealed, and on disk only while a turn of its thread runs", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const sql = yield* SqlClient.SqlClient
+      const { a } = yield* Seeded
+      pushes.length = 0
+      yield* runner.send(a, "hi", [])
+      const call = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(a), "request_secret", { name: "kept.token", description: "Kept token" }),
+      )
+      yield* runner.respondSecret((yield* pendingSecretRequest(a)).id, VALUE)
+      const result = yield* Fiber.join(call)
+      const path = yield* secretPath(a, "kept.token")
+      const fileContent = Effect.promise(() => readFile(path, "utf8").catch(() => null))
+
+      expect(yield* fileContent).toBe(VALUE)
+      const rows = yield* sql<{ readonly value: string }>`
+        SELECT value FROM setting WHERE key = ${`secret.thread.${a}.kept.token`}
+      `
+      expect(rows).toHaveLength(1)
+      expect(JSON.parse(rows[0]!.value)).toMatchObject({ encrypted: true })
+      expect(rows[0]!.value).not.toContain(VALUE)
+
+      yield* interruptTurn(a)
+      expect(existsSync(path)).toBe(false)
+
+      yield* runner.send(a, "again", [])
+      expect(yield* until(fileContent.pipe(Effect.map(Option.fromNullishOr)))).toBe(VALUE)
+      yield* interruptTurn(a)
+      expect(existsSync(path)).toBe(false)
+
+      const transcript = yield* runner.transcript(a)
+      expect(JSON.stringify([result, pushes, transcript])).not.toContain(VALUE)
     }),
   )
 

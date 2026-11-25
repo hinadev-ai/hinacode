@@ -121,6 +121,22 @@ const reply = ({ id, method, params }) => {
           nextCursor: null,
         },
       })
+    case "config/read":
+      return send({
+        id,
+        result: {
+          config: {
+            sandbox_workspace_write: {
+              writable_roots: [],
+              network_access: true,
+              exclude_tmpdir_env_var: false,
+              exclude_slash_tmp: false,
+            },
+          },
+          origins: {},
+          layers: null,
+        },
+      })
     case "skills/list":
       return control().skillsFail
         ? send({ id, error: { code: -32603, message: "skills could not be listed" } })

@@ -101,3 +101,64 @@ describe("thread tmp folders", () => {
       }),
   )
 })
+
+describe("thread secret files", () => {
+  const owner = (title: string) => ({ id: randomUUID(), title, createdAt: "2026-11-25T00:00:00.000Z" })
+
+  it.effect("removes one thread's secret files and keeps the rest of its folder", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(dir, "data-"))
+      const [mine, theirs] = [owner("mine"), owner("theirs")]
+      const paths = yield* withScratch(
+        Effect.gen(function* () {
+          const scratch = yield* Scratch.Scratch
+          const mineFile = yield* scratch.writeSecret(mine, "TOKEN", "one")
+          const theirsFile = yield* scratch.writeSecret(theirs, "TOKEN", "two")
+          yield* scratch.removeSecrets(mine.id)
+          return { mineFile, theirsFile, mineFolder: yield* scratch.ensure(mine) }
+        }),
+        root,
+      )
+
+      expect(existsSync(paths.mineFile)).toBe(false)
+      expect(existsSync(paths.mineFolder)).toBe(true)
+      expect(existsSync(paths.theirsFile)).toBe(true)
+    }),
+  )
+
+  it.effect("deletes every secret file a previous run left behind when it starts", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(dir, "data-"))
+      const thread = owner("crashed")
+      const file = yield* withScratch(
+        Scratch.Scratch.use((scratch) => scratch.writeSecret(thread, "TOKEN", "left over")),
+        root,
+      )
+      const folder = dirname(dirname(file))
+
+      yield* withScratch(Effect.void, root)
+
+      expect(existsSync(file)).toBe(false)
+      expect(existsSync(folder)).toBe(true)
+    }),
+  )
+
+  it.effect("lists the private paths and every other thread's folder as unreadable, but not the thread's own", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(dir, "data-"))
+      const [mine, theirs] = [owner("mine"), owner("theirs")]
+      const { unreadable, theirsFolder } = yield* withScratch(
+        Effect.gen(function* () {
+          const scratch = yield* Scratch.Scratch
+          yield* scratch.ensure(mine)
+          const theirsFolder = yield* scratch.ensure(theirs)
+          return { unreadable: yield* scratch.unreadableBy(mine.id), theirsFolder }
+        }),
+        root,
+        { privatePaths: ["/data/hinacode.sqlite*"] },
+      )
+
+      expect(unreadable).toStrictEqual(["/data/hinacode.sqlite*", join(theirsFolder, "**")])
+    }),
+  )
+})

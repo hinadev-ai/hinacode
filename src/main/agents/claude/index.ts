@@ -268,6 +268,14 @@ const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.message
 const agentError = (provider: ProviderId, message: string) => (cause: unknown) =>
   new AgentError({ provider, message: `${message}: ${errorMessage(cause)}` })
 
+const absolutePathRule = (path: string) =>
+  process.platform === "win32"
+    ? `//${path.replace(/^([A-Za-z]):/, (_, drive: string) => drive.toLowerCase()).replaceAll("\\", "/")}`
+    : `/${path}`
+
+const readDenials = (paths: ReadonlyArray<string>) =>
+  paths.length === 0 ? {} : { permissions: { deny: paths.map((path) => `Read(${absolutePathRule(path)})`) } }
+
 const writeSettingsFile = (provider: ProviderId, directory: string | null, settings: object) =>
   Effect.tryPromise({
     try: async () => {
@@ -724,6 +732,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           fastMode: input.fastMode,
           ...(input.autoCompactTokens !== null && { autoCompactWindow: input.autoCompactTokens }),
           ...(input.effort === ULTRACODE && { ultracode: true }),
+          ...readDenials(input.unreadablePaths),
         })
         const handle = yield* Effect.try({
           try: () =>

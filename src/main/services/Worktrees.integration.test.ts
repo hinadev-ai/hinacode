@@ -26,6 +26,7 @@ import * as ThreadsLayer from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 import * as WorktreesLayer from "./Worktrees.ts"
 import * as Scratch from "./Scratch.ts"
+import * as Secrets from "./Secrets.ts"
 
 const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" })
 
@@ -41,6 +42,7 @@ const makeLayer = (
 ) =>
   ThreadsLayer.layer.pipe(
     Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
+    Layer.provideMerge(Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))),
     Layer.provide(Terminals.layer),
     Layer.provideMerge(WorktreesLayer.layerWithSetupTiming(setupTiming)),
     Layer.provideMerge(ProjectsLayer.layer),

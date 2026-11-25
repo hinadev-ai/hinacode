@@ -23,6 +23,7 @@ import { layer as threadsLayerBase, Threads } from "./Threads.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 import * as Worktrees from "./Worktrees.ts"
 import * as Scratch from "./Scratch.ts"
+import * as Secrets from "./Secrets.ts"
 
 const makeThreadsLayer = (
   scratch: Layer.Layer<Scratch.Scratch, never, FileSystem.FileSystem>,
@@ -31,6 +32,7 @@ const makeThreadsLayer = (
 ) => {
   const base = threadsLayerBase.pipe(
     Layer.provideMerge(scratch),
+    Layer.provideMerge(Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))),
     Layer.provideMerge(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),

@@ -172,7 +172,16 @@ export const makeAppLayer = ({
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(chats),
-      Layer.provideMerge(Scratch.layer(join(userData, "scratch"))),
+      Layer.provideMerge(
+        Scratch.layer(join(userData, "scratch"), {
+          privatePaths: [
+            join(userData, "hinacode.sqlite*"),
+            join(userData, "chromium", "**"),
+            join(userData, "tiny-vm", "chromium-profile*"),
+          ],
+        }),
+      ),
+      Layer.provideMerge(Secrets.layer),
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),

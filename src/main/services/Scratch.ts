@@ -7,6 +7,7 @@ import { type PersistenceError, persistence } from "./errors.ts"
 import { slugifyBranch } from "./branchName.ts"
 
 const MAX_SLUG_LENGTH = 40
+const SECRETS_FOLDER = "secrets"
 const REMOVING_SUFFIX = ".removing"
 const TMP_ROOT_HASH_LENGTH = 6
 const TMP_ID_LENGTH = 8
@@ -20,6 +21,8 @@ const deleteTree = (path: string) =>
 
 const timestamp = (iso: string) => new Date(iso).toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-")
 
+type FolderOwner = Pick<Thread, "id" | "title" | "createdAt">
+
 const slug = (title: string) =>
   slugifyBranch(title)
     .replaceAll("/", "-")
@@ -29,9 +32,11 @@ const slug = (title: string) =>
 export class Scratch extends Context.Service<
   Scratch,
   {
-    readonly ensure: (thread: Thread) => Effect.Effect<string, PersistenceError>
+    readonly ensure: (thread: FolderOwner) => Effect.Effect<string, PersistenceError>
     readonly ensureTmp: (threadId: string) => Effect.Effect<string | null>
-    readonly writeSecret: (thread: Thread, name: string, value: string) => Effect.Effect<string, PersistenceError>
+    readonly writeSecret: (thread: FolderOwner, name: string, value: string) => Effect.Effect<string, PersistenceError>
+    readonly removeSecrets: (threadId: string) => Effect.Effect<void>
+    readonly unreadableBy: (threadId: string) => Effect.Effect<ReadonlyArray<string>>
     readonly remove: (threadId: string) => Effect.Effect<void, PersistenceError>
     readonly removeTmp: (threadId: string) => Effect.Effect<void>
   }
@@ -42,9 +47,11 @@ export const layer = (
   {
     tmpRoot = join(tmpdir(), `hc-${createHash("sha256").update(root).digest("hex").slice(0, TMP_ROOT_HASH_LENGTH)}`),
     deleteFolder = deleteTree,
+    privatePaths = [],
   }: {
     readonly tmpRoot?: string
     readonly deleteFolder?: (path: string) => Effect.Effect<void, unknown>
+    readonly privatePaths?: ReadonlyArray<string>
   } = {},
 ) =>
   Layer.effect(
@@ -95,10 +102,21 @@ export const layer = (
           Effect.ignore,
         )
 
+      const threadFolders = names.pipe(Effect.map((all) => all.filter((name) => !name.endsWith(REMOVING_SUFFIX))))
+
+      const deleteSecretsIn = (folder: string) =>
+        fs
+          .remove(join(root, folder, SECRETS_FOLDER), { recursive: true, force: true })
+          .pipe(Effect.catchCause((cause) => Effect.logWarning("thread secrets removal failed", folder, cause)))
+
       yield* deleteLeftovers(root)
       if (yield* ownsTmpRoot) yield* deleteLeftovers(tmpRoot)
+      yield* threadFolders.pipe(
+        Effect.flatMap((all) => Effect.forEach(all, deleteSecretsIn, { discard: true, concurrency: 16 })),
+        Effect.ignore,
+      )
 
-      const ensure = (thread: Thread) =>
+      const ensure = (thread: FolderOwner) =>
         Effect.gen(function* () {
           const existing = yield* find(thread.id)
           if (existing !== undefined) return join(root, existing)
@@ -125,9 +143,9 @@ export const layer = (
           ),
         )
 
-      const writeSecret = (thread: Thread, name: string, value: string) =>
+      const writeSecret = (thread: FolderOwner, name: string, value: string) =>
         Effect.gen(function* () {
-          const folder = join(yield* ensure(thread), "secrets")
+          const folder = join(yield* ensure(thread), SECRETS_FOLDER)
           yield* fs.makeDirectory(folder, { recursive: true, mode: 0o700 })
           const path = join(folder, name)
           yield* fs.writeFileString(path, value, { mode: 0o600 })
@@ -146,6 +164,23 @@ export const layer = (
           yield* removeTmp(threadId)
         }).pipe(Effect.mapError(persistence("scratch.remove")))
 
-      return Scratch.of({ ensure, ensureTmp, writeSecret, remove, removeTmp })
+      const removeSecrets = (threadId: string) =>
+        Effect.try(() => {
+          if (!fsWithoutAsar.existsSync(root)) return
+          const name = fsWithoutAsar.readdirSync(root).find((entry) => entry.endsWith(`-${threadId}`))
+          if (name !== undefined)
+            fsWithoutAsar.rmSync(join(root, name, SECRETS_FOLDER), { recursive: true, force: true })
+        }).pipe(Effect.catchCause((cause) => Effect.logWarning("thread secrets removal failed", threadId, cause)))
+
+      const unreadableBy = (threadId: string) =>
+        threadFolders.pipe(
+          Effect.map((all) => [
+            ...privatePaths,
+            ...all.filter((name) => !name.endsWith(`-${threadId}`)).map((name) => join(root, name, "**")),
+          ]),
+          Effect.orElseSucceed(() => privatePaths),
+        )
+
+      return Scratch.of({ ensure, ensureTmp, writeSecret, removeSecrets, unreadableBy, remove, removeTmp })
     }),
   )

@@ -56,6 +56,7 @@ import { skillInputs, toCommand } from "./skills.ts"
 import { toolInput, toolName, toolResult, toPostedQuestion } from "./items.ts"
 import { toImportedHistory, toNativeSessions } from "./sessions.ts"
 import {
+  ConfigReadResponse,
   GetAccountRateLimitsResponse,
   GetAccountResponse,
   type RateLimitWindow,
@@ -67,6 +68,7 @@ import {
 import type {
   HistoryTurn,
   ApprovalDecisionWire,
+  ConfigReadParams,
   ElicitationActionWire,
   GetAccountParams,
   McpServerElicitationRequestParams,
@@ -101,6 +103,13 @@ import type {
 const CLIENT_VERSION = "0.1.0"
 
 const FAST_SERVICE_TIER = "priority"
+
+const readSandboxConfig = (client: CodexClient, cwd: string) =>
+  client.request<unknown>("config/read", { cwd, includeLayers: false } satisfies ConfigReadParams).pipe(
+    Effect.flatMap(Schema.decodeUnknownEffect(ConfigReadResponse)),
+    Effect.map((response) => response.config),
+    Effect.catch((error) => Effect.logWarning("could not read the Codex config", error).pipe(Effect.as(null))),
+  )
 
 const decisionToWire: Record<ApprovalDecision, ApprovalDecisionWire> = {
   allow: "accept",
@@ -534,11 +543,14 @@ const make = Effect.gen(function* () {
             () => Effect.sync(() => leaveTurn(client, input.threadId, inbox)),
           )
 
+          const userSandbox = input.accessMode === "full" ? null : yield* readSandboxConfig(client, input.cwd)
+          const access = threadAccess(input.accessMode, input.unreadablePaths, userSandbox)
           const overrides = {
             cwd: input.cwd,
             model: input.model,
-            ...threadAccess(input.accessMode),
+            ...access,
             config: {
+              ...access.config,
               tools: { update_plan: { enabled: true } },
               ...(input.tmpDirectory !== null && { shell_environment_policy: { set: tmpEnv(input.tmpDirectory) } }),
               ...(input.autoCompactTokens !== null && { model_auto_compact_token_limit: input.autoCompactTokens }),
