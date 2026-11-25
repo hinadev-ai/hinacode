@@ -890,6 +890,7 @@ export const RpcMethods = {
     Schema.Struct({
       url: Schema.String,
       githubUrl: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+      linearUrl: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
       hasSecret: Schema.Boolean,
       listenError: Schema.NullOr(Schema.String),
     }),

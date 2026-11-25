@@ -46,7 +46,7 @@ const issueFilter = ({ assignee, state }: IssueSearch): LinearDocument.IssueFilt
 
 type IssueOperations = ReturnType<typeof makeTools>
 
-const makeTools = (client: LinearClient) => {
+const makeTools = (client: LinearClient, comment: Linear["Service"]["comment"]) => {
   const getIssue = (key: string) => request(() => client.issue(key))
 
   return {
@@ -81,9 +81,8 @@ const makeTools = (client: LinearClient) => {
     createComment: (key: string, body: string) =>
       Effect.gen(function* () {
         const issue = yield* getIssue(key)
-        const payload = yield* request(() => client.createComment({ issueId: issue.id, body }))
-        const comment = yield* request(async () => payload.comment)
-        return `Commented on ${issue.identifier}${comment ? `: ${comment.url}` : "."}`
+        yield* comment(issue.id, body)
+        return `Commented on ${issue.identifier}: ${issue.url}`
       }),
 
     updateIssueState: (key: string, stateName: string) =>
@@ -152,7 +151,7 @@ export const LinearTools = Toolkit.make(
 export const linearToolsLayer = LinearTools.toLayer(
   Effect.gen(function* () {
     const linear = yield* Linear
-    const withLinear = <A>(use: (operations: IssueOperations) => Effect.Effect<A, LinearRequestError>) =>
+    const withLinear = <A>(use: (operations: IssueOperations) => Effect.Effect<A, { readonly message: string }>) =>
       Effect.flatMap(
         linear.client,
         Option.match({
@@ -161,7 +160,7 @@ export const linearToolsLayer = LinearTools.toLayer(
               message:
                 "No Linear API key is configured. Ask the user to add one in HinaCode Settings > Integrations, then retry.",
             }),
-          onSome: (client) => use(makeTools(client)),
+          onSome: (client) => use(makeTools(client, linear.comment)),
         }),
       )
     return LinearTools.of({

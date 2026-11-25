@@ -1,14 +1,16 @@
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { createServer } from "node:http"
+import { LinearWebhookClient } from "@linear/sdk/webhooks"
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer"
 import { ByteSize, Effect, Layer, Option, Schema } from "effect"
 import { HttpIncomingMessage, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http"
 import type { RoutineRun } from "../../../shared/domain.ts"
-import { type Arrival, githubArrival } from "./triggers.ts"
+import { type Arrival, githubArrival, linearArrival } from "./triggers.ts"
 
 export const hookPath = (routineId: string) => `/hooks/routines/${routineId}`
 
 export const GITHUB_HOOK_PATH = "/hooks/github"
+export const LINEAR_HOOK_PATH = "/hooks/linear"
 
 const SIGNATURE_HEADERS = ["x-hinacode-signature", "x-hub-signature-256"]
 const EVENT_KEY_HEADERS = ["idempotency-key", "x-github-delivery"]
@@ -31,6 +33,11 @@ export interface WebhookHandlers {
   readonly enabled: (routineId: string) => Effect.Effect<boolean | undefined>
   readonly deliver: (routineId: string, body: string | null, eventKey: string | null) => Effect.Effect<RoutineRun>
   readonly arrive: (arrival: Arrival) => Effect.Effect<ReadonlyArray<RoutineRun>>
+  readonly linear: {
+    readonly secret: Effect.Effect<string | undefined>
+    readonly viewerId: Effect.Effect<string | null, unknown>
+    readonly wroteComment: (id: string) => Effect.Effect<boolean>
+  }
 }
 
 const MAX_BODY_BYTES = 1024 * 1024
@@ -78,6 +85,10 @@ const handleHook = (handlers: WebhookHandlers) =>
 
 const parseJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))
 
+const runsBody = (runs: ReadonlyArray<RoutineRun>) => ({
+  runs: runs.map((run) => ({ runId: run.id, threadId: run.threadId, status: run.status })),
+})
+
 const handleGitHub = (handlers: WebhookHandlers) =>
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest
@@ -92,7 +103,45 @@ const handleGitHub = (handlers: WebhookHandlers) =>
     if (Option.isNone(payload)) return json({ error: "not_json" }, 400)
     const arrival = githubArrival(request.headers["x-github-event"] ?? "", payload.value)
     const runs = arrival === null ? [] : yield* handlers.arrive(arrival)
-    return json({ runs: runs.map((run) => ({ runId: run.id, threadId: run.threadId, status: run.status })) }, 202)
+    return json(runsBody(runs), 202)
+  }).pipe(
+    Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(MAX_BODY_BYTES)),
+    Effect.catchTag("HttpServerError", () => Effect.succeed(json({ error: "unreadable_body" }, 400))),
+  )
+
+const linearVerdict = (secret: string, raw: Uint8Array, signature: string) => {
+  try {
+    return new LinearWebhookClient(secret).verify(Buffer.from(raw), signature) ? "verified" : "unauthorized"
+  } catch (error) {
+    return error instanceof SyntaxError ? "not_json" : "unauthorized"
+  }
+}
+
+const decodeLinearSubject = Schema.decodeUnknownOption(
+  Schema.Struct({ type: Schema.String, data: Schema.Struct({ id: Schema.String }) }),
+)
+
+const handleLinear = ({ linear, arrive }: WebhookHandlers) =>
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest
+    const secret = yield* linear.secret
+    const signature = request.headers["linear-signature"]
+    if (secret === undefined || signature === undefined) return json({ error: "unauthorized" }, 401)
+    if (Number(request.headers["content-length"]) > MAX_BODY_BYTES) return json({ error: "body_too_large" }, 413)
+    const raw = new Uint8Array(yield* request.arrayBuffer)
+    const verdict = linearVerdict(secret, raw, signature)
+    if (verdict === "not_json") return json({ error: "not_json" }, 400)
+    if (verdict === "unauthorized") return json({ error: "unauthorized" }, 401)
+    const payload = parseJson(new TextDecoder().decode(raw))
+    if (Option.isNone(payload)) return json({ error: "not_json" }, 400)
+    const subject = decodeLinearSubject(payload.value)
+    if (Option.isNone(subject)) return json(runsBody([]), 200)
+    const { type, data } = subject.value
+    if (type === "Comment" && (yield* linear.wroteComment(data.id))) return json(runsBody([]), 200)
+    const viewerId = type === "Issue" ? yield* Effect.option(linear.viewerId) : Option.some(null)
+    if (Option.isNone(viewerId)) return json({ error: "linear_unavailable" }, 503)
+    const arrival = linearArrival(payload.value, viewerId.value)
+    return json(runsBody(arrival === null ? [] : yield* arrive(arrival)), 200)
   }).pipe(
     Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(MAX_BODY_BYTES)),
     Effect.catchTag("HttpServerError", () => Effect.succeed(json({ error: "unreadable_body" }, 400))),
@@ -103,6 +152,7 @@ export const webhookServer = (address: { readonly host: string; readonly port: n
     Layer.mergeAll(
       HttpRouter.add("POST", "/hooks/routines/:id", handleHook(handlers)),
       HttpRouter.add("POST", GITHUB_HOOK_PATH, handleGitHub(handlers)),
+      HttpRouter.add("POST", LINEAR_HOOK_PATH, handleLinear(handlers)),
     ),
     { disableListenLog: true, disableLogger: true },
   ).pipe(Layer.provide(NodeHttpServer.layer(createServer, address)))

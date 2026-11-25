@@ -1,6 +1,8 @@
 import { Effect, Option, Schema } from "effect"
 import { Toolkit } from "effect/ai"
+import type { ReplyDestination } from "../../../shared/domain.ts"
 import { GitHub } from "../../services/GitHub.ts"
+import { Linear } from "../../services/Linear.ts"
 import { Conversations } from "../../services/routines/Conversations.ts"
 import { REPLY_MARK } from "../../services/routines/triggers.ts"
 import { Slack, type SlackDestination } from "../../services/slack/Slack.ts"
@@ -12,7 +14,7 @@ const MAX_SLACK_REPLY_CHARACTERS = 12_000
 export const ReplyTools = Toolkit.make(
   McpTool.make("reply", {
     description:
-      "Post `text` to the conversation that started or continued this thread, such as the GitHub issue, the pull request or the Slack thread, and nowhere else.",
+      "Post `text` to the conversation that started or continued this thread, such as the GitHub issue, the pull request, the Slack thread or the Linear issue, and nowhere else.",
     parameters: Schema.Struct({
       text: Schema.String.annotate({ description: "The reply, in Markdown." }),
     }),
@@ -26,6 +28,7 @@ export const replyToolsLayer = ReplyTools.toLayer(
     const conversations = yield* Conversations
     const github = yield* GitHub
     const slack = yield* Slack
+    const linear = yield* Linear
 
     const toGitHub = (url: string, text: string) =>
       Effect.gen(function* () {
@@ -49,6 +52,20 @@ export const replyToolsLayer = ReplyTools.toLayer(
         yield* slack.post(destination, text).pipe(Effect.mapError(({ message }) => ({ message })))
       })
 
+    const toLinear = (issueId: string, text: string) =>
+      linear.comment(issueId, text).pipe(Effect.mapError(({ message }) => ({ message })))
+
+    const post = (target: ReplyDestination, text: string) => {
+      switch (target.source) {
+        case "github":
+          return toGitHub(target.url, text)
+        case "slack":
+          return toSlack(target, text)
+        case "linear":
+          return toLinear(target.issueId, text)
+      }
+    }
+
     return ReplyTools.of({
       reply: ({ text }) =>
         Effect.gen(function* () {
@@ -59,7 +76,7 @@ export const replyToolsLayer = ReplyTools.toLayer(
           }
           if (text.trim() === "") return yield* refuse("The reply is empty.")
           const target = destination.value
-          yield* target.source === "github" ? toGitHub(target.url, text) : toSlack(target, text)
+          yield* post(target, text)
           return `Posted to ${target.url}`
         }),
     })

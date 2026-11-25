@@ -35,6 +35,7 @@ import { AgentRunner } from "../AgentRunner.ts"
 import { nowIso } from "../clock.ts"
 import { NotFoundError, type PersistenceError, persistence } from "../errors.ts"
 import { Events } from "../Events.ts"
+import { Linear, LINEAR_WEBHOOK_SECRET } from "../Linear.ts"
 import { newThreadOptions } from "../newThread.ts"
 import { Projects } from "../Projects.ts"
 import { Scheduler } from "../Scheduler.ts"
@@ -44,7 +45,7 @@ import { Threads } from "../Threads.ts"
 import { Worktrees } from "../Worktrees.ts"
 import { Conversations } from "./Conversations.ts"
 import { type Arrival, FOLLOW_UP, matches, renderArrival } from "./triggers.ts"
-import { GITHUB_HOOK_PATH, hookPath, webhookServer } from "./webhook.ts"
+import { GITHUB_HOOK_PATH, hookPath, LINEAR_HOOK_PATH, webhookServer } from "./webhook.ts"
 
 export const WEBHOOK_SECRET = "routines.webhookSecret"
 export const AUTO_PAUSE_FAILURES = 3
@@ -83,7 +84,10 @@ export class Routines extends Context.Service<
     readonly listensFor: (arrival: Arrival) => Effect.Effect<boolean, PersistenceError>
     readonly webhook: (
       id: string,
-    ) => Effect.Effect<{ url: string; githubUrl: string; hasSecret: boolean; listenError: string | null }, Failure>
+    ) => Effect.Effect<
+      { url: string; githubUrl: string; linearUrl: string; hasSecret: boolean; listenError: string | null },
+      Failure
+    >
     readonly rotateWebhookSecret: Effect.Effect<{ secret: string }, PersistenceError>
   }
 >()("hinacode/Routines") {}
@@ -105,6 +109,8 @@ const RoutineRow = Schema.Struct({
   updatedAt: Timestamp,
 })
 type RoutineRow = typeof RoutineRow.Type
+
+const LINEAR_VIEWER_WAIT = "3 seconds"
 
 const RUN_COLUMNS = "id, routine_id, thread_id, source, status, error, created_at"
 
@@ -166,6 +172,7 @@ const make = Effect.gen(function* () {
   const events = yield* Events
   const scheduler = yield* Scheduler
   const conversations = yield* Conversations
+  const linear = yield* Linear
   const scope = yield* Effect.scope
 
   const encodeRow = Schema.encodeEffect(RoutineRow)
@@ -570,9 +577,16 @@ const make = Effect.gen(function* () {
   const listener = yield* FiberHandle.make()
   let listenError: string | null = null
 
-  const webhookSecret = secrets.get(WEBHOOK_SECRET).pipe(
-    Effect.map(Option.getOrUndefined),
-    Effect.catch((error) => Effect.as(Effect.logError("could not read the routine webhook secret", error), undefined)),
+  const storedSecret = (name: string) =>
+    secrets.get(name).pipe(
+      Effect.map(Option.getOrUndefined),
+      Effect.catch((error) => Effect.as(Effect.logError(`could not read the secret ${name}`, error), undefined)),
+    )
+
+  const linearViewerId = linear.viewerId.pipe(
+    Effect.map(Option.getOrNull),
+    Effect.timeout(LINEAR_VIEWER_WAIT),
+    Effect.tapError((error) => Effect.logWarning("could not ask Linear who the API key belongs to", error)),
   )
 
   const listen = (address: SettingsValue["routines"]) =>
@@ -581,7 +595,7 @@ const make = Effect.gen(function* () {
       const server = webhookServer(
         { host: address.bindHost, port: address.port },
         {
-          secret: webhookSecret,
+          secret: storedSecret(WEBHOOK_SECRET),
           enabled: (id) =>
             findRow(id).pipe(
               Effect.map(Option.match({ onNone: () => undefined, onSome: (routine) => routine.enabled })),
@@ -593,6 +607,11 @@ const make = Effect.gen(function* () {
               Effect.orDie,
             ),
           arrive: (arrival) => Effect.orDie(arrive(arrival)),
+          linear: {
+            secret: storedSecret(LINEAR_WEBHOOK_SECRET),
+            viewerId: linearViewerId,
+            wroteComment: linear.wroteComment,
+          },
         },
       )
       yield* Effect.logInfo("routine webhooks listening", `${address.bindHost}:${address.port}`)
@@ -714,6 +733,7 @@ const make = Effect.gen(function* () {
       return {
         url: new URL(hookPath(id), origin).toString(),
         githubUrl: new URL(GITHUB_HOOK_PATH, origin).toString(),
+        linearUrl: new URL(LINEAR_HOOK_PATH, origin).toString(),
         hasSecret: Option.isSome(secret),
         listenError,
       }
