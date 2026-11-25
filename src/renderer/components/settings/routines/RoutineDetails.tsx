@@ -5,7 +5,13 @@ import { AsyncResult } from "effect/reactivity"
 import { useId, useState, useTransition } from "react"
 import type { Routine, RoutineRun, RoutineTrigger } from "../../../../shared/domain.ts"
 import { errorMessage } from "../../../lib/errorMessage.ts"
-import { type EnvironmentId, callPromise, routineRunsAtom, routineWebhookAtom } from "../../../lib/rpc.ts"
+import {
+  type EnvironmentId,
+  callPromise,
+  routineRunsAtom,
+  routineWebhookAtom,
+  slackStatusAtom,
+} from "../../../lib/rpc.ts"
 import { m } from "../../../paraglide/messages.js"
 import { CopyButton } from "../../CopyButton.tsx"
 import {
@@ -25,6 +31,8 @@ import { Field, FieldError, FieldLabel } from "../../ui/field.tsx"
 import { SkeletonList } from "../../ui/skeleton.tsx"
 import { CopyField } from "../CopyField.tsx"
 import { formatTime, RunStatusBadge, runSourceLabel } from "./shared.tsx"
+import { triggerSource } from "./trigger.ts"
+import { WarningIcon } from "@hinacode/icons"
 
 interface RoutineDetailsProps {
   readonly routine: Routine
@@ -35,9 +43,32 @@ interface RoutineDetailsProps {
 export function RoutineDetails({ routine, environment, machine }: RoutineDetailsProps) {
   return (
     <div className="flex flex-col gap-5 pb-2">
+      {routine.trigger !== null && triggerSource(routine.trigger.event) === "slack" && (
+        <SlackConnectionNotice environment={environment} />
+      )}
       <Webhook routineId={routine.id} trigger={routine.trigger} environment={environment} machine={machine} />
       <RecentRuns routineId={routine.id} />
     </div>
+  )
+}
+
+function SlackConnectionNotice({ environment }: { environment: EnvironmentId }) {
+  const status = AsyncResult.getOrElse(useAtomValue(slackStatusAtom(environment)), () => null)
+  if (status?.type !== "disconnected" && status?.type !== "failed") return null
+  return (
+    <p className="flex items-start gap-1.5 text-sm text-attention">
+      <WarningIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
+      <span>
+        {m.routines_slack_not_connected()}{" "}
+        <Link
+          to="/settings"
+          search={{ page: "integrations", ...(environment === null ? {} : { environment }) }}
+          className="underline underline-offset-2"
+        >
+          {m.routines_slack_connect_in_integrations()}
+        </Link>
+      </span>
+    </p>
   )
 }
 
@@ -61,7 +92,7 @@ function Webhook({
 }) {
   const id = useId()
   const githubId = useId()
-  const listensToGitHub = trigger?.event.startsWith("github.") ?? false
+  const listensToGitHub = trigger !== null && triggerSource(trigger.event) === "github"
   const result = useAtomValue(routineWebhookAtom(environment, routineId))
   const refresh = useAtomRefresh(routineWebhookAtom(environment, routineId))
   const [secret, setSecret] = useState<string | null>(null)

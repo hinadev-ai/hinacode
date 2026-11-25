@@ -1121,6 +1121,7 @@ export const TriggerEvent = Schema.Literals([
   "github.pull_request_opened",
   "github.issue_comment",
   "github.pull_request_comment",
+  "slack.mention",
 ])
 export type TriggerEvent = typeof TriggerEvent.Type
 
@@ -1142,8 +1143,28 @@ export const ReplyDestination = Schema.Union([
     number: Schema.Int,
     url: Schema.String,
   }),
+  Schema.Struct({
+    source: Schema.Literal("slack"),
+    channel: Schema.String,
+    threadTs: Schema.String,
+    url: Schema.String,
+  }),
 ])
 export type ReplyDestination = typeof ReplyDestination.Type
+
+export const SlackTokens = Schema.Struct({
+  appToken: Schema.String.check(Schema.isPattern(/^xapp-\S+$/)),
+  botToken: Schema.String.check(Schema.isPattern(/^xoxb-\S+$/)),
+})
+export type SlackTokens = typeof SlackTokens.Type
+
+export const SlackStatus = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("disconnected") }),
+  Schema.Struct({ type: Schema.Literal("connecting") }),
+  Schema.Struct({ type: Schema.Literal("failed"), reason: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("connected"), team: Schema.String, botUser: Schema.String }),
+])
+export type SlackStatus = typeof SlackStatus.Type
 
 export const RoutineRunSource = Schema.Literals(["schedule", "webhook", "manual", "event"])
 export type RoutineRunSource = typeof RoutineRunSource.Type

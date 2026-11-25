@@ -112,6 +112,20 @@ Events are pushed, never polled.
 
 A source is a decoder from its payload to an `Arrival`, plus a `post(destination, text)`. The listener, the secret, `gh` and the Linear key already exist.
 
+### Slack
+
+The developer creates their own Slack app from a manifest HinaCode links to, and saves its app token and bot token in Settings. The machine dials Slack over Socket Mode while both tokens are stored, so Slack needs no listening port and no relay.
+
+- The event is `slack.mention`: someone mentions the bot in a channel it was invited to. `fromUsers` holds Slack member ids and `scopes` holds channel ids.
+- There is no pairing step and no owner. The trigger's `fromUsers` is the only audience, the same rule as GitHub.
+- The conversation is the Slack thread, `slack:<channel>:<thread_ts>`. A mention outside a thread starts one under itself. Only mentions arrive, so a thread message that does not mention the bot does nothing.
+- A mention inside a thread carries the thread's earlier messages as `context`, at most the last 20, because the question usually points at them. They are quoted data like every other context.
+- The event key is `slack:<channel>:<ts>`, so a redelivered envelope starts nothing.
+- When a mention starts or continues a run, the bot adds an `eyes` reaction to it, so the person sees that it was taken.
+- `reply` posts with `chat.postMessage` into the thread as Markdown, which Slack caps at 12000 characters. A message the bot wrote carries a `bot_id` and is never an arrival.
+- The thread is read only when a routine's trigger matches the mention, in pages of 200 messages, at most five pages. A longer thread arrives with no context, and so does one Slack will not hand over.
+- Mentions are handled one at a time, so two mentions in one Slack thread reach the routine in order.
+
 ### Permission
 
 1. Only a sender in `fromUsers` starts or continues a turn. Everything other people wrote is quoted data.
@@ -124,7 +138,7 @@ A source is a decoder from its payload to an `Arrival`, plus a `post(destination
 | Slice     | Builds                                                                                        | Check                                                                                                  |
 | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | 1. GitHub | The trigger on a routine, `arrive`, conversations, `reply`, `/hooks/github`, the routine form | A signed issue comment starts one thread, a second continues it, a stranger starts none, `reply` posts |
-| 2. Slack  | The Socket Mode connection and pairing, the mention decoder, the Slack post                   | A mention starts a thread and the answer lands in the Slack thread, against a local fake               |
+| 2. Slack  | The Socket Mode connection, the mention decoder, thread context, the reaction, the Slack post | A mention starts a thread and the answer lands in the Slack thread, against a local fake               |
 | 3. Linear | `/hooks/linear`, the comment and assignment decoders, the Linear post                         | A signed comment starts a thread and the answer lands on the issue                                     |
 
 ## Out of scope
@@ -142,3 +156,5 @@ A source is a decoder from its payload to an `Arrival`, plus a `post(destination
 - `webhook` tests cover a missing and a wrong signature and an unknown event.
 - `mcp/server.integration.test.ts` covers `reply` for a thread with and without a conversation.
 - With `verify-hinacode`: create a routine with a GitHub trigger in the form, post signed deliveries with `webhook.sh`, and watch one thread start and continue.
+- `slack/Slack.integration.test.ts` runs the service, `Routines` and the runner against `fakeSlack.ts`: connect, a refused token, disconnect, a mention that starts a thread, another member and channel, a redelivery, a continue with thread context, and the post.
+- With `verify-hinacode` and `fake-slack.ts`: connect in Settings, mention the bot, and watch the thread start, continue and answer into the fake.

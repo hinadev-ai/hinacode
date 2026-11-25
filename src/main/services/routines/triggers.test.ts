@@ -1,7 +1,7 @@
 import { describe, expect, test } from "@effect/vitest"
 import type { RoutineTrigger } from "../../../shared/domain.ts"
 import { promptWithPayload } from "./Routines.ts"
-import { type Arrival, githubArrival, matches, REPLY_MARK, renderArrival } from "./triggers.ts"
+import { type Arrival, githubArrival, matches, REPLY_MARK, renderArrival, slackArrival } from "./triggers.ts"
 
 const trigger: RoutineTrigger = {
   event: "github.issue_comment",
@@ -166,6 +166,73 @@ describe("githubArrival", () => {
     expect(githubArrival("issue_comment", comment(`Done.\n\n${REPLY_MARK}`))).toBeNull()
     expect(githubArrival("issue_comment", { action: "created" })).toBeNull()
     expect(githubArrival("issue_comment", null)).toBeNull()
+  })
+})
+
+const workspaceUrl = "https://acme.slack.com/"
+const mention = (fields: Record<string, unknown> = {}) => ({
+  event: {
+    type: "app_mention",
+    user: "U1",
+    text: "<@UBOT> why is the build red?",
+    ts: "1700000200.000300",
+    channel: "C1",
+    ...fields,
+  },
+})
+
+describe("slackArrival", () => {
+  test.each([
+    [
+      "a mention in a channel starts a Slack thread under itself",
+      mention(),
+      {
+        event: "slack.mention",
+        key: "slack:C1:1700000200.000300",
+        sender: "U1",
+        scope: "C1",
+        text: "<@UBOT> why is the build red?",
+        conversation: "slack:C1:1700000200.000300",
+        destination: {
+          source: "slack",
+          channel: "C1",
+          threadTs: "1700000200.000300",
+          url: "https://acme.slack.com/archives/C1/p1700000200000300",
+        },
+        context: { thread: [] },
+      },
+    ],
+    [
+      "a mention inside a thread belongs to that thread",
+      mention({ thread_ts: "1700000000.000100" }),
+      {
+        event: "slack.mention",
+        key: "slack:C1:1700000200.000300",
+        sender: "U1",
+        scope: "C1",
+        text: "<@UBOT> why is the build red?",
+        conversation: "slack:C1:1700000000.000100",
+        destination: {
+          source: "slack",
+          channel: "C1",
+          threadTs: "1700000000.000100",
+          url: "https://acme.slack.com/archives/C1/p1700000200000300?thread_ts=1700000000.000100&cid=C1",
+        },
+        context: { thread: [] },
+      },
+    ],
+    ["a message a bot wrote", mention({ bot_id: "B1" }), null],
+    ["a mention without a user", { event: { ...mention().event, user: undefined } }, null],
+    ["another event", { event: { ...mention().event, type: "message" } }, null],
+    ["a malformed payload", { type: "app_mention" }, null],
+  ] as const)("%s", (_, payload, expected) => {
+    expect(slackArrival(payload, workspaceUrl)).toStrictEqual(expected)
+  })
+
+  test("keeps a person's mention that carries a subtype, such as one with a file", () => {
+    expect(slackArrival(mention({ subtype: "file_share" }), workspaceUrl)).toStrictEqual(
+      slackArrival(mention(), workspaceUrl),
+    )
   })
 })
 
