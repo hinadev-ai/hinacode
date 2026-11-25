@@ -1,20 +1,41 @@
 import { randomUUID } from "node:crypto"
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from "node:fs"
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, it } from "@effect/vitest"
-import { Effect, Layer, Logger } from "effect"
+import { Effect, Layer, Logger, Option } from "effect"
+import * as Db from "../db/client.ts"
 import * as Scratch from "./Scratch.ts"
+import * as Secrets from "./Secrets.ts"
 
 const dir = mkdtempSync(join(tmpdir(), "kk-scratch-tmp-"))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
 const withScratch = <A, E>(
-  effect: Effect.Effect<A, E, Scratch.Scratch>,
+  effect: Effect.Effect<A, E, Scratch.Scratch | Secrets.Secrets>,
   root: string,
   options?: Parameters<typeof Scratch.layer>[1],
-) => effect.pipe(Effect.provide(Scratch.layer(root, options).pipe(Layer.provide(NodeServices.layer))))
+) =>
+  effect.pipe(
+    Effect.provide(
+      Scratch.layer(root, options).pipe(
+        Layer.provideMerge(Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))),
+        Layer.provideMerge(Db.layer(":memory:")),
+        Layer.provide(NodeServices.layer),
+      ),
+    ),
+  )
 
 const ensureTmpLogging = (threadId: string, tmpRoot: string) => {
   const warnings: Array<string> = []
@@ -140,6 +161,24 @@ describe("thread secret files", () => {
 
       expect(existsSync(file)).toBe(false)
       expect(existsSync(folder)).toBe(true)
+    }),
+  )
+
+  it.effect("keeps a secret that an earlier version stored only as a file", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(dir, "data-"))
+      const thread = owner("before sealing")
+      const file = join(root, `20261101-000000-before-sealing-${thread.id}`, "secrets", "TOKEN")
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, "from a file")
+
+      const stored = yield* withScratch(
+        Secrets.Secrets.use((secrets) => secrets.get(`${Secrets.threadSecretPrefix(thread.id)}TOKEN`)),
+        root,
+      )
+
+      expect(stored).toStrictEqual(Option.some("from a file"))
+      expect(existsSync(file)).toBe(false)
     }),
   )
 
