@@ -3,7 +3,7 @@ import { cn } from "cn"
 import { Link } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { useId, useState, useTransition } from "react"
-import type { Routine, RoutineRun } from "../../../../shared/domain.ts"
+import type { Routine, RoutineRun, RoutineTrigger } from "../../../../shared/domain.ts"
 import { errorMessage } from "../../../lib/errorMessage.ts"
 import { type EnvironmentId, callPromise, routineRunsAtom, routineWebhookAtom } from "../../../lib/rpc.ts"
 import { m } from "../../../paraglide/messages.js"
@@ -35,7 +35,7 @@ interface RoutineDetailsProps {
 export function RoutineDetails({ routine, environment, machine }: RoutineDetailsProps) {
   return (
     <div className="flex flex-col gap-5 pb-2">
-      <Webhook routineId={routine.id} environment={environment} machine={machine} />
+      <Webhook routineId={routine.id} trigger={routine.trigger} environment={environment} machine={machine} />
       <RecentRuns routineId={routine.id} />
     </div>
   )
@@ -50,14 +50,18 @@ const curlExample = (url: string) =>
 
 function Webhook({
   routineId,
+  trigger,
   environment,
   machine,
 }: {
   routineId: string
+  trigger: RoutineTrigger | null
   environment: EnvironmentId
   machine: string
 }) {
   const id = useId()
+  const githubId = useId()
+  const listensToGitHub = trigger?.event.startsWith("github.") ?? false
   const result = useAtomValue(routineWebhookAtom(environment, routineId))
   const refresh = useAtomRefresh(routineWebhookAtom(environment, routineId))
   const [secret, setSecret] = useState<string | null>(null)
@@ -81,7 +85,7 @@ function Webhook({
       <FieldLabel htmlFor={id}>{m.routines_webhook_url_label()}</FieldLabel>
       {AsyncResult.builder(result)
         .onInitial(() => <SkeletonList label={m.routines_loading()} rowClassName="h-8" />)
-        .onSuccess(({ url, hasSecret, listenError }) => (
+        .onSuccess(({ url, githubUrl, hasSecret, listenError }) => (
           <>
             <CopyField id={id} value={url} copyLabel={m.routines_copy_url()} />
             {listenError && <FieldError>{m.routines_listen_failed({ message: listenError })}</FieldError>}
@@ -91,6 +95,12 @@ function Webhook({
               </pre>
               <CopyButton value={curlExample(url)} label={m.routines_copy_curl()} />
             </div>
+            {listensToGitHub && githubUrl !== null && (
+              <Field>
+                <FieldLabel htmlFor={githubId}>{m.routines_github_webhook_label()}</FieldLabel>
+                <CopyField id={githubId} value={githubUrl} copyLabel={m.routines_copy_github_url()} />
+              </Field>
+            )}
             <div className="flex items-center gap-2">
               {hasSecret ? (
                 <RotateSecret machine={machine} pending={pending} onConfirm={rotate} />
