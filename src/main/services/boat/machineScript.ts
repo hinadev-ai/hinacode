@@ -42,6 +42,6 @@ for attempt in $(seq 1 60); do
   sleep 1
 done
 echo "hinacode serve did not start" >&2
-sudo journalctl -u hinacode -n 20 --no-pager | sed -E 's/token=[^&[:space:]]+/token=REDACTED/g' >&2
+sudo journalctl -u hinacode -n 20 --no-pager | sed -E 's/(token|secret)=[^&[:space:]]+/\\1=REDACTED/g' >&2
 exit 1
 `

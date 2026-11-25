@@ -59,6 +59,9 @@ describe("runMigrations", () => {
       yield* sql`ALTER TABLE thread ADD COLUMN user_skills INTEGER NOT NULL DEFAULT 1 CHECK (user_skills IN (0, 1))`
       yield* sql`ALTER TABLE thread DROP COLUMN turn_end_tree`
       yield* sql`DROP TABLE app_connection`
+      yield* sql`DROP TABLE remote_device`
+      yield* sql`ALTER TABLE environment DROP COLUMN host_key`
+      yield* sql`ALTER TABLE environment DROP COLUMN verified`
       for (const column of ["client_id", "client_name", "claimed_at", "thread_title"])
         yield* sql.unsafe(`ALTER TABLE thread_device DROP COLUMN ${column}`)
       yield* restoreAutomationTables
@@ -78,6 +81,8 @@ describe("runMigrations", () => {
         [51, "turn_end_tree"],
         [52, "pi_provider"],
         [53, "thread_interrupted"],
+        [54, "remote_device"],
+        [55, "environment_host_key"],
       ])
       expect(yield* columnsOf("pull_request_link")).not.toContain("observed_status")
       expect(yield* sql`SELECT name FROM effect_sql_migrations WHERE migration_id = 40`).toStrictEqual([
@@ -107,7 +112,7 @@ describe("runMigrations", () => {
 
       expect(upgraded.thread).toStrictEqual({ title: "t", provider: "claude" })
       expect(upgraded.ids.slice(0, 4)).toStrictEqual([1, 2, 3, 4])
-      expect(upgraded.ids.at(-1)).toBe(53)
+      expect(upgraded.ids.at(-1)).toBe(55)
       expect(upgraded.projectColumns).toContain("trusted")
     }),
   )
@@ -153,7 +158,7 @@ describe("runMigrations", () => {
           const sql = yield* SqlClient.SqlClient
           const seeded = yield* seedThread({ rootPath: "/repo" })
           yield* sql`ALTER TABLE thread ADD COLUMN from_the_future TEXT NOT NULL DEFAULT 'kept'`
-          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (54, 'from_the_future')`
+          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (56, 'from_the_future')`
           return seeded
         }),
       )
@@ -173,7 +178,7 @@ describe("runMigrations", () => {
         ran: [],
         thread: { title: "t", provider: "claude" },
         future: { fromTheFuture: "kept" },
-        ids: expect.arrayContaining([53, 54]),
+        ids: expect.arrayContaining([55, 56]),
       })
     }),
   )

@@ -25,6 +25,7 @@ const byTag: Readonly<Record<string, (detail: string) => string>> = {
   FsAccessError: () => m.error_fs_access(),
   FolderMissingError: () => m.error_folder_missing(),
   EnvironmentUnauthorized: () => m.error_environment_unauthorized(),
+  NoWaitingDeviceError: () => m.error_no_waiting_device(),
   EnvironmentVersionMismatch: (name) => m.error_environment_version_mismatch({ name }),
   Defect: (detail) => m.error_unexpected({ detail }),
 }

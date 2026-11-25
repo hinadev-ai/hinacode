@@ -17,7 +17,15 @@ import type { RelayHost } from "../../../shared/relayMachines.ts"
 import { errorMessage, toastError } from "../../lib/errorMessage.ts"
 import { BoatMachineForm } from "./BoatMachineForm.tsx"
 import { RelaySignOutDialog } from "./RelaySignOutDialog.tsx"
-import { type Cloud, cloudAddress, incompatibleText, useClouds } from "../../lib/environments.ts"
+import {
+  approvalText,
+  type Cloud,
+  cloudAddress,
+  incompatibleText,
+  refusalText,
+  repairsFromRelay,
+  useClouds,
+} from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import {
   addEnvironmentAtom,
@@ -39,6 +47,7 @@ import { m } from "../../paraglide/messages.js"
 import { useLocale } from "../../stores/locale.ts"
 import { useUi } from "../../stores/ui.ts"
 import { EnvironmentStatusText } from "../EnvironmentStatusText.tsx"
+import { ConfirmHostButtons, RepairButton } from "../HostApproval.tsx"
 import { ReconnectButton } from "../ReconnectButton.tsx"
 import {
   AlertDialog,
@@ -309,6 +318,7 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
   const pairFormId = useId()
   const unauthorized = cloud.status === "unauthorized"
   const fromRelay = cloud.source === "relay"
+  const repairs = repairsFromRelay(cloud)
 
   const cancelPairing = () => {
     setPairing(false)
@@ -343,8 +353,10 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-2">
           {cloud.status === "connected" && <CloudUpdateButton cloud={cloud} />}
-          {unauthorized && inBrowser() && <ReloadPageButton />}
-          {unauthorized && !inBrowser() && (
+          {cloud.status === "approval" && <ConfirmHostButtons cloud={cloud} />}
+          {repairs && <RepairButton cloud={cloud} />}
+          {unauthorized && !repairs && inBrowser() && <ReloadPageButton />}
+          {unauthorized && !repairs && !inBrowser() && (
             <Button
               ref={pairAgainRef}
               variant="outline"
@@ -362,11 +374,8 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
         </div>
       </div>
       {fromRelay && <FieldDescription>{m.environment_relay_row_hint()}</FieldDescription>}
-      {unauthorized && (
-        <FieldDescription>
-          {inBrowser() ? m.web_transport_token_refused() : m.environment_unauthorized_hint()}
-        </FieldDescription>
-      )}
+      {cloud.status === "approval" && <FieldDescription>{approvalText(cloud)}</FieldDescription>}
+      {unauthorized && <FieldDescription>{refusalText(cloud)}</FieldDescription>}
       {cloud.status === "connected" && <CloudUpdateHint cloud={cloud} />}
       {unauthorized && pairing && (
         <PairAgainForm id={pairFormId} cloud={cloud} onCancel={cancelPairing} onPaired={() => setPairing(false)} />

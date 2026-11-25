@@ -25,6 +25,7 @@ import {
   serveConfig,
   type ServeFlags,
 } from "./serve.ts"
+import { makeEventsLayer } from "./services/Events.ts"
 import { layer as SecretsLayer, noKeyring } from "./services/Secrets.ts"
 import { layer as SettingsLayer, Settings } from "./services/Settings.ts"
 import { hydratePath } from "./shellPath.ts"
@@ -32,6 +33,7 @@ import { hydratePath } from "./shellPath.ts"
 const QUIT_TIMEOUT_MS = 5000
 const SERVE_LOG_CHECK_MS = 10 * 60_000
 const LISTEN_TIMEOUT_MS = 5000
+const WAITING_DEVICE = "A device is waiting for approval. Run hinacode devices approve <code> with the code it shows.\n"
 
 const { version } = packageJson
 const packageRoot = isSea() ? undefined : fileURLToPath(new URL("../..", import.meta.url))
@@ -77,7 +79,8 @@ const pairingText = async (userData: string, pairing: RemotePairing) => {
     ...(pairing.relay === null ? [] : [`Reachable from any network through ${pairing.relay}.`, ""]),
     "Pair a desktop: Settings > Connections > Add environment, with one of:",
     ...pairing.hosts.map((host) => `  ${pairingUrl({ ...pairing, hosts: [host] })}`),
-    "Keep the token in these URLs private. Run `hinacode pair` to print them again.",
+    "The secret in these URLs pairs one device, then the cloud replaces it. Run `hinacode pair` to print a fresh one.",
+    "Run `hinacode devices` to see the paired devices, and `hinacode devices remove` to unpair one.",
     "",
   ].join("\n")
 }
@@ -142,7 +145,9 @@ export const serve = async (flags: ServeFlags, userData: string) => {
             process.execve!(file, args, env)
           }),
       }),
-      toWindows: () => {},
+      toWindows: (event) => {
+        if (event.type === "remote.devices.changed" && event.reason === "waiting") process.stdout.write(WAITING_DEVICE)
+      },
       serve: config,
     }),
   )
@@ -189,7 +194,13 @@ export const pair = async (userData: string) => {
   const runtime = ManagedRuntime.make(
     RemoteAccessLayer.pipe(
       Layer.provideMerge(Layer.mergeAll(SettingsLayer(userData), SecretsLayer)),
-      Layer.provideMerge(Layer.mergeAll(Db.layer(database), noKeyring)),
+      Layer.provideMerge(
+        Layer.mergeAll(
+          Db.layer(database),
+          noKeyring,
+          makeEventsLayer(() => {}),
+        ),
+      ),
       Layer.provide(Layer.succeed(References.MinimumLogLevel, "Warn")),
     ),
   )

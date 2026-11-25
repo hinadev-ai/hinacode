@@ -1,18 +1,21 @@
-import { Option, Schema } from "effect"
 import type { NonEmptyReadonlyArray } from "effect/Array"
+import { type ClientSession, clientSession } from "./clientSession.ts"
 import type { PushEvent, RpcEnvelope } from "./contract.ts"
-import { clientProof, newNonce, serverProof } from "./proof.ts"
+import type { HostApproval, HostRefusal } from "./domain.ts"
+import { decodeKey, type KeyPair } from "./noise.ts"
 import {
-  CHALLENGE_WAIT_MS,
   type ClientFrame,
+  CLOSE_HANDSHAKE_FAILED,
+  CLOSE_PAIRING_RESET,
+  CLOSE_UNAUTHORIZED,
   type Dial,
   DIRECT_CHECK_INTERVAL_MS,
   DIRECT_CHECK_TIMEOUT_MS,
   REMOTE_PROTOCOL_VERSION,
-  ServerFrame,
+  type ServerFrame,
 } from "./remote.ts"
 
-export type TransportStatus = "connecting" | "connected" | "offline" | "unauthorized"
+export type TransportStatus = "connecting" | "approval" | "connected" | "offline" | "unauthorized"
 
 interface ServerIdentity {
   readonly id: string
@@ -28,8 +31,6 @@ export class RpcError extends Error {
   }
 }
 
-export const CLOSE_UNAUTHORIZED = 4001
-export const CLOSE_TOKEN_ROTATED = 4002
 export const CONNECT_TIMEOUT_MS = 10_000
 const PING_INTERVAL_MS = 10_000
 export const IDLE_TIMEOUT_MS = 25_000
@@ -40,10 +41,11 @@ const MAX_RETRY_MS = 10_000
 const JITTER = 0.3
 
 export interface SocketLike {
+  binaryType: string
   onopen: (() => void) | null
   onmessage: ((message: { data: unknown }) => void) | null
   onclose: ((event: { code: number }) => void) | null
-  send(data: string): void
+  send(data: Uint8Array): void
   close(): void
 }
 
@@ -53,18 +55,21 @@ export interface TransportMessages {
   readonly lostReply: string
   readonly disconnected: string
   readonly notConnected: string
-  readonly tokenRotated: string
-  readonly tokenRefused: string
+  readonly refusal: (refusal: HostRefusal) => string
   readonly protocolMismatch: (server: number, client: number) => string
 }
 
 interface TransportOptions {
   readonly dials: NonEmptyReadonlyArray<Dial>
-  readonly token: string
+  readonly hostKey: string | null
+  readonly device: KeyPair
+  readonly name: string
+  readonly secret: string | null
+  readonly verified: boolean
   readonly messages: TransportMessages
   readonly compact: boolean
   readonly isMutation: (method: string) => boolean
-  readonly onStatus: (status: TransportStatus, error: string | null) => void
+  readonly onStatus: (status: TransportStatus, error: string | null, refusal: HostRefusal | null) => void
   readonly onReady: (
     features: ReadonlySet<string>,
     environment: ServerIdentity | undefined,
@@ -72,6 +77,9 @@ interface TransportOptions {
     hosts: NonEmptyReadonlyArray<string> | undefined,
   ) => void
   readonly onEvent: (event: PushEvent) => void
+  readonly onSecretUsed: () => void
+  readonly onApproval: (approval: HostApproval | null) => void
+  readonly onVerified: () => void
   readonly createSocket?: (url: string) => SocketLike
   readonly random?: () => number
   readonly newKey?: () => string
@@ -90,11 +98,9 @@ interface PendingCall {
   readonly reject: (error: Error) => void
 }
 
-const decodeFrame = Schema.decodeUnknownOption(ServerFrame)
-
 type Round = "both" | Dial["route"]
 
-type SentAuth = null | "token" | { readonly expectedProof: string }
+type Ready = Extract<ServerFrame, { type: "ready" }>
 
 const randomKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 
@@ -117,6 +123,7 @@ function raceToOpen(
   const start = (dial: Dial) => {
     started++
     const ws = createSocket(dial.url)
+    ws.binaryType = "arraybuffer"
     live.add(ws)
     ws.onopen = () => {
       if (done) return ws.close()
@@ -148,14 +155,17 @@ export class Transport {
   private watching: readonly string[] = []
   private stopped = false
   private route: Dial["route"] | null = null
-  private sentAuth: SentAuth = null
+  private session: ClientSession | null = null
+  private serverReady: Ready | null = null
+  private approval: HostApproval | null = null
+  private secret: string | null
+  private verified: boolean
   private round: Round = "both"
   private cancelRace: (() => void) | undefined
   private cancelCheck: (() => void) | undefined
   private readonly pending = new Map<number, PendingCall>()
   private retryTimer: ReturnType<typeof setTimeout> | undefined
   private connectTimer: ReturnType<typeof setTimeout> | undefined
-  private challengeTimer: ReturnType<typeof setTimeout> | undefined
   private idleTimer: ReturnType<typeof setTimeout> | undefined
   private pingTimer: ReturnType<typeof setInterval> | undefined
   private offlineTimer: ReturnType<typeof setTimeout> | undefined
@@ -167,10 +177,29 @@ export class Transport {
   constructor(options: TransportOptions) {
     this.options = options
     this.dials = options.dials
+    this.secret = options.secret
+    this.verified = options.verified
   }
 
   start() {
+    if (this.hostKey() === null) return this.refuse("predates")
     this.open()
+  }
+
+  confirmHost(accepted: boolean) {
+    const ready = this.serverReady
+    if (ready === null || this.approval?.accepted !== true) return
+    if (!accepted) {
+      this.dropSocket()
+      return this.refuse("refused")
+    }
+    this.verified = true
+    this.options.onVerified()
+    this.connected(ready)
+  }
+
+  private hostKey() {
+    return this.options.hostKey === null ? null : decodeKey(this.options.hostKey)
   }
 
   stop() {
@@ -220,7 +249,7 @@ export class Transport {
     if (!foreground) {
       clearTimeout(this.retryTimer)
       this.retryTimer = undefined
-      if (this.status === "connecting" || this.status === "connected") this.onLinkLost()
+      if (this.status === "connecting" || this.status === "approval" || this.status === "connected") this.onLinkLost()
       return
     }
     if (this.stopped || this.status === "unauthorized") return
@@ -257,7 +286,7 @@ export class Transport {
   private open(round: Round = "both") {
     if (this.stopped || !this.foreground) return
     this.retryTimer = undefined
-    this.setStatus("connecting", null)
+    this.setStatus("connecting")
     this.round = round
     this.connectTimer = setTimeout(() => {
       if (this.socket === null) this.noneOpened()
@@ -288,12 +317,18 @@ export class Transport {
     this.cancelRace = undefined
     this.socket = ws
     this.route = route
-    this.challengeTimer = setTimeout(() => {
-      if (route === "relay" || !this.hasRelay()) {
-        this.sentAuth = "token"
-        this.sendFrame({ type: "auth", token: this.options.token, ...this.compactEvents() })
-      } else this.closed(CLOSE_UNAUTHORIZED, route)
-    }, CHALLENGE_WAIT_MS)
+    this.session = clientSession({
+      hostKey: this.hostKey()!,
+      device: this.options.device,
+      hello: {
+        name: this.options.name,
+        ...(this.secret === null ? {} : { secret: this.secret }),
+        ...(this.verified ? {} : { verify: true }),
+        ...(this.options.compact ? { compactEvents: true } : {}),
+      },
+      send: (data) => ws.send(data),
+    })
+    this.session.start()
     ws.onmessage = (message) => {
       if (this.socket === ws) this.receive(message.data, route)
     }
@@ -310,60 +345,56 @@ export class Transport {
   }
 
   private closed(code: number, route: Dial["route"]) {
-    if (this.triedRelayInstead(route)) return
-    if (code === CLOSE_UNAUTHORIZED || code === CLOSE_TOKEN_ROTATED) {
-      this.dropSocket()
-      this.unauthorized(
-        code === CLOSE_TOKEN_ROTATED ? this.options.messages.tokenRotated : this.options.messages.tokenRefused,
-      )
-      return
-    }
-    this.onLinkLost()
+    if (!this.handshaken() && this.triedRelayInstead(route)) return
+    const refusal = this.refusalFor(code)
+    if (refusal === null) return this.onLinkLost()
+    this.dropSocket()
+    this.refuse(refusal)
   }
 
-  private compactEvents() {
-    return this.options.compact ? { compactEvents: true } : {}
+  private refusalFor(code: number): HostRefusal | null {
+    if (code === CLOSE_HANDSHAKE_FAILED) return "refused"
+    if (code === CLOSE_PAIRING_RESET) return "reset"
+    if (code === CLOSE_UNAUTHORIZED) return this.serverReady === null ? "refused" : "removed"
+    return null
+  }
+
+  private handshaken() {
+    return this.session?.handshaken() ?? false
   }
 
   private hasRelay() {
     return this.dials.some((dial) => dial.route === "relay")
   }
 
-  private answerChallenge(serverNonce: string) {
-    if (this.sentAuth !== null) return
-    clearTimeout(this.challengeTimer)
-    const { token } = this.options
-    const clientNonce = newNonce()
-    this.sentAuth = { expectedProof: serverProof(token, clientNonce, serverNonce) }
-    this.sendFrame({
-      type: "auth",
-      nonce: clientNonce,
-      proof: clientProof(token, serverNonce, clientNonce),
-      ...this.compactEvents(),
-    })
-  }
-
-  private provesToken(proof: string | undefined) {
-    return this.sentAuth === "token" || (this.sentAuth !== null && proof === this.sentAuth.expectedProof)
-  }
-
   private receive(data: unknown, route: Dial["route"]) {
-    if (typeof data !== "string") return
-    let json: unknown
-    try {
-      json = JSON.parse(data)
-    } catch {
-      return
+    const received = this.session!.receive(data)
+    switch (received.type) {
+      case "ignored":
+      case "handshaken":
+        return
+      case "pending":
+        clearTimeout(this.connectTimer)
+        return this.setStatus("approval")
+      case "code":
+        return this.setApproval({ code: received.code, accepted: false })
+      case "refused":
+        if (!this.handshaken() && this.triedRelayInstead(route)) return
+        this.dropSocket()
+        return this.refuse("refused")
+      case "broken":
+        return this.onLinkLost()
+      case "frame":
+        if (this.serverReady !== null) this.closeIfSilentFor(IDLE_TIMEOUT_MS)
+        return this.receiveFrame(received.frame)
     }
-    if (this.status === "connected") this.closeIfSilentFor(IDLE_TIMEOUT_MS)
-    const frame = Option.getOrNull(decodeFrame(json))
-    if (frame === null) return
+  }
+
+  private receiveFrame(frame: ServerFrame) {
+    if (frame.type !== "ready" && this.status !== "connected") return
     switch (frame.type) {
-      case "challenge":
-        return this.answerChallenge(frame.nonce)
       case "ready":
-        if (!this.provesToken(frame.proof)) return this.closed(CLOSE_UNAUTHORIZED, route)
-        return this.ready(frame.version, frame.features ?? [], frame.environment, frame.relay ?? null, frame.hosts)
+        return this.ready(frame)
       case "result": {
         const call = this.pending.get(frame.id)
         this.pending.delete(frame.id)
@@ -374,41 +405,57 @@ export class Transport {
       case "event":
         return this.options.onEvent(frame.event)
       case "pong":
+      case "ask":
         return
     }
   }
 
-  private ready(
-    version: number,
-    features: readonly string[],
-    environment: ServerIdentity | undefined,
-    relay: string | null,
-    hosts: NonEmptyReadonlyArray<string> | undefined,
-  ) {
+  private ready(frame: Ready) {
     clearTimeout(this.connectTimer)
-    if (version !== REMOTE_PROTOCOL_VERSION) {
+    if (frame.version !== REMOTE_PROTOCOL_VERSION) {
       this.dropSocket()
-      this.unauthorized(this.options.messages.protocolMismatch(version, REMOTE_PROTOCOL_VERSION))
+      this.unauthorized(this.options.messages.protocolMismatch(frame.version, REMOTE_PROTOCOL_VERSION), null)
       return
     }
+    if (this.secret !== null) {
+      this.secret = null
+      this.options.onSecretUsed()
+    }
+    this.serverReady = frame
+    this.features = new Set(frame.features ?? [])
+    if (this.features.has("heartbeat") && this.foreground) {
+      this.startPings()
+      this.closeIfSilentFor(IDLE_TIMEOUT_MS)
+    }
+    if (this.verified) return this.connected(frame)
+    if (this.approval === null) {
+      this.dropSocket()
+      return this.refuse("refused")
+    }
+    this.setApproval({ ...this.approval, accepted: true })
+  }
+
+  private connected(frame: Ready) {
+    this.setApproval(null)
     this.expireOfflineCalls()
     clearTimeout(this.offlineTimer)
     this.attempt = 0
-    this.features = new Set(features)
-    this.setStatus("connected", null)
+    this.setStatus("connected")
     const now = Date.now()
     for (const call of [...this.pending.values()].sort((a, b) => a.id - b.id)) {
       if (call.offlineSince !== null) call.priorOfflineMs += now - call.offlineSince
       call.offlineSince = null
       this.sendCall(call)
     }
-    if (this.features.has("heartbeat") && this.foreground) {
-      this.startPings()
-      this.closeIfSilentFor(IDLE_TIMEOUT_MS)
-    }
     if (this.checksDirect() && this.foreground) this.startDirectChecks()
     this.sendWatching()
-    this.options.onReady(this.features, environment, relay, hosts)
+    this.options.onReady(this.features, frame.environment, frame.relay ?? null, frame.hosts)
+  }
+
+  private setApproval(approval: HostApproval | null) {
+    if (this.approval === approval) return
+    this.approval = approval
+    this.options.onApproval(approval)
   }
 
   private sendCall(call: PendingCall) {
@@ -426,7 +473,7 @@ export class Transport {
   }
 
   private sendFrame(frame: ClientFrame) {
-    this.socket?.send(JSON.stringify(frame))
+    if (this.handshaken()) this.session!.send(frame)
   }
 
   private ping() {
@@ -507,7 +554,7 @@ export class Transport {
       } else if (call.offlineSince === null) call.offlineSince = now
     }
     this.expireOfflineCalls()
-    this.setStatus("offline", null)
+    this.setStatus("offline")
     clearTimeout(this.retryTimer)
     this.retryTimer = undefined
     if (this.stopped || !this.foreground) return
@@ -519,8 +566,9 @@ export class Transport {
 
   private dropSocket() {
     clearTimeout(this.connectTimer)
-    clearTimeout(this.challengeTimer)
-    this.sentAuth = null
+    this.session = null
+    this.serverReady = null
+    this.setApproval(null)
     this.stopHeartbeat()
     this.stopDirectChecks()
     this.cancelRace?.()
@@ -531,11 +579,15 @@ export class Transport {
     ws?.close()
   }
 
-  private unauthorized(error: string) {
+  private refuse(refusal: HostRefusal) {
+    this.unauthorized(this.options.messages.refusal(refusal), refusal)
+  }
+
+  private unauthorized(error: string, refusal: HostRefusal | null) {
     clearTimeout(this.retryTimer)
     clearTimeout(this.offlineTimer)
     this.retryTimer = undefined
-    this.setStatus("unauthorized", error)
+    this.setStatus("unauthorized", error, refusal)
     this.failAll(new RpcError("Unauthorized", error))
   }
 
@@ -564,8 +616,8 @@ export class Transport {
     this.pending.clear()
   }
 
-  private setStatus(status: TransportStatus, error: string | null) {
+  private setStatus(status: TransportStatus, error: string | null = null, refusal: HostRefusal | null = null) {
     this.status = status
-    this.options.onStatus(status, error)
+    this.options.onStatus(status, error, refusal)
   }
 }

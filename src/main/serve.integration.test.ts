@@ -8,6 +8,7 @@ import { PRIVATE_NETWORKS } from "../shared/domain.ts"
 import * as Db from "./db/client.ts"
 import { RemoteAccess } from "./remote/access.ts"
 import * as RemoteAccessModule from "./remote/access.ts"
+import { makeEventsLayer } from "./services/Events.ts"
 import { Secrets } from "./services/Secrets.ts"
 import * as SecretsModule from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
@@ -18,43 +19,46 @@ const testLayer = RemoteAccessModule.layer.pipe(
   Layer.provideMerge(SecretsModule.layer),
   Layer.provideMerge(Layer.suspend(() => SettingsModule.layer(mkdtempSync(join(tmpdir(), "kk-serve-settings-"))))),
   Layer.provideMerge(Db.layer(":memory:")),
-  Layer.provide(Layer.mergeAll(NodeServices.layer, SecretsModule.noKeyring)),
+  Layer.provide(
+    Layer.mergeAll(
+      NodeServices.layer,
+      SecretsModule.noKeyring,
+      makeEventsLayer(() => {}),
+    ),
+  ),
 )
 
 describe("serve mode boot", () => {
-  it.effect("turns the listener settings on, reuses its token across restarts, and rotates on request", () =>
+  it.effect("turns the listener settings on, keeps its key across restarts, and resets pairing on request", () =>
     Effect.gen(function* () {
       const access = yield* RemoteAccess
-      yield* applyServeConfig({ bindHost: "127.0.0.1", port: 49152, rotateToken: false })
+      yield* applyServeConfig({ bindHost: "127.0.0.1", port: 49152, resetPairing: false })
       const first = yield* access.pairing
       expect(first.port).toBe(49152)
-      expect(first.token).not.toBe("")
+      expect(first.key).toHaveLength(43)
+      expect(first.secret).toHaveLength(43)
 
       const settings = yield* Settings.use((service) => service.get)
       expect(settings.remote).toStrictEqual({ enabled: true, bindHost: "127.0.0.1", port: 49152 })
-      expect(access.authenticate(first.token)).toBe(true)
-      expect(access.authenticate("not-the-token")).toBe(false)
 
-      yield* applyServeConfig({ rotateToken: false })
+      yield* applyServeConfig({ resetPairing: false })
       const restarted = yield* access.pairing
-      expect(restarted.token).toBe(first.token)
-      expect(restarted.port).toBe(49152)
+      expect(restarted).toStrictEqual(first)
 
-      yield* applyServeConfig({ rotateToken: true })
-      const rotated = yield* access.pairing
-      expect(rotated.token).not.toBe(first.token)
-      expect(access.authenticate(first.token)).toBe(false)
-      expect(access.authenticate(rotated.token)).toBe(true)
-      expect(yield* Secrets.use((service) => service.has("remote.token"))).toBe(true)
+      yield* applyServeConfig({ resetPairing: true })
+      const reset = yield* access.pairing
+      expect(reset.key).not.toBe(first.key)
+      expect(reset.secret).not.toBe(first.secret)
+      expect(yield* Secrets.use((service) => service.has("remote.token"))).toBe(false)
     }).pipe(Effect.provide(testLayer)),
   )
 
   it.effect("without --host, listens on private networks and then keeps the address it was given", () =>
     Effect.gen(function* () {
-      yield* applyServeConfig({ rotateToken: false })
+      yield* applyServeConfig({ resetPairing: false })
       expect((yield* Settings.use((service) => service.get)).remote.bindHost).toBe(PRIVATE_NETWORKS)
-      yield* applyServeConfig({ rotateToken: false, bindHost: "100.64.0.2" })
-      yield* applyServeConfig({ rotateToken: false })
+      yield* applyServeConfig({ resetPairing: false, bindHost: "100.64.0.2" })
+      yield* applyServeConfig({ resetPairing: false })
       expect((yield* Settings.use((service) => service.get)).remote.bindHost).toBe("100.64.0.2")
     }).pipe(Effect.provide(testLayer)),
   )

@@ -200,6 +200,14 @@ export const renameEnvironmentAtom = Atom.fn((input: RpcRequest<"environments.re
 
 export const reconnectEnvironmentAtom = Atom.fn((id: string) => call("environments.reconnect", { id }))
 
+export const confirmHostAtom = Atom.fn((input: RpcRequest<"environments.confirmHost">) =>
+  call("environments.confirmHost", input).pipe(Effect.tap(() => Atom.refresh(environmentsAtom))),
+)
+
+export const repairEnvironmentAtom = Atom.fn((id: string) =>
+  call("environments.repair", { id }).pipe(Effect.tap(() => Atom.refresh(environmentsAtom))),
+)
+
 export const relayAccountAtom = Atom.make(call("relayAccount.status", undefined))
 
 const relayAccountAction = <A>(effect: Effect.Effect<A, RpcError>) =>
@@ -661,8 +669,29 @@ export const machineResourcesAtom = Atom.family((environment: EnvironmentId) =>
 
 export const remotePairingAtom = Atom.make((get) => {
   get(settingsAtom(null))
+  get.addFinalizer(onPushEvent((event) => event.type === "remote.devices.changed" && get.refreshSelf()))
   return call("remote.pairing", undefined)
 })
+
+export const remoteDevicesAtom = Atom.make((get) => {
+  get.addFinalizer(onPushEvent((event) => event.type === "remote.devices.changed" && get.refreshSelf()))
+  return call("remote.devices", undefined)
+}).pipe(refreshInStepWhileVisible(Duration.seconds(5)))
+
+export const approveRemoteDeviceAtom = Atom.fn((code: string) =>
+  call("remote.devices.approve", { code }).pipe(Effect.tap(() => Atom.refresh(remoteDevicesAtom))),
+)
+
+export const removeRemoteDeviceAtom = Atom.fn((key: string) =>
+  call("remote.devices.remove", { key }).pipe(Effect.tap(() => Atom.refresh(remoteDevicesAtom))),
+)
+
+export const resetPairingAtom = Atom.fn(() =>
+  call("remote.resetPairing", undefined).pipe(
+    Effect.tap(() => Atom.refresh(remotePairingAtom)),
+    Effect.tap(() => Atom.refresh(remoteDevicesAtom)),
+  ),
+)
 
 export const networkAddressesAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("network.addresses", undefined, { environment })),

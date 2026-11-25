@@ -12,7 +12,8 @@ export const planRelaySync = <E extends SyncedEntry>(
   selfId: string | null,
 ) => {
   const upsert = machines.filter(
-    (machine) => machine.environmentId !== selfId && parsePairingUrl(pairingUrl(machine.pairing)) !== null,
+    (machine) =>
+      machine.environmentId !== selfId && parsePairingUrl(pairingUrl({ ...machine.pairing, secret: null })) !== null,
   )
   const listed = new Set(upsert.map((machine) => machine.environmentId))
   const drop = entries.filter(

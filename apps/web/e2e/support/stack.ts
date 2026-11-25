@@ -9,6 +9,8 @@ import { join, resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { DatabaseSync } from "node:sqlite"
 import { preview } from "vite"
+import { remoteClient } from "../../../../src/main/remote/testing.ts"
+import { encodeKey, generateKeyPair } from "../../../../src/shared/noise.ts"
 import type { RelayMachine } from "../../../../src/shared/relayMachines.ts"
 import { type PairingTarget, parsePairingUrl } from "../../../../src/shared/remote.ts"
 
@@ -100,6 +102,28 @@ export const startMachine = async (name: string): Promise<Machine> => {
     stop: () => stopServe(current.child),
   }
 }
+
+export interface TrustedBrowser {
+  readonly deviceKey: string
+  readonly hostKeys: Readonly<Record<string, string>>
+}
+
+export const enrollBrowser = async (machine: Machine): Promise<TrustedBrowser> => {
+  const { port, key, secret } = machine.pairing
+  if (secret === null) throw new Error("hinacode serve printed a pairing URL without a secret")
+  const device = generateKeyPair()
+  const client = remoteClient(port, key, { device })
+  await client.hello({ name: "Web E2E browser", secret })
+  await client.ready()
+  client.socket.close()
+  return { deviceKey: encodeKey(device.secretKey), hostKeys: { [machine.environmentId]: key } }
+}
+
+export const approveDevice = (machine: Machine, code: string) =>
+  execFileSync(process.execPath, ["bin/hinacode.mjs", "devices", "approve", code], {
+    cwd: repoRoot,
+    env: serveEnv(machine.userData),
+  })
 
 export const closeMachine = async (machine: Machine) => {
   await machine.stop()

@@ -38,6 +38,9 @@ const listeningOn = (bindHost: string): Settings => ({
 let settingsOf: Record<string, Settings> = {}
 let relayOf: Record<string, RelayStatus> = {}
 let saved: Array<{ machine: string; remote: unknown }> = []
+let deviceCalls: Array<{ method: string; payload: unknown }> = []
+
+const PIXEL = { key: "pixel-key", name: "Pixel", createdAt: 1_763_000_000_000, lastSeenAt: null, connected: true }
 
 const THIS_MACHINE = "this machine"
 
@@ -59,7 +62,26 @@ const bridge: HinacodeBridge = {
         result: environment === AGENT ? [{ name: "tailscale0", address: TAILSCALE }] : [],
       }
     if (method === "remote.pairing")
-      return { result: { hosts: ["192.168.1.2"], port: 48081, token: "token", relay: null } }
+      return {
+        result: {
+          hosts: ["192.168.1.2"],
+          port: 48081,
+          relay: null,
+          key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          secret: "secret",
+        },
+      }
+    if (method === "remote.devices") return { result: { devices: [PIXEL], waiting: 1 } }
+    if (method === "remote.devices.remove") {
+      deviceCalls.push({ method, payload })
+      return { result: undefined } as never
+    }
+    if (method === "remote.devices.approve") {
+      deviceCalls.push({ method, payload })
+      return (payload as { code: string }).code === "K7Q-F2M"
+        ? { result: { ...PIXEL, key: "tablet-key", name: "Tablet" } }
+        : { error: { tag: "NoWaitingDeviceError", message: "No waiting device shows that code" } }
+    }
     if (method === "relayAccount.status") return { result: { state: "signedOut" } }
     if (method === "updates.status") return { result: { current: "1.0.0", state: { type: "idle" } } }
     if (method === "updates.check") return { result: undefined }
@@ -77,6 +99,7 @@ beforeEach(async () => {
   settingsOf = { [THIS_MACHINE]: listeningOn("private"), [AGENT]: listeningOn(TAILSCALE) }
   relayOf = { [THIS_MACHINE]: { state: "off" }, [AGENT]: { state: "off" } }
   saved = []
+  deviceCalls = []
 })
 
 const openConnections = async (environment?: string) => {
@@ -169,4 +192,37 @@ test("without a relay, the address this device dials is saved at once", async ()
 
   await expect.poll(() => saved).toEqual([{ machine: AGENT, remote: { bindHost: TAILSCALE } }])
   expect(page.getByRole("alertdialog").query()).toBeNull()
+})
+
+test("removing a trusted device asks first, then removes it by its key", async () => {
+  await openConnections()
+  const devices = page.getByRole("region", { name: "Devices" })
+  await expect.element(devices.getByText("Pixel")).toBeVisible()
+
+  await devices.getByRole("button", { name: "Remove Pixel" }).click()
+  const dialog = page.getByRole("alertdialog", { name: "Remove Pixel?" })
+  await expect.element(dialog).toBeVisible()
+  expect(deviceCalls).toEqual([])
+
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click()
+  await expect.poll(() => deviceCalls).toEqual([{ method: "remote.devices.remove", payload: { key: "pixel-key" } }])
+})
+
+test("the code a waiting device shows approves it, and a code no device shows says so", async () => {
+  await openConnections()
+  const devices = page.getByRole("region", { name: "Devices" })
+  await expect.element(devices.getByText("1 device is waiting")).toBeVisible()
+  const code = devices.getByRole("textbox", { name: "Approve a device" })
+
+  await code.fill("AAA-AAA")
+  await devices.getByRole("button", { name: "Approve", exact: true }).click()
+  await expect.element(devices.getByText("No waiting device shows that code.")).toBeVisible()
+
+  await code.fill("K7Q-F2M")
+  await devices.getByRole("button", { name: "Approve", exact: true }).click()
+  await expect.element(devices.getByText("Tablet can now control this machine.")).toBeVisible()
+  expect(deviceCalls).toEqual([
+    { method: "remote.devices.approve", payload: { code: "AAA-AAA" } },
+    { method: "remote.devices.approve", payload: { code: "K7Q-F2M" } },
+  ])
 })

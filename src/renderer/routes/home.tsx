@@ -5,6 +5,7 @@ import { type ReactNode, useEffect, useId } from "react"
 import type { AgentAccount, ProviderId } from "../../shared/agent.ts"
 import { enabledProviders } from "../../shared/domain.ts"
 import { ChordKeys } from "../components/ChordKeys.tsx"
+import { MachineApprovalNotices } from "../components/CloudNotice.tsx"
 import { ProviderIcon, providerLabel, providerSignInHint } from "../components/ProviderIcon.tsx"
 import { Button } from "../components/ui/button.tsx"
 import { Skeleton } from "../components/ui/skeleton.tsx"
@@ -97,6 +98,7 @@ export function HomeRoute() {
         <h1 className="font-heading text-2xl font-semibold">{m.app_name()}</h1>
         <p className="text-sm text-balance text-muted-foreground">{m.home_description()}</p>
       </div>
+      <MachineApprovalNotices className="flex w-full flex-col text-left" />
       {firstRun ? (
         <GetStarted
           hasProject={projects.some((project) => project.kind === "folder")}

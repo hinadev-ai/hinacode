@@ -1,8 +1,22 @@
+import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { TRANSCRIPT_PAGE_BYTES } from "./compactTranscript.ts"
-import { clientProof, serverProof } from "./proof.ts"
+import type { HostApproval, HostRefusal } from "./domain.ts"
 import {
-  CHALLENGE_WAIT_MS,
+  approvalCode,
+  type Channel,
+  commitment,
+  encodeKey,
+  generateKeyPair,
+  type KeyPair,
+  newNonce,
+  REMOTE_PROLOGUE,
+  respond,
+} from "./noise.ts"
+import {
+  CLOSE_HANDSHAKE_FAILED,
+  CLOSE_PAIRING_RESET,
+  CLOSE_UNAUTHORIZED,
   DIRECT_CHECK_INTERVAL_MS,
   DIRECT_CHECK_TIMEOUT_MS,
   type Dial,
@@ -11,8 +25,6 @@ import {
   TAILSCALE_DELAY_MS,
 } from "./remote.ts"
 import {
-  CLOSE_TOKEN_ROTATED,
-  CLOSE_UNAUTHORIZED,
   CONNECT_TIMEOUT_MS,
   type SocketLike,
   Transport,
@@ -21,7 +33,9 @@ import {
   IDLE_TIMEOUT_MS,
 } from "./transport.ts"
 
-const TOKEN = "secret"
+const HOST = generateKeyPair()
+const DEVICE = generateKeyPair()
+const SECRET = "pairing-secret"
 
 const MESSAGES: TransportMessages = {
   notSent: "not sent",
@@ -29,20 +43,26 @@ const MESSAGES: TransportMessages = {
   lostReply: "lost reply",
   disconnected: "disconnected",
   notConnected: "not connected",
-  tokenRotated: "token rotated",
-  tokenRefused: "token refused",
+  refusal: (refusal) => `refusal ${refusal}`,
   protocolMismatch: (server, client) => `protocol ${server} vs ${client}`,
 }
 
 const jumpClock = (ms: number) => vi.setSystemTime(vi.getMockedSystemTime()!.getTime() + ms)
 
+const utf8 = new TextDecoder()
+
+const arrayBuffer = (bytes: Uint8Array) => bytes.slice().buffer
+
 class FakeSocket implements SocketLike {
+  binaryType = "blob"
   onopen: (() => void) | null = null
   onmessage: ((message: { data: unknown }) => void) | null = null
   onclose: ((event: { code: number }) => void) | null = null
+  readonly raw: unknown[] = []
   readonly sent: Record<string, unknown>[] = []
   closed = false
-  serverNonce: string | undefined
+  channel: Channel | null = null
+  serverNonce: Uint8Array | null = null
 
   readonly url: string
 
@@ -50,8 +70,9 @@ class FakeSocket implements SocketLike {
     this.url = url
   }
 
-  send(data: string) {
-    this.sent.push(JSON.parse(data))
+  send(data: Uint8Array) {
+    this.raw.push(data)
+    if (this.channel !== null) this.sent.push(JSON.parse(utf8.decode(this.channel.decrypt(data))))
   }
   close() {
     this.closed = true
@@ -60,20 +81,38 @@ class FakeSocket implements SocketLike {
   open() {
     this.onopen?.()
   }
-  challenge(nonce = "server-nonce") {
-    this.serverNonce = nonce
-    this.receive({ type: "challenge", nonce })
+  answer(host: KeyPair = HOST) {
+    this.onmessage?.({ data: JSON.stringify({ type: "challenge", nonce: "legacy-nonce" }) })
+    if (this.raw.length === 0) return
+    const responder = respond({ prologue: REMOTE_PROLOGUE, local: host, message: this.raw[0] as Uint8Array })
+    const { message, channel } = responder.reply(new Uint8Array(0))
+    this.channel = channel
+    this.onmessage?.({ data: arrayBuffer(message) })
   }
-  ready(features: readonly string[] = ["heartbeat", "call-keys", "terminal-attach"], version = 1) {
-    const auth = this.sent.find((frame) => frame.type === "auth")
-    const proof =
-      typeof auth?.nonce === "string" && this.serverNonce !== undefined
-        ? { proof: serverProof(TOKEN, auth.nonce, this.serverNonce) }
-        : {}
-    this.receive({ type: "ready", version, features, ...proof })
+  impersonate() {
+    this.onmessage?.({ data: JSON.stringify({ type: "challenge", nonce: "legacy-nonce" }) })
+    this.onmessage?.({ data: arrayBuffer(generateKeyPair().secretKey.slice(0, 48)) })
+  }
+  hello() {
+    return this.sent.find((frame) => frame.type === "hello")
+  }
+  pend() {
+    this.serverNonce = newNonce()
+    this.receive({ type: "pending", commitment: bytesToHex(commitment(this.serverNonce)) })
+  }
+  reveal(nonce = this.serverNonce!) {
+    this.receive({ type: "approval", nonce: bytesToHex(nonce) })
+  }
+  code() {
+    const sent = this.sent.find((frame) => frame.type === "approval")!
+    return approvalCode(this.channel!.handshakeHash, hexToBytes(sent.nonce as string), this.serverNonce!)
+  }
+  ready(features: readonly string[] = ["heartbeat", "call-keys", "terminal-attach"], version = 2) {
+    this.receive({ type: "ready", version, features })
   }
   receive(frame: unknown) {
-    this.onmessage?.({ data: JSON.stringify(frame) })
+    if (this.channel === null) return
+    this.onmessage?.({ data: arrayBuffer(this.channel!.encrypt(utf8ToBytes(JSON.stringify(frame)))) })
   }
   result(id: unknown, result: unknown = null) {
     this.receive({ type: "result", id, envelope: { result } })
@@ -93,30 +132,59 @@ const MUTATIONS = new Set(["threads.send", "approvals.respond"])
 
 let sockets: FakeSocket[]
 let statuses: TransportStatus[]
+let errors: (string | null)[]
+let refusals: (HostRefusal | null)[]
+let approvals: (HostApproval | null)[]
+let secretUsed: number
+let verified: number
 let ready: number
 let received: number
 let keys: number
-let plan: readonly Dial[] = []
 
 const direct = (url: string): Dial => ({ url, route: "direct", delayMs: 0 })
 const relay = (url: string): Dial => ({ url, route: "relay", delayMs: RELAY_DELAY_MS })
 
-function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote")], { compact = true } = {}) {
+interface Pairing {
+  readonly compact?: boolean
+  readonly hostKey?: string | null
+  readonly secret?: string | null
+  readonly verified?: boolean
+}
+
+function setup(
+  dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote")],
+  { compact = true, hostKey = encodeKey(HOST.publicKey), secret = null, verified: pinned = true }: Pairing = {},
+) {
   sockets = []
   statuses = []
+  errors = []
+  refusals = []
+  approvals = []
+  secretUsed = 0
+  verified = 0
   ready = 0
   received = 0
   keys = 0
-  plan = dials
   const transport = new Transport({
     dials,
-    token: TOKEN,
+    hostKey,
+    device: DEVICE,
+    name: "Pixel",
+    secret,
+    verified: pinned,
     messages: MESSAGES,
     compact,
     isMutation: (method) => MUTATIONS.has(method),
-    onStatus: (status) => statuses.push(status),
+    onStatus: (status, error, refusal) => {
+      statuses.push(status)
+      errors.push(error)
+      refusals.push(refusal)
+    },
     onReady: () => ready++,
     onEvent: () => received++,
+    onSecretUsed: () => secretUsed++,
+    onApproval: (approval) => approvals.push(approval),
+    onVerified: () => verified++,
     createSocket: (url) => {
       const socket = new FakeSocket(url)
       sockets.push(socket)
@@ -130,11 +198,22 @@ function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote"
 }
 
 const latest = () => sockets.at(-1)!
+const socketAt = (url: string) => sockets.findLast((socket) => socket.url === url)!
+const urls = () => sockets.map((socket) => socket.url)
 
 function handshake(features?: readonly string[]) {
   latest().open()
-  latest().challenge()
+  latest().answer()
   latest().ready(features)
+}
+
+function awaitCode(options: Pairing = {}) {
+  const transport = setup(undefined, options)
+  latest().open()
+  latest().answer()
+  latest().pend()
+  latest().reveal()
+  return transport
 }
 
 function track<T>(promise: Promise<T>) {
@@ -149,47 +228,32 @@ function track<T>(promise: Promise<T>) {
 beforeEach(() => {
   vi.useFakeTimers()
   sockets = []
-  plan = []
 })
 afterEach(() => {
   vi.useRealTimers()
-  if (!plan.some((dial) => dial.route === "relay")) return
-  const directUrls = new Set(plan.filter((dial) => dial.route === "direct").map((dial) => dial.url))
-  for (const socket of sockets.filter((socket) => directUrls.has(socket.url)))
-    expect(JSON.stringify(socket.sent)).not.toContain(TOKEN)
+  for (const socket of sockets) expect(socket.raw.every((data) => data instanceof Uint8Array)).toBe(true)
+  for (const socket of sockets) expect(socket.binaryType).toBe("arraybuffer")
 })
 
 describe("Transport", () => {
-  it("requests compact events with its proof and connects on a ready that proves the token back", () => {
+  it("opens with the handshake, says hello with compact events, and connects on ready", () => {
     setup()
     expect(statuses).toEqual(["connecting"])
     latest().open()
-    expect(latest().sent).toEqual([])
-    latest().challenge("server-nonce")
-    const [auth] = latest().sent
-    expect(auth).toEqual({ type: "auth", nonce: expect.any(String), proof: expect.any(String), compactEvents: true })
-    expect(auth!.proof).toBe(clientProof(TOKEN, "server-nonce", auth!.nonce as string))
-    expect(JSON.stringify(latest().sent)).not.toContain(TOKEN)
+    expect(latest().raw).toHaveLength(1)
+    latest().answer()
+    expect(latest().sent).toEqual([{ type: "hello", name: "Pixel", compactEvents: true }])
     expect(statuses.at(-1)).toBe("connecting")
     latest().ready()
     expect(statuses.at(-1)).toBe("connected")
     expect(ready).toBe(1)
   })
 
-  it("leaves compact events out of its proof when not compact", () => {
+  it("leaves compact events out of its hello when not compact", () => {
     setup(undefined, { compact: false })
     latest().open()
-    latest().challenge("server-nonce")
-    expect(latest().sent).toEqual([{ type: "auth", nonce: expect.any(String), proof: expect.any(String) }])
-    latest().ready()
-    expect(statuses.at(-1)).toBe("connected")
-  })
-
-  it("leaves compact events out of a raw token when not compact", async () => {
-    setup(undefined, { compact: false })
-    latest().open()
-    await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS)
-    expect(latest().sent).toEqual([{ type: "auth", token: TOKEN }])
+    latest().answer()
+    expect(latest().sent).toEqual([{ type: "hello", name: "Pixel" }])
   })
 
   it("queues a call made while connecting and sends it after ready", async () => {
@@ -366,13 +430,20 @@ describe("Transport", () => {
       sockets = []
       const transport = new Transport({
         dials: [direct("ws://desktop/remote")],
-        token: "secret",
+        hostKey: encodeKey(HOST.publicKey),
+        device: DEVICE,
+        name: "Pixel",
+        secret: null,
+        verified: true,
         messages: MESSAGES,
         compact: true,
         isMutation: () => false,
         onStatus: () => {},
         onReady: () => {},
         onEvent: () => {},
+        onSecretUsed: () => {},
+        onApproval: () => {},
+        onVerified: () => {},
         createSocket: (url) => {
           const socket = new FakeSocket(url)
           sockets.push(socket)
@@ -395,20 +466,21 @@ describe("Transport", () => {
       expect(sockets).toHaveLength(2)
     })
 
-    it.each([CLOSE_UNAUTHORIZED, CLOSE_TOKEN_ROTATED])(
-      "stops after close code %i and fails pending calls",
-      async (code) => {
-        const transport = setup()
-        const send = track(transport.call("threads.send", {}))
-        latest().open()
-        latest().challenge()
-        latest().drop(code)
-        await vi.advanceTimersByTimeAsync(60_000)
-        expect(sockets).toHaveLength(1)
-        expect(statuses.at(-1)).toBe("unauthorized")
-        expect(send.error).toMatchObject({ tag: "Unauthorized" })
-      },
-    )
+    it.each([
+      [CLOSE_UNAUTHORIZED, "removed"],
+      [CLOSE_PAIRING_RESET, "reset"],
+    ] as const)("stops after close code %i on a live link and fails pending calls", async (code, refusal) => {
+      const transport = setup()
+      handshake()
+      const send = track(transport.call("threads.send", {}))
+      latest().drop(code)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(sockets).toHaveLength(1)
+      expect(statuses.at(-1)).toBe("unauthorized")
+      expect(refusals.at(-1)).toBe(refusal)
+      expect(errors.at(-1)).toBe(`refusal ${refusal}`)
+      expect(send.error).toMatchObject({ tag: "Unauthorized" })
+    })
   })
 
   describe("heartbeat", () => {
@@ -702,12 +774,12 @@ describe("Transport", () => {
       const transport = setup()
       const read = track(transport.call("threads.list", undefined))
       latest().open()
-      latest().challenge()
-      latest().ready([], 2)
+      latest().answer()
+      latest().ready([], 3)
       await vi.advanceTimersByTimeAsync(60_000)
       expect(statuses.at(-1)).toBe("unauthorized")
       expect(sockets).toHaveLength(1)
-      expect(read.error).toMatchObject({ tag: "Unauthorized", message: "protocol 2 vs 1" })
+      expect(read.error).toMatchObject({ tag: "Unauthorized", message: "protocol 3 vs 2" })
     })
   })
 
@@ -715,14 +787,12 @@ describe("Transport", () => {
     const TAILSCALE = "ws://100.64.0.2:47821/remote"
     const LAN = "ws://192.168.1.5:47821/remote"
     const RELAY = "wss://mac.example.com/remote"
-    const socketAt = (url: string) => sockets.findLast((socket) => socket.url === url)!
-    const urls = () => sockets.map((socket) => socket.url)
 
     async function connectOverRelay() {
       const transport = setup([direct(LAN), relay(RELAY)])
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
       socketAt(RELAY).open()
-      socketAt(RELAY).challenge()
+      socketAt(RELAY).answer()
       socketAt(RELAY).ready(["call-keys"])
       return transport
     }
@@ -749,7 +819,7 @@ describe("Transport", () => {
       setup(dialPlan({ hosts: ["100.64.0.2", "192.168.1.5"], port: 47821, relay: "mac.example.com" }))
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
       socketAt(RELAY).open()
-      socketAt(RELAY).challenge()
+      socketAt(RELAY).answer()
       socketAt(RELAY).ready(["call-keys"])
       await vi.advanceTimersByTimeAsync(DIRECT_CHECK_INTERVAL_MS)
       const dialedBefore = sockets.length
@@ -766,13 +836,11 @@ describe("Transport", () => {
       socketAt(LAN).open()
       socketAt(RELAY).open()
       socketAt(TAILSCALE).open()
-      socketAt(LAN).challenge()
-      expect(socketAt(LAN).sent).toEqual([
-        { type: "auth", nonce: expect.any(String), proof: expect.any(String), compactEvents: true },
-      ])
+      socketAt(LAN).answer()
+      expect(socketAt(LAN).sent).toEqual([{ type: "hello", name: "Pixel", compactEvents: true }])
       for (const url of [TAILSCALE, RELAY]) {
         expect(socketAt(url).closed).toBe(true)
-        expect(socketAt(url).sent).toEqual([])
+        expect(socketAt(url).raw).toEqual([])
       }
       socketAt(LAN).ready()
       expect(statuses.at(-1)).toBe("connected")
@@ -782,12 +850,10 @@ describe("Transport", () => {
       setup([direct(LAN), relay(RELAY)])
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
       socketAt(RELAY).open()
-      socketAt(RELAY).challenge()
+      socketAt(RELAY).answer()
       expect(socketAt(LAN).closed).toBe(true)
-      expect(socketAt(LAN).sent).toEqual([])
-      expect(socketAt(RELAY).sent).toEqual([
-        { type: "auth", nonce: expect.any(String), proof: expect.any(String), compactEvents: true },
-      ])
+      expect(socketAt(LAN).raw).toEqual([])
+      expect(socketAt(RELAY).sent).toEqual([{ type: "hello", name: "Pixel", compactEvents: true }])
     })
 
     it("waits for the relay when a direct address closes first", async () => {
@@ -796,7 +862,7 @@ describe("Transport", () => {
       expect(statuses.at(-1)).toBe("connecting")
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
       socketAt(RELAY).open()
-      socketAt(RELAY).challenge()
+      socketAt(RELAY).answer()
       socketAt(RELAY).ready()
       expect(statuses.at(-1)).toBe("connected")
     })
@@ -820,11 +886,10 @@ describe("Transport", () => {
       expect(statuses.at(-1)).toBe("offline")
     })
 
-    it("stops on a refused token instead of trying the other addresses", async () => {
+    it("stops on a failed handshake instead of trying the other addresses when there is no relay", async () => {
       setup([direct(TAILSCALE), direct(LAN)])
       socketAt(TAILSCALE).open()
-      socketAt(TAILSCALE).challenge()
-      socketAt(TAILSCALE).drop(CLOSE_UNAUTHORIZED)
+      socketAt(TAILSCALE).drop(CLOSE_HANDSHAKE_FAILED)
       await vi.advanceTimersByTimeAsync(60_000)
       expect(urls()).toEqual([TAILSCALE, LAN])
       expect(statuses.at(-1)).toBe("unauthorized")
@@ -842,7 +907,7 @@ describe("Transport", () => {
 
       check.open()
       expect(check.closed).toBe(true)
-      expect(check.sent).toEqual([])
+      expect(check.raw).toEqual([])
       expect(socketAt(RELAY).closed).toBe(true)
       expect(latest()).not.toBe(check)
       expect(latest().url).toBe(LAN)
@@ -894,17 +959,14 @@ describe("Transport", () => {
       expect(socketAt(RELAY).closed).toBe(true)
       expect(latest().url).toBe(LAN)
       latest().open()
-      latest().challenge()
-      expect(latest().sent).toEqual([
-        { type: "auth", nonce: expect.any(String), proof: expect.any(String), compactEvents: true },
-      ])
+      latest().answer()
+      expect(latest().hello()).toEqual({ type: "hello", name: "Pixel", compactEvents: true })
     })
 
-    it("races the relay alone when a direct address refuses the token, until the network changes", async () => {
+    it("races the relay alone when a direct address fails the handshake, until the network changes", async () => {
       const transport = setup([direct(LAN), relay(RELAY)])
       socketAt(LAN).open()
-      socketAt(LAN).challenge()
-      socketAt(LAN).drop(CLOSE_UNAUTHORIZED)
+      socketAt(LAN).drop(CLOSE_HANDSHAKE_FAILED)
       expect(urls()).toEqual([LAN, RELAY])
       handshake(["call-keys"])
       expect(statuses).not.toContain("unauthorized")
@@ -921,7 +983,6 @@ describe("Transport", () => {
       const transport = await connectOverRelay()
       transport.networkChanged()
       latest().open()
-      latest().challenge()
       latest().drop()
       expect(urls()).toEqual([LAN, RELAY, LAN, RELAY])
       handshake(["call-keys"])
@@ -931,7 +992,7 @@ describe("Transport", () => {
     it("races the relay alone when a direct address never says ready", async () => {
       setup([direct(LAN), relay(RELAY)])
       socketAt(LAN).open()
-      socketAt(LAN).challenge()
+      socketAt(LAN).answer()
       await vi.advanceTimersByTimeAsync(CONNECT_TIMEOUT_MS)
       expect(socketAt(LAN).closed).toBe(true)
       expect(urls()).toEqual([LAN, RELAY])
@@ -939,15 +1000,16 @@ describe("Transport", () => {
       expect(statuses.at(-1)).toBe("connected")
     })
 
-    it("stops when the relay refuses the token", async () => {
+    it("stops with the refused message when the relay fails the handshake", async () => {
       setup([direct(LAN), relay(RELAY)])
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
       socketAt(RELAY).open()
-      socketAt(RELAY).challenge()
-      socketAt(RELAY).drop(CLOSE_UNAUTHORIZED)
+      socketAt(RELAY).drop(CLOSE_HANDSHAKE_FAILED)
       await vi.advanceTimersByTimeAsync(60_000)
       expect(urls()).toEqual([LAN, RELAY])
       expect(statuses.at(-1)).toBe("unauthorized")
+      expect(refusals.at(-1)).toBe("refused")
+      expect(errors.at(-1)).toBe("refusal refused")
     })
 
     it("dials only the direct addresses in the round after a direct check answers", async () => {
@@ -985,25 +1047,29 @@ describe("Transport", () => {
     })
   })
 
-  describe("proving the token", () => {
+  describe("the pinned host key", () => {
     const LAN = "ws://192.168.1.5:47821/remote"
     const RELAY = "wss://mac.example.com/remote"
-    const socketAt = (url: string) => sockets.findLast((socket) => socket.url === url)!
-    const urls = () => sockets.map((socket) => socket.url)
 
-    it.each([
-      ["a wrong proof", (socket: FakeSocket) => socket.receive({ type: "ready", version: 1, proof: "00" })],
-      ["no proof", (socket: FakeSocket) => socket.receive({ type: "ready", version: 1 })],
-    ])("races the relay alone when a direct ready carries %s", (_, answer) => {
+    it("never dials a pairing that has no key", async () => {
+      const transport = setup([direct(LAN), relay(RELAY)], { hostKey: null })
+      transport.networkChanged()
+      transport.reconnectNow()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(sockets).toEqual([])
+      expect(statuses).toEqual(["unauthorized"])
+      expect(refusals).toEqual(["predates"])
+      expect(errors).toEqual(["refusal predates"])
+    })
+
+    it("races the relay alone when a direct address answers with another key", () => {
       const transport = setup([direct(LAN), relay(RELAY)])
       const read = track(transport.call("threads.list", undefined))
       socketAt(LAN).open()
-      socketAt(LAN).challenge()
-      answer(socketAt(LAN))
+      socketAt(LAN).impersonate()
       expect(socketAt(LAN).closed).toBe(true)
-      expect(socketAt(LAN).calls()).toEqual([])
+      expect(socketAt(LAN).sent).toEqual([])
       expect(urls()).toEqual([LAN, RELAY])
-      expect(statuses).not.toContain("connected")
       expect(statuses).not.toContain("unauthorized")
 
       handshake()
@@ -1011,62 +1077,164 @@ describe("Transport", () => {
       expect(read).toEqual({})
     })
 
-    it("races the relay alone when a direct address says ready without a challenge", () => {
-      setup([direct(LAN), relay(RELAY)])
-      socketAt(LAN).open()
-      socketAt(LAN).ready()
-      expect(socketAt(LAN).closed).toBe(true)
-      expect(urls()).toEqual([LAN, RELAY])
-      expect(statuses).not.toContain("connected")
-    })
-
-    it("stops when the relay's ready proves a different token", () => {
+    it("stops with the refused message when the relay answers with another key", () => {
       setup([direct(LAN), relay(RELAY)])
       vi.advanceTimersByTime(RELAY_DELAY_MS)
       socketAt(RELAY).open()
-      socketAt(RELAY).challenge()
-      socketAt(RELAY).receive({ type: "ready", version: 1, proof: "00" })
+      socketAt(RELAY).impersonate()
       expect(socketAt(RELAY).closed).toBe(true)
+      expect(socketAt(RELAY).sent).toEqual([])
       expect(statuses.at(-1)).toBe("unauthorized")
+      expect(refusals.at(-1)).toBe("refused")
     })
 
-    it("sends nothing to a direct address that does not challenge, and races the relay alone", async () => {
+    it("handles a close after the handshake by its code, never as a stranger at the address", async () => {
       setup([direct(LAN), relay(RELAY)])
       socketAt(LAN).open()
-      await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS - 1)
-      expect(socketAt(LAN).sent).toEqual([])
-      expect(urls()).toEqual([LAN])
-      await vi.advanceTimersByTimeAsync(1)
-      expect(socketAt(LAN).sent).toEqual([])
-      expect(socketAt(LAN).closed).toBe(true)
-      expect(urls()).toEqual([LAN, RELAY])
-      expect(statuses).not.toContain("unauthorized")
+      socketAt(LAN).answer()
+      socketAt(LAN).drop()
+      expect(statuses.at(-1)).toBe("offline")
+      await vi.advanceTimersByTimeAsync(500)
+      expect(urls()).toEqual([LAN, LAN])
+    })
 
+    it("closes and redials when a frame fails to decrypt", async () => {
+      setup()
       handshake()
-      expect(statuses.at(-1)).toBe("connected")
+      latest().onmessage?.({ data: new Uint8Array(64).buffer })
+      expect(latest().closed).toBe(true)
+      expect(statuses.at(-1)).toBe("offline")
+      await vi.advanceTimersByTimeAsync(500)
+      expect(sockets).toHaveLength(2)
     })
 
-    it("sends the token to a relay that does not challenge", async () => {
-      setup([direct(LAN), relay(RELAY)])
-      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
-      socketAt(RELAY).open()
-      await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS - 1)
-      expect(socketAt(RELAY).sent).toEqual([])
-      await vi.advanceTimersByTimeAsync(1)
-      expect(socketAt(RELAY).sent).toEqual([{ type: "auth", token: TOKEN, compactEvents: true }])
-      socketAt(RELAY).ready()
-      expect(statuses.at(-1)).toBe("connected")
-    })
-
-    it("sends the token to a direct address that does not challenge when the pairing has no relay", async () => {
-      setup([direct(LAN)])
+    it("sends the pairing secret until a ready uses it up", async () => {
+      setup(undefined, { secret: SECRET })
       latest().open()
-      await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS - 1)
-      expect(latest().sent).toEqual([])
-      await vi.advanceTimersByTimeAsync(1)
-      expect(latest().sent).toEqual([{ type: "auth", token: TOKEN, compactEvents: true }])
+      latest().answer()
+      expect(latest().hello()).toEqual({ type: "hello", name: "Pixel", secret: SECRET, compactEvents: true })
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(500)
+      handshake()
+      expect(sockets[1]!.hello()).toMatchObject({ secret: SECRET })
+      expect(secretUsed).toBe(1)
+
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(500)
+      latest().open()
+      latest().answer()
+      expect(latest().hello()).toEqual({ type: "hello", name: "Pixel", compactEvents: true })
+    })
+  })
+
+  describe("approval", () => {
+    it("shows the code both sides derive and keeps waiting past the connect timeout", async () => {
+      const transport = awaitCode()
+      expect(statuses.at(-1)).toBe("approval")
+      expect(approvals).toEqual([{ code: latest().code(), accepted: false }])
+      await vi.advanceTimersByTimeAsync(4 * 60_000)
+      expect(latest().closed).toBe(false)
+      expect(sockets).toHaveLength(1)
+
+      const read = track(transport.call("threads.list", undefined))
+      expect(latest().calls()).toEqual([])
       latest().ready()
       expect(statuses.at(-1)).toBe("connected")
+      expect(approvals.at(-1)).toBeNull()
+      expect(latest().calls()).toEqual([{ type: "call", id: 1, method: "threads.list" }])
+      expect(read).toEqual({})
+    })
+
+    it("passes on no event or result before the developer answers Yes", async () => {
+      const transport = awaitCode({ verified: false })
+      const read = track(transport.call("threads.list", undefined))
+      latest().receive({ type: "event", event: { type: "thread.removed", id: "t1" } })
+      latest().ready()
+      latest().receive({ type: "event", event: { type: "thread.removed", id: "t1" } })
+      latest().result(1, ["forged"])
+      await vi.advanceTimersByTimeAsync(0)
+      expect(received).toBe(0)
+      expect(read).toEqual({})
+
+      transport.confirmHost(true)
+      latest().receive({ type: "event", event: { type: "thread.removed", id: "t1" } })
+      expect(received).toBe(1)
+    })
+
+    it("asks to verify an unverified key, and sends calls only after the developer answers Yes", async () => {
+      const transport = awaitCode({ verified: false })
+      expect(latest().hello()).toMatchObject({ verify: true })
+      const read = track(transport.call("threads.list", undefined))
+      latest().ready()
+      expect(statuses.at(-1)).toBe("approval")
+      expect(approvals.at(-1)).toEqual({ code: latest().code(), accepted: true })
+      expect(latest().calls()).toEqual([])
+      expect(ready).toBe(0)
+
+      transport.confirmHost(true)
+      expect(verified).toBe(1)
+      expect(statuses.at(-1)).toBe("connected")
+      expect(approvals.at(-1)).toBeNull()
+      expect(latest().calls()).toEqual([{ type: "call", id: 1, method: "threads.list" }])
+      latest().result(1, [])
+      await vi.advanceTimersByTimeAsync(0)
+      expect(read.value).toEqual({ result: [] })
+
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(500)
+      latest().open()
+      latest().answer()
+      expect(latest().hello()).not.toHaveProperty("verify")
+    })
+
+    it("closes and stops as refused when the developer answers No", async () => {
+      const transport = awaitCode({ verified: false })
+      latest().ready()
+      transport.confirmHost(false)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(latest().closed).toBe(true)
+      expect(sockets).toHaveLength(1)
+      expect(verified).toBe(0)
+      expect(statuses.at(-1)).toBe("unauthorized")
+      expect(refusals.at(-1)).toBe("refused")
+    })
+
+    it("refuses an unverified key the machine admits without showing a code", () => {
+      setup(undefined, { verified: false })
+      latest().open()
+      latest().answer()
+      latest().ready()
+      expect(statuses.at(-1)).toBe("unauthorized")
+      expect(refusals.at(-1)).toBe("refused")
+    })
+
+    it("stops as refused when the machine reveals a nonce it did not commit to", () => {
+      setup([direct("ws://192.168.1.5:47821/remote"), relay("wss://mac.example.com/remote")])
+      latest().open()
+      latest().answer()
+      latest().pend()
+      latest().reveal(newNonce())
+      expect(approvals).toEqual([])
+      expect(statuses.at(-1)).toBe("unauthorized")
+      expect(refusals.at(-1)).toBe("refused")
+      expect(sockets).toHaveLength(1)
+    })
+
+    it("forgets the code when the link drops", async () => {
+      awaitCode()
+      latest().drop()
+      expect(approvals.at(-1)).toBeNull()
+      expect(statuses.at(-1)).toBe("offline")
+    })
+
+    it("stops as refused when the machine closes a request nobody approved", () => {
+      setup()
+      latest().open()
+      latest().answer()
+      latest().pend()
+      latest().drop(CLOSE_UNAUTHORIZED)
+      expect(statuses.at(-1)).toBe("unauthorized")
+      expect(refusals.at(-1)).toBe("refused")
     })
   })
 

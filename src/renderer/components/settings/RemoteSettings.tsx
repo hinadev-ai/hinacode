@@ -3,20 +3,26 @@ import { cn } from "cn"
 import { Effect } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
 import QRCode from "qrcode"
-import { type FormEvent, useId, useState, useTransition } from "react"
-import { PRIVATE_NETWORKS, type RemotePairing, type RemoteStatus } from "../../../shared/domain.ts"
+import { type FormEvent, useActionState, useId, useState, useTransition } from "react"
+import { PRIVATE_NETWORKS, type RemoteDevice, type RemotePairing, type RemoteStatus } from "../../../shared/domain.ts"
 import { isPortInUse, pairingUrl } from "../../../shared/remote.ts"
 import { type Cloud, cloudAddress, useCloud, useSettingsEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
+import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import {
-  callPromise,
+  approveRemoteDeviceAtom,
   type EnvironmentId,
+  remoteDevicesAtom,
   remotePairingAtom,
   remoteStatusAtom,
+  removeRemoteDeviceAtom,
+  resetPairingAtom,
   updateSettingsAtom,
 } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
+import { useNow } from "../../lib/useNow.ts"
 import { m } from "../../paraglide/messages.js"
+import { getLocale } from "../../paraglide/runtime.js"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +32,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "../ui/alert-dialog.tsx"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
@@ -81,6 +88,7 @@ export function RemoteSettings() {
       </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
       {onThisMachine && remote.enabled && <PairPhone />}
+      {onThisMachine && <DevicesSection />}
       {onThisMachine && <AppConnectionsSettings />}
     </>
   )
@@ -184,7 +192,6 @@ function ListenerSettings({ environment, remote, pending, onSave }: ListenerSett
             ? m.remote_bind_private_hint()
             : m.remote_bind_address_hint({ address: remote.bindHost })}
       </FieldDescription>
-      <FieldDescription>{m.remote_network_note()}</FieldDescription>
       {cloud !== undefined && (
         <AlertDialog open={unconfirmedHost !== null} onOpenChange={(open) => !open && setUnconfirmedHost(null)}>
           <AlertDialogContent>
@@ -297,7 +304,7 @@ function PairingSection() {
       </h3>
       {AsyncResult.builder(pairing)
         .onInitial(() => <p className="text-sm text-muted-foreground">{m.remote_pair_loading()}</p>)
-        .onSuccess((value) => <PairingDetails pairing={value} onRotated={refresh} />)
+        .onSuccess((value) => <PairingDetails pairing={value} />)
         .onError((cause) => (
           <div className="flex items-center gap-2">
             <p className="text-sm text-destructive">{m.remote_pair_failed({ message: errorMessage(cause) })}</p>
@@ -311,27 +318,9 @@ function PairingSection() {
   )
 }
 
-interface PairingDetailsProps {
-  readonly pairing: RemotePairing
-  readonly onRotated: () => void
-}
-
-function PairingDetails({ pairing, onRotated }: PairingDetailsProps) {
-  const [error, setError] = useState<string | null>(null)
-  const [pending, startTransition] = useTransition()
+function PairingDetails({ pairing }: { pairing: RemotePairing }) {
   const url = pairingUrl(pairing)
   const hostsId = useId()
-
-  const rotate = () =>
-    startTransition(async () => {
-      setError(null)
-      try {
-        await callPromise("remote.rotateToken", undefined)
-        onRotated()
-      } catch (cause) {
-        setError(errorMessage(cause))
-      }
-    })
 
   return (
     <div className="flex flex-col gap-4">
@@ -350,15 +339,49 @@ function PairingDetails({ pairing, onRotated }: PairingDetailsProps) {
       <Field className="min-w-0">
         <FieldLabel htmlFor="remote-pair-url">{m.remote_pair_url_label()}</FieldLabel>
         <CopyField id="remote-pair-url" value={url} copyLabel={m.remote_pair_url_copy()} />
-        <FieldDescription>{m.remote_pair_token_hint()}</FieldDescription>
+        <FieldDescription>{m.remote_pair_url_hint()}</FieldDescription>
       </Field>
-      <div className="flex flex-col items-start gap-2">
-        <Button variant="outline" disabled={pending} onClick={rotate}>
-          {m.remote_rotate()}
-        </Button>
-        <FieldDescription>{m.remote_rotate_hint()}</FieldDescription>
-        {error && <FieldError>{error}</FieldError>}
-      </div>
+      <ResetPairingButton />
+    </div>
+  )
+}
+
+function ResetPairingButton() {
+  const resetPairing = useAtomSet(resetPairingAtom, { mode: "promise" })
+  const [open, setOpen] = useState(false)
+  const [error, reset, isPending] = useActionState<string | null>(async () => {
+    try {
+      await resetPairing()
+    } catch (cause) {
+      return errorMessage(cause)
+    }
+    setOpen(false)
+    return null
+  }, null)
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogTrigger render={<Button variant="outline" />}>{m.remote_reset_pairing()}</AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{m.remote_reset_pairing_title()}</AlertDialogTitle>
+            <AlertDialogDescription>{m.remote_reset_pairing_hint()}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={isPending} action={reset}>
+              {m.remote_reset_pairing()}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <FieldDescription>{m.remote_reset_pairing_hint()}</FieldDescription>
     </div>
   )
 }
@@ -380,5 +403,144 @@ function PairingQrCode({ url }: { url: string }) {
         />
       )}
     </div>
+  )
+}
+
+function DevicesSection() {
+  const devices = useAtomValue(remoteDevicesAtom)
+  const headingId = useId()
+
+  return (
+    <section aria-labelledby={headingId} className={cn(settingsSurfaceClass, "flex flex-col gap-4 p-4")}>
+      <h3 id={headingId} className="text-sm font-medium">
+        {m.remote_devices_title()}
+      </h3>
+      <ApproveDeviceForm waiting={AsyncResult.isSuccess(devices) ? devices.value.waiting : 0} />
+      {AsyncResult.builder(devices)
+        .onSuccess(({ devices: trusted }) =>
+          trusted.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{m.remote_devices_empty()}</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-border">
+              {trusted.map((device) => (
+                <DeviceRow key={device.key} device={device} />
+              ))}
+            </ul>
+          ),
+        )
+        .onError((cause) => <FieldError>{errorMessage(cause)}</FieldError>)
+        .orElse(() => null)}
+    </section>
+  )
+}
+
+function ApproveDeviceForm({ waiting }: { waiting: number }) {
+  const approve = useAtomSet(approveRemoteDeviceAtom, { mode: "promise" })
+  const [code, setCode] = useState("")
+  const [outcome, setOutcome] = useState<{ approved: string } | { error: string } | null>(null)
+
+  const submit = async () => {
+    try {
+      const device = await approve(code.trim())
+      setCode("")
+      setOutcome({ approved: device.name })
+    } catch (cause) {
+      setOutcome({ error: errorMessage(cause) })
+    }
+  }
+
+  return (
+    <form onSubmit={(event) => event.preventDefault()} className="flex flex-col gap-2">
+      <Field className="min-w-0">
+        <FieldLabel htmlFor="remote-approve-code">{m.remote_approve_label()}</FieldLabel>
+        <div className="flex items-center gap-2">
+          <Input
+            id="remote-approve-code"
+            value={code}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(event) => setCode(event.target.value)}
+            className="w-36 font-mono uppercase"
+          />
+          <Button type="submit" variant="outline" disabled={code.trim() === ""} action={submit}>
+            {m.remote_approve_submit()}
+          </Button>
+        </div>
+        <FieldDescription>{m.remote_approve_hint()}</FieldDescription>
+      </Field>
+      {waiting > 0 && (
+        <p aria-live="polite" className="flex items-center gap-2 text-sm text-attention">
+          <StatusDot className="bg-attention" />
+          {m.remote_devices_waiting({ count: waiting })}
+        </p>
+      )}
+      {outcome !== null && "error" in outcome && <FieldError>{outcome.error}</FieldError>}
+      {outcome !== null && "approved" in outcome && (
+        <output className="text-sm text-success">{m.remote_approved({ name: outcome.approved })}</output>
+      )}
+    </form>
+  )
+}
+
+function DeviceRow({ device }: { device: RemoteDevice }) {
+  const remove = useAtomSet(removeRemoteDeviceAtom, { mode: "promise" })
+  const now = useNow()
+  const locale = getLocale()
+  const since = (millis: number) => formatRelativeTime(new Date(millis).toISOString(), now, locale)
+  const [open, setOpen] = useState(false)
+  const [error, confirmRemove, isPending] = useActionState<string | null>(async () => {
+    try {
+      await remove(device.key)
+    } catch (cause) {
+      return errorMessage(cause)
+    }
+    setOpen(false)
+    return null
+  }, null)
+
+  return (
+    <li className="flex items-center gap-3 py-2">
+      <StatusDot className={device.connected ? "bg-success" : "bg-muted-foreground/50"} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm" title={device.name}>
+          {device.name}
+        </span>
+        <span className="flex flex-wrap gap-x-3 text-sm text-muted-foreground">
+          <span>{m.remote_device_added({ time: since(device.createdAt) })}</span>
+          {device.connected ? (
+            <span>{m.remote_device_connected()}</span>
+          ) : (
+            device.lastSeenAt !== null && <span>{m.remote_device_last_seen({ time: since(device.lastSeenAt) })}</span>
+          )}
+        </span>
+      </div>
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogTrigger
+          render={<Button variant="ghost" size="sm" />}
+          aria-label={m.remote_device_remove_label({ name: device.name })}
+        >
+          {m.remote_device_remove()}
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="wrap-break-word">
+              {m.remote_device_remove_title({ name: device.name })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{m.remote_device_remove_body()}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={isPending} action={confirmRemove}>
+              {m.remote_device_remove()}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </li>
   )
 }

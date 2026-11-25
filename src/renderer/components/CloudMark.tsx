@@ -1,4 +1,4 @@
-import { type Cloud, useCloudStateText } from "../lib/environments.ts"
+import { type Cloud, needsYou, useCloudStateText } from "../lib/environments.ts"
 import { m } from "../paraglide/messages.js"
 import { CloudIcon, CloudOffIcon } from "@hinacode/icons"
 
@@ -12,7 +12,7 @@ export function CloudMark({ cloud, id, className }: { cloud: Cloud; id?: string;
   return (
     <span
       title={label}
-      data-needs-you={cloud.status === "unauthorized" || cloud.status === "incompatible"}
+      data-needs-you={needsYou(cloud)}
       className="flex shrink-0 items-center text-muted-foreground data-[needs-you=true]:text-attention"
     >
       <Icon aria-hidden className={className} />

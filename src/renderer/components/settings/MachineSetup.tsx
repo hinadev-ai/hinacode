@@ -148,6 +148,7 @@ const toneIcon: Record<Tone, ReactNode> = {
 
 const linkTone: Record<EnvironmentStatus, string> = {
   connecting: "text-muted-foreground",
+  approval: "text-attention",
   connected: "text-muted-foreground",
   offline: "text-destructive",
   unauthorized: "text-attention",
@@ -182,7 +183,7 @@ function SetupButton({ item, machine, onOpen, check }: CellProps & { check: Chec
 
 function UnreachableCell({ cloud, span, onOpen }: { cloud: Cloud; span: number; onOpen: () => void }) {
   const state = useCloudStateText(cloud)
-  const reason = cloud.status === "unauthorized" ? m.environment_unauthorized_hint() : state
+  const reason = state
   return (
     <td rowSpan={span} aria-label={reason ?? undefined} className="p-2.5 align-top">
       <div className="flex flex-col items-start gap-2">

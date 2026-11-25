@@ -9,8 +9,9 @@ import { SqlClient } from "effect/sql"
 import { compactMessage, compactPushes, transcriptPage } from "../../src/shared/compactTranscript.ts"
 import { PushEvent, RpcMethods, type RpcResponse } from "../../src/shared/contract.ts"
 import type { Message } from "../../src/shared/domain.ts"
-import { clientProof, serverProof } from "../../src/shared/proof.ts"
-import { ClientFrame, RemoteFeature, ServerFrame } from "../../src/shared/remote.ts"
+import { utf8ToBytes } from "@noble/hashes/utils.js"
+import { generateKeyPair, initiate, REMOTE_PROLOGUE, respond } from "../../src/shared/noise.ts"
+import { type ClientFrame, REMOTE_PROTOCOL_VERSION, RemoteFeature, ServerFrame } from "../../src/shared/remote.ts"
 import * as Db from "../../src/main/db/client.ts"
 import { seedThread } from "../../src/main/db/testing.ts"
 import { Events, makeEventsLayer, PushBroadcast } from "../../src/main/services/Events.ts"
@@ -236,19 +237,34 @@ await dbRuntime.dispose()
 const longText = messagesFor("oversize", 1)[0]!
 const oversized: Message = { ...longText, parts: [{ type: "text", text: "x".repeat(9 * 1024 * 1024) }] }
 const oversizedPage = transcriptPage([compactMessage(oversized)], undefined)
-const nonceA = "a".repeat(64)
-const nonceB = "b".repeat(64)
-const token = "synthetic-pairing-token-never-a-user-secret"
+const hostKey = generateKeyPair()
+const deviceKey = generateKeyPair()
+const noiseHandshake = () => {
+  const initiator = initiate({
+    prologue: REMOTE_PROLOGUE,
+    local: deviceKey,
+    remoteStatic: hostKey.publicKey,
+    payload: new Uint8Array(0),
+  })
+  const reply = respond({ prologue: REMOTE_PROLOGUE, local: hostKey, message: initiator.message }).reply(
+    new Uint8Array(0),
+  )
+  const { channel } = initiator.finish(reply.message)
+  return { message1: initiator.message, message2: reply.message, client: channel, server: reply.channel }
+}
+const sampleHandshake = noiseHandshake()
+const seal = (sealing: typeof sampleHandshake.client, frame: ClientFrame | ServerFrame) =>
+  sealing.encrypt(utf8ToBytes(JSON.stringify(frame)))
 const handshakeFrames = [
-  { type: "challenge", nonce: nonceA } satisfies ServerFrame,
-  { type: "auth", nonce: nonceB, proof: clientProof(token, nonceA, nonceB), compactEvents: true } satisfies ClientFrame,
-  {
+  sampleHandshake.message1,
+  sampleHandshake.message2,
+  seal(sampleHandshake.client, { type: "hello", name: "Synthetic phone", compactEvents: true }),
+  seal(sampleHandshake.server, {
     type: "ready",
-    version: 1,
+    version: REMOTE_PROTOCOL_VERSION,
     environment: { id: "synthetic", name: "Synthetic desktop" },
     features: [...RemoteFeature],
-    proof: serverProof(token, nonceB, nonceA),
-  } satisfies ServerFrame,
+  }),
 ]
 const fanoutResults = []
 for (const clients of [0, 1, 3]) fanoutResults.push(...(await fanout(clients)))
@@ -267,15 +283,10 @@ const result = {
   histories,
   live: { current: liveSummary(currentFrames), compactActual: liveSummary(compactFrames), fanout: fanoutResults },
   handshake: {
-    payloadBytes: handshakeFrames.map(size),
-    combinedBytes: handshakeFrames.reduce((total, frame) => total + size(frame), 0),
-    fourProofsPerHandshake1000Times: measure(() => {
-      for (let i = 0; i < 1000; i++) {
-        clientProof(token, nonceA, nonceB)
-        serverProof(token, nonceB, nonceA)
-        clientProof(token, nonceA, nonceB)
-        serverProof(token, nonceB, nonceA)
-      }
+    payloadBytes: handshakeFrames.map((frame) => frame.length),
+    combinedBytes: handshakeFrames.reduce((total, frame) => total + frame.length, 0),
+    noiseHandshakes100Times: measure(() => {
+      for (let i = 0; i < 100; i++) noiseHandshake()
     }),
   },
   oversizedPage: { messageCount: oversizedPage.messages.length, jsonBytes: size(oversizedPage.messages) },

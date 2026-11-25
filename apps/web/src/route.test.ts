@@ -7,20 +7,23 @@ const machine = (
   id: string,
   answers: Partial<Record<RpcMethod, unknown>>,
   status: EnvironmentStatus = "connected",
-): MachineLink & { readonly calls: Array<{ method: RpcMethod; payload: unknown }>; readonly connect: () => void } => {
+): MachineLink & {
+  readonly calls: Array<{ method: RpcMethod; payload: unknown }>
+  readonly settle: (status: EnvironmentStatus) => void
+} => {
   const calls: Array<{ method: RpcMethod; payload: unknown }> = []
   let current = status
-  const connected = Promise.withResolvers<void>()
-  if (status === "connected") connected.resolve()
+  const settled = Promise.withResolvers<void>()
+  if (status === "connected") settled.resolve()
   return {
     id,
     name: `${id} name`,
     calls,
     status: () => current,
-    connected: () => connected.promise,
-    connect: () => {
-      current = "connected"
-      connected.resolve()
+    settled: () => settled.promise,
+    settle: (next) => {
+      current = next
+      settled.resolve()
     },
     call: async (method, payload): Promise<RpcEnvelope<unknown>> => {
       calls.push({ method, payload })
@@ -122,9 +125,43 @@ describe("routing a web call", () => {
       browser: () => undefined,
     })
     const answer = route.call("settings.get", undefined)
-    second.connect()
+    second.settle("connected")
     expect(await answer).toEqual({ result: { from: "second" } })
     expect(first.calls).toEqual([])
+  })
+
+  it("keeps holding a call that names no machine for the machines still connecting when one waits for approval", async () => {
+    const first = machine("first", { "settings.get": { from: "first" } }, "connecting")
+    const second = machine("second", { "settings.get": { from: "second" } }, "connecting")
+    const route = makeRoute({
+      machines: new Map([
+        [first.id, first],
+        [second.id, second],
+      ]),
+      browser: () => undefined,
+    })
+    const answer = route.call("settings.get", undefined)
+    first.settle("approval")
+    await Promise.resolve()
+    second.settle("connected")
+    expect(await answer).toEqual({ result: { from: "second" } })
+    expect(first.calls).toEqual([])
+  })
+
+  it("stops holding a call that names no machine once every machine waits for the developer", async () => {
+    const first = machine("first", { "settings.get": { from: "first" } }, "connecting")
+    const second = machine("second", { "settings.get": { from: "second" } }, "unauthorized")
+    const route = makeRoute({
+      machines: new Map([
+        [first.id, first],
+        [second.id, second],
+      ]),
+      browser: () => undefined,
+    })
+    const answer = route.call("settings.get", undefined)
+    first.settle("approval")
+    expect(await answer).toMatchObject({ error: { tag: "Offline" } })
+    expect([...first.calls, ...second.calls]).toEqual([])
   })
 
   it("lists an offline machine's last answer instead of waiting for it", async () => {

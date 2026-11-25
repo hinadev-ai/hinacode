@@ -918,8 +918,21 @@ export const RelayAccountStatus = Schema.Union([
 ])
 export type RelayAccountStatus = typeof RelayAccountStatus.Type
 
-export const EnvironmentStatus = Schema.Literals(["connecting", "connected", "offline", "unauthorized", "incompatible"])
+export const EnvironmentStatus = Schema.Literals([
+  "connecting",
+  "approval",
+  "connected",
+  "offline",
+  "unauthorized",
+  "incompatible",
+])
 export type EnvironmentStatus = typeof EnvironmentStatus.Type
+
+export const HostApproval = Schema.Struct({ code: Schema.String, accepted: Schema.Boolean })
+export type HostApproval = typeof HostApproval.Type
+
+export const HostRefusal = Schema.Literals(["refused", "removed", "reset", "predates"])
+export type HostRefusal = typeof HostRefusal.Type
 
 export const Environments = Schema.Struct({
   clouds: Schema.Array(
@@ -928,6 +941,8 @@ export const Environments = Schema.Struct({
       status: EnvironmentStatus,
       lastSeenAt: Schema.NullOr(Timestamp),
       protocol: Schema.optional(Schema.Int),
+      approval: Schema.optional(HostApproval),
+      refusal: Schema.optional(HostRefusal),
     }),
   ),
 })
@@ -1217,10 +1232,26 @@ export type MachineResources = typeof MachineResources.Type
 export const RemotePairing = Schema.Struct({
   hosts: Schema.NonEmptyArray(Schema.String),
   port: Schema.Int,
-  token: Schema.String,
   relay: Schema.NullOr(Schema.String),
+  key: Schema.String,
+  secret: Schema.String,
 })
 export type RemotePairing = typeof RemotePairing.Type
+
+export const RemoteDevice = Schema.Struct({
+  key: Schema.String,
+  name: Schema.String,
+  createdAt: Schema.Number,
+  lastSeenAt: Schema.NullOr(Schema.Number),
+  connected: Schema.Boolean,
+})
+export type RemoteDevice = typeof RemoteDevice.Type
+
+export const RemoteDevices = Schema.Struct({ devices: Schema.Array(RemoteDevice), waiting: Schema.Int })
+export type RemoteDevices = typeof RemoteDevices.Type
+
+export const RemoteDevicesChange = Schema.Literals(["enrolled", "approved", "waiting", "removed", "reset"])
+export type RemoteDevicesChange = typeof RemoteDevicesChange.Type
 
 export const AppConnection = Schema.Struct({
   id: Schema.String,

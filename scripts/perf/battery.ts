@@ -8,7 +8,8 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { Effect, Schema } from "effect"
 import { WebSocket } from "ws"
-import { ServerFrame } from "../../src/shared/remote.ts"
+import { cliSocketPath } from "../../src/main/remote/cliSocketPath.ts"
+import { pairingUrl, parsePairingUrl, REMOTE_PATH, ServerFrame } from "../../src/shared/remote.ts"
 
 const Phase = Schema.Struct({
   cpuMs: Schema.Number,
@@ -34,7 +35,7 @@ const decodeProjects = Schema.decodeUnknownSync(Schema.Array(Schema.Struct({ id:
 const decodeThread = Schema.decodeUnknownSync(Schema.Struct({ id: Schema.String }))
 
 interface Device {
-  open(pairingUrl: string): void
+  open(url: string): void
   cpuMs(): number
   background(): void
   foreground(): void
@@ -66,10 +67,10 @@ function android(serial: string, port: number): Device {
   const app = "com.hinadev.hinacode"
   const adb = (...args: string[]) => run("adb", "-s", serial, ...args)
   return {
-    open(pairingUrl) {
+    open(url) {
       adb("reverse", `tcp:${port}`, `tcp:${port}`)
       adb("shell", "pm", "grant", app, "android.permission.POST_NOTIFICATIONS")
-      adb("shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", `'${pairingUrl}'`)
+      adb("shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", `'${url}'`)
     },
     cpuMs() {
       const pid = adb("shell", "pidof", app).trim()
@@ -91,7 +92,7 @@ function ios(udid: string, bundleId: string): Device {
     return line.split("\t")[0]!
   }
   return {
-    open: (pairingUrl) => void run("xcrun", "simctl", "openurl", udid, pairingUrl),
+    open: (url) => void run("xcrun", "simctl", "openurl", udid, url),
     cpuMs() {
       const [first, clock] = run("ps", "-o", "cputime=", "-p", pid()).trim().split("-")
       const days = clock === undefined ? 0 : Number(first)
@@ -157,8 +158,8 @@ function proxy(listen: number, target: number) {
   }
 }
 
-async function load(port: number, token: string, count: number, gapMs: number) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/remote`)
+async function load(socketPath: string, count: number, gapMs: number) {
+  const ws = new WebSocket(`ws+unix://${socketPath}:${REMOTE_PATH}`)
   const pending = new Map<number, (result: unknown) => void>()
   const completed = new Set<(threadId: string) => void>()
   const completions = new Map<string, number>()
@@ -167,8 +168,7 @@ async function load(port: number, token: string, count: number, gapMs: number) {
   const ready = new Promise<void>((resolve) =>
     ws.on("message", (raw) => {
       const frame = decodeFrame(JSON.parse(String(raw)))
-      if (frame.type === "challenge") ws.send(JSON.stringify({ type: "auth", token }))
-      else if (frame.type === "ready") resolve()
+      if (frame.type === "ready") resolve()
       else if (frame.type === "result") {
         const complete = pending.get(frame.id)
         pending.delete(frame.id)
@@ -225,9 +225,11 @@ async function load(port: number, token: string, count: number, gapMs: number) {
 async function measure(runLabel: string) {
   const platform = env("BATTERY_PLATFORM")
   assert(platform === "android" || platform === "ios", "BATTERY_PLATFORM must be android or ios")
-  const daemonPort = Number(env("BATTERY_DAEMON_PORT"))
+  const pairing = parsePairingUrl(env("BATTERY_PAIRING_URL"))
+  assert(pairing !== null, "BATTERY_PAIRING_URL must be the hinacode://connect URL that hinacode serve printed")
+  const daemonPort = pairing.port
   const proxyPort = Number(env("BATTERY_PROXY_PORT", "48199"))
-  const token = env("BATTERY_TOKEN")
+  const socketPath = cliSocketPath(env("BATTERY_DATA_DIR"))
   const streams = Number(env("BATTERY_STREAMS", "3"))
   const foregroundMs = Number(env("BATTERY_FOREGROUND_MS", "60000"))
   const backgroundMs = Number(env("BATTERY_BACKGROUND_MS", "120000"))
@@ -260,12 +262,12 @@ async function measure(runLabel: string) {
   }
   try {
     console.log(`${runLabel}: pairing ${platform}`)
-    device.open(`hinacode://connect?host=127.0.0.1&port=${proxyPort}&token=${token}`)
+    device.open(pairingUrl({ ...pairing, hosts: ["127.0.0.1"], port: proxyPort, relay: null }))
     for (let waited = 0; !counter.connected(); waited += 500) {
       assert(waited < 90_000, "the app did not connect to the proxy")
       await pause(500)
     }
-    workload = await load(daemonPort, token, streams, Number(env("BATTERY_GAP_MS", "4000")))
+    workload = await load(socketPath, streams, Number(env("BATTERY_GAP_MS", "4000")))
     await pause(settleMs)
     await window("foreground", foregroundMs)
     assert(phases.foreground!.framesDown > 0, "no frames received; verify pairing before comparing this run")
@@ -358,8 +360,7 @@ function compare(before: string, after: string, checkBudget: boolean) {
 
 if (mode === "load") {
   const workload = await load(
-    Number(env("BATTERY_DAEMON_PORT")),
-    env("BATTERY_TOKEN"),
+    cliSocketPath(env("BATTERY_DATA_DIR")),
     Number(env("BATTERY_STREAMS", "3")),
     Number(env("BATTERY_GAP_MS", "4000")),
   )

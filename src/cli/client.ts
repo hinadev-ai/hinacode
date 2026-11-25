@@ -10,7 +10,13 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "../shared/contract.ts"
-import { type ClientFrame, REMOTE_MAX_FRAME_BYTES, REMOTE_PATH, ServerFrame } from "../shared/remote.ts"
+import {
+  type ClientFrame,
+  LegacyChallenge,
+  REMOTE_MAX_FRAME_BYTES,
+  REMOTE_PATH,
+  ServerFrame,
+} from "../shared/remote.ts"
 import { CliFailure, EXIT, unreachableError, usageError } from "./exit.ts"
 
 const READY_TIMEOUT = Duration.seconds(2)
@@ -38,28 +44,32 @@ export interface Client {
 
 const decodeServerFrame = Schema.decodeUnknownExit(Schema.fromJsonString(ServerFrame))
 
+const decodeFirstFrame = Schema.decodeUnknownExit(Schema.fromJsonString(Schema.Union([ServerFrame, LegacyChallenge])))
+
 const forwardTo = (queue: Queue.Queue<PushEvent, Cause.Done>) => (event: PushEvent | null) =>
   event === null ? Queue.endUnsafe(queue) : Queue.offerUnsafe(queue, event)
 
 const disconnected = () => unreachableError("lost the connection to HinaCode")
 
 const open = (socketPath: string) =>
-  Effect.callback<{ socket: WebSocket; first: ServerFrame }, NoSocket | CliFailure>((resume) => {
-    const socket = new WebSocket(`ws+unix://${socketPath}:${REMOTE_PATH}`, { maxPayload: REMOTE_MAX_FRAME_BYTES })
-    socket.once("error", () => resume(Effect.fail(new NoSocket({ socketPath }))))
-    socket.once("close", () => resume(Effect.fail(new NoSocket({ socketPath }))))
-    socket.once("message", (raw) => {
-      const decoded = decodeServerFrame(String(raw))
-      resume(
-        decoded._tag === "Success"
-          ? Effect.succeed({ socket, first: decoded.value })
-          : Effect.fail(
-              new CliFailure({ code: EXIT.unreachable, message: `${socketPath} sent a frame the CLI can't read` }),
-            ),
-      )
-    })
-    return Effect.sync(() => socket.terminate())
-  })
+  Effect.callback<{ socket: WebSocket; first: ServerFrame | typeof LegacyChallenge.Type }, NoSocket | CliFailure>(
+    (resume) => {
+      const socket = new WebSocket(`ws+unix://${socketPath}:${REMOTE_PATH}`, { maxPayload: REMOTE_MAX_FRAME_BYTES })
+      socket.once("error", () => resume(Effect.fail(new NoSocket({ socketPath }))))
+      socket.once("close", () => resume(Effect.fail(new NoSocket({ socketPath }))))
+      socket.once("message", (raw) => {
+        const decoded = decodeFirstFrame(String(raw))
+        resume(
+          decoded._tag === "Success"
+            ? Effect.succeed({ socket, first: decoded.value })
+            : Effect.fail(
+                new CliFailure({ code: EXIT.unreachable, message: `${socketPath} sent a frame the CLI can't read` }),
+              ),
+        )
+      })
+      return Effect.sync(() => socket.terminate())
+    },
+  )
 
 const handshake = (socketPath: string) =>
   Effect.gen(function* () {

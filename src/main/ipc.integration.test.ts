@@ -14,8 +14,13 @@ import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
 import { TOOL_OUTPUT_PREVIEW_CHARS } from "../shared/compactTranscript.ts"
-import { clientProof, newNonce, serverProof } from "../shared/proof.ts"
-import { type ClientFrame, remoteWebSocketUrl, type ServerFrame } from "../shared/remote.ts"
+import {
+  CLOSE_AUTH_TIMEOUT,
+  CLOSE_LISTENER_STOPPED,
+  CLOSE_MALFORMED_FRAME,
+  CLOSE_PAIRING_RESET,
+  CLOSE_UNAUTHORIZED,
+} from "../shared/remote.ts"
 import {
   defaultSettings,
   type Message,
@@ -38,9 +43,8 @@ import { Events } from "./services/Events.ts"
 import * as Messages from "./services/Messages.ts"
 import { privateAddresses } from "./network.ts"
 import * as RemoteAccess from "./remote/access.ts"
-import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED } from "../shared/transport.ts"
 import { MAX_CALL_KEYS } from "./remote/session.ts"
-import { unusedLoopbackPort } from "./remote/testing.ts"
+import { type RemoteClient, remoteClient, unusedLoopbackPort } from "./remote/testing.ts"
 import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
@@ -368,6 +372,9 @@ const failure = (envelope: RpcEnvelope<unknown>) => {
 
 const pushed = () =>
   electron.pushes.filter((push) => push.channel === EVENT_CHANNEL).map((push) => push.payload as PushEvent)
+
+const pushedTo = (client: RemoteClient) =>
+  client.frames.flatMap((frame) => (frame.type === "event" ? [frame.event] : []))
 
 const pushedEventually = (predicate: (event: PushEvent) => boolean) =>
   new Promise<void>((resolve) => {
@@ -1920,58 +1927,20 @@ describe("agent accounts over rpc", () => {
   })
 })
 
-const phone = (port: number, options?: { autoPong: boolean }) => {
-  const socket = new WebSocket(remoteWebSocketUrl({ host: "127.0.0.1", port }), options)
-  const frames: Array<ServerFrame> = []
-  const watchers = new Set<() => void>()
-  let closed: { code: number; reason: string } | null = null
-  socket.on("message", (raw) => {
-    frames.push(JSON.parse(String(raw)) as ServerFrame)
-    for (const notify of watchers) notify()
+const phone = async (
+  port: number,
+  options: { readonly autoPong?: boolean; readonly compactEvents?: boolean } = {},
+  pairing?: { readonly key: string; readonly secret: string },
+) => {
+  const { key, secret } = pairing ?? result(await invoke("remote.pairing", undefined))
+  const client = remoteClient(port, key, options)
+  await client.hello({
+    name: "phone",
+    secret,
+    ...(options.compactEvents !== undefined && { compactEvents: options.compactEvents }),
   })
-  socket.on("close", (code, reason) => {
-    closed = { code, reason: String(reason) }
-    for (const notify of watchers) notify()
-  })
-  const until = <A>(pick: () => A | undefined) =>
-    new Promise<A>((resolve) => {
-      const check = () => {
-        const found = pick()
-        if (found === undefined) return
-        watchers.delete(check)
-        resolve(found)
-      }
-      watchers.add(check)
-      check()
-    })
-  const opened = new Promise<void>((resolve) => socket.once("open", resolve))
-  let nextId = 1
-  return {
-    send: async (frame: ClientFrame | string) => {
-      await opened
-      socket.send(typeof frame === "string" ? frame : JSON.stringify(frame))
-    },
-    call: async <M extends RpcMethod>(method: M, payload: RpcRequestEncoded<M>, key?: string) => {
-      const id = nextId++
-      await opened
-      socket.send(JSON.stringify({ type: "call", id, method, payload, ...(key && { key }) } satisfies ClientFrame))
-      const frame = await until(() => frames.find((f) => f.type === "result" && f.id === id) ?? closed ?? undefined)
-      if (!("type" in frame)) throw new Error(`socket closed before the answer: ${frame.code} ${frame.reason}`)
-      return (frame as Extract<ServerFrame, { type: "result" }>).envelope as RpcEnvelope<RpcResponseEncoded<M>>
-    },
-    challenge: () => until(() => frames.find((f) => f.type === "challenge")),
-    ready: () => until(() => frames.find((f) => f.type === "ready")),
-    answered: (count: number) =>
-      until(() => (frames.filter((f) => f.type === "result").length >= count ? true : undefined)),
-    pong: (at: number) => until(() => frames.find((f) => f.type === "pong" && f.at === at)),
-    pinged: new Promise<void>((resolve) => socket.once("ping", () => resolve())),
-    event: (predicate: (event: PushEvent) => boolean) =>
-      until(() => frames.find((f) => f.type === "event" && predicate(f.event as PushEvent))),
-    closed: () => until(() => closed ?? undefined),
-    frames,
-    opened,
-    socket,
-  }
+  await client.ready()
+  return client
 }
 
 describe("remote mode", () => {
@@ -1983,59 +1952,29 @@ describe("remote mode", () => {
     await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
   })
 
-  test("refuses a call before auth and a wrong token", async () => {
-    const early = phone(port)
-    await early.send({ type: "call", id: 1, method: "projects.list", payload: undefined })
-    expect((await early.closed()).code).toBe(RemoteAccess.CLOSE_MALFORMED_FRAME)
+  test("refuses a call before the handshake, and a plaintext token from before encryption", async () => {
+    const early = remoteClient(port, result(await invoke("remote.pairing", undefined)).key)
+    await early.sendRaw(JSON.stringify({ type: "call", id: 1, method: "projects.list" }))
+    expect((await early.closed()).code).toBe(CLOSE_MALFORMED_FRAME)
 
-    const wrong = phone(port)
-    await wrong.send({ type: "auth", token: "not-the-token" })
-    expect((await wrong.closed()).code).toBe(CLOSE_UNAUTHORIZED)
+    const old = remoteClient(port, result(await invoke("remote.pairing", undefined)).key)
+    await old.sendRaw(JSON.stringify({ type: "auth", token: "not-the-token" }))
+    expect((await old.closed()).code).toBe(CLOSE_UNAUTHORIZED)
   })
 
-  test("the first frame is a challenge, and a proof of the token gets a ready that proves it back", async () => {
-    const { token } = result(await invoke("remote.pairing", undefined))
-    const proved = phone(port)
-    const challenge = await proved.challenge()
-    expect(proved.frames[0]).toBe(challenge)
-    const nonce = newNonce()
-    await proved.send({ type: "auth", nonce, proof: clientProof(token, challenge.nonce, nonce) })
-    expect((await proved.ready()).proof).toBe(serverProof(token, nonce, challenge.nonce))
-    expect(result(await proved.call("projects.list", undefined))).toBeInstanceOf(Array)
-    proved.socket.close()
+  test("the first frame is a plaintext challenge for old clients, and a call before ready closes the socket", async () => {
+    const early = remoteClient(port, result(await invoke("remote.pairing", undefined)).key)
+    await early.challenge()
+    expect(early.raw[0]?.binary).toBe(false)
+    await early.send({ type: "call", id: 1, method: "projects.list" })
+    expect((await early.closed()).code).toBe(CLOSE_MALFORMED_FRAME)
   })
 
-  test("compresses frames for a client that offers permessage-deflate", async () => {
-    const client = phone(port)
-    await client.opened
-    expect(client.socket.extensions).toContain("permessage-deflate")
+  test("does not compress, because ciphertext does not compress", async () => {
+    const client = await phone(port)
+    await client.ready()
+    expect(client.socket.extensions).toBe("")
     client.socket.close()
-  })
-
-  test("a wrong proof is refused like a wrong token", async () => {
-    const forged = phone(port)
-    const challenge = await forged.challenge()
-    const nonce = newNonce()
-    await forged.send({ type: "auth", nonce, proof: clientProof("not-the-token", challenge.nonce, nonce) })
-    expect((await forged.closed()).code).toBe(CLOSE_UNAUTHORIZED)
-  })
-
-  test("a client that predates the challenge still connects with the token, and its ready proves nothing", async () => {
-    const old = phone(port)
-    await old.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
-    expect(await old.ready()).not.toHaveProperty("proof")
-    old.socket.close()
-  })
-
-  test("rotating the token closes a socket that authenticated with a proof", async () => {
-    const { token } = result(await invoke("remote.pairing", undefined))
-    const proved = phone(port)
-    const challenge = await proved.challenge()
-    const nonce = newNonce()
-    await proved.send({ type: "auth", nonce, proof: clientProof(token, challenge.nonce, nonce) })
-    await proved.ready()
-    result(await invoke("remote.rotateToken", undefined))
-    expect((await proved.closed()).code).toBe(CLOSE_TOKEN_ROTATED)
   })
 
   test("a paired phone calls rpc, receives pushes and is refused desktop-only methods", async () => {
@@ -2043,8 +1982,7 @@ describe("remote mode", () => {
     expect(pairing.port).toBe(port)
     expect(pairing.hosts).toEqual(["127.0.0.1"])
 
-    const paired = phone(port)
-    await paired.send({ type: "auth", token: pairing.token })
+    const paired = await phone(port)
     await paired.ready()
     await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).connected).toBe(1))
 
@@ -2060,8 +1998,7 @@ describe("remote mode", () => {
   })
 
   test("a phone that watches threads hears their replies stream, and only how the others end", async () => {
-    const paired = phone(port)
-    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    const paired = await phone(port)
     expect((await paired.ready()).features).toContain("watch")
     const project = result(await paired.call("projects.list", undefined))[0] ?? (await createProject("remote-watch"))
     const shown = result(await paired.call("threads.create", { projectId: project.id }))
@@ -2084,8 +2021,7 @@ describe("remote mode", () => {
   })
 
   test("a paired phone reads Linear issues, empty on a machine without a Linear key", async () => {
-    const paired = phone(port)
-    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    const paired = await phone(port)
     await paired.ready()
     expect(result(await paired.call("secrets.has", { name: "linear.apiKey" }))).toBe(false)
     expect(result(await paired.call("linear.issues", undefined))).toStrictEqual([])
@@ -2093,20 +2029,23 @@ describe("remote mode", () => {
   })
 
   test("closes a socket that sends a frame outside the protocol, before or after auth, without calling it unauthorized", async () => {
-    const early = phone(port)
+    const early = remoteClient(port, result(await invoke("remote.pairing", undefined)).key)
     await early.send("not json")
-    expect((await early.closed()).code).toBe(RemoteAccess.CLOSE_MALFORMED_FRAME)
+    expect((await early.closed()).code).toBe(CLOSE_MALFORMED_FRAME)
 
-    const paired = phone(port)
-    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    const paired = await phone(port)
     await paired.ready()
     await paired.send(JSON.stringify({ type: "call", id: "one", method: "projects.list" }))
-    expect((await paired.closed()).code).toBe(RemoteAccess.CLOSE_MALFORMED_FRAME)
+    expect((await paired.closed()).code).toBe(CLOSE_MALFORMED_FRAME)
+
+    const plaintext = await phone(port)
+    await plaintext.ready()
+    await plaintext.sendRaw(JSON.stringify({ type: "ping", at: 1 }))
+    expect((await plaintext.closed()).code).toBe(CLOSE_MALFORMED_FRAME)
   })
 
   test("answers an unknown method and a ping on the same socket without closing it", async () => {
-    const paired = phone(port)
-    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    const paired = await phone(port)
     expect((await paired.ready()).features).toEqual(expect.arrayContaining(["heartbeat", "call-keys"]))
 
     expect(failure(await paired.call("no.such.method" as RpcMethod, undefined as never)).tag).toBe("SchemaError")
@@ -2133,8 +2072,7 @@ describe("remote mode", () => {
         }),
       ),
     )
-    const paired = phone(port)
-    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    const paired = await phone(port)
     await paired.ready()
 
     const [transcript, projects] = await Promise.all([
@@ -2147,18 +2085,15 @@ describe("remote mode", () => {
   })
 
   test("a keyed mutation retried from a second socket runs once and answers the same result", async () => {
-    const token = result(await invoke("remote.pairing", undefined)).token
     const project = result(await invoke("projects.list", undefined))[0] ?? (await createProject("remote-keyed"))
     const before = result(await invoke("threads.list", undefined)).length
 
-    const first = phone(port)
-    await first.send({ type: "auth", token })
+    const first = await phone(port)
     await first.ready()
     const created = await first.call("threads.create", { projectId: project.id }, "action-1")
     first.socket.terminate()
 
-    const second = phone(port)
-    await second.send({ type: "auth", token })
+    const second = await phone(port)
     await second.ready()
     const retried = await Promise.all([
       second.call("threads.create", { projectId: project.id }, "action-1"),
@@ -2177,8 +2112,7 @@ describe("remote mode", () => {
   })
 
   test("a phone does not receive the VNC bytes and folder changes only the desktop window asked for", async () => {
-    const paired = phone(port)
-    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    const paired = await phone(port)
     await paired.ready()
 
     await runtime.runPromise(
@@ -2199,26 +2133,11 @@ describe("remote mode", () => {
     paired.socket.close()
   })
 
-  test.each(["token", "proof"])("compacts live events only for a client requesting it with %s auth", async (auth) => {
-    const { token } = result(await invoke("remote.pairing", undefined))
-    const compact = phone(port)
-    const full = phone(port)
-    const explicitlyFull = phone(port)
+  test("compacts live events only for a client requesting it in hello", async () => {
+    const compact = await phone(port, { compactEvents: true })
+    const full = await phone(port)
+    const explicitlyFull = await phone(port, { compactEvents: false })
     try {
-      if (auth === "proof") {
-        const challenge = await compact.challenge()
-        const nonce = newNonce()
-        await compact.send(
-          JSON.stringify({
-            type: "auth",
-            nonce,
-            proof: clientProof(token, challenge.nonce, nonce),
-            compactEvents: true,
-          }),
-        )
-      } else await compact.send(JSON.stringify({ type: "auth", token, compactEvents: true }))
-      await full.send({ type: "auth", token })
-      await explicitlyFull.send(JSON.stringify({ type: "auth", token, compactEvents: false }))
       await Promise.all([compact.ready(), full.ready(), explicitlyFull.ready()])
 
       const message: Message = {
@@ -2287,10 +2206,8 @@ describe("remote mode", () => {
           client.event((event) => event.type === "thread.removed" && event.id === "compact-live-marker"),
         ),
       )
-      const received = (client: ReturnType<typeof phone>) =>
-        client.frames.flatMap((frame) => (frame.type === "event" ? [frame.event] : []))
-      expect(received(full)).toEqual(pushes)
-      expect(received(explicitlyFull)).toEqual(pushes)
+      expect(pushedTo(full)).toEqual(pushes)
+      expect(pushedTo(explicitlyFull)).toEqual(pushes)
       const compactMessage = {
         ...message,
         parts: [
@@ -2299,7 +2216,7 @@ describe("remote mode", () => {
           { type: "file_change", path: "a.ts", diff: "" },
         ],
       }
-      expect(received(compact)).toEqual([
+      expect(pushedTo(compact)).toEqual([
         { type: "message.created", seq: 1, message: compactMessage },
         { type: "message.updated", seq: 2, message: { ...compactMessage, completedAt: "2026-10-29T00:00:01.000Z" } },
         {
@@ -2328,28 +2245,28 @@ describe("remote mode", () => {
     }
   })
 
-  test("rotating the token disconnects every phone and the old token stops working", async () => {
+  test("resetting pairing disconnects every phone and the old key and secret stop working", async () => {
     const before = result(await invoke("remote.pairing", undefined))
-    const paired = phone(port)
-    await paired.send({ type: "auth", token: before.token })
+    const paired = await phone(port, {}, before)
     await paired.ready()
 
-    const after = result(await invoke("remote.rotateToken", undefined))
-    expect(after.token).not.toBe(before.token)
-    expect((await paired.closed()).code).toBe(CLOSE_TOKEN_ROTATED)
+    const after = result(await invoke("remote.resetPairing", undefined))
+    expect(after.key).not.toBe(before.key)
+    expect(after.secret).not.toBe(before.secret)
+    expect((await paired.closed()).code).toBe(CLOSE_PAIRING_RESET)
 
-    const stale = phone(port)
-    await stale.send({ type: "auth", token: before.token })
-    expect((await stale.closed()).code).toBe(CLOSE_UNAUTHORIZED)
+    const stale = remoteClient(port, after.key, { device: paired.device })
+    await stale.hello({ name: "phone", secret: before.secret })
+    await stale.pending()
+    stale.socket.close()
   })
 
   test("turning remote off closes a socket that has not authenticated yet", async () => {
-    const pending = phone(port)
+    const pending = remoteClient(port, result(await invoke("remote.pairing", undefined)).key)
     await pending.opened
     result(await invoke("settings.set", { remote: { enabled: false, bindHost: "127.0.0.1", port } }))
     await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(false))
-    await pending.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
-    expect((await pending.closed()).code).toBe(RemoteAccess.CLOSE_LISTENER_STOPPED)
+    expect((await pending.closed()).code).toBe(CLOSE_LISTENER_STOPPED)
 
     result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
     await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
@@ -2387,8 +2304,7 @@ describe("remote mode", () => {
 
     result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
     await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
-    const back = phone(port)
-    await back.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    const back = await phone(port)
     await back.ready()
     back.socket.close()
   })
@@ -2411,8 +2327,7 @@ describe("remote mode", () => {
       const hosts = privateAddresses()
       expect(pairing.hosts).toEqual(hosts.length > 0 ? hosts : ["127.0.0.1"])
 
-      const local = phone(privatePort)
-      await local.send({ type: "auth", token: pairing.token })
+      const local = await phone(privatePort, {}, pairing)
       expect((await local.ready()).hosts).toEqual(pairing.hosts)
       local.socket.close()
     } finally {
@@ -2427,11 +2342,8 @@ describe("remote mode under a test clock", () => {
   let clocked: ManagedRuntime.ManagedRuntime<Layer.Success<ReturnType<typeof makeLayer>> | TestClock.TestClock, unknown>
   const adjust = (duration: Duration.Input) => clocked.runPromise(TestClock.adjust(duration))
   const pairedPhone = async (options?: { autoPong: boolean }) => {
-    const paired = phone(port, options)
-    await paired.send({
-      type: "auth",
-      token: (await clocked.runPromise(RemoteAccess.RemoteAccess.use((access) => access.pairing))).token,
-    })
+    const pairing = await clocked.runPromise(RemoteAccess.RemoteAccess.use((access) => access.pairing))
+    const paired = await phone(port, options, pairing)
     await paired.ready()
     return paired
   }
@@ -2452,10 +2364,13 @@ describe("remote mode under a test clock", () => {
   afterAll(() => clocked.dispose())
 
   test("a socket that does not authenticate in time is closed as an auth timeout", async () => {
-    const pending = phone(port)
-    await pending.opened
+    const pending = remoteClient(
+      port,
+      (await clocked.runPromise(RemoteAccess.RemoteAccess.use((access) => access.pairing))).key,
+    )
+    await pending.handshake()
     await adjust("5 seconds")
-    expect((await pending.closed()).code).toBe(RemoteAccess.CLOSE_AUTH_TIMEOUT)
+    expect((await pending.closed()).code).toBe(CLOSE_AUTH_TIMEOUT)
   })
 
   const createThread = async (key: string) => {

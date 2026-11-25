@@ -17,6 +17,7 @@ import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useClientSettings } from "./lib/settings.ts"
 import { windowEntry } from "./lib/windowEntry.ts"
 import { notifyThreadEvent, recordUnseenOutcome } from "./lib/threadNotifications.ts"
+import { notifyDevicesChanged } from "./lib/deviceNotifications.ts"
 import { m } from "./paraglide/messages.js"
 import { router } from "./router.tsx"
 import { pullRequestWindowRouter } from "./pullRequestWindowRouter.ts"
@@ -151,6 +152,11 @@ onPushEvent((event) => {
     case "environments.changed":
       registry.refresh(projectsAtom)
       return void loadLists()
+    case "remote.devices.changed": {
+      if (windowEntry !== null) return
+      const settings = AsyncResult.getOrElse(registry.get(clientSettingsAtom), () => null)
+      return settings && notifyDevicesChanged(event, settings.notifications)
+    }
   }
 })
 

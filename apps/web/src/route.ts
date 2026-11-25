@@ -15,7 +15,7 @@ export interface MachineLink {
   readonly id: string
   readonly name: string
   readonly status: () => EnvironmentStatus
-  readonly connected: () => Promise<void>
+  readonly settled: () => Promise<void>
   readonly call: (method: RpcMethod, payload: unknown) => Promise<RpcEnvelope<unknown>>
 }
 
@@ -44,6 +44,9 @@ const within = <A>(ms: number, promise: Promise<A>) => {
   })
   return Promise.race([promise, timeout]).finally(() => cancel?.())
 }
+
+export const waitsForDeveloper = (status: EnvironmentStatus) =>
+  status === "approval" || status === "unauthorized" || status === "incompatible"
 
 const noMachine: RpcEnvelope<never> = {
   error: { tag: "Offline", message: "No machine is online" },
@@ -80,11 +83,17 @@ export const makeRoute = ({
     return last?.payload === JSON.stringify(payload ?? null) && Array.isArray(last.result) ? last.result : []
   }
 
-  const firstConnected = async () => {
+  const firstConnected = async (): Promise<MachineLink | undefined> => {
     const all = [...machines.values()]
     const online = all.find((machine) => machine.status() === "connected")
-    if (online !== undefined || all.length === 0) return online
-    return within(OFFLINE_LIMIT_MS, Promise.race(all.map((machine) => machine.connected().then(() => machine))))
+    if (online !== undefined) return online
+    const coming = all.filter((machine) => !waitsForDeveloper(machine.status()))
+    if (coming.length === 0) return undefined
+    const settled = await within(
+      OFFLINE_LIMIT_MS,
+      Promise.race(coming.map((machine) => machine.settled().then(() => true))),
+    )
+    return settled === undefined ? undefined : firstConnected()
   }
 
   const call = async (method: RpcMethod, payload: unknown, environment?: string): Promise<RpcEnvelope<unknown>> => {

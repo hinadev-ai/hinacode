@@ -12,7 +12,7 @@ import {
   startThread,
   stubClerk,
 } from "./support/app.ts"
-import { CLERK_HOST } from "./support/stack.ts"
+import { approveDevice, CLERK_HOST } from "./support/stack.ts"
 import { expect, test } from "./support/fixtures.ts"
 
 const browserCredential = (page: Page) =>
@@ -190,6 +190,27 @@ test("the app shows when the machine drops and comes back", async ({ page, web }
   await web.machine.start()
   resources = await openMachineResources(page)
   await expect(resources.getByText(/^(Offline|Connecting)/)).toHaveCount(0, { timeout: 25_000 })
+})
+
+test("a browser the machine has not seen joins once its code is entered there and the browser confirms", async ({
+  page,
+  stack,
+}) => {
+  await stack.machine.start()
+  await openSignedIn(page, stack)
+  await page.getByRole("button", { name: "Account", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Connected Devices", exact: true }).click()
+  const prompt = page.getByText(/^Enter [0-9A-Z]{3}-[0-9A-Z]{3} on Web E2E Machine, in Settings, Connections\.$/)
+  await expect(prompt).toBeVisible({ timeout: 20_000 })
+  const [code] = /[0-9A-Z]{3}-[0-9A-Z]{3}/.exec((await prompt.textContent()) ?? "") ?? []
+  approveDevice(stack.machine, code!)
+
+  const question = page.getByText("Did Web E2E Machine accept the code?", { exact: true })
+  await expect(question).toBeVisible()
+  await page.getByRole("button", { name: "Yes", exact: true }).click()
+  await expect(question).toBeHidden()
+  const pinned = await page.evaluate(() => localStorage.getItem("hinacode.hostKeys"))
+  expect(JSON.parse(pinned ?? "{}")).toEqual({ [stack.machine.environmentId]: stack.machine.pairing.key })
 })
 
 test("a machine renamed in Settings keeps its name after the page reloads", async ({ page, web }) => {

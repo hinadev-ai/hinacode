@@ -202,8 +202,8 @@ const make = ({
 
     const publishPairing = Effect.gen(function* () {
       if (tunnel === null) return
-      const { hosts, port, token } = yield* access.pairing
-      const pairing = { hosts, port, token }
+      const { hosts, port, key } = yield* access.pairing
+      const pairing = { hosts, port, key }
       const published = createHash("sha256").update(JSON.stringify(pairing)).digest("hex")
       if (published === tunnel.published) return
       const credential = yield* requireSecret(
@@ -413,7 +413,7 @@ const make = ({
       }),
       Effect.forkScoped,
     )
-    yield* Stream.merge(access.rotations, Stream.drop(Stream.tick(PUBLISH_EVERY), 1)).pipe(
+    yield* Stream.merge(access.resets, Stream.drop(Stream.tick(PUBLISH_EVERY), 1)).pipe(
       Stream.runForEach(() => lock.withPermit(republish)),
       Effect.forkScoped,
     )

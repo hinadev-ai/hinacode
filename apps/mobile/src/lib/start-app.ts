@@ -7,13 +7,15 @@ import {
   onEvent,
   onRemembered,
   restoreAnswers,
+  setDevice,
   setForeground,
   setServers,
   setWatching,
   storedServers,
   useConnection,
 } from "@/lib/connection"
-import { clearAnswers, loadAnswers, loadServers, saveAnswers, saveServers } from "@/lib/storage"
+import { deviceName, provideRandomValues } from "@/lib/device"
+import { clearAnswers, loadAnswers, loadDeviceKey, loadServers, saveAnswers, saveServers } from "@/lib/storage"
 import { addPairing, newServerId } from "@/lib/stored-target"
 import { isTranscriptPush, useMessages } from "@/stores/messages"
 import { usePreferences } from "@/stores/preferences"
@@ -44,8 +46,14 @@ let started: Promise<void> | undefined
 export const startApp = () => (started ??= start())
 
 async function start() {
+  provideRandomValues()
   followForeground()
-  const [servers] = await Promise.all([loadServers(), usePreferences.getState().restore()])
+  const [servers, deviceKey] = await Promise.all([
+    loadServers(),
+    loadDeviceKey(),
+    usePreferences.getState().restore(),
+  ])
+  setDevice({ key: deviceKey, name: deviceName })
   if (useConnection.getState().servers.length === 0) {
     setServers(servers)
     void showLastLists(servers.map((server) => server.id))

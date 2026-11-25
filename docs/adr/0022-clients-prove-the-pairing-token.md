@@ -1,6 +1,6 @@
 # 0022. Clients prove the pairing token instead of sending it
 
-Status: Accepted
+Status: Superseded by [0027](0027-end-to-end-encryption-with-a-pinned-host-key.md), which replaces the token proof with a Noise handshake to the pinned host key.
 Date: 2026-10-25
 
 ## Context

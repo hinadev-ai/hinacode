@@ -52,6 +52,8 @@ import threadDeviceClient from "./migrations/0050_thread_device_client.ts"
 import turnEndTree from "./migrations/0051_turn_end_tree.ts"
 import piProvider from "./migrations/0052_pi_provider.ts"
 import threadInterrupted from "./migrations/0053_thread_interrupted.ts"
+import remoteDevice from "./migrations/0054_remote_device.ts"
+import environmentHostKey from "./migrations/0055_environment_host_key.ts"
 
 const run = Migrator.make({})
 
@@ -109,6 +111,8 @@ export const runMigrations = run({
     "51_turn_end_tree": turnEndTree,
     "52_pi_provider": piProvider,
     "53_thread_interrupted": threadInterrupted,
+    "54_remote_device": remoteDevice,
+    "55_environment_host_key": environmentHostKey,
   }),
 }).pipe(
   Effect.tap((ran) =>

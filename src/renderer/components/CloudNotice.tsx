@@ -1,10 +1,21 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role -- The live notice holds a button, which <output> cannot.
 import { Link } from "@tanstack/react-router"
-import { type Cloud, incompatibleText, useCloud, useThreadEnvironment } from "../lib/environments.ts"
+import {
+  approvalText,
+  type Cloud,
+  incompatibleText,
+  needsYou as needsAttention,
+  refusalText,
+  repairsFromRelay,
+  useCloud,
+  useClouds,
+  useThreadEnvironment,
+} from "../lib/environments.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
+import { ConfirmHostButtons, RepairButton } from "./HostApproval.tsx"
 import { ReconnectButton } from "./ReconnectButton.tsx"
 import { ReloadPageButton } from "./ReloadPageButton.tsx"
 import { inBrowser } from "../lib/runtime.ts"
@@ -17,11 +28,25 @@ export function CloudNotice({ threadId }: { threadId: string }) {
   return <CloudNoticeBody cloud={cloud} />
 }
 
+export function MachineApprovalNotices({ className }: { className?: string }) {
+  const waiting = useClouds().filter((cloud) => cloud.status === "approval")
+  if (waiting.length === 0) return null
+  return (
+    <div className={className}>
+      {waiting.map((cloud) => (
+        <CloudNoticeBody key={cloud.id} cloud={cloud} />
+      ))}
+    </div>
+  )
+}
+
 const noticeText = (cloud: Cloud, now: number, locale: string) => {
   const { name } = cloud
   switch (cloud.status) {
+    case "approval":
+      return approvalText(cloud)
     case "unauthorized":
-      return inBrowser() ? m.web_machine_refused_token({ name }) : m.thread_cloud_unauthorized({ name })
+      return refusalText(cloud)
     case "incompatible":
       return incompatibleText(cloud)
     default:
@@ -38,7 +63,7 @@ function CloudNoticeBody({ cloud }: { cloud: Cloud }) {
   const now = useNow()
   const locale = useLocale((state) => state.locale)
   const text = noticeText(cloud, now, locale)
-  const needsYou = cloud.status === "unauthorized" || cloud.status === "incompatible"
+  const needsYou = needsAttention(cloud)
   const Icon = needsYou ? WarningIcon : CloudOffIcon
 
   return (
@@ -49,7 +74,11 @@ function CloudNoticeBody({ cloud }: { cloud: Cloud }) {
     >
       <Icon aria-hidden className="size-4 shrink-0" />
       <span className="min-w-0 flex-1 tabular-nums">{text}</span>
-      {cloud.status === "unauthorized" && inBrowser() ? (
+      {cloud.status === "approval" ? (
+        <ConfirmHostButtons cloud={cloud} />
+      ) : repairsFromRelay(cloud) ? (
+        <RepairButton cloud={cloud} />
+      ) : cloud.status === "unauthorized" && inBrowser() ? (
         <ReloadPageButton />
       ) : cloud.status === "unauthorized" ? (
         <Link

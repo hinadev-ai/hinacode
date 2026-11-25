@@ -155,7 +155,7 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
           answer.status === 401 ? Effect.fail(forgotten()) : decode("route the tunnel", Tunnel, answer),
         ),
       ),
-    publishPairing: (credential: string, pairing: { hosts: ReadonlyArray<string>; port: number; token: string }) =>
+    publishPairing: (credential: string, pairing: { hosts: ReadonlyArray<string>; port: number; key: string }) =>
       call("publish this machine's pairing", "PUT", "/v1/host/pairing", { body: pairing, credential }).pipe(
         Effect.flatMap((answer) => {
           if (answer.status === 401) return Effect.fail(forgotten())

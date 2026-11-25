@@ -82,7 +82,7 @@ const uploadDevPackage = (client: BoatClient, id: string, path: string) =>
     catch: () => new BoatMachineError({ message: `Could not read HINACODE_BOAT_PACKAGE at ${path}.` }),
   }).pipe(Effect.flatMap((bytes) => client.writeFileBytes(id, DEV_PACKAGE_PATH, bytes)))
 
-const withoutTokens = (output: string) => output.replace(/token=[^&\s]+/g, "token=REDACTED")
+const withoutSecrets = (output: string) => output.replace(/(token|secret)=[^&\s]+/g, "$1=REDACTED")
 
 const install = (client: BoatClient, id: string, devPackage: string | undefined) =>
   Effect.gen(function* () {
@@ -93,7 +93,7 @@ const install = (client: BoatClient, id: string, devPackage: string | undefined)
     })
     const pairing = parsePairingUrl(text.decode(result.stdout))
     if (result.exitCode === 0 && pairing !== null) return pairing
-    const output = withoutTokens(text.decode(result.stderr)).trim().slice(-OUTPUT_TAIL_CHARS)
+    const output = withoutSecrets(text.decode(result.stderr)).trim().slice(-OUTPUT_TAIL_CHARS)
     return yield* new BoatMachineError({
       message: `HinaCode did not start on the boat sandbox (exit ${result.exitCode}).${output === "" ? "" : `\n${output}`}`,
     })
@@ -175,7 +175,7 @@ const make = (env: Readonly<Record<string, string | undefined>>) =>
 
     const pair = (client: BoatClient, id: string) =>
       Effect.gen(function* () {
-        const { port, token } = yield* install(client, id, devPackage)
+        const { port, key, secret } = yield* install(client, id, devPackage)
         const hosted = yield* client.hostPort(id, port, { public: true, localhost: true })
         const relay = URL.parse(hosted)?.hostname
         if (relay === undefined)
@@ -183,7 +183,7 @@ const make = (env: Readonly<Record<string, string | undefined>>) =>
         const sandbox = yield* client.getSandbox(id)
         return yield* environments.add({
           name: sandbox.name,
-          pairingUrl: pairingUrl({ hosts: [relay], port: 443, token, relay }),
+          pairingUrl: pairingUrl({ hosts: [relay], port: 443, relay, key, secret }),
         })
       })
 

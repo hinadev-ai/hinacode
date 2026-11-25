@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { afterEach, describe, expect, test } from "@effect/vitest"
 import { Effect, Option, Queue, type Scope } from "effect"
 import { WebSocketServer } from "ws"
-import { REMOTE_PATH, type ServerFrame } from "../shared/remote.ts"
+import { type LegacyChallenge, REMOTE_PATH, type ServerFrame } from "../shared/remote.ts"
 import { connect, RpcError } from "./client.ts"
 import { CliFailure, EXIT } from "./exit.ts"
 import { connectFirst, NOT_RUNNING } from "./target.ts"
@@ -17,7 +17,10 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup()
 })
 
-const listen = async (greeting: typeof ServerFrame.Encoded, answer: (frame: Frame) => ReadonlyArray<Frame>) => {
+const listen = async (
+  greeting: typeof ServerFrame.Encoded | typeof LegacyChallenge.Encoded,
+  answer: (frame: Frame) => ReadonlyArray<Frame>,
+) => {
   const dir = mkdtempSync(join(tmpdir(), "hinacode-cli-"))
   const socketPath = join(dir, "cli.sock")
   const http = createServer()
@@ -41,7 +44,7 @@ const listen = async (greeting: typeof ServerFrame.Encoded, answer: (frame: Fram
   return { socketPath, received }
 }
 
-const ready = { type: "ready", version: 1, features: ["call-keys", "watch"] } as const
+const ready = { type: "ready", version: 2, features: ["call-keys", "watch"] } as const
 
 const THREAD = {
   id: "a41f0c2e-1111-4aaa-8bbb-000000000001",
