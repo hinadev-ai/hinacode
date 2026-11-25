@@ -51,6 +51,13 @@ describe("slack api", () => {
     }),
   )
 
+  it.live("gives up on an answer that did not come from Slack", () =>
+    Effect.gen(function* () {
+      const refusal = yield* refusalFrom({ status: 403, body: "<html>Blocked by the proxy</html>" })
+      expect(refusal).toEqual({ reason: "HTTP 403", recoverable: false, retryAfterMs: null })
+    }),
+  )
+
   it.live("treats a server error as passing, whatever its body says", () =>
     Effect.gen(function* () {
       const json = yield* refusalFrom({ status: 503, body: JSON.stringify({ error: "upstream unavailable" }) })
