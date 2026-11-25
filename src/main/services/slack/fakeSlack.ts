@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto"
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
-import { Effect, Queue } from "effect"
+import { Effect, Option, Queue, Schema } from "effect"
 import { type WebSocket, WebSocketServer } from "ws"
+
+const decodeAck = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ envelope_id: Schema.String })))
 
 export interface FakeWorkspace {
   readonly appToken: string
@@ -106,8 +108,8 @@ const start = (workspace: FakeWorkspace) =>
       open.add(socket)
       socket.on("close", () => open.delete(socket))
       socket.on("message", (data) => {
-        const { envelope_id } = JSON.parse(data.toString()) as { readonly envelope_id: string }
-        Queue.offerUnsafe(acks, envelope_id)
+        const ack = decodeAck(data.toString())
+        if (Option.isSome(ack)) Queue.offerUnsafe(acks, ack.value.envelope_id)
       })
       socket.send(JSON.stringify({ type: "hello" }))
       Queue.offerUnsafe(links, socket)

@@ -97,9 +97,9 @@ export const makeSlackApi = (apiUrl: string) => {
             body: new URLSearchParams(params),
             signal: AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]),
           })
-          return isUnavailable(answered.status)
-            ? { status: answered.status, retryAfterMs: retryAfterMs(answered.headers.get("retry-after")) }
-            : { status: answered.status, body: (await answered.json()) as unknown }
+          return answered.ok
+            ? { status: answered.status, body: (await answered.json()) as unknown }
+            : { status: answered.status, retryAfterMs: retryAfterMs(answered.headers.get("retry-after")) }
         },
         catch: (cause) =>
           new SlackApiError({
@@ -113,7 +113,7 @@ export const makeSlackApi = (apiUrl: string) => {
         return yield* new SlackApiError({
           method,
           reason: `HTTP ${response.status}`,
-          recoverable: true,
+          recoverable: isUnavailable(response.status),
           retryAfterMs: response.retryAfterMs,
         })
       }
