@@ -59,7 +59,7 @@ type Arrival = {
 ```
 
 - `Routine.trigger` is `RoutineTrigger | null`. A routine may have a schedule, a trigger, both or neither.
-- `fromUsers` cannot be empty and has no wildcard. An event from anyone else matches nothing and leaves no trace. The values are GitHub logins, Slack member ids and Linear user ids.
+- `fromUsers` cannot be empty and has no wildcard. An event from anyone else matches nothing and leaves no trace. The values are GitHub logins, Slack member ids and the emails of Linear accounts.
 - `scopes` are repositories as `owner/name`, Slack channel ids or Linear team keys. Empty means any.
 - `Arrival.key` names the event itself, such as `github:comment:<id>`. It is the run's `event_key`, so a redelivery starts nothing: the unique index on `(routine_id, event_key)` already exists.
 - `Arrival.conversation` names the place, such as `github:acme/api#12` or `slack:C1:1700000000.000100`.
@@ -126,6 +126,17 @@ The developer creates their own Slack app from a manifest HinaCode links to, and
 - The thread is read only when a routine's trigger matches the mention, in pages of 200 messages, at most five pages. A longer thread arrives with no context, and so does one Slack will not hand over.
 - Mentions are handled one at a time, so two mentions in one Slack thread reach the routine in order.
 
+### Linear
+
+The developer adds a webhook in Linear that points at `POST /hooks/linear` on the routine webhook listener, and saves the signing secret Linear shows as `linear.webhookSecret` in Settings. The Linear API key already stored there posts the answer.
+
+- A delivery needs a valid `Linear-Signature`, the hex HMAC-SHA256 of the raw body, checked with the Linear SDK. Its `webhookTimestamp` must be within a minute, as Linear recommends against replays. Linear treats anything but 200 as a failure and retries, so an accepted delivery answers 200.
+- `linear.comment` is a comment created on an issue. `linear.issue_assigned` is an issue whose assignee became the account the API key belongs to, on create or on update. Without an API key, or with one Linear refuses, that account is unknown and the event matches nothing. Linear is asked whose key it is once per key, and only for an issue delivery. When that lookup fails or takes more than 3 seconds, the delivery answers 503, so Linear delivers it again instead of losing the assignment.
+- `fromUsers` holds the email of the person who commented or assigned, taken from the delivery's `actor`. An actor that is not a user, such as an integration, is never an arrival. `scopes` holds team keys such as `ENG`, read from the issue identifier.
+- The conversation is the issue, `linear:<issueId>`. A comment's key is `linear:comment:<id>`. An assignment's key is `linear:issue:<id>:assigned:<updatedAt>`, so a redelivery starts nothing and a later reassignment is its own event.
+- `text` is the comment body. An assignment has no text of the sender's, so its `text` is empty and the issue description travels in `context`, because anyone may have written it. The form hides the phrase field for an assignment, which has nothing to match. `context` always holds the issue identifier and title. The agent reads the rest with its Linear tools.
+- `reply` and the `linear_create_comment` tool create a comment through one method, with an id HinaCode chose. A comment that arrives with one of those ids is HinaCode's own, and it is dropped. The ids are kept in memory, so a reply posted just before a restart can come back as one event.
+
 ### Permission
 
 1. Only a sender in `fromUsers` starts or continues a turn. Everything other people wrote is quoted data.
@@ -135,11 +146,11 @@ The developer creates their own Slack app from a manifest HinaCode links to, and
 
 ### Slices
 
-| Slice     | Builds                                                                                        | Check                                                                                                  |
-| --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 1. GitHub | The trigger on a routine, `arrive`, conversations, `reply`, `/hooks/github`, the routine form | A signed issue comment starts one thread, a second continues it, a stranger starts none, `reply` posts |
-| 2. Slack  | The Socket Mode connection, the mention decoder, thread context, the reaction, the Slack post | A mention starts a thread and the answer lands in the Slack thread, against a local fake               |
-| 3. Linear | `/hooks/linear`, the comment and assignment decoders, the Linear post                         | A signed comment starts a thread and the answer lands on the issue                                     |
+| Slice     | Builds                                                                                                | Check                                                                                                  |
+| --------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 1. GitHub | The trigger on a routine, `arrive`, conversations, `reply`, `/hooks/github`, the routine form         | A signed issue comment starts one thread, a second continues it, a stranger starts none, `reply` posts |
+| 2. Slack  | The Socket Mode connection, the mention decoder, thread context, the reaction, the Slack post         | A mention starts a thread and the answer lands in the Slack thread, against a local fake               |
+| 3. Linear | `/hooks/linear`, the comment and assignment decoders, the Linear post, the signing secret in Settings | A signed comment starts a thread and the answer lands on the issue                                     |
 
 ## Out of scope
 
