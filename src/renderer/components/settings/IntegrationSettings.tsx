@@ -1,7 +1,8 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
-import { callPromise, gitHubAuthAtom, secretStoredAtom } from "../../lib/rpc.ts"
+import type { KeyringBackend } from "../../../shared/domain.ts"
+import { callPromise, gitHubAuthAtom, secretStorageAtom, secretStoredAtom } from "../../lib/rpc.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
@@ -9,12 +10,13 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx
 import { Input } from "../ui/input.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { CheckCircleFillIcon } from "@hinacode/icons"
+import { CheckCircleFillIcon, WarningIcon } from "@hinacode/icons"
 
 export function IntegrationSettings() {
   return (
     <SettingsSection>
       <SettingsGroup>
+        <SecretStorageStatus />
         <GitHubStatus />
         <SecretField
           name="linear.apiKey"
@@ -24,6 +26,51 @@ export function IntegrationSettings() {
         />
       </SettingsGroup>
     </SettingsSection>
+  )
+}
+
+const keyringNames: Record<Exclude<KeyringBackend, "none">, () => string> = {
+  keychain: m.settings_secret_storage_keychain,
+  dpapi: m.settings_secret_storage_dpapi,
+  libsecret: m.settings_secret_storage_libsecret,
+  kwallet: m.settings_secret_storage_kwallet,
+}
+
+function SecretStorageStatus() {
+  const environment = useSettingsEnvironment()
+  const storage = useAtomValue(secretStorageAtom(environment))
+
+  return (
+    <Field>
+      <FieldLabel>{m.settings_secret_storage_label()}</FieldLabel>
+      {AsyncResult.builder(storage)
+        .onInitial(() => <p className="text-sm text-muted-foreground">{m.settings_secret_storage_checking()}</p>)
+        .onSuccess((backend) =>
+          backend === "none" ? (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg border border-attention/30 bg-attention/10 px-3 py-2 text-sm"
+            >
+              <WarningIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-attention" />
+              <div className="flex min-w-0 flex-col gap-1">
+                <p className="font-medium text-attention">{m.settings_secret_storage_plaintext()}</p>
+                <p className="text-muted-foreground">
+                  {m.settings_secret_storage_plaintext_hint_before()}{" "}
+                  <code className="font-mono text-[0.85em] text-foreground">hinacode serve</code>{" "}
+                  {m.settings_secret_storage_plaintext_hint_after()}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="flex items-center gap-1.5 text-sm">
+              <CheckCircleFillIcon aria-hidden className="size-4 text-success" />
+              {keyringNames[backend]()}
+            </p>
+          ),
+        )
+        .onError((cause) => <p className="text-sm text-destructive">{errorMessage(cause)}</p>)
+        .orElse(() => null)}
+    </Field>
   )
 }
 

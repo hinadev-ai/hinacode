@@ -41,7 +41,7 @@ import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
 import * as Files from "./services/Files.ts"
 import * as GitHub from "./services/GitHub.ts"
-import { Keyring } from "./services/Secrets.ts"
+import { safeStorageKeyring } from "./services/Secrets.ts"
 import { startResourceMonitor } from "./resourceMonitor.ts"
 import { dropAppImageArgv0, hydratePath } from "./shellPath.ts"
 import { liquidGlass } from "./liquidGlass.ts"
@@ -231,14 +231,6 @@ const serveArtifacts = (runtime: AppRuntime) =>
     return themedArtifact(request, new Response(file.bytes, { headers: { "content-type": file.type } }))
   })
 
-const safeStorageKeyring = Layer.succeed(
-  Keyring,
-  Keyring.of({
-    seal: (value) => (safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(value) : undefined),
-    open: (sealed) => safeStorage.decryptString(sealed),
-  }),
-)
-
 const QUIT_TIMEOUT_MS = 5000
 
 const devRendererUrl = app.isPackaged ? undefined : process.env["ELECTRON_RENDERER_URL"]
@@ -332,7 +324,7 @@ app.whenReady().then(async () => {
     makeAppLayer({
       userData: dataDir,
       sbxConfigPath,
-      keyring: safeStorageKeyring,
+      keyring: safeStorageKeyring(safeStorage, process.platform),
       updates: Updater.layer,
       toWindows: sendToWindows,
       artifactInspector: electronArtifactInspector,
