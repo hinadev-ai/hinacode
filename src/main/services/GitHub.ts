@@ -1230,7 +1230,12 @@ const make = Effect.gen(function* () {
       ),
     merge: (raw, method) => ghWrite(raw, (url) => ["pr", "merge", url, `--${method}`], openInRepository),
     close: (raw) => ghWrite(raw, (url) => ["pr", "close", url]),
-    comment: (raw, body) => ghWrite(raw, (url) => ["pr", "comment", url, "--body", body]),
+    comment: (raw, body) => {
+      const issueUrl = parseGitHubIssueUrl(raw.trim())
+      return issueUrl === undefined
+        ? ghWrite(raw, (url) => ["pr", "comment", url, "--body", body])
+        : Effect.asVoid(gh(homedir(), ["issue", "comment", issueUrl, "--body", body]))
+    },
     pullRequestCandidates: (raw) =>
       Effect.gen(function* () {
         const [, owner = "", name = ""] = new URL(yield* requireGitHubPullRequestUrl(raw)).pathname.split("/")

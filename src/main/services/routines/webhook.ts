@@ -1,11 +1,14 @@
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { createServer } from "node:http"
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer"
-import { ByteSize, Effect, Layer } from "effect"
+import { ByteSize, Effect, Layer, Option, Schema } from "effect"
 import { HttpIncomingMessage, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http"
 import type { RoutineRun } from "../../../shared/domain.ts"
+import { type Arrival, githubArrival } from "./triggers.ts"
 
 export const hookPath = (routineId: string) => `/hooks/routines/${routineId}`
+
+export const GITHUB_HOOK_PATH = "/hooks/github"
 
 const SIGNATURE_HEADERS = ["x-hinacode-signature", "x-hub-signature-256"]
 const EVENT_KEY_HEADERS = ["idempotency-key", "x-github-delivery"]
@@ -27,6 +30,7 @@ export interface WebhookHandlers {
   readonly secret: Effect.Effect<string | undefined>
   readonly enabled: (routineId: string) => Effect.Effect<boolean | undefined>
   readonly deliver: (routineId: string, body: string | null, eventKey: string | null) => Effect.Effect<RoutineRun>
+  readonly arrive: (arrival: Arrival) => Effect.Effect<ReadonlyArray<RoutineRun>>
 }
 
 const MAX_BODY_BYTES = 1024 * 1024
@@ -72,8 +76,33 @@ const handleHook = (handlers: WebhookHandlers) =>
     Effect.catchTag("HttpServerError", () => Effect.succeed(json({ error: "unreadable_body" }, 400))),
   )
 
+const parseJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))
+
+const handleGitHub = (handlers: WebhookHandlers) =>
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest
+    const secret = yield* handlers.secret
+    if (secret === undefined) return json({ error: "unauthorized" }, 401)
+    if (Number(request.headers["content-length"]) > MAX_BODY_BYTES) return json({ error: "body_too_large" }, 413)
+    const raw = new Uint8Array(yield* request.arrayBuffer)
+    if (!signatureMatches(secret, raw, request.headers["x-hub-signature-256"])) {
+      return json({ error: "unauthorized" }, 401)
+    }
+    const payload = parseJson(new TextDecoder().decode(raw))
+    if (Option.isNone(payload)) return json({ error: "not_json" }, 400)
+    const arrival = githubArrival(request.headers["x-github-event"] ?? "", payload.value)
+    const runs = arrival === null ? [] : yield* handlers.arrive(arrival)
+    return json({ runs: runs.map((run) => ({ runId: run.id, threadId: run.threadId, status: run.status })) }, 202)
+  }).pipe(
+    Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(MAX_BODY_BYTES)),
+    Effect.catchTag("HttpServerError", () => Effect.succeed(json({ error: "unreadable_body" }, 400))),
+  )
+
 export const webhookServer = (address: { readonly host: string; readonly port: number }, handlers: WebhookHandlers) =>
-  HttpRouter.serve(HttpRouter.add("POST", "/hooks/routines/:id", handleHook(handlers)), {
-    disableListenLog: true,
-    disableLogger: true,
-  }).pipe(Layer.provide(NodeHttpServer.layer(createServer, address)))
+  HttpRouter.serve(
+    Layer.mergeAll(
+      HttpRouter.add("POST", "/hooks/routines/:id", handleHook(handlers)),
+      HttpRouter.add("POST", GITHUB_HOOK_PATH, handleGitHub(handlers)),
+    ),
+    { disableListenLog: true, disableLogger: true },
+  ).pipe(Layer.provide(NodeHttpServer.layer(createServer, address)))

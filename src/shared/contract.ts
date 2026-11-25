@@ -1,4 +1,4 @@
-import { Predicate, Schema, Struct } from "effect"
+import { Effect, Predicate, Schema, Struct } from "effect"
 import {
   Artifact,
   ArtifactExportRequest,
@@ -61,6 +61,7 @@ import {
   RoutineRun,
   FileSearchHit,
   RoutineSchedule,
+  RoutineTrigger,
   RoutineWorkspace,
   FsEntry,
   DirectorySuggestion,
@@ -166,6 +167,7 @@ const RoutineInput = Schema.Struct({
   effort: Schema.NullOr(Schema.String),
   workspace: RoutineWorkspace,
   schedule: Schema.NullOr(RoutineSchedule),
+  trigger: Schema.NullOr(RoutineTrigger).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type RoutineInput = typeof RoutineInput.Type
 
@@ -868,6 +870,7 @@ export const RpcMethods = {
       effort: Schema.optional(Schema.NullOr(Schema.String)),
       workspace: Schema.optional(RoutineWorkspace),
       schedule: Schema.optional(Schema.NullOr(RoutineSchedule)),
+      trigger: Schema.optional(Schema.NullOr(RoutineTrigger)),
     }),
     Routine,
   ),
@@ -879,7 +882,12 @@ export const RpcMethods = {
   ),
   "routines.webhook": rpc(
     Schema.Struct({ id: Schema.String }),
-    Schema.Struct({ url: Schema.String, hasSecret: Schema.Boolean, listenError: Schema.NullOr(Schema.String) }),
+    Schema.Struct({
+      url: Schema.String,
+      githubUrl: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+      hasSecret: Schema.Boolean,
+      listenError: Schema.NullOr(Schema.String),
+    }),
   ),
   "routines.rotateWebhookSecret": rpc(Schema.Struct({ id: Schema.String }), Schema.Struct({ secret: Schema.String })),
   "commands.forProject": rpc(

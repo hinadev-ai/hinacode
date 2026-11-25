@@ -37,6 +37,7 @@ const ownToolLabels = new Map<string, () => string>([
   ["linear_get_issue", m.tool_own_linear_get_issue],
   ["linear_search_issues", m.tool_own_linear_search_issues],
   ["linear_create_comment", m.tool_own_linear_create_comment],
+  ["reply", m.tool_own_reply],
   ["linear_update_issue_state", m.tool_own_linear_update_issue_state],
   ["publish_artifact", m.tool_own_publish_artifact],
   ["publish_document", m.tool_own_publish_document],

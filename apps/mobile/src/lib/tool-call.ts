@@ -25,6 +25,7 @@ const ownTools = [
   "linear_get_issue",
   "linear_search_issues",
   "linear_create_comment",
+  "reply",
   "linear_update_issue_state",
   "publish_artifact",
   "publish_document",

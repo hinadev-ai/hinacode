@@ -1,5 +1,19 @@
 import { randomBytes, randomUUID } from "node:crypto"
-import { Cause, Clock, Context, Cron, Effect, FiberHandle, Layer, Option, Schema, Stream } from "effect"
+import {
+  Cause,
+  Clock,
+  Context,
+  Cron,
+  Deferred,
+  Effect,
+  Exit,
+  FiberHandle,
+  Layer,
+  Option,
+  Schema,
+  Semaphore,
+  Stream,
+} from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { ProviderId } from "../../../shared/agent.ts"
 import type { RoutineInput } from "../../../shared/contract.ts"
@@ -10,6 +24,7 @@ import {
   type RoutineRunSource,
   type RoutineRunStatus,
   RoutineSchedule,
+  RoutineTrigger,
   RoutineWorkspace,
   type Settings as SettingsValue,
   type Thread,
@@ -27,7 +42,9 @@ import { Secrets } from "../Secrets.ts"
 import { Settings } from "../Settings.ts"
 import { Threads } from "../Threads.ts"
 import { Worktrees } from "../Worktrees.ts"
-import { hookPath, webhookServer } from "./webhook.ts"
+import { Conversations } from "./Conversations.ts"
+import { type Arrival, FOLLOW_UP, matches, renderArrival } from "./triggers.ts"
+import { GITHUB_HOOK_PATH, hookPath, webhookServer } from "./webhook.ts"
 
 export const WEBHOOK_SECRET = "routines.webhookSecret"
 export const AUTO_PAUSE_FAILURES = 3
@@ -62,9 +79,10 @@ export class Routines extends Context.Service<
       eventKey?: string | null,
     ) => Effect.Effect<RoutineRun, PersistenceError | NotFoundError>
     readonly runs: (id: string, limit: number) => Effect.Effect<ReadonlyArray<RoutineRun>, PersistenceError>
+    readonly arrive: (arrival: Arrival) => Effect.Effect<ReadonlyArray<RoutineRun>, PersistenceError>
     readonly webhook: (
       id: string,
-    ) => Effect.Effect<{ url: string; hasSecret: boolean; listenError: string | null }, Failure>
+    ) => Effect.Effect<{ url: string; githubUrl: string; hasSecret: boolean; listenError: string | null }, Failure>
     readonly rotateWebhookSecret: Effect.Effect<{ secret: string }, PersistenceError>
   }
 >()("hinacode/Routines") {}
@@ -80,6 +98,7 @@ const RoutineRow = Schema.Struct({
   effort: Schema.NullOr(Schema.String),
   workspace: RoutineWorkspace,
   schedule: Schema.NullOr(Schema.fromJsonString(RoutineSchedule)),
+  trigger: Schema.NullOr(Schema.fromJsonString(RoutineTrigger)),
   nextRunAt: Schema.NullOr(Timestamp),
   createdAt: Timestamp,
   updatedAt: Timestamp,
@@ -145,6 +164,7 @@ const make = Effect.gen(function* () {
   const runner = yield* AgentRunner
   const events = yield* Events
   const scheduler = yield* Scheduler
+  const conversations = yield* Conversations
   const scope = yield* Effect.scope
 
   const encodeRow = Schema.encodeEffect(RoutineRow)
@@ -185,7 +205,7 @@ const make = Effect.gen(function* () {
     Result: Schema.Struct({ threadId: Schema.String }),
     execute: (id) => sql`
       SELECT thread_id FROM routine_run
-      WHERE routine_id = ${id} AND status = 'started' AND thread_id IS NOT NULL
+      WHERE routine_id = ${id} AND status = 'started' AND thread_id IS NOT NULL AND source != 'event'
       ORDER BY created_at DESC, rowid DESC LIMIT 1
     `,
   })
@@ -233,6 +253,7 @@ const make = Effect.gen(function* () {
 
   const insertRun = (run: {
     readonly routineId: string
+    readonly threadId?: string | null | undefined
     readonly source: RoutineRunSource
     readonly eventKey: string | null
     readonly payload: string | null
@@ -244,7 +265,7 @@ const make = Effect.gen(function* () {
       yield* sql`INSERT INTO routine_run ${sql.insert({
         id,
         routineId: run.routineId,
-        threadId: null,
+        threadId: run.threadId ?? null,
         source: run.source,
         eventKey: run.eventKey,
         payload: run.payload,
@@ -271,6 +292,7 @@ const make = Effect.gen(function* () {
       WHERE created_by = ${createdBy} AND id != ${latest} AND status = 'idle'
         AND settled_at IS NULL AND pinned_at IS NULL
         AND (SELECT COUNT(*) FROM message WHERE thread_id = t.id AND role = 'user') = 1
+        AND NOT EXISTS (SELECT 1 FROM routine_conversation WHERE thread_id = t.id)
     `,
   })
 
@@ -314,7 +336,6 @@ const make = Effect.gen(function* () {
       })
       yield* events.publish({ type: "thread.updated", thread })
       yield* sql`UPDATE routine_run SET thread_id = ${thread.id} WHERE id = ${runId}`
-      yield* settleEarlierRuns(routine, thread.id)
       return { thread, workspace }
     })
 
@@ -342,27 +363,161 @@ const make = Effect.gen(function* () {
       if (source === "schedule") yield* pauseAfterRepeatedFailures(routine)
     })
 
-  const startRun = (routine: RoutineRow, source: RoutineRunSource, payload: string | null, eventKey: string | null) =>
+  const claimRun = (
+    routine: RoutineRow,
+    source: RoutineRunSource,
+    payload: string | null,
+    eventKey: string | null,
+    threadId: string | null = null,
+  ) =>
+    insertRun({ routineId: routine.id, threadId, source, eventKey, payload, status: "started" }).pipe(
+      Effect.map(Option.some),
+      Effect.catchIf(isUniqueViolation, () => Effect.succeedNone),
+    )
+
+  const skipRepeat = (routine: RoutineRow, source: RoutineRunSource, eventKey: string | null) =>
+    recordSkip(routine, source, null, `Already ran for ${eventKey}`)
+
+  const recordFailureInBackground = (
+    routine: RoutineRow,
+    source: RoutineRunSource,
+    runId: string,
+    work: Effect.Effect<unknown, unknown>,
+  ) =>
+    work.pipe(
+      Effect.catchCause((cause) => markFailed(routine, source, runId, cause)),
+      Effect.catchCause((cause) => Effect.logError("could not record a failed routine run", routine.id, cause)),
+      Effect.forkIn(scope),
+    )
+
+  const firstEventSends = new Map<string, Deferred.Deferred<boolean>>()
+
+  const sendFirstEventPrompt = (threadId: string, prompt: string, workspace: WorkspaceChoice | undefined) =>
     Effect.gen(function* () {
-      const claimed = yield* insertRun({ routineId: routine.id, source, eventKey, payload, status: "started" }).pipe(
-        Effect.map(Option.some),
-        Effect.catchIf(isUniqueViolation, () => Effect.succeedNone),
+      const started = yield* Deferred.make<boolean>()
+      firstEventSends.set(threadId, started)
+      return runner.send(threadId, prompt, [], { workspace }).pipe(
+        Effect.tapCause(() => conversations.forget(threadId)),
+        Effect.onExit((exit) =>
+          Effect.sync(() => firstEventSends.delete(threadId)).pipe(
+            Effect.andThen(Deferred.succeed(started, Exit.isSuccess(exit))),
+          ),
+        ),
       )
-      if (Option.isNone(claimed)) return yield* recordSkip(routine, source, null, `Already ran for ${eventKey}`)
-      const runId = claimed.value
+    })
+
+  const startThread = <E>(
+    routine: RoutineRow,
+    source: RoutineRunSource,
+    runId: string,
+    prompt: string,
+    onThread: (thread: Thread) => Effect.Effect<void, E>,
+  ) =>
+    Effect.gen(function* () {
       const created = yield* createThread(routine, runId).pipe(
+        Effect.tap(({ thread }) => onThread(thread)),
         Effect.map(Option.some),
         Effect.catchCause((cause) => Effect.as(markFailed(routine, source, runId, cause), Option.none())),
       )
       if (Option.isNone(created)) return yield* findRun(runId)
       const { thread, workspace } = created.value
-      yield* runner.send(thread.id, promptWithPayload(routine.prompt, payload), [], { workspace }).pipe(
-        Effect.catchCause((cause) => markFailed(routine, source, runId, cause)),
-        Effect.catchCause((cause) => Effect.logError("could not record a failed routine run", routine.id, cause)),
-        Effect.forkIn(scope),
-      )
+      const firstSend =
+        source === "event"
+          ? yield* sendFirstEventPrompt(thread.id, prompt, workspace)
+          : runner.send(thread.id, prompt, [], { workspace })
+      yield* recordFailureInBackground(routine, source, runId, firstSend)
       return yield* publishRun(runId)
+    })
+
+  const startRun = (routine: RoutineRow, source: RoutineRunSource, payload: string | null, eventKey: string | null) =>
+    Effect.gen(function* () {
+      const claimed = yield* claimRun(routine, source, payload, eventKey)
+      if (Option.isNone(claimed)) return yield* skipRepeat(routine, source, eventKey)
+      return yield* startThread(routine, source, claimed.value, promptWithPayload(routine.prompt, payload), (thread) =>
+        settleEarlierRuns(routine, thread.id),
+      )
     }).pipe(Effect.uninterruptible, Effect.mapError(persistence("routines.run")))
+
+  const isLive = (threadId: string) =>
+    threads.get(threadId).pipe(
+      Effect.map((thread) => thread.status !== "archived"),
+      Effect.catchTag("NotFoundError", () => Effect.succeed(false)),
+    )
+
+  const liveConversation = (routine: RoutineRow, trigger: RoutineTrigger, arrival: Arrival) =>
+    Effect.gen(function* () {
+      if (trigger.continuation !== "conversation") return Option.none<string>()
+      const found = yield* conversations.find(routine.id, arrival.conversation)
+      if (Option.isNone(found)) return Option.none<string>()
+      return (yield* isLive(found.value.threadId)) ? Option.some(found.value.threadId) : Option.none<string>()
+    })
+
+  const stillOwnsConversation = (routineId: string, arrival: Arrival, threadId: string) =>
+    Effect.gen(function* () {
+      const routine = yield* findRow(routineId).pipe(Effect.mapError(persistence("routines.arrive")))
+      if (Option.isNone(routine)) return false
+      const { enabled, trigger } = routine.value
+      if (!enabled || trigger === null || trigger.continuation !== "conversation") return false
+      if (!matches(trigger, arrival)) return false
+      const owner = yield* conversations.find(routineId, arrival.conversation)
+      if (Option.isNone(owner) || owner.value.threadId !== threadId) return false
+      return yield* isLive(threadId)
+    })
+
+  const declineRun = (runId: string, reason: string) =>
+    sql`UPDATE routine_run SET status = 'skipped', error = ${reason} WHERE id = ${runId}`.pipe(
+      Effect.andThen(publishRun(runId)),
+    )
+
+  const continueConversation = (routine: RoutineRow, arrival: Arrival, runId: string, threadId: string) =>
+    Effect.gen(function* () {
+      const firstSend = firstEventSends.get(threadId)
+      const handOver = Effect.gen(function* () {
+        if (firstSend !== undefined && !(yield* Deferred.await(firstSend))) {
+          return yield* declineRun(runId, "The conversation's thread did not start")
+        }
+        const taken = yield* runner.steerWhen({
+          threadId,
+          text: promptWithPayload(FOLLOW_UP, renderArrival(arrival)),
+          attachments: [],
+          when: stillOwnsConversation(routine.id, arrival, threadId),
+        })
+        if (!taken) yield* declineRun(runId, "The thread did not take the event")
+      })
+      yield* recordFailureInBackground(routine, "event", runId, handOver)
+      return yield* publishRun(runId)
+    })
+
+  const arriveAt = (routine: RoutineRow, trigger: RoutineTrigger, arrival: Arrival) =>
+    Effect.gen(function* () {
+      const payload = renderArrival(arrival)
+      const live = yield* liveConversation(routine, trigger, arrival)
+      const claimed = yield* claimRun(routine, "event", payload, arrival.key, Option.getOrNull(live))
+      if (Option.isNone(claimed)) return yield* skipRepeat(routine, "event", arrival.key)
+      const runId = claimed.value
+      if (Option.isSome(live)) return yield* continueConversation(routine, arrival, runId, live.value)
+      return yield* startThread(routine, "event", runId, promptWithPayload(routine.prompt, payload), (thread) =>
+        conversations.put({
+          routineId: routine.id,
+          key: arrival.conversation,
+          threadId: thread.id,
+          destination: arrival.destination,
+        }),
+      )
+    }).pipe(Effect.uninterruptible, Effect.mapError(persistence("routines.arrive")))
+
+  const oneArrivalAtATime = Semaphore.makeUnsafe(1)
+
+  const arrive = (arrival: Arrival) =>
+    Effect.gen(function* () {
+      const rows = yield* findRows(undefined).pipe(Effect.mapError(persistence("routines.arrive")))
+      const matching = rows.flatMap((routine) =>
+        routine.enabled && routine.trigger !== null && matches(routine.trigger, arrival)
+          ? [{ routine, trigger: routine.trigger }]
+          : [],
+      )
+      return yield* Effect.forEach(matching, ({ routine, trigger }) => arriveAt(routine, trigger, arrival))
+    }).pipe(Semaphore.withPermit(oneArrivalAtATime))
 
   const previousThreadBusy = (id: string) =>
     Effect.gen(function* () {
@@ -427,6 +582,7 @@ const make = Effect.gen(function* () {
               Effect.flatMap((routine) => startRun(routine, "webhook", body, eventKey)),
               Effect.orDie,
             ),
+          arrive: (arrival) => Effect.orDie(arrive(arrival)),
         },
       )
       yield* Effect.logInfo("routine webhooks listening", `${address.bindHost}:${address.port}`)
@@ -520,7 +676,8 @@ const make = Effect.gen(function* () {
       yield* sql`
         UPDATE routine
         SET name = ${encoded.name}, prompt = ${encoded.prompt}, provider = ${encoded.provider}, model = ${encoded.model},
-            effort = ${encoded.effort}, workspace = ${encoded.workspace}, updated_at = ${encoded.updatedAt} ${timing}
+            effort = ${encoded.effort}, workspace = ${encoded.workspace}, trigger = ${encoded.trigger},
+            updated_at = ${encoded.updatedAt} ${timing}
         WHERE id = ${id}
       `.pipe(Effect.mapError(persistence("routines.update")))
       if (timingChanged) yield* sync(next)
@@ -543,8 +700,13 @@ const make = Effect.gen(function* () {
       yield* getRow(id)
       const secret = yield* secrets.get(WEBHOOK_SECRET)
       const host = address.bindHost
-      const url = new URL(hookPath(id), `http://${host.includes(":") ? `[${host}]` : host}:${address.port}`)
-      return { url: url.toString(), hasSecret: Option.isSome(secret), listenError }
+      const origin = `http://${host.includes(":") ? `[${host}]` : host}:${address.port}`
+      return {
+        url: new URL(hookPath(id), origin).toString(),
+        githubUrl: new URL(GITHUB_HOOK_PATH, origin).toString(),
+        hasSecret: Option.isSome(secret),
+        listenError,
+      }
     })
 
   const rotateWebhookSecret = Effect.gen(function* () {
@@ -561,6 +723,7 @@ const make = Effect.gen(function* () {
     update,
     remove,
     run,
+    arrive,
     runs: (id, limit) => findRuns({ id, limit }).pipe(Effect.mapError(persistence("routines.runs"))),
     webhook,
     rotateWebhookSecret,

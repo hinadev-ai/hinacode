@@ -429,6 +429,8 @@ erDiagram
   thread ||--o{ pull_request_link : links
   routine ||--o{ routine_run : records
   thread |o--o{ routine_run : "started by"
+  routine ||--o{ routine_conversation : answers
+  thread ||--o| routine_conversation : "replies to"
   agent_account |o--o{ thread : "bills"
   thread ||--o{ thread_device : "drives"
   message ||--o| message_cjk_stale : "awaits CJK reindex"
@@ -503,7 +505,14 @@ erDiagram
     text prompt
     text workspace "local|worktree"
     text schedule "JSON {cron, timezone}, null = webhook and manual only"
+    text trigger "JSON RoutineTrigger, null = no event trigger"
     text next_run_at "null when disabled or unscheduled"
+  }
+  routine_conversation {
+    text routine_id PK "CASCADE"
+    text key PK "the place, such as github:owner/repo#12"
+    text thread_id UK "CASCADE"
+    text destination "JSON ReplyDestination"
   }
   pull_request_link {
     text id PK
@@ -516,7 +525,7 @@ erDiagram
   }
   routine_run {
     text id PK
-    text source "schedule|webhook|manual"
+    text source "schedule|webhook|manual|event"
     text event_key "unique per routine among started runs"
     text status "started|skipped|failed"
   }
@@ -685,6 +694,7 @@ flowchart LR
     run["run_agent, wait_agent"]
     control["list_threads, search_threads, read_thread,<br/>wait_for_thread, send_to_thread, stop_thread"]
     terms["list_terminals, read_terminal"]
+    reply["reply"]
   end
   review --> ws["makeActiveWorkspace → git diff"]
   prs --> db[("pull_request_link")] --> push["push thread.pullRequests"]
@@ -695,6 +705,7 @@ flowchart LR
   run --> agentRun["AgentRunner.runAgent<br/>provider.runTurn in the caller's workspace<br/>row in the caller's Agents tab"]
   control --> scope["same project as the caller<br/>AgentRunner.transcript / steer / send / interrupt"]
   terms --> scrollback["Terminals.list / attach<br/>the caller's terminals only, terminalText"]
+  reply --> conv[("routine_conversation<br/>of the caller")] --> gh["GitHub.comment<br/>the destination only"]
 ```
 
 `request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` (`thread.<id>.<NAME>`) and never into an event, a message or the tool result. The runner writes the thread's secrets to `<scratch>/secrets/<NAME>` (0600) when each turn starts and deletes the folder when the turn finishes, `Scratch` deletes leftovers at startup, so the path the tool returned works in every later turn of the thread and the file exists only while one runs. Each session also gets `unreadablePaths` (the database, the Chromium profiles and other threads' scratch folders), which Claude receives as `Read(...)` deny rules and Codex as a `deny` permission profile. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. `read_thread` and `search_threads` also reach threads of every other project on this machine. `wait_for_thread` holds the call until a thread on this machine stops working or waits on the user, then reads it, so an agent that started threads does not sleep and poll. It gives up after four minutes for the same reason `run_agent` does. `run_agent` runs one turn of any provider as a sub-agent of the caller's running turn and returns its last text, or its id after four minutes for `wait_agent` to pick up, because Muse gives an MCP call 300 seconds; see [the feature doc](features/2026-10-30-run-agent.md). `read_terminal` reads the 256 KB scrollback `Terminals` keeps per session and turns it into plain text; it refuses a terminal of another thread. See [the feature doc](features/2026-11-04-terminal-mentions.md). Codex gets `tool_timeout_sec = 3600` and opencode `experimental.mcp_timeout` for this server so a user has time to answer.
@@ -748,12 +759,19 @@ flowchart LR
   dedup -- no --> start
   manual["routines.run"] --> start
   start["Threads.create<br/>createdBy routine:id"] --> send["AgentRunner.send<br/>local or worktree"] --> started["routine_run: started"]
+  gh["POST /hooks/github<br/>x-hub-signature-256 only"] -- "githubArrival → Arrival" --> match{"enabled routine<br/>trigger matches?"}
+  match -- "no" --> nothing["nothing recorded"]
+  match -- "yes, per routine" --> dedup
+  dedup -- "no, live routine_conversation" --> steer["AgentRunner.steerWhen<br/>same thread"] --> started
+  dedup -- "no, no live thread" --> start
+  start -- "event" --> conversation[("routine_conversation")]
 ```
 
 - `next_run_at` is stored. A slot missed while the app was closed fires once on launch, then the scheduler skips to the next future slot.
 - The claim is `UPDATE routine SET next_run_at = :next WHERE next_run_at = :due`, so only one caller starts a thread for a slot.
 - Three failed scheduled runs in a row disable the routine.
 - One webhook secret per machine lives in `Secrets` under `routines.webhookSecret`.
+- An event run quotes the arrival as JSON. The thread answers with the `reply` MCP tool, which posts only to its `routine_conversation` destination and marks the post so the echo is dropped. See [the feature doc](features/2026-11-25-routine-triggers.md).
 
 ## Security boundaries
 

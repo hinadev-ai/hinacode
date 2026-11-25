@@ -747,6 +747,15 @@ describe("pull request reads", () => {
     }).pipe(Effect.provide(gh.layer))
   })
 
+  it.effect("a comment on an issue goes to that issue", () => {
+    const gh = fakeGh(() => ({}))
+    return Effect.gen(function* () {
+      const issueUrl = "https://github.com/o/r/issues/12"
+      yield* (yield* GitHub).comment(issueUrl, "--on it")
+      expect(gh.runs).toStrictEqual([["issue", "comment", issueUrl, "--body", "--on it"]])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
   it.effect("a line comment goes to GitHub on the pull request's head and shows on the next read", () => {
     const gh = fakeGh(() => apiReply(graphqlPullRequest("LineComment")))
     return Effect.gen(function* () {

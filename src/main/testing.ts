@@ -27,6 +27,7 @@ import * as ArtifactInspector from "./services/ArtifactInspector.ts"
 import * as Artifacts from "./services/Artifacts.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Browser from "./services/Browser.ts"
+import * as Conversations from "./services/routines/Conversations.ts"
 import { Routines } from "./services/routines/Routines.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Boat from "./services/boat/Boat.ts"
@@ -114,6 +115,7 @@ export const makeTestAppLayer = (
     linear,
     peers,
     unavailableDevicesLayer,
+    Conversations.layer,
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(providers),
