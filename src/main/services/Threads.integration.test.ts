@@ -26,7 +26,7 @@ import * as Scratch from "./Scratch.ts"
 import * as Secrets from "./Secrets.ts"
 
 const makeThreadsLayer = (
-  scratch: Layer.Layer<Scratch.Scratch, never, FileSystem.FileSystem>,
+  scratch: Layer.Layer<Scratch.Scratch, never, FileSystem.FileSystem | Secrets.Secrets>,
   publish: (typeof Events.Service)["publish"] = () => Effect.void,
   fileSystem?: Layer.Layer<FileSystem.FileSystem>,
 ) => {

@@ -42,7 +42,7 @@ A new rpc, `secrets.storage`, routed to the named environment like `secrets.has`
 
 - `respondSecret` stores the value with `Secrets.set("thread.<id>.<NAME>")`, then writes the file.
 - At the start of every turn of the thread, including a turn the agent wakes into, the runner writes each of the thread's secrets to `<scratch>/secrets/<NAME>`, 0600 in a 0700 folder. `finish` removes the folder, and `finish` runs when a turn completes, fails, or is stopped.
-- `Scratch` deletes every leftover `secrets/` folder when it starts, which covers a crash or a killed app.
+- `Scratch` deletes every leftover `secrets/` folder when it starts, which covers a crash or a killed app. It first stores each file that `Secrets` does not hold yet, so values an earlier version kept only as files survive the upgrade.
 - Archiving or deleting a thread clears its `thread.<id>.` rows, the same lifetime the files had before.
 - The value travels renderer → `secrets.respond` → main → `Secrets` and the file. It never enters an event, a message, a log line or the tool result. The tool result names the path only.
 

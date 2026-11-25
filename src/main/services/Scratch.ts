@@ -5,9 +5,11 @@ import { Context, Effect, FileSystem, Layer } from "effect"
 import type { Thread } from "../../shared/domain.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { slugifyBranch } from "./branchName.ts"
+import { Secrets, threadSecretPrefix } from "./Secrets.ts"
 
 const MAX_SLUG_LENGTH = 40
 const SECRETS_FOLDER = "secrets"
+const THREAD_ID_SUFFIX = /-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/
 const REMOVING_SUFFIX = ".removing"
 const TMP_ROOT_HASH_LENGTH = 6
 const TMP_ID_LENGTH = 8
@@ -58,6 +60,7 @@ export const layer = (
     Scratch,
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
+      const secrets = yield* Secrets
 
       const namesIn = (folder: string) =>
         fs.exists(folder).pipe(Effect.flatMap((exists) => (exists ? fs.readDirectory(folder) : Effect.succeed([]))))
@@ -104,10 +107,23 @@ export const layer = (
 
       const threadFolders = names.pipe(Effect.map((all) => all.filter((name) => !name.endsWith(REMOVING_SUFFIX))))
 
+      const adoptSecretsIn = (folder: string) =>
+        Effect.gen(function* () {
+          const threadId = THREAD_ID_SUFFIX.exec(folder)?.[1]
+          const secretsFolder = join(root, folder, SECRETS_FOLDER)
+          if (threadId === undefined || !(yield* fs.exists(secretsFolder))) return
+          for (const name of yield* fs.readDirectory(secretsFolder)) {
+            const key = `${threadSecretPrefix(threadId)}${name}`
+            if (yield* secrets.has(key)) continue
+            yield* secrets.set(key, yield* fs.readFileString(join(secretsFolder, name)))
+          }
+        })
+
       const deleteSecretsIn = (folder: string) =>
-        fs
-          .remove(join(root, folder, SECRETS_FOLDER), { recursive: true, force: true })
-          .pipe(Effect.catchCause((cause) => Effect.logWarning("thread secrets removal failed", folder, cause)))
+        adoptSecretsIn(folder).pipe(
+          Effect.andThen(fs.remove(join(root, folder, SECRETS_FOLDER), { recursive: true, force: true })),
+          Effect.catchCause((cause) => Effect.logWarning("thread secrets removal failed", folder, cause)),
+        )
 
       yield* deleteLeftovers(root)
       if (yield* ownsTmpRoot) yield* deleteLeftovers(tmpRoot)
