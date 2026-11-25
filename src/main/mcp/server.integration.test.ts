@@ -70,7 +70,7 @@ const reversingKeyring = safeStorageKeyring(
     encryptString: (value) => Buffer.from(Buffer.from(value).toReversed()),
     decryptString: (sealed) => Buffer.from(sealed.toReversed()).toString(),
   },
-  "linux",
+  "darwin",
 )
 const turnInputs: Array<RunTurnInput> = []
 const modelLookupStarted = Deferred.makeUnsafe<void>()

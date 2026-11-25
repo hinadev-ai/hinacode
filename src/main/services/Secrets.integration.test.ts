@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync, readFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Option } from "effect"
@@ -6,7 +9,8 @@ import * as Db from "../db/client.ts"
 import * as SecretsModule from "./Secrets.ts"
 import { type SafeStorage, Secrets, safeStorageKeyring } from "./Secrets.ts"
 
-const SEALED = "sealed:"
+const KEYRING_KEY = "v11"
+const HARDCODED_KEY = "v10"
 
 const secretsService = Effect.gen(function* () {
   return yield* Secrets
@@ -15,11 +19,12 @@ const secretsService = Effect.gen(function* () {
 const fakeSafeStorage = (linuxBackend: string): SafeStorage => ({
   isEncryptionAvailable: () => true,
   getSelectedStorageBackend: () => linuxBackend,
-  encryptString: (value) => Buffer.from(`${SEALED}${value}`),
+  encryptString: (value) => Buffer.from(`${linuxBackend === "basic_text" ? HARDCODED_KEY : KEYRING_KEY}${value}`),
   decryptString: (sealed) => {
     const text = sealed.toString()
-    if (!text.startsWith(SEALED)) throw new Error("not sealed by this key")
-    return text.slice(SEALED.length)
+    const key = text.slice(0, 3)
+    if (key === HARDCODED_KEY || (key === KEYRING_KEY && linuxBackend !== "basic_text")) return text.slice(3)
+    throw new Error("not sealed by this key")
   },
 })
 
@@ -95,11 +100,44 @@ describe("Secrets", () => {
 
   it.effect("stores basic_text rows as plaintext, so a later keyring seals them", () =>
     Effect.gen(function* () {
-      const legacy = Buffer.from(`${SEALED}lin_123`).toString("base64")
+      const legacy = Buffer.from(`${HARDCODED_KEY}lin_123`).toString("base64")
       yield* insertRow("linear.apiKey", { encrypted: true, value: legacy })
       yield* Effect.provide(secretsService, secretsOver(safeStorageKeyring(fakeSafeStorage("basic_text"), "linux")))
 
       expect(yield* storedRow("linear.apiKey")).toStrictEqual({ encrypted: false, value: "lin_123" })
+    }).pipe(Effect.provide(Db.layer(":memory:"))),
+  )
+
+  it.effect("leaves no copy of a resealed plaintext secret in the database files", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "hinacode-reseal-")), "hinacode.sqlite")
+    const fileBytes = () =>
+      [path, `${path}-wal`]
+        .filter(existsSync)
+        .map((file) => readFileSync(file).toString("latin1"))
+        .join("")
+    return Effect.gen(function* () {
+      yield* insertRow("linear.apiKey", { encrypted: false, value: "lin_plaintext_marker" })
+      expect(fileBytes()).toContain("lin_plaintext_marker")
+      yield* Effect.provide(secretsService, secretsOver(safeStorageKeyring(fakeSafeStorage("kwallet6"), "linux")))
+
+      expect(fileBytes()).not.toContain("lin_plaintext_marker")
+    }).pipe(Effect.provide(Db.layer(path)))
+  })
+
+  it.effect("seals basic_text rows again once a real keyring is there", () =>
+    Effect.gen(function* () {
+      yield* insertRow("linear.apiKey", {
+        encrypted: true,
+        value: Buffer.from(`${HARDCODED_KEY}lin_123`).toString("base64"),
+      })
+      const secrets = yield* Effect.provide(
+        secretsService,
+        secretsOver(safeStorageKeyring(fakeSafeStorage("gnome_libsecret"), "linux")),
+      )
+
+      const stored = yield* storedRow("linear.apiKey")
+      expect(Buffer.from(stored.value, "base64").toString()).toBe(`${KEYRING_KEY}lin_123`)
+      expect(yield* secrets.get("linear.apiKey")).toStrictEqual(Option.some("lin_123"))
     }).pipe(Effect.provide(Db.layer(":memory:"))),
   )
 

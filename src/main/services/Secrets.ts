@@ -19,6 +19,7 @@ export class Keyring extends Context.Service<
       readonly backend: Exclude<KeyringBackend, "none">
       readonly seal: (value: string) => Buffer
       readonly open: (sealed: Buffer) => string
+      readonly sealedByThisKey: (sealed: Buffer) => boolean
     }
 >()("hinacode/Keyring") {}
 
@@ -46,6 +47,8 @@ const linuxBackends: Partial<Record<string, Exclude<KeyringBackend, "none">>> = 
   kwallet6: "kwallet",
 }
 
+const LINUX_KEYRING_PREFIX = "v11"
+
 const safeStorageBackend = (safeStorage: SafeStorage, platform: NodeJS.Platform): KeyringBackend => {
   if (!safeStorage.isEncryptionAvailable()) return "none"
   if (platform === "darwin") return "keychain"
@@ -59,7 +62,13 @@ export const safeStorageKeyring = (safeStorage: SafeStorage, platform: NodeJS.Pl
     const open = (sealed: Buffer) => safeStorage.decryptString(sealed)
     return backend === "none"
       ? Keyring.of({ backend, open })
-      : Keyring.of({ backend, seal: (value) => safeStorage.encryptString(value), open })
+      : Keyring.of({
+          backend,
+          seal: (value) => safeStorage.encryptString(value),
+          open,
+          sealedByThisKey: (sealed) =>
+            platform !== "linux" || sealed.subarray(0, LINUX_KEYRING_PREFIX.length).toString() === LINUX_KEYRING_PREFIX,
+        })
   })
 
 export class Secrets extends Context.Service<
@@ -128,19 +137,34 @@ const make = Effect.gen(function* () {
       Effect.mapError(persistence("secrets.get")),
     )
 
-  const needsRewrite = (stored: StoredSecret) => stored.encrypted === (keyring.backend === "none")
+  const needsRewrite = (stored: StoredSecret) =>
+    keyring.backend === "none"
+      ? stored.encrypted
+      : !stored.encrypted || !keyring.sealedByThisKey(Buffer.from(stored.value, "base64"))
+
+  const withSecureDelete = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* () {
+      const [setting] = yield* sql<Record<string, number>>`PRAGMA secure_delete`
+      const previous = Object.values(setting ?? {})[0] ?? 0
+      yield* sql`PRAGMA secure_delete = ON`
+      const result = yield* effect.pipe(
+        Effect.ensuring(Effect.ignore(sql`PRAGMA secure_delete = ${sql.literal(String(previous))}`)),
+      )
+      yield* sql`PRAGMA wal_checkpoint(TRUNCATE)`
+      return result
+    })
 
   const resealAll = Effect.gen(function* () {
-    let rewritten = 0
+    const stale: Array<{ readonly key: string; readonly value: string }> = []
     for (const { key, value } of yield* keysUnder("")) {
       const stored = Option.getOrUndefined(decode(value))
       if (stored === undefined || !needsRewrite(stored)) continue
       const opened = yield* openStored(stored)
-      if (Option.isNone(opened)) continue
-      yield* write(key, opened.value)
-      rewritten++
+      if (Option.isSome(opened)) stale.push({ key, value: opened.value })
     }
-    if (rewritten > 0) yield* Effect.logInfo(`stored ${rewritten} secrets again under keyring ${keyring.backend}`)
+    if (stale.length === 0) return
+    yield* withSecureDelete(Effect.forEach(stale, ({ key, value }) => write(key, value), { discard: true }))
+    yield* Effect.logInfo(`stored ${stale.length} secrets again under keyring ${keyring.backend}`)
   }).pipe(Effect.catchCause((cause) => Effect.logWarning("resealing secrets failed", cause)))
 
   yield* resealAll
