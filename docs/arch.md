@@ -57,7 +57,7 @@ flowchart LR
 - **Agents call back over MCP.** Every agent gets the built-in MCP server, and the bearer credential alone decides which thread a call acts as.
 - **Outside apps get a second MCP server.** A chat app or agent harness the developer connected reaches the app server through the relay hostname, with an OAuth token and a tool list of its own. See [App MCP server](#app-mcp-server).
 - **Git and GitHub go through the CLIs** (`git`, `gh`), so hinacode uses the user's existing auth and config.
-- **Linear goes through one service.** `services/Linear.ts` reads the machine's `linear.apiKey` from `Secrets` and loads the SDK on first use. The MCP tools and the `linear.issues` rpc both use it, and the key never leaves the main process. `HINACODE_MOCK_LINEAR=1` answers demo tickets.
+- **Linear goes through one service.** `services/Linear.ts` reads the machine's `linear.apiKey` from `Secrets` and loads the SDK on first use. The MCP tools, the `linear.issues` rpc and the Linear routine trigger all use it, and the key never leaves the main process. For the trigger it asks Linear once per key which account the key belongs to, and `reply` creates comments with ids it chose and keeps in memory, so the webhook drops a reply that comes back. `HINACODE_MOCK_LINEAR=1` answers demo tickets, knows the account as `demo-viewer` and accepts replies without reaching Linear.
 - **Slack goes through one service.** `services/slack/Slack.ts` reads the machine's `slack.appToken` and `slack.botToken` from `Secrets` and dials Socket Mode while both are stored, so Slack needs no listening port. A mention becomes an `Arrival` for `Routines.arrive`, and `reply` posts back with `chat.postMessage`. The tokens never leave the main process. `HINACODE_SLACK_API_URL` points it at a local fake.
 
 ## IPC contract
@@ -706,7 +706,7 @@ flowchart LR
   run --> agentRun["AgentRunner.runAgent<br/>provider.runTurn in the caller's workspace<br/>row in the caller's Agents tab"]
   control --> scope["same project as the caller<br/>AgentRunner.transcript / steer / send / interrupt"]
   terms --> scrollback["Terminals.list / attach<br/>the caller's terminals only, terminalText"]
-  reply --> conv[("routine_conversation<br/>of the caller")] --> gh["GitHub.comment or Slack.post<br/>the destination only"]
+  reply --> conv[("routine_conversation<br/>of the caller")] --> gh["GitHub.comment, Slack.post or Linear.reply<br/>the destination only"]
 ```
 
 `request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` (`thread.<id>.<NAME>`) and never into an event, a message or the tool result. The runner writes the thread's secrets to `<scratch>/secrets/<NAME>` (0600) when each turn starts and deletes the folder when the turn finishes, `Scratch` deletes leftovers at startup, so the path the tool returned works in every later turn of the thread and the file exists only while one runs. Each session also gets `unreadablePaths` (the database, the Chromium profiles and other threads' scratch folders), which Claude receives as `Read(...)` deny rules and Codex as a `deny` permission profile. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. `read_thread` and `search_threads` also reach threads of every other project on this machine. `wait_for_thread` holds the call until a thread on this machine stops working or waits on the user, then reads it, so an agent that started threads does not sleep and poll. It gives up after four minutes for the same reason `run_agent` does. `run_agent` runs one turn of any provider as a sub-agent of the caller's running turn and returns its last text, or its id after four minutes for `wait_agent` to pick up, because Muse gives an MCP call 300 seconds; see [the feature doc](features/2026-10-30-run-agent.md). `read_terminal` reads the 256 KB scrollback `Terminals` keeps per session and turns it into plain text; it refuses a terminal of another thread. See [the feature doc](features/2026-11-04-terminal-mentions.md). Codex gets `tool_timeout_sec = 3600` and opencode `experimental.mcp_timeout` for this server so a user has time to answer.
@@ -761,6 +761,7 @@ flowchart LR
   manual["routines.run"] --> start
   start["Threads.create<br/>createdBy routine:id"] --> send["AgentRunner.send<br/>local or worktree"] --> started["routine_run: started"]
   gh["POST /hooks/github<br/>x-hub-signature-256 only"] -- "githubArrival → Arrival" --> match{"enabled routine<br/>trigger matches?"}
+  lin["POST /hooks/linear<br/>Linear-Signature, webhookTimestamp within 60 s"] -- "not a reply HinaCode posted:<br/>linearArrival → Arrival" --> match
   match -- "no" --> nothing["nothing recorded"]
   match -- "yes, per routine" --> dedup
   dedup -- "no, live routine_conversation" --> steer["AgentRunner.steerWhen<br/>same thread"] --> started
@@ -771,8 +772,8 @@ flowchart LR
 - `next_run_at` is stored. A slot missed while the app was closed fires once on launch, then the scheduler skips to the next future slot.
 - The claim is `UPDATE routine SET next_run_at = :next WHERE next_run_at = :due`, so only one caller starts a thread for a slot.
 - Three failed scheduled runs in a row disable the routine.
-- One webhook secret per machine lives in `Secrets` under `routines.webhookSecret`.
-- An event run quotes the arrival as JSON. The thread answers with the `reply` MCP tool, which posts only to its `routine_conversation` destination and marks the post so the echo is dropped. See [the feature doc](features/2026-11-25-routine-triggers.md).
+- One webhook secret per machine lives in `Secrets` under `routines.webhookSecret`. Linear signs with its own secret, `linear.webhookSecret`, and `/hooks/linear` answers 200 to every delivery it accepts, because Linear retries anything else.
+- An event run quotes the arrival as JSON. The thread answers with the `reply` MCP tool, which posts only to its `routine_conversation` destination and marks the post so the echo is dropped: a hidden marker on GitHub, the `bot_id` on Slack, and a comment id HinaCode chose on Linear. See [the feature doc](features/2026-11-25-routine-triggers.md).
 
 ## Security boundaries
 

@@ -10,11 +10,15 @@ export const triggerEventLabel = {
   "github.issue_comment": m.routines_trigger_github_issue_comment,
   "github.pull_request_comment": m.routines_trigger_github_pull_request_comment,
   "slack.mention": m.routines_trigger_slack_mention,
+  "linear.comment": m.routines_trigger_linear_comment,
+  "linear.issue_assigned": m.routines_trigger_linear_issue_assigned,
 } satisfies Record<TriggerEvent, () => string>
 
-export type TriggerSource = "github" | "slack"
+type SourceOf<Event> = Event extends `${infer Source}.${string}` ? Source : never
 
-export const triggerSource = (event: TriggerEvent): TriggerSource => (event.startsWith("slack.") ? "slack" : "github")
+export type TriggerSource = SourceOf<TriggerEvent>
+
+export const triggerSource = (event: TriggerEvent) => event.slice(0, event.indexOf(".")) as TriggerSource
 
 interface TriggerField {
   readonly label: () => string
@@ -41,7 +45,15 @@ export const triggerFields: Record<TriggerSource, TriggerFields> = {
     containsPlaceholder: "deploy",
     hint: m.routines_trigger_slack_ids_hint,
   },
+  linear: {
+    from: { label: m.routines_trigger_from_label, placeholder: "ada@example.com" },
+    scopes: { label: m.routines_trigger_teams_label, placeholder: "ENG" },
+    containsPlaceholder: "deploy",
+    hint: m.routines_trigger_linear_hint,
+  },
 }
+
+export const carriesSenderText = (event: TriggerEvent) => event !== "linear.issue_assigned"
 
 export const isTriggerEvent = (value: unknown): value is TriggerEvent => triggerEvents.some((event) => event === value)
 
@@ -82,7 +94,7 @@ export function toTrigger(draft: TriggerDraft): TriggerResult {
       event: draft.event,
       fromUsers,
       scopes: parseList(draft.scopes),
-      contains: contains === "" ? null : contains,
+      contains: contains === "" || !carriesSenderText(draft.event) ? null : contains,
       continuation: draft.continueConversation ? "conversation" : "new",
     },
   }

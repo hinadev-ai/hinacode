@@ -26,6 +26,12 @@ export function IntegrationSettings() {
           placeholder={m.settings_linear_placeholder()}
           hint={m.settings_linear_hint()}
         />
+        <SecretField
+          name="linear.webhookSecret"
+          label={m.settings_linear_webhook_secret_label()}
+          placeholder={m.settings_linear_webhook_secret_placeholder()}
+          hint={m.settings_linear_webhook_secret_hint()}
+        />
       </SettingsGroup>
     </SettingsSection>
   )

@@ -102,4 +102,30 @@ describe("fromTrigger", () => {
     expect(result).toEqual({ valid: true, trigger })
     expect(toTrigger(fromTrigger(trigger))).toEqual({ valid: true, trigger })
   })
+
+  test("round-trips a Linear comment from account emails and team keys", () => {
+    const result = toTrigger(
+      draft({
+        event: "linear.comment",
+        fromUsers: " ada@example.com,grace@example.com\n ada@example.com ",
+        scopes: "ENG,  OPS",
+      }),
+    )
+    const trigger: RoutineTrigger = {
+      event: "linear.comment",
+      fromUsers: ["ada@example.com", "grace@example.com"],
+      scopes: ["ENG", "OPS"],
+      contains: null,
+      continuation: "conversation",
+    }
+    expect(result).toEqual({ valid: true, trigger })
+    expect(toTrigger(fromTrigger(trigger))).toEqual({ valid: true, trigger })
+  })
+
+  test("drops the phrase for an assignment, which carries no text of the sender's", () => {
+    const result = toTrigger(
+      draft({ event: "linear.issue_assigned", fromUsers: "ada@example.com", contains: "deploy" }),
+    )
+    expect(result).toMatchObject({ valid: true, trigger: { contains: null } })
+  })
 })

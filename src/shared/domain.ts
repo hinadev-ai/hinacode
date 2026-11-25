@@ -1122,6 +1122,8 @@ export const TriggerEvent = Schema.Literals([
   "github.issue_comment",
   "github.pull_request_comment",
   "slack.mention",
+  "linear.comment",
+  "linear.issue_assigned",
 ])
 export type TriggerEvent = typeof TriggerEvent.Type
 
@@ -1147,6 +1149,11 @@ export const ReplyDestination = Schema.Union([
     source: Schema.Literal("slack"),
     channel: Schema.String,
     threadTs: Schema.String,
+    url: Schema.String,
+  }),
+  Schema.Struct({
+    source: Schema.Literal("linear"),
+    issueId: Schema.String,
     url: Schema.String,
   }),
 ])

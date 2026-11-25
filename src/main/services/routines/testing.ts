@@ -91,7 +91,12 @@ export interface Harness {
   readonly jobs: Map<string, Job>
 }
 
-export const makeLayer = ({ pushes, jobs }: Harness, port: number, claude: AgentProvider) => {
+export const makeLayer = (
+  { pushes, jobs }: Harness,
+  port: number,
+  claude: AgentProvider,
+  linear?: Layer.Layer<Linear.Linear>,
+) => {
   const dataDir = mkdtempSync(join(tmpdir(), "kk-routines-"))
   writeFileSync(join(dataDir, "settings.json"), JSON.stringify({ routines: { bindHost: "127.0.0.1", port } }))
   const secrets = Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))
@@ -107,7 +112,7 @@ export const makeLayer = ({ pushes, jobs }: Harness, port: number, claude: Agent
     ),
     Messages.layer,
     Attachments.layer(join(dataDir, "attachments")),
-    Linear.layer.pipe(Layer.provide(secrets)),
+    linear ?? Linear.layer.pipe(Layer.provide(secrets)),
     credentialsLayer,
     Conversations.layer,
   )
@@ -155,6 +160,7 @@ export const seedProject = Effect.gen(function* () {
 export const withApp = <A, E, R>(
   test: (context: { readonly projectId: string; readonly port: number } & Harness) => Effect.Effect<A, E, R>,
   claude: AgentProvider = provider("claude"),
+  linear?: Layer.Layer<Linear.Linear>,
 ) =>
   Effect.gen(function* () {
     const port = yield* unusedPort
@@ -162,7 +168,7 @@ export const withApp = <A, E, R>(
     yield* Effect.gen(function* () {
       const projectId = yield* seedProject
       return yield* test({ projectId, port, ...harness })
-    }).pipe(Effect.provide(makeLayer(harness, port, claude)))
+    }).pipe(Effect.provide(makeLayer(harness, port, claude, linear)))
   })
 
 export const settled = (threadId: string | null) =>

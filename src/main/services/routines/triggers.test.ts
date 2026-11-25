@@ -1,7 +1,15 @@
 import { describe, expect, test } from "@effect/vitest"
 import type { RoutineTrigger } from "../../../shared/domain.ts"
 import { promptWithPayload } from "./Routines.ts"
-import { type Arrival, githubArrival, matches, REPLY_MARK, renderArrival, slackArrival } from "./triggers.ts"
+import {
+  type Arrival,
+  githubArrival,
+  linearArrival,
+  matches,
+  REPLY_MARK,
+  renderArrival,
+  slackArrival,
+} from "./triggers.ts"
 
 const trigger: RoutineTrigger = {
   event: "github.issue_comment",
@@ -233,6 +241,158 @@ describe("slackArrival", () => {
     expect(slackArrival(mention({ subtype: "file_share" }), workspaceUrl)).toStrictEqual(
       slackArrival(mention(), workspaceUrl),
     )
+  })
+})
+
+const viewer = "user-viewer"
+
+const person = {
+  id: "user-ada",
+  type: "user",
+  name: "Ada",
+  email: "ada@acme.dev",
+  url: "https://linear.app/acme/profiles/ada",
+}
+
+const linearIssue = {
+  id: "issue-1",
+  identifier: "ENG-12",
+  title: "Login fails on Safari",
+  url: "https://linear.app/acme/issue/ENG-12/login-fails-on-safari",
+  teamId: "team-1",
+  team: { id: "team-1", key: "ENG", name: "Engineering" },
+}
+
+const linearComment = (data: Record<string, unknown> = {}, actor: Record<string, unknown> = person) => ({
+  type: "Comment",
+  action: "create",
+  actor,
+  createdAt: "2026-11-25T10:00:00.000Z",
+  organizationId: "org-1",
+  url: `${linearIssue.url}#comment-c1`,
+  webhookId: "hook-1",
+  webhookTimestamp: 1_764_064_800_000,
+  data: {
+    id: "comment-1",
+    body: "Can you look at this?",
+    createdAt: "2026-11-25T10:00:00.000Z",
+    updatedAt: "2026-11-25T10:00:00.000Z",
+    reactionData: {},
+    issueId: linearIssue.id,
+    issue: linearIssue,
+    userId: person.id,
+    ...data,
+  },
+})
+
+const assignment = (action: string, data: Record<string, unknown> = {}, updatedFrom?: Record<string, unknown>) => ({
+  type: "Issue",
+  action,
+  actor: person,
+  createdAt: "2026-11-25T10:00:00.000Z",
+  organizationId: "org-1",
+  url: linearIssue.url,
+  webhookId: "hook-1",
+  webhookTimestamp: 1_764_064_800_000,
+  ...(updatedFrom && { updatedFrom }),
+  data: {
+    id: linearIssue.id,
+    identifier: linearIssue.identifier,
+    title: linearIssue.title,
+    url: linearIssue.url,
+    description: "Safari users see a blank page.",
+    assigneeId: viewer,
+    teamId: "team-1",
+    team: linearIssue.team,
+    createdAt: "2026-11-25T09:00:00.000Z",
+    updatedAt: "2026-11-25T10:00:00.000Z",
+    ...data,
+  },
+})
+
+const onIssue = { source: "linear", issueId: linearIssue.id, url: linearIssue.url } as const
+
+describe("linearArrival", () => {
+  test("reads the team key from the identifier when an assignment carries no team", () => {
+    expect(linearArrival(assignment("create", { team: undefined }), viewer)?.scope).toBe("ENG")
+  })
+
+  test.each([
+    [
+      "a comment on an issue",
+      linearComment(),
+      viewer,
+      {
+        event: "linear.comment",
+        key: "linear:comment:comment-1",
+        sender: "ada@acme.dev",
+        scope: "ENG",
+        text: "Can you look at this?",
+        conversation: "linear:issue-1",
+        destination: onIssue,
+        context: { identifier: "ENG-12", title: "Login fails on Safari" },
+      },
+    ],
+    [
+      "a comment on something that is not an issue",
+      linearComment({ issue: undefined, issueId: undefined, projectUpdateId: "pu-1" }),
+      viewer,
+      null,
+    ],
+    ["a comment an agent posted", linearComment({ botActor: "bot-1" }), viewer, null],
+    [
+      "a comment from an integration",
+      linearComment({}, { id: "app-1", type: "oauthClient", name: "Zapier" }),
+      viewer,
+      null,
+    ],
+    ["a comment that was edited", { ...linearComment(), action: "update" }, viewer, null],
+    [
+      "an issue created already assigned to the viewer",
+      assignment("create"),
+      viewer,
+      {
+        event: "linear.issue_assigned",
+        key: "linear:issue:issue-1:assigned:2026-11-25T10:00:00.000Z",
+        sender: "ada@acme.dev",
+        scope: "ENG",
+        text: "",
+        conversation: "linear:issue-1",
+        destination: onIssue,
+        context: {
+          identifier: "ENG-12",
+          title: "Login fails on Safari",
+          description: "Safari users see a blank page.",
+        },
+      },
+    ],
+    [
+      "an update that assigned the viewer",
+      assignment("update", { description: null }, { assigneeId: null, updatedAt: "2026-11-25T09:30:00.000Z" }),
+      viewer,
+      {
+        event: "linear.issue_assigned",
+        key: "linear:issue:issue-1:assigned:2026-11-25T10:00:00.000Z",
+        sender: "ada@acme.dev",
+        scope: "ENG",
+        text: "",
+        conversation: "linear:issue-1",
+        destination: onIssue,
+        context: { identifier: "ENG-12", title: "Login fails on Safari", description: "" },
+      },
+    ],
+    ["an update that changed something else", assignment("update", {}, { title: "Login fails" }), viewer, null],
+    ["an assignment to someone else", assignment("create", { assigneeId: "user-other" }), viewer, null],
+    ["an assignment while the viewer is unknown", assignment("create"), null, null],
+    [
+      "an issue assigned by an integration",
+      { ...assignment("create"), actor: { id: "app-1", type: "integration", name: "GitHub" } },
+      viewer,
+      null,
+    ],
+    ["a malformed payload", { type: "Comment", action: "create" }, viewer, null],
+  ] as const)("%s", (_, payload, viewerId, expected) => {
+    expect(linearArrival(payload, viewerId)).toStrictEqual(expected)
   })
 })
 

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import type { LinearClient } from "@linear/sdk"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { LinearIssue } from "../../shared/domain.ts"
@@ -5,12 +6,20 @@ import type { PersistenceError } from "./errors.ts"
 import { Secrets } from "./Secrets.ts"
 
 export const LINEAR_API_KEY_SECRET = "linear.apiKey"
+export const LINEAR_WEBHOOK_SECRET = "linear.webhookSecret"
+export const DEMO_VIEWER_ID = "demo-viewer"
 
 export class LinearRequestError extends Schema.TaggedError<LinearRequestError>()("LinearRequestError", {
   reason: Schema.String,
 }) {
   override get message(): string {
     return `Linear request failed: ${this.reason}`
+  }
+}
+
+export class LinearKeyMissing extends Schema.TaggedError<LinearKeyMissing>()("LinearKeyMissing", {}) {
+  override get message(): string {
+    return "Linear has no API key on this machine."
   }
 }
 
@@ -26,6 +35,12 @@ export class Linear extends Context.Service<
     // FIXME: the Linear SDK costs ~30 MB of main-process memory, so `client` loads it on first use
     readonly client: Effect.Effect<Option.Option<LinearClient>, LinearRequestError | PersistenceError>
     readonly assignedIssues: Effect.Effect<ReadonlyArray<LinearIssue>, LinearRequestError | PersistenceError>
+    readonly viewerId: Effect.Effect<Option.Option<string>, LinearRequestError | PersistenceError>
+    readonly comment: (
+      issueId: string,
+      body: string,
+    ) => Effect.Effect<{ readonly id: string }, LinearKeyMissing | LinearRequestError | PersistenceError>
+    readonly wroteComment: (id: string) => Effect.Effect<boolean>
   }
 >()("hinacode/Linear") {}
 
@@ -46,6 +61,9 @@ const assignedIssuesQuery = `
 
 const AssignedIssuesData = Schema.Struct({ issues: Schema.Struct({ nodes: Schema.Array(LinearIssue) }) })
 
+const clientFor = (apiKey: string) =>
+  linearRequest(() => import("@linear/sdk")).pipe(Effect.map(({ LinearClient }) => new LinearClient({ apiKey })))
+
 const make = Effect.gen(function* () {
   const secrets = yield* Secrets
 
@@ -53,10 +71,7 @@ const make = Effect.gen(function* () {
     secrets.get(LINEAR_API_KEY_SECRET),
     Option.match({
       onNone: () => Effect.succeedNone,
-      onSome: (apiKey) =>
-        linearRequest(() => import("@linear/sdk")).pipe(
-          Effect.map(({ LinearClient }) => Option.some(new LinearClient({ apiKey }))),
-        ),
+      onSome: (apiKey) => Effect.map(clientFor(apiKey), Option.some),
     }),
   )
 
@@ -75,7 +90,51 @@ const make = Effect.gen(function* () {
     }),
   )
 
-  return Linear.of({ client, assignedIssues })
+  let viewer: { readonly apiKey: string; readonly id: Option.Option<string> } | undefined
+
+  const viewerOf = (apiKey: string) =>
+    viewer?.apiKey === apiKey
+      ? Effect.succeed(viewer.id)
+      : linearRequest(() => import("@linear/sdk")).pipe(
+          Effect.flatMap(({ LinearClient, AuthenticationLinearError }) =>
+            linearRequest(() =>
+              new LinearClient({ apiKey }).viewer.then(
+                ({ id }) => Option.some(id),
+                (cause: unknown) => {
+                  if (cause instanceof AuthenticationLinearError) return Option.none<string>()
+                  throw cause
+                },
+              ),
+            ),
+          ),
+          Effect.tap((id) => Effect.sync(() => (viewer = { apiKey, id }))),
+        )
+
+  const viewerId = Effect.flatMap(
+    secrets.get(LINEAR_API_KEY_SECRET),
+    Option.match({ onNone: () => Effect.succeedNone, onSome: viewerOf }),
+  )
+
+  const written = new Set<string>()
+
+  const comment = (issueId: string, body: string) =>
+    Effect.gen(function* () {
+      const linear = yield* client
+      if (Option.isNone(linear)) return yield* new LinearKeyMissing()
+      const id = randomUUID()
+      written.add(id)
+      const { success } = yield* linearRequest(() => linear.value.createComment({ id, issueId, body }))
+      if (!success) return yield* new LinearRequestError({ reason: "Linear did not create the comment" })
+      return { id }
+    })
+
+  return Linear.of({
+    client,
+    assignedIssues,
+    viewerId,
+    comment,
+    wroteComment: (id) => Effect.sync(() => written.has(id)),
+  })
 })
 
 export const layer = Layer.effect(Linear, make)
@@ -105,7 +164,18 @@ const demoIssues = () => [
   demoIssue("ENG-163", "Explain the empty ports panel", { name: "Triage", type: "triage" }, 0, 96),
 ]
 
-export const mockLayer = Layer.succeed(
-  Linear,
-  Linear.of({ client: Effect.succeedNone, assignedIssues: Effect.sync(demoIssues) }),
-)
+export const mockLayer = Layer.sync(Linear, () => {
+  const written = new Set<string>()
+  return Linear.of({
+    client: Effect.succeedNone,
+    assignedIssues: Effect.sync(demoIssues),
+    viewerId: Effect.succeedSome(DEMO_VIEWER_ID),
+    comment: () =>
+      Effect.sync(() => {
+        const id = randomUUID()
+        written.add(id)
+        return { id }
+      }),
+    wroteComment: (id) => Effect.sync(() => written.has(id)),
+  })
+})

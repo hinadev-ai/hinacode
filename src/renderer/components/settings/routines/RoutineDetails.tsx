@@ -10,6 +10,7 @@ import {
   callPromise,
   routineRunsAtom,
   routineWebhookAtom,
+  secretStoredAtom,
   slackStatusAtom,
 } from "../../../lib/rpc.ts"
 import { m } from "../../../paraglide/messages.js"
@@ -41,11 +42,11 @@ interface RoutineDetailsProps {
 }
 
 export function RoutineDetails({ routine, environment, machine }: RoutineDetailsProps) {
+  const source = routine.trigger === null ? null : triggerSource(routine.trigger.event)
   return (
     <div className="flex flex-col gap-5 pb-2">
-      {routine.trigger !== null && triggerSource(routine.trigger.event) === "slack" && (
-        <SlackConnectionNotice environment={environment} />
-      )}
+      {source === "slack" && <SlackConnectionNotice environment={environment} />}
+      {source === "linear" && <LinearSecretsNotice environment={environment} />}
       <Webhook routineId={routine.id} trigger={routine.trigger} environment={environment} machine={machine} />
       <RecentRuns routineId={routine.id} />
     </div>
@@ -56,16 +57,46 @@ function SlackConnectionNotice({ environment }: { environment: EnvironmentId }) 
   const status = AsyncResult.getOrElse(useAtomValue(slackStatusAtom(environment)), () => null)
   if (status?.type !== "disconnected" && status?.type !== "failed") return null
   return (
+    <IntegrationsNotice
+      environment={environment}
+      message={m.routines_slack_not_connected()}
+      action={m.routines_slack_connect_in_integrations()}
+    />
+  )
+}
+
+function LinearSecretsNotice({ environment }: { environment: EnvironmentId }) {
+  const apiKey = useAtomValue(secretStoredAtom(environment, "linear.apiKey"))
+  const webhookSecret = useAtomValue(secretStoredAtom(environment, "linear.webhookSecret"))
+  const missing = [apiKey, webhookSecret].some((stored) => AsyncResult.getOrElse(stored, () => true) === false)
+  if (!missing) return null
+  return (
+    <IntegrationsNotice
+      environment={environment}
+      message={m.routines_linear_missing_secrets()}
+      action={m.routines_linear_add_in_integrations()}
+    />
+  )
+}
+
+interface IntegrationsNoticeProps {
+  readonly environment: EnvironmentId
+  readonly message: string
+  readonly action: string
+}
+
+function IntegrationsNotice({ environment, message, action }: IntegrationsNoticeProps) {
+  return (
     <p className="flex items-start gap-1.5 text-sm text-attention">
       <WarningIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
       <span>
-        {m.routines_slack_not_connected()}{" "}
+        {message}{" "}
         <Link
           to="/settings"
           search={{ page: "integrations", ...(environment === null ? {} : { environment }) }}
           className="underline underline-offset-2"
         >
-          {m.routines_slack_connect_in_integrations()}
+          {action}
         </Link>
       </span>
     </p>
@@ -91,8 +122,8 @@ function Webhook({
   machine: string
 }) {
   const id = useId()
-  const githubId = useId()
-  const listensToGitHub = trigger !== null && triggerSource(trigger.event) === "github"
+  const sourceId = useId()
+  const source = trigger === null ? null : triggerSource(trigger.event)
   const result = useAtomValue(routineWebhookAtom(environment, routineId))
   const refresh = useAtomRefresh(routineWebhookAtom(environment, routineId))
   const [secret, setSecret] = useState<string | null>(null)
@@ -116,7 +147,7 @@ function Webhook({
       <FieldLabel htmlFor={id}>{m.routines_webhook_url_label()}</FieldLabel>
       {AsyncResult.builder(result)
         .onInitial(() => <SkeletonList label={m.routines_loading()} rowClassName="h-8" />)
-        .onSuccess(({ url, githubUrl, hasSecret, listenError }) => (
+        .onSuccess(({ url, githubUrl, linearUrl, hasSecret, listenError }) => (
           <>
             <CopyField id={id} value={url} copyLabel={m.routines_copy_url()} />
             {listenError && <FieldError>{m.routines_listen_failed({ message: listenError })}</FieldError>}
@@ -126,10 +157,10 @@ function Webhook({
               </pre>
               <CopyButton value={curlExample(url)} label={m.routines_copy_curl()} />
             </div>
-            {listensToGitHub && githubUrl !== null && (
+            {source === "github" && githubUrl !== null && (
               <Field>
-                <FieldLabel htmlFor={githubId}>{m.routines_github_webhook_label()}</FieldLabel>
-                <CopyField id={githubId} value={githubUrl} copyLabel={m.routines_copy_github_url()} />
+                <FieldLabel htmlFor={sourceId}>{m.routines_github_webhook_label()}</FieldLabel>
+                <CopyField id={sourceId} value={githubUrl} copyLabel={m.routines_copy_github_url()} />
               </Field>
             )}
             <div className="flex items-center gap-2">
@@ -141,6 +172,12 @@ function Webhook({
                 </Button>
               )}
             </div>
+            {source === "linear" && linearUrl !== null && (
+              <Field>
+                <FieldLabel htmlFor={sourceId}>{m.routines_linear_webhook_label()}</FieldLabel>
+                <CopyField id={sourceId} value={linearUrl} copyLabel={m.routines_copy_linear_url()} />
+              </Field>
+            )}
           </>
         ))
         .onError((cause) => <FieldError>{errorMessage(cause)}</FieldError>)
