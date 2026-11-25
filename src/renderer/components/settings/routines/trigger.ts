@@ -12,6 +12,37 @@ export const triggerEventLabel = {
   "slack.mention": m.routines_trigger_slack_mention,
 } satisfies Record<TriggerEvent, () => string>
 
+export type TriggerSource = "github" | "slack"
+
+export const triggerSource = (event: TriggerEvent): TriggerSource => (event.startsWith("slack.") ? "slack" : "github")
+
+interface TriggerField {
+  readonly label: () => string
+  readonly placeholder: string
+}
+
+interface TriggerFields {
+  readonly from: TriggerField
+  readonly scopes: TriggerField
+  readonly containsPlaceholder: string
+  readonly hint: (() => string) | null
+}
+
+export const triggerFields: Record<TriggerSource, TriggerFields> = {
+  github: {
+    from: { label: m.routines_trigger_from_label, placeholder: "octocat, hubot" },
+    scopes: { label: m.routines_trigger_scopes_label, placeholder: "acme/api" },
+    containsPlaceholder: "@hina",
+    hint: null,
+  },
+  slack: {
+    from: { label: m.routines_trigger_from_label, placeholder: "U012AB3CDE" },
+    scopes: { label: m.routines_trigger_channels_label, placeholder: "C012AB3CDE" },
+    containsPlaceholder: "deploy",
+    hint: m.routines_trigger_slack_ids_hint,
+  },
+}
+
 export const isTriggerEvent = (value: unknown): value is TriggerEvent => triggerEvents.some((event) => event === value)
 
 export interface TriggerDraft {

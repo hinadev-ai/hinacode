@@ -555,6 +555,13 @@ export const secretStoredAtom = familyOf((environment: EnvironmentId, name: stri
   Atom.make(call("secrets.has", { name }, { environment })),
 )
 
+export const slackStatusAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make((get) => {
+    get.addFinalizer(onPushEvent((event) => event.type === "slack.changed" && get.refreshSelf()))
+    return call("slack.status", undefined, { environment })
+  }),
+)
+
 export const secretStorageAtom = familyOf((environment: EnvironmentId) =>
   Atom.make(call("secrets.storage", undefined, { environment })),
 )

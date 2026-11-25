@@ -2,11 +2,11 @@ import { useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import type { ReactNode } from "react"
-import { RiGithubFill } from "react-icons/ri"
+import { RiGithubFill, RiSlackFill } from "react-icons/ri"
 import { type AgentAccount, ProviderId } from "../../../shared/agent.ts"
-import type { EnvironmentStatus, GitHubAuth } from "../../../shared/domain.ts"
+import type { EnvironmentStatus, GitHubAuth, SlackStatus } from "../../../shared/domain.ts"
 import { type Cloud, statusLabel, useCloudStateText, useClouds } from "../../lib/environments.ts"
-import { accountAtom, type EnvironmentId, gitHubAuthAtom, secretStoredAtom } from "../../lib/rpc.ts"
+import { accountAtom, type EnvironmentId, gitHubAuthAtom, secretStoredAtom, slackStatusAtom } from "../../lib/rpc.ts"
 import { cn } from "../../lib/utils.ts"
 import { m } from "../../paraglide/messages.js"
 import { inBrowser } from "../../lib/runtime.ts"
@@ -73,6 +73,19 @@ const gitHubCheck = (auth: GitHubAuth): Check => {
   }
 }
 
+const slackCheck = (status: SlackStatus): Check => {
+  switch (status.type) {
+    case "connected":
+      return { tone: "ready", text: status.team }
+    case "connecting":
+      return { tone: "off", text: m.settings_slack_connecting() }
+    case "failed":
+      return { tone: "attention", text: m.settings_setup_slack_failed() }
+    case "disconnected":
+      return { tone: "off", text: m.settings_setup_not_set() }
+  }
+}
+
 const secretCheck = (stored: boolean): Check =>
   stored ? { tone: "ready", text: m.settings_setup_ready_key() } : { tone: "off", text: m.settings_setup_not_set() }
 
@@ -96,6 +109,19 @@ function GitHubCell(props: CellProps) {
       {...props}
       check={AsyncResult.builder(auth)
         .onSuccess(gitHubCheck)
+        .onError(() => unavailable)
+        .orElse(() => loading)}
+    />
+  )
+}
+
+function SlackCell(props: CellProps) {
+  const status = useAtomValue(slackStatusAtom(props.machine.id))
+  return (
+    <SetupButton
+      {...props}
+      check={AsyncResult.builder(status)
+        .onSuccess(slackCheck)
         .onError(() => unavailable)
         .orElse(() => loading)}
     />
@@ -129,6 +155,13 @@ const rows: ReadonlyArray<Row> = [
     icon: <RiGithubFill aria-hidden className="size-4 shrink-0" />,
     page: "integrations",
     cell: (props) => <GitHubCell {...props} />,
+  },
+  {
+    id: "slack",
+    label: m.settings_slack,
+    icon: <RiSlackFill aria-hidden className="size-4 shrink-0" />,
+    page: "integrations",
+    cell: (props) => <SlackCell {...props} />,
   },
   {
     id: "linear",

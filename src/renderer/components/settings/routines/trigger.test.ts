@@ -87,4 +87,19 @@ describe("fromTrigger", () => {
     })
     expect(toTrigger(fromTrigger(trigger))).toEqual({ valid: true, trigger })
   })
+
+  test("round-trips a Slack mention from member and channel ids", () => {
+    const result = toTrigger(
+      draft({ event: "slack.mention", fromUsers: "U012AB3CDE, U0456FGHIJ U012AB3CDE", scopes: "C012AB3CDE" }),
+    )
+    const trigger: RoutineTrigger = {
+      event: "slack.mention",
+      fromUsers: ["U012AB3CDE", "U0456FGHIJ"],
+      scopes: ["C012AB3CDE"],
+      contains: null,
+      continuation: "conversation",
+    }
+    expect(result).toEqual({ valid: true, trigger })
+    expect(toTrigger(fromTrigger(trigger))).toEqual({ valid: true, trigger })
+  })
 })

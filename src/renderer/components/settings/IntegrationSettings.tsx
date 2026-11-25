@@ -9,6 +9,7 @@ import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
+import { SlackSettings } from "./SlackSettings.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { CheckCircleFillIcon, WarningIcon } from "@hinacode/icons"
 
@@ -18,6 +19,7 @@ export function IntegrationSettings() {
       <SettingsGroup>
         <SecretStorageStatus />
         <GitHubStatus />
+        <SlackSettings />
         <SecretField
           name="linear.apiKey"
           label={m.settings_linear_label()}

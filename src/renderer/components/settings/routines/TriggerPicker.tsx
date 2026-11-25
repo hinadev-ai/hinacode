@@ -4,7 +4,14 @@ import { Input } from "../../ui/input.tsx"
 import { Label } from "../../ui/label.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select.tsx"
 import { Switch } from "../../ui/switch.tsx"
-import { isTriggerEvent, type TriggerDraft, triggerEventLabel, triggerEvents } from "./trigger.ts"
+import {
+  isTriggerEvent,
+  type TriggerDraft,
+  triggerEventLabel,
+  triggerEvents,
+  triggerFields,
+  triggerSource,
+} from "./trigger.ts"
 
 const NO_TRIGGER = "none"
 const labelClass = "font-normal text-muted-foreground"
@@ -17,6 +24,7 @@ interface TriggerPickerProps {
 export function TriggerPicker({ value, onChange }: TriggerPickerProps) {
   const id = useId()
   const patch = (next: Partial<TriggerDraft>) => onChange({ ...value, ...next })
+  const fields = value.event === null ? null : triggerFields[triggerSource(value.event)]
   const items = [
     { value: NO_TRIGGER, label: m.routines_trigger_none() },
     ...triggerEvents.map((event) => ({ value: event, label: triggerEventLabel[event]() })),
@@ -43,29 +51,29 @@ export function TriggerPicker({ value, onChange }: TriggerPickerProps) {
           ))}
         </SelectContent>
       </Select>
-      {value.event !== null && (
+      {fields !== null && (
         <>
           <Label htmlFor={`${id}-from`} className={labelClass}>
-            {m.routines_trigger_from_label()}
+            {fields.from.label()}
           </Label>
           <Input
             id={`${id}-from`}
             required
             value={value.fromUsers}
             onChange={(event) => patch({ fromUsers: event.target.value })}
-            placeholder="octocat, hubot"
+            placeholder={fields.from.placeholder}
             spellCheck={false}
             autoComplete="off"
             className="h-8 font-mono"
           />
           <Label htmlFor={`${id}-scopes`} className={labelClass}>
-            {m.routines_trigger_scopes_label()}
+            {fields.scopes.label()}
           </Label>
           <Input
             id={`${id}-scopes`}
             value={value.scopes}
             onChange={(event) => patch({ scopes: event.target.value })}
-            placeholder="acme/api"
+            placeholder={fields.scopes.placeholder}
             spellCheck={false}
             autoComplete="off"
             className="h-8 font-mono"
@@ -77,10 +85,11 @@ export function TriggerPicker({ value, onChange }: TriggerPickerProps) {
             id={`${id}-contains`}
             value={value.contains}
             onChange={(event) => patch({ contains: event.target.value })}
-            placeholder="@hina"
+            placeholder={fields.containsPlaceholder}
             autoComplete="off"
             className="h-8"
           />
+          {fields.hint !== null && <p className="col-start-2 text-xs text-muted-foreground">{fields.hint()}</p>}
           <Label className="col-span-2 font-normal">
             <Switch
               checked={value.continueConversation}
