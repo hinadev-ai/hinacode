@@ -200,7 +200,7 @@ test("a browser the machine has not seen joins once its code is entered there an
   await openSignedIn(page, stack)
   await page.getByRole("button", { name: "Account", exact: true }).click()
   await page.getByRole("menuitem", { name: "Connected Devices", exact: true }).click()
-  const prompt = page.getByText(/^Enter [0-9A-Z]{3}-[0-9A-Z]{3} on Web E2E Machine, in Settings, Remote\.$/)
+  const prompt = page.getByText(/^Enter [0-9A-Z]{3}-[0-9A-Z]{3} on Web E2E Machine, in Settings, Connections\.$/)
   await expect(prompt).toBeVisible({ timeout: 20_000 })
   const [code] = /[0-9A-Z]{3}-[0-9A-Z]{3}/.exec((await prompt.textContent()) ?? "") ?? []
   approveDevice(stack.machine, code!)
