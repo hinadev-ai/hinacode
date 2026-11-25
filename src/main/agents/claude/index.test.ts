@@ -204,6 +204,7 @@ const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   home: null,
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
   instructions: "Work in hinacode",
+  unreadablePaths: [],
   ...overrides,
 })
 
@@ -310,6 +311,18 @@ describe("Claude idle sessions", () => {
         yield* runTurn(turnInput({ autoCompactTokens: 300_000 }))
         expect(first.close).toHaveBeenCalled()
         expect(existsSync(file)).toBe(false)
+      }),
+    ),
+  )
+
+  it.effect("denies the agent reads of the paths HinaCode keeps private", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* runTurn(turnInput({ unreadablePaths: ["/data/hinacode.sqlite*", "/data/scratch/other-thread/**"] }))
+
+        expect(flagSettings(latestCli()).permissions).toStrictEqual({
+          deny: ["Read(//data/hinacode.sqlite*)", "Read(//data/scratch/other-thread/**)"],
+        })
       }),
     ),
   )

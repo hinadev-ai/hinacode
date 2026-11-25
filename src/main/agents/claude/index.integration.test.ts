@@ -78,6 +78,7 @@ const input = (home: AccountHome, fields: Partial<RunTurnInput> = {}): RunTurnIn
   home,
   mcpServer: { url: "http://127.0.0.1:9/mcp", headers: { authorization: "Bearer test" } },
   instructions: "You run inside HinaCode.",
+  unreadablePaths: [],
   ...fields,
 })
 

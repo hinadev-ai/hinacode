@@ -26,7 +26,7 @@ import { Messages, layer as messagesLayer } from "./Messages.ts"
 import * as Projects from "./Projects.ts"
 import { PullRequests, layer as pullRequestsLayer } from "./PullRequests.ts"
 import { PullRequestWatcher, layer as watcherLayer } from "./PullRequestWatcher.ts"
-import { Secrets } from "./Secrets.ts"
+import * as Secrets from "./Secrets.ts"
 import { layer as settingsLayer } from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
@@ -158,7 +158,7 @@ const agents = runnerLayer.pipe(
       Layer.succeed(OpencodeProvider, provider("opencode")),
       Layer.succeed(MagpieProvider, provider("magpie")),
       Layer.succeed(PiProvider, provider("pi")),
-      Layer.mock(Secrets, {}),
+      Secrets.layer.pipe(Layer.provide(Secrets.noKeyring)),
       Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void, regenerateTitle: () => Effect.die("unused") }),
     ),
   ),

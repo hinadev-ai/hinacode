@@ -57,6 +57,9 @@ export type WorktreeStatus = typeof WorktreeStatus.Type
 export const SetupNotice = Schema.Literals(["backgroundOutput", "timedOut"])
 export type SetupNotice = typeof SetupNotice.Type
 
+export const KeyringBackend = Schema.Literals(["keychain", "dpapi", "libsecret", "kwallet", "none"])
+export type KeyringBackend = typeof KeyringBackend.Type
+
 export const Worktree = Schema.Struct({
   id: Schema.String,
   projectId: Schema.String,

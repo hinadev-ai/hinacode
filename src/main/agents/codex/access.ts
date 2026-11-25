@@ -1,5 +1,14 @@
 import type { AccessMode } from "../../../shared/domain.ts"
-import type { AskForApproval, SandboxPolicy, ThreadStartParams, TurnStartParams } from "./protocol.ts"
+import type {
+  AskForApproval,
+  PermissionProfileToml,
+  SandboxConfig,
+  SandboxPolicy,
+  ThreadStartParams,
+  TurnStartParams,
+} from "./protocol.ts"
+
+const PERMISSION_PROFILE = "hinacode"
 
 const approvalPolicies: Record<AccessMode, AskForApproval> = {
   supervised: "untrusted",
@@ -18,11 +27,45 @@ const sandboxPolicy = (accessMode: AccessMode): SandboxPolicy =>
         excludeSlashTmp: false,
       }
 
-export const threadAccess = (accessMode: AccessMode) =>
-  ({
-    approvalPolicy: approvalPolicies[accessMode],
-    sandbox: accessMode === "full" ? "danger-full-access" : "workspace-write",
-  }) satisfies ThreadStartParams
+type ThreadAccess = Pick<ThreadStartParams, "approvalPolicy" | "sandbox"> & {
+  readonly config?: {
+    readonly default_permissions: string
+    readonly permissions: Record<string, PermissionProfileToml>
+  }
+}
+
+const permissionProfile = (
+  unreadablePaths: ReadonlyArray<string>,
+  userSandbox: SandboxConfig | null,
+): PermissionProfileToml => {
+  const userProfile = userSandbox?.default_permissions ?? null
+  const workspaceWrite = userProfile === null ? (userSandbox?.sandbox_workspace_write ?? null) : null
+  return {
+    extends: userProfile ?? ":workspace",
+    ...(workspaceWrite !== null && { network: { enabled: workspaceWrite.network_access } }),
+    filesystem: Object.fromEntries([
+      ...(workspaceWrite?.writable_roots ?? []).map((root) => [root, "write"]),
+      ...(workspaceWrite?.exclude_tmpdir_env_var ? [[":tmpdir", "read"]] : []),
+      ...(workspaceWrite?.exclude_slash_tmp ? [[":slash_tmp", "read"]] : []),
+      ...unreadablePaths.map((path) => [path, "deny"]),
+    ]),
+  }
+}
+
+export const threadAccess = (
+  accessMode: AccessMode,
+  unreadablePaths: ReadonlyArray<string>,
+  userSandbox: SandboxConfig | null,
+): ThreadAccess =>
+  accessMode === "full"
+    ? { approvalPolicy: approvalPolicies.full, sandbox: "danger-full-access" }
+    : {
+        approvalPolicy: approvalPolicies[accessMode],
+        config: {
+          default_permissions: PERMISSION_PROFILE,
+          permissions: { [PERMISSION_PROFILE]: permissionProfile(unreadablePaths, userSandbox) },
+        },
+      }
 
 export const turnAccess = (accessMode: AccessMode, current: SandboxPolicy) => {
   const wanted = sandboxPolicy(accessMode)

@@ -56,6 +56,7 @@ import { skillInputs, toCommand } from "./skills.ts"
 import { toolInput, toolName, toolResult, toPostedQuestion } from "./items.ts"
 import { toImportedHistory, toNativeSessions } from "./sessions.ts"
 import {
+  ConfigReadResponse,
   GetAccountRateLimitsResponse,
   GetAccountResponse,
   type RateLimitWindow,
@@ -67,6 +68,7 @@ import {
 import type {
   HistoryTurn,
   ApprovalDecisionWire,
+  ConfigReadParams,
   ElicitationActionWire,
   GetAccountParams,
   McpServerElicitationRequestParams,
@@ -101,6 +103,13 @@ import type {
 const CLIENT_VERSION = "0.1.0"
 
 const FAST_SERVICE_TIER = "priority"
+
+const readSandboxConfig = (client: CodexClient, cwd: string) =>
+  client.request<unknown>("config/read", { cwd, includeLayers: false } satisfies ConfigReadParams).pipe(
+    Effect.flatMap(Schema.decodeUnknownEffect(ConfigReadResponse)),
+    Effect.map((response) => response.config),
+    Effect.catch((error) => Effect.logWarning("could not read the Codex config", error).pipe(Effect.as(null))),
+  )
 
 const decisionToWire: Record<ApprovalDecision, ApprovalDecisionWire> = {
   allow: "accept",
@@ -221,7 +230,10 @@ const make = Effect.gen(function* () {
   const subagentClients = new Map<string, CodexClient>()
   const threadsInTurn = new Set<string>()
   const subagentChanges = yield* Queue.unbounded<SubagentChange>()
-  const loadedThreads = new Map<string, { readonly autoCompactTokens: number | null; readonly instructions: string }>()
+  const loadedThreads = new Map<
+    string,
+    { readonly autoCompactTokens: number | null; readonly instructions: string; readonly sandboxed: boolean }
+  >()
   const loadedSessions = new Map<string, { readonly client: CodexClient; readonly codexThreadId: string }>()
   const terminalsByThread = new Map<string, Terminals>()
   const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
@@ -534,11 +546,14 @@ const make = Effect.gen(function* () {
             () => Effect.sync(() => leaveTurn(client, input.threadId, inbox)),
           )
 
+          const userSandbox = input.accessMode === "full" ? null : yield* readSandboxConfig(client, input.cwd)
+          const access = threadAccess(input.accessMode, input.unreadablePaths, userSandbox)
           const overrides = {
             cwd: input.cwd,
             model: input.model,
-            ...threadAccess(input.accessMode),
+            ...access,
             config: {
+              ...access.config,
               tools: { update_plan: { enabled: true } },
               ...(input.tmpDirectory !== null && { shell_environment_policy: { set: tmpEnv(input.tmpDirectory) } }),
               ...(input.autoCompactTokens !== null && { model_auto_compact_token_limit: input.autoCompactTokens }),
@@ -554,7 +569,10 @@ const make = Effect.gen(function* () {
           } satisfies ThreadStartParams
           const resumed = input.resumeSessionId
           const loaded = resumed === null ? undefined : loadedThreads.get(resumed)
-          const reloads = loaded !== undefined && loaded.autoCompactTokens !== input.autoCompactTokens
+          const sandboxed = access.config !== undefined
+          const reloads =
+            loaded !== undefined &&
+            (loaded.autoCompactTokens !== input.autoCompactTokens || loaded.sandboxed !== sandboxed)
           if (resumed !== null && reloads) {
             // FIXME: Codex ignores thread/resume config for a thread it has loaded
             yield* client.request("thread/unsubscribe", { threadId: resumed })
@@ -586,7 +604,11 @@ const make = Effect.gen(function* () {
               } satisfies ThreadInjectItemsParams)
               .pipe(Effect.ignore)
           }
-          loadedThreads.set(thread.id, { autoCompactTokens: input.autoCompactTokens, instructions: input.instructions })
+          loadedThreads.set(thread.id, {
+            autoCompactTokens: input.autoCompactTokens,
+            instructions: input.instructions,
+            sandboxed,
+          })
           loadedSessions.set(input.threadId, { client, codexThreadId: thread.id })
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 

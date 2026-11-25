@@ -12,10 +12,13 @@ export const magpieDependencies = (secrets: Record<string, string> = {}) => {
     Layer.succeed(
       Secrets,
       Secrets.of({
+        backend: "none",
         get: (name) => Effect.sync(() => Option.fromNullishOr(stored.get(name))),
         has: (name) => Effect.sync(() => stored.has(name)),
         set: (name, value) => Effect.sync(() => void stored.set(name, value)),
         clear: (name) => Effect.sync(() => void stored.delete(name)),
+        namesUnder: () => Effect.succeed([]),
+        clearUnder: () => Effect.void,
       }),
     ),
   )

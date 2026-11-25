@@ -49,6 +49,7 @@ const input = (accessMode: AccessMode, marker: string): RunTurnInput => {
     home: null,
     mcpServer: { url: mcp!.url, headers: { authorization: "Bearer test" } },
     instructions: AGENT_INSTRUCTIONS,
+    unreadablePaths: [],
   }
 }
 
@@ -895,6 +896,7 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
               threadId: "thread-skills",
               prompt: "/probe-echo banana",
               instructions: AGENT_INSTRUCTIONS,
+              unreadablePaths: [],
               attachments: [],
               cwd,
               tmpDirectory: cwd,

@@ -347,6 +347,7 @@ export interface RunTurnInput {
   readonly home: AccountHome | null
   readonly mcpServer: McpConnection
   readonly instructions: string
+  readonly unreadablePaths: ReadonlyArray<string>
   readonly onOpen?: Effect.Effect<void>
 }
 

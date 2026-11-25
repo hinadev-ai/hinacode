@@ -1,20 +1,41 @@
 import { randomUUID } from "node:crypto"
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from "node:fs"
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, it } from "@effect/vitest"
-import { Effect, Layer, Logger } from "effect"
+import { Effect, Layer, Logger, Option } from "effect"
+import * as Db from "../db/client.ts"
 import * as Scratch from "./Scratch.ts"
+import * as Secrets from "./Secrets.ts"
 
 const dir = mkdtempSync(join(tmpdir(), "kk-scratch-tmp-"))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
 const withScratch = <A, E>(
-  effect: Effect.Effect<A, E, Scratch.Scratch>,
+  effect: Effect.Effect<A, E, Scratch.Scratch | Secrets.Secrets>,
   root: string,
   options?: Parameters<typeof Scratch.layer>[1],
-) => effect.pipe(Effect.provide(Scratch.layer(root, options).pipe(Layer.provide(NodeServices.layer))))
+) =>
+  effect.pipe(
+    Effect.provide(
+      Scratch.layer(root, options).pipe(
+        Layer.provideMerge(Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))),
+        Layer.provideMerge(Db.layer(":memory:")),
+        Layer.provide(NodeServices.layer),
+      ),
+    ),
+  )
 
 const ensureTmpLogging = (threadId: string, tmpRoot: string) => {
   const warnings: Array<string> = []
@@ -99,5 +120,84 @@ describe("thread tmp folders", () => {
         expect(warnings.some((message) => message.includes("not a private folder"))).toBe(true)
         expect(readdirSync(tmpRoot)).toStrictEqual([])
       }),
+  )
+})
+
+describe("thread secret files", () => {
+  const owner = (title: string) => ({ id: randomUUID(), title, createdAt: "2026-11-25T00:00:00.000Z" })
+
+  it.effect("removes one thread's secret files and keeps the rest of its folder", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(dir, "data-"))
+      const [mine, theirs] = [owner("mine"), owner("theirs")]
+      const paths = yield* withScratch(
+        Effect.gen(function* () {
+          const scratch = yield* Scratch.Scratch
+          const mineFile = yield* scratch.writeSecret(mine, "TOKEN", "one")
+          const theirsFile = yield* scratch.writeSecret(theirs, "TOKEN", "two")
+          yield* scratch.removeSecrets(mine.id)
+          return { mineFile, theirsFile, mineFolder: yield* scratch.ensure(mine) }
+        }),
+        root,
+      )
+
+      expect(existsSync(paths.mineFile)).toBe(false)
+      expect(existsSync(paths.mineFolder)).toBe(true)
+      expect(existsSync(paths.theirsFile)).toBe(true)
+    }),
+  )
+
+  it.effect("deletes every secret file a previous run left behind when it starts", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(dir, "data-"))
+      const thread = owner("crashed")
+      const file = yield* withScratch(
+        Scratch.Scratch.use((scratch) => scratch.writeSecret(thread, "TOKEN", "left over")),
+        root,
+      )
+      const folder = dirname(dirname(file))
+
+      yield* withScratch(Effect.void, root)
+
+      expect(existsSync(file)).toBe(false)
+      expect(existsSync(folder)).toBe(true)
+    }),
+  )
+
+  it.effect("keeps a secret that an earlier version stored only as a file", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(dir, "data-"))
+      const thread = owner("before sealing")
+      const file = join(root, `20261101-000000-before-sealing-${thread.id}`, "secrets", "TOKEN")
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, "from a file")
+
+      const stored = yield* withScratch(
+        Secrets.Secrets.use((secrets) => secrets.get(`${Secrets.threadSecretPrefix(thread.id)}TOKEN`)),
+        root,
+      )
+
+      expect(stored).toStrictEqual(Option.some("from a file"))
+      expect(existsSync(file)).toBe(false)
+    }),
+  )
+
+  it.effect("lists the private paths and every other thread's folder as unreadable, but not the thread's own", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(dir, "data-"))
+      const [mine, theirs] = [owner("mine"), owner("theirs")]
+      const { unreadable, theirsFolder } = yield* withScratch(
+        Effect.gen(function* () {
+          const scratch = yield* Scratch.Scratch
+          yield* scratch.ensure(mine)
+          const theirsFolder = yield* scratch.ensure(theirs)
+          return { unreadable: yield* scratch.unreadableBy(mine.id), theirsFolder }
+        }),
+        root,
+        { privatePaths: ["/data/hinacode.sqlite*"] },
+      )
+
+      expect(unreadable).toStrictEqual(["/data/hinacode.sqlite*", join(theirsFolder, "**")])
+    }),
   )
 })

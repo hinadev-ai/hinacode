@@ -495,6 +495,7 @@ const handlers: Handlers = {
   "secrets.respond": ({ requestId, value }) => AgentRunner.use((runner) => runner.respondSecret(requestId, value)),
 
   "secrets.has": ({ name }) => Secrets.use((secrets) => secrets.has(name)),
+  "secrets.storage": () => Secrets.use((secrets) => Effect.succeed(secrets.backend)),
   "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
   "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),

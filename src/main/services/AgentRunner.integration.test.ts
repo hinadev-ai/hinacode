@@ -41,7 +41,7 @@ import { agentPidsOf } from "./Ports.ts"
 import * as Projects from "./Projects.ts"
 import * as PullRequests from "./PullRequests.ts"
 import { PullRequestWatcher, layer as watcherLayer } from "./PullRequestWatcher.ts"
-import { Secrets } from "./Secrets.ts"
+import { Secrets, layer as secretsLayer, noKeyring } from "./Secrets.ts"
 import * as Settings from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
 import * as Scratch from "./Scratch.ts"
@@ -192,6 +192,7 @@ const withPreparingThread = async (
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(Scratch.layer(join(dir, "scratch"), { tmpRoot: join(dir, "tmp") })),
+      Layer.provideMerge(secretsLayer.pipe(Layer.provide(noKeyring))),
       Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
@@ -457,12 +458,7 @@ const withPreparingThread = async (
             Layer.succeed(OpencodeProvider, provider("opencode")),
             Layer.succeed(MagpieProvider, provider("magpie")),
             Layer.succeed(PiProvider, provider("pi")),
-            Layer.succeed(Secrets, {
-              get: () => Effect.succeed(Option.none()),
-              has: () => Effect.succeed(false),
-              set: () => Effect.void,
-              clear: () => Effect.void,
-            }),
+            Layer.succeed(Secrets, Context.get(context, Secrets)),
             Layer.succeed(McpCredentials, {
               connectionFor: () =>
                 Effect.succeed({ url: "http://127.0.0.1:1", headers: { authorization: "Bearer test" } }),

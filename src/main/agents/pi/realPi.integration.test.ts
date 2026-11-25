@@ -88,6 +88,7 @@ const input = (cwd: string, prompt: string): RunTurnInput => ({
   home: null,
   mcpServer: { url: "http://127.0.0.1:9/mcp", headers: { authorization: `Bearer ${randomUUID()}` } },
   instructions: "You run inside HinaCode.",
+  unreadablePaths: [],
 })
 
 const runAllowingEverything = (turn: RunTurnInput) =>

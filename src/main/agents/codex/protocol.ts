@@ -41,6 +41,31 @@ export type ThreadForkParams = ThreadResumeParams & {
   lastTurnId?: string | null
 }
 
+export type FileSystemAccessMode = "read" | "write" | "deny"
+export type PermissionProfileToml = {
+  extends: string
+  network?: { enabled: boolean }
+  filesystem?: { [path in string]?: FileSystemAccessMode }
+}
+
+export type ConfigReadParams = { includeLayers?: boolean; cwd?: string | null }
+export const ConfigReadResponse = Schema.Struct({
+  config: Schema.Struct({
+    default_permissions: Schema.optional(Schema.NullOr(Schema.String)),
+    sandbox_workspace_write: Schema.optional(
+      Schema.NullOr(
+        Schema.Struct({
+          writable_roots: Schema.Array(Schema.String),
+          network_access: Schema.Boolean,
+          exclude_tmpdir_env_var: Schema.optional(Schema.Boolean),
+          exclude_slash_tmp: Schema.optional(Schema.Boolean),
+        }),
+      ),
+    ),
+  }),
+})
+export type SandboxConfig = (typeof ConfigReadResponse.Type)["config"]
+
 export type Thread = { id: string; sessionId: string }
 export type ThreadStartResponse = { thread: Thread; sandbox: SandboxPolicy }
 export type ThreadForkResponse = ThreadStartResponse

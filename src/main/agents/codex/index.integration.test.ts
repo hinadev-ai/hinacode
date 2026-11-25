@@ -57,7 +57,11 @@ type Received = {
   params?: {
     turnId?: string
     input?: Array<import("./protocol.ts").UserInput>
-    config?: { model_auto_compact_token_limit?: number; shell_environment_policy?: unknown }
+    config?: {
+      model_auto_compact_token_limit?: number
+      shell_environment_policy?: unknown
+      default_permissions?: string
+    }
     approvalPolicy?: unknown
     sandbox?: unknown
     sandboxPolicy?: unknown
@@ -116,6 +120,7 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   fastMode: false,
   autoCompactTokens: null,
   accessMode: "auto",
+  unreadablePaths: ["/data/hinacode.sqlite*", "/data/scratch/other-thread/**"],
   resumeSessionId: null,
   forkAt: null,
   home,
@@ -271,6 +276,27 @@ describe("Codex auto-compact", () => {
     ),
   )
 
+  it.live("unloads a loaded thread that leaves full access, so the permission profile applies", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        const turn = (accessMode: "full" | "auto") =>
+          provider
+            .runTurn({ ...input("access-change"), resumeSessionId: "codex-thread", accessMode })
+            .pipe(Stream.runDrain)
+        yield* turn("full")
+        yield* turn("auto")
+        yield* turn("auto")
+        const methods = received()
+          .map((message) => message.method)
+          .filter((method) => method === "thread/unsubscribe" || method === "thread/resume")
+        expect(methods).toStrictEqual(["thread/resume", "thread/unsubscribe", "thread/resume", "thread/resume"])
+        expect(sent("thread/resume").at(-1)?.params?.config?.default_permissions).toBe("hinacode")
+      }),
+    ),
+  )
+
   it.live("tells a loaded thread about changed instructions with a developer message", () =>
     withProvider(
       Effect.gen(function* () {
@@ -343,6 +369,29 @@ describe("Codex auto-compact", () => {
   )
 })
 
+describe("Codex sandbox", () => {
+  it.live("starts a sandboxed thread on a permission profile that denies the unreadable paths", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        yield* provider.runTurn(input("sandboxed")).pipe(Stream.runDrain)
+        const params = sent("thread/start")[0]?.params
+        expect(params).not.toHaveProperty("sandbox")
+        expect(params?.config).toMatchObject({
+          default_permissions: "hinacode",
+          permissions: {
+            hinacode: {
+              extends: ":workspace",
+              network: { enabled: true },
+              filesystem: { "/data/hinacode.sqlite*": "deny", "/data/scratch/other-thread/**": "deny" },
+            },
+          },
+        })
+      }),
+    ),
+  )
+})
+
 describe("Codex full access", () => {
   it.live("starts a full access thread and turn that never ask for approval", () =>
     withProvider(
@@ -372,10 +421,9 @@ describe("Codex full access", () => {
           "untrusted",
           "never",
         ])
-        expect(sent("turn/start").map((message) => message.params?.sandboxPolicy)).toStrictEqual([
-          undefined,
-          { type: "dangerFullAccess" },
-        ])
+        expect(countOf("thread/unsubscribe")).toBe(1)
+        expect(sent("thread/resume").at(-1)?.params).toMatchObject({ sandbox: "danger-full-access" })
+        expect(sent("turn/start").at(-1)?.params?.sandboxPolicy).toBeUndefined()
       }),
     ),
   )

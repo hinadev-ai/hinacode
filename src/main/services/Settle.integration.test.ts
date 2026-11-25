@@ -34,6 +34,7 @@ import * as Terminals from "./Terminals.ts"
 import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
 import * as Scratch from "./Scratch.ts"
+import * as Secrets from "./Secrets.ts"
 
 const pushes: Array<PushEvent> = []
 const statuses = new Map<string, PullRequestStatus>()
@@ -165,6 +166,7 @@ afterAll(() => rmSync(base, { recursive: true, force: true }))
 
 const domain = threadsLayer.pipe(
   Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")), { tmpRoot: join(base, "tmp") })),
+  Layer.provideMerge(Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))),
   Layer.provideMerge(Terminals.layer),
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),

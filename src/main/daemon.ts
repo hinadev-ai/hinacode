@@ -121,10 +121,19 @@ const keepServeLogBounded = (path: string) => {
   setInterval(check, SERVE_LOG_CHECK_MS).unref()
 }
 
+const plaintextSecretsWarning = (database: string) =>
+  [
+    `Warning: secrets are stored as plaintext in ${database}.`,
+    "hinacode serve has no OS keyring. Anyone who can read this user's files can read them, including the agents it runs.",
+    "",
+    "",
+  ].join("\n")
+
 export const serve = async (flags: ServeFlags, userData: string) => {
   const config = serveConfig(flags, process.env)
   mkdirSync(userData, { recursive: true, mode: 0o700 })
   lockDataDir(userData)
+  process.stdout.write(plaintextSecretsWarning(join(userData, "hinacode.sqlite")))
   const serveLog = process.env["HINACODE_SERVE_LOG"]
   if (serveLog) keepServeLogBounded(serveLog)
   await hydratePath(process.env).ready

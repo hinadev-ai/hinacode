@@ -555,6 +555,10 @@ export const secretStoredAtom = familyOf((environment: EnvironmentId, name: stri
   Atom.make(call("secrets.has", { name }, { environment })),
 )
 
+export const secretStorageAtom = familyOf((environment: EnvironmentId) =>
+  Atom.make(call("secrets.storage", undefined, { environment })),
+)
+
 export const threadPortsAtom = Atom.family((threadId: string) =>
   Atom.make(
     call("ports.list", { threadId }).pipe(
