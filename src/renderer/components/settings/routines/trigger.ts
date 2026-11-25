@@ -53,6 +53,8 @@ export const triggerFields: Record<TriggerSource, TriggerFields> = {
   },
 }
 
+export const carriesSenderText = (event: TriggerEvent) => event !== "linear.issue_assigned"
+
 export const isTriggerEvent = (value: unknown): value is TriggerEvent => triggerEvents.some((event) => event === value)
 
 export interface TriggerDraft {
@@ -92,7 +94,7 @@ export function toTrigger(draft: TriggerDraft): TriggerResult {
       event: draft.event,
       fromUsers,
       scopes: parseList(draft.scopes),
-      contains: contains === "" ? null : contains,
+      contains: contains === "" || !carriesSenderText(draft.event) ? null : contains,
       continuation: draft.continueConversation ? "conversation" : "new",
     },
   }

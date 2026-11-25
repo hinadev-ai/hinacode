@@ -5,6 +5,7 @@ import { Label } from "../../ui/label.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select.tsx"
 import { Switch } from "../../ui/switch.tsx"
 import {
+  carriesSenderText,
   isTriggerEvent,
   type TriggerDraft,
   triggerEventLabel,
@@ -78,17 +79,21 @@ export function TriggerPicker({ value, onChange }: TriggerPickerProps) {
             autoComplete="off"
             className="h-8 font-mono"
           />
-          <Label htmlFor={`${id}-contains`} className={labelClass}>
-            {m.routines_trigger_contains_label()}
-          </Label>
-          <Input
-            id={`${id}-contains`}
-            value={value.contains}
-            onChange={(event) => patch({ contains: event.target.value })}
-            placeholder={fields.containsPlaceholder}
-            autoComplete="off"
-            className="h-8"
-          />
+          {value.event !== null && carriesSenderText(value.event) && (
+            <>
+              <Label htmlFor={`${id}-contains`} className={labelClass}>
+                {m.routines_trigger_contains_label()}
+              </Label>
+              <Input
+                id={`${id}-contains`}
+                value={value.contains}
+                onChange={(event) => patch({ contains: event.target.value })}
+                placeholder={fields.containsPlaceholder}
+                autoComplete="off"
+                className="h-8"
+              />
+            </>
+          )}
           {fields.hint !== null && <p className="col-start-2 text-xs text-muted-foreground">{fields.hint()}</p>}
           <Label className="col-span-2 font-normal">
             <Switch

@@ -121,4 +121,11 @@ describe("fromTrigger", () => {
     expect(result).toEqual({ valid: true, trigger })
     expect(toTrigger(fromTrigger(trigger))).toEqual({ valid: true, trigger })
   })
+
+  test("drops the phrase for an assignment, which carries no text of the sender's", () => {
+    const result = toTrigger(
+      draft({ event: "linear.issue_assigned", fromUsers: "ada@example.com", contains: "deploy" }),
+    )
+    expect(result).toMatchObject({ valid: true, trigger: { contains: null } })
+  })
 })

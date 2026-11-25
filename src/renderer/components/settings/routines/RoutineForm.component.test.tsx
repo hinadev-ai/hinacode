@@ -159,6 +159,25 @@ test("saves the GitHub trigger filled in the form", async () => {
   })
 })
 
+test("saves a Linear trigger from account emails and team keys", async () => {
+  renderCreate()
+  await fillNameAndPrompt()
+  await pickTrigger("Linear issue assigned to me")
+  await expect.element(page.getByRole("textbox", { name: "Contains" })).not.toBeInTheDocument()
+  await page.getByRole("textbox", { name: "From" }).fill("ada@example.com,  grace@example.com ada@example.com")
+  await page.getByRole("textbox", { name: "Teams" }).fill("ENG")
+
+  await page.getByRole("button", { name: "Create routine" }).click()
+  await expect.poll(() => created).toHaveLength(1)
+  expect(created[0]).toMatchObject({
+    trigger: {
+      event: "linear.issue_assigned",
+      fromUsers: ["ada@example.com", "grace@example.com"],
+      scopes: ["ENG"],
+    },
+  })
+})
+
 test("cannot save an event trigger without a sender", async () => {
   renderCreate()
   await fillNameAndPrompt()
