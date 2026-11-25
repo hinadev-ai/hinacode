@@ -30,7 +30,7 @@ flowchart LR
   codex["codex app-server<br/>JSON-RPC over stdio"]
   muse["muse serve<br/>MSP over stdio"]
   git["git / gh CLIs"]
-  ext["GitHub, Linear"]
+  ext["GitHub, Linear, Slack"]
 
   ui <--> stores
   stores -- "rpc (request/response)" --> preload --> ipc
@@ -58,6 +58,7 @@ flowchart LR
 - **Outside apps get a second MCP server.** A chat app or agent harness the developer connected reaches the app server through the relay hostname, with an OAuth token and a tool list of its own. See [App MCP server](#app-mcp-server).
 - **Git and GitHub go through the CLIs** (`git`, `gh`), so hinacode uses the user's existing auth and config.
 - **Linear goes through one service.** `services/Linear.ts` reads the machine's `linear.apiKey` from `Secrets` and loads the SDK on first use. The MCP tools and the `linear.issues` rpc both use it, and the key never leaves the main process. `HINACODE_MOCK_LINEAR=1` answers demo tickets.
+- **Slack goes through one service.** `services/slack/Slack.ts` reads the machine's `slack.appToken` and `slack.botToken` from `Secrets` and dials Socket Mode while both are stored, so Slack needs no listening port. A mention becomes an `Arrival` for `Routines.arrive`, and `reply` posts back with `chat.postMessage`. The tokens never leave the main process. `HINACODE_SLACK_API_URL` points it at a local fake.
 
 ## IPC contract
 
@@ -705,7 +706,7 @@ flowchart LR
   run --> agentRun["AgentRunner.runAgent<br/>provider.runTurn in the caller's workspace<br/>row in the caller's Agents tab"]
   control --> scope["same project as the caller<br/>AgentRunner.transcript / steer / send / interrupt"]
   terms --> scrollback["Terminals.list / attach<br/>the caller's terminals only, terminalText"]
-  reply --> conv[("routine_conversation<br/>of the caller")] --> gh["GitHub.comment<br/>the destination only"]
+  reply --> conv[("routine_conversation<br/>of the caller")] --> gh["GitHub.comment or Slack.post<br/>the destination only"]
 ```
 
 `request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` (`thread.<id>.<NAME>`) and never into an event, a message or the tool result. The runner writes the thread's secrets to `<scratch>/secrets/<NAME>` (0600) when each turn starts and deletes the folder when the turn finishes, `Scratch` deletes leftovers at startup, so the path the tool returned works in every later turn of the thread and the file exists only while one runs. Each session also gets `unreadablePaths` (the database, the Chromium profiles and other threads' scratch folders), which Claude receives as `Read(...)` deny rules and Codex as a `deny` permission profile. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. `read_thread` and `search_threads` also reach threads of every other project on this machine. `wait_for_thread` holds the call until a thread on this machine stops working or waits on the user, then reads it, so an agent that started threads does not sleep and poll. It gives up after four minutes for the same reason `run_agent` does. `run_agent` runs one turn of any provider as a sub-agent of the caller's running turn and returns its last text, or its id after four minutes for `wait_agent` to pick up, because Muse gives an MCP call 300 seconds; see [the feature doc](features/2026-10-30-run-agent.md). `read_terminal` reads the 256 KB scrollback `Terminals` keeps per session and turns it into plain text; it refuses a terminal of another thread. See [the feature doc](features/2026-11-04-terminal-mentions.md). Codex gets `tool_timeout_sec = 3600` and opencode `experimental.mcp_timeout` for this server so a user has time to answer.
