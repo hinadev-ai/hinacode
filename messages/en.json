@@ -717,6 +717,7 @@
   "routines_trigger_github_pull_request_opened": "GitHub pull request opened",
   "routines_trigger_github_issue_comment": "GitHub issue comment",
   "routines_trigger_github_pull_request_comment": "GitHub pull request comment",
+  "routines_trigger_slack_mention": "Slack mention",
   "routines_trigger_from_label": "From",
   "routines_trigger_scopes_label": "Repositories",
   "routines_trigger_contains_label": "Contains",

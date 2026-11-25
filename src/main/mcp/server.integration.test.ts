@@ -8,7 +8,7 @@ import { afterAll, expect, layer } from "@effect/vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { NodeServices } from "@effect/platform-node"
-import { Context, Deferred, type Duration, Effect, Fiber, Layer, Option, Stream } from "effect"
+import { Context, Deferred, type Duration, Effect, Fiber, Layer, Option, Queue, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import { TestClock } from "effect/testing"
 import {
@@ -63,6 +63,9 @@ import * as Scratch from "../services/Scratch.ts"
 import * as Search from "../services/Search.ts"
 import { Conversations, layer as conversationsLayer } from "../services/routines/Conversations.ts"
 import { REPLY_MARK } from "../services/routines/triggers.ts"
+import { Routines } from "../services/routines/Routines.ts"
+import { type FakeSlack, makeFakeSlack } from "../services/slack/fakeSlack.ts"
+import { layer as slackLayer, Slack } from "../services/slack/Slack.ts"
 
 const pushes: Array<PushEvent> = []
 const reversingKeyring = safeStorageKeyring(
@@ -253,7 +256,25 @@ const gitHub = Layer.effect(
     }),
   ),
 ).pipe(Layer.provide(GitHub.layer.pipe(Layer.provide(stubs))))
-const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(Layer.mergeAll(agents, stubs))), agents, seeded).pipe(
+class FakeSlackServer extends Context.Service<FakeSlackServer, FakeSlack>()("test/FakeSlackServer") {}
+const slackWorkspace = {
+  appToken: "xapp-1-app",
+  botToken: "xoxb-bot",
+  team: { id: "T1", name: "Acme", url: "https://acme.slack.com/" },
+  bot: "hinacode",
+}
+const fakeSlack = Layer.effect(FakeSlackServer, makeFakeSlack(slackWorkspace))
+const slack = Layer.unwrap(Effect.map(FakeSlackServer, (fake) => slackLayer({ apiUrl: fake.apiUrl }))).pipe(
+  Layer.provideMerge(fakeSlack),
+  Layer.provide(Layer.succeed(Routines, {} as typeof Routines.Service)),
+  Layer.provide(Layer.mergeAll(core, stubs)),
+)
+const testLayer = Layer.mergeAll(
+  serverLayer.pipe(Layer.provide(Layer.mergeAll(agents, stubs, slack))),
+  agents,
+  seeded,
+  slack,
+).pipe(
   Layer.provideMerge(SourceControl.layer),
   Layer.provideMerge(Layer.mergeAll(stubs, Git.layer)),
   Layer.provideMerge(gitHub),
@@ -2009,7 +2030,7 @@ const startedFrom = (threadId: string, destination: ReplyDestination) =>
     yield* Conversations.use((conversations) =>
       conversations.put({
         routineId,
-        key: `github:${destination.repo}#${destination.number}`,
+        key: destination.url,
         threadId,
         destination,
       }),
@@ -2050,6 +2071,68 @@ layer(testLayer)("reply", (it) => {
       })
       expect((yield* callFrom(b, "reply", { text: "Me too" })).isError).toBe(true)
       expect(postedComments).toStrictEqual([{ url: issue.url, body: `Fixed in #13\n\n${REPLY_MARK}` }])
+    }),
+  )
+
+  it.effect("posts a Slack conversation's reply into its Slack thread", () =>
+    Effect.gen(function* () {
+      const fake = yield* FakeSlackServer
+      const { projectId } = yield* (yield* Threads).get((yield* Seeded).a)
+      const { threadId } = yield* seedThread({ rootPath: repoA, projectId })
+      const destination: ReplyDestination = {
+        source: "slack",
+        channel: "C1",
+        threadTs: "1700000000.000100",
+        url: "https://acme.slack.com/archives/C1/p1700000000000100",
+      }
+      yield* startedFrom(threadId, destination)
+      yield* fake.post({ channel: "C1", ts: destination.threadTs, user: "U1", text: "<@UBOT> why?" })
+      yield* Slack.use((connection) => connection.connect(slackWorkspace))
+
+      const tooLong = yield* callFrom(threadId, "reply", { text: "x".repeat(12_001) })
+      expect(tooLong).toMatchObject({
+        isError: true,
+        text: "A Slack reply takes at most 12000 characters and this one has 12001. Shorten it or split it.",
+      })
+      expect(yield* callFrom(threadId, "reply", { text: "Because **lint** fails." })).toMatchObject({
+        isError: false,
+        text: `Posted to ${destination.url}`,
+      })
+      expect(yield* Queue.take(fake.posts)).toMatchObject({
+        channel: "C1",
+        thread_ts: destination.threadTs,
+        text: "Because **lint** fails.",
+      })
+    }),
+  )
+
+  it.effect("tells the agent when Slack is not connected or refuses the post", () =>
+    Effect.gen(function* () {
+      const fake = yield* FakeSlackServer
+      const { projectId } = yield* (yield* Threads).get((yield* Seeded).a)
+      const { threadId } = yield* seedThread({ rootPath: repoA, projectId })
+      const destination: ReplyDestination = {
+        source: "slack",
+        channel: "C1",
+        threadTs: "1700000000.000200",
+        url: "https://acme.slack.com/archives/C1/p1700000000000200",
+      }
+      yield* startedFrom(threadId, destination)
+
+      yield* Slack.use((connection) => connection.disconnect)
+      expect(yield* callFrom(threadId, "reply", { text: "Done" })).toStrictEqual({
+        isError: true,
+        text: "Slack is not connected on this machine.",
+        images: [],
+      })
+
+      yield* Slack.use((connection) => connection.connect(slackWorkspace))
+      expect(yield* callFrom(threadId, "reply", { text: "Done" })).toStrictEqual({
+        isError: true,
+        text: "Slack chat.postMessage failed: thread_not_found",
+        images: [],
+      })
+      expect(yield* Queue.size(fake.posts)).toBe(0)
     }),
   )
 })

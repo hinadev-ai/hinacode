@@ -38,6 +38,8 @@ import * as Settle from "./services/Settle.ts"
 import * as Browser from "./services/Browser.ts"
 import * as Conversations from "./services/routines/Conversations.ts"
 import * as Routines from "./services/routines/Routines.ts"
+import { SLACK_API_URL } from "./services/slack/api.ts"
+import * as Slack from "./services/slack/Slack.ts"
 import * as Scheduler from "./services/Scheduler.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
@@ -242,14 +244,19 @@ export const makeAppLayer = ({
     Conversations.layer,
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
+  const routines = Routines.layer.pipe(Layer.provide(Scheduler.layer))
+  const slack = Slack.layer({ apiUrl: process.env["HINACODE_SLACK_API_URL"] ?? SLACK_API_URL }).pipe(
+    Layer.provide(routines),
+  )
   const services = Layer.mergeAll(
-    Routines.layer.pipe(Layer.provide(Scheduler.layer)),
+    routines,
+    slack,
     Settle.layer,
     ArtifactFeedback.layer,
     PullRequestWatcher.layer,
     providers.simulated ? PullRequestGuides.idleLayer : PullRequestGuides.layer,
     updates,
-    Mcp.serverLayer,
+    Mcp.serverLayer.pipe(Layer.provide(slack)),
     AgentLogins.layer(join(userData, "cache")),
     SessionImports.layer,
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),

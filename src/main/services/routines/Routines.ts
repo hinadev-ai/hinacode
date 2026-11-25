@@ -80,6 +80,7 @@ export class Routines extends Context.Service<
     ) => Effect.Effect<RoutineRun, PersistenceError | NotFoundError>
     readonly runs: (id: string, limit: number) => Effect.Effect<ReadonlyArray<RoutineRun>, PersistenceError>
     readonly arrive: (arrival: Arrival) => Effect.Effect<ReadonlyArray<RoutineRun>, PersistenceError>
+    readonly listensFor: (arrival: Arrival) => Effect.Effect<boolean, PersistenceError>
     readonly webhook: (
       id: string,
     ) => Effect.Effect<{ url: string; githubUrl: string; hasSecret: boolean; listenError: string | null }, Failure>
@@ -508,16 +509,25 @@ const make = Effect.gen(function* () {
 
   const oneArrivalAtATime = Semaphore.makeUnsafe(1)
 
+  const routinesMatching = (arrival: Arrival) =>
+    findRows(undefined).pipe(
+      Effect.mapError(persistence("routines.arrive")),
+      Effect.map((rows) =>
+        rows.flatMap((routine) =>
+          routine.enabled && routine.trigger !== null && matches(routine.trigger, arrival)
+            ? [{ routine, trigger: routine.trigger }]
+            : [],
+        ),
+      ),
+    )
+
   const arrive = (arrival: Arrival) =>
-    Effect.gen(function* () {
-      const rows = yield* findRows(undefined).pipe(Effect.mapError(persistence("routines.arrive")))
-      const matching = rows.flatMap((routine) =>
-        routine.enabled && routine.trigger !== null && matches(routine.trigger, arrival)
-          ? [{ routine, trigger: routine.trigger }]
-          : [],
-      )
-      return yield* Effect.forEach(matching, ({ routine, trigger }) => arriveAt(routine, trigger, arrival))
-    }).pipe(Semaphore.withPermit(oneArrivalAtATime))
+    routinesMatching(arrival).pipe(
+      Effect.flatMap(Effect.forEach(({ routine, trigger }) => arriveAt(routine, trigger, arrival))),
+      Semaphore.withPermit(oneArrivalAtATime),
+    )
+
+  const listensFor = (arrival: Arrival) => Effect.map(routinesMatching(arrival), (matching) => matching.length > 0)
 
   const previousThreadBusy = (id: string) =>
     Effect.gen(function* () {
@@ -724,6 +734,7 @@ const make = Effect.gen(function* () {
     remove,
     run,
     arrive,
+    listensFor,
     runs: (id, limit) => findRuns({ id, limit }).pipe(Effect.mapError(persistence("routines.runs"))),
     webhook,
     rotateWebhookSecret,

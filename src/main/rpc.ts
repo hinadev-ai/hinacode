@@ -61,6 +61,7 @@ import { SystemResources } from "./services/SystemResources.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
 import { SessionImports } from "./services/SessionImports.ts"
+import { Slack } from "./services/slack/Slack.ts"
 import { randomName, Threads } from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
@@ -71,6 +72,7 @@ import { Worktrees } from "./services/Worktrees.ts"
 export type AppServices =
   | AgentAccounts
   | AppConnections
+  | Slack
   | BoatMachines
   | AgentLogins
   | SessionImports
@@ -538,6 +540,9 @@ const handlers: Handlers = {
   "github.fileContent": ({ url, ref, path }) => GitHub.use((github) => github.fileContent(url, ref, path)),
   "github.reviewComment": ({ url, comment }) => GitHub.use((github) => github.reviewComment(url, comment)),
   "linear.issues": () => Linear.use((linear) => linear.assignedIssues),
+  "slack.status": () => Slack.use((slack) => slack.status),
+  "slack.connect": (tokens) => Slack.use((slack) => slack.connect(tokens)),
+  "slack.disconnect": () => Slack.use((slack) => slack.disconnect),
   "github.repository": ({ projectId }) =>
     Projects.use((projects) => projects.get(projectId)).pipe(
       Effect.flatMap(({ rootPath }) => GitHub.use((github) => github.repository(rootPath))),

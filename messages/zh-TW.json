@@ -717,6 +717,7 @@
   "routines_trigger_github_pull_request_opened": "GitHub Pull Request 建立",
   "routines_trigger_github_issue_comment": "GitHub 議題留言",
   "routines_trigger_github_pull_request_comment": "GitHub Pull Request 留言",
+  "routines_trigger_slack_mention": "Slack 提及",
   "routines_trigger_from_label": "來自",
   "routines_trigger_scopes_label": "儲存庫",
   "routines_trigger_contains_label": "包含",

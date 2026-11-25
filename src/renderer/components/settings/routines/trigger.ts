@@ -9,6 +9,7 @@ export const triggerEventLabel = {
   "github.pull_request_opened": m.routines_trigger_github_pull_request_opened,
   "github.issue_comment": m.routines_trigger_github_issue_comment,
   "github.pull_request_comment": m.routines_trigger_github_pull_request_comment,
+  "slack.mention": m.routines_trigger_slack_mention,
 } satisfies Record<TriggerEvent, () => string>
 
 export const isTriggerEvent = (value: unknown): value is TriggerEvent => triggerEvents.some((event) => event === value)

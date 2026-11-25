@@ -708,6 +708,7 @@
   "routines_trigger_github_pull_request_opened": "GitHub Pull Request 创建",
   "routines_trigger_github_issue_comment": "GitHub 议题评论",
   "routines_trigger_github_pull_request_comment": "GitHub Pull Request 评论",
+  "routines_trigger_slack_mention": "Slack 提及",
   "routines_trigger_from_label": "来自",
   "routines_trigger_scopes_label": "仓库",
   "routines_trigger_contains_label": "包含",
