@@ -94,7 +94,7 @@ const deliver = (
   threadId: string,
   prompt: string,
   sent: Draft,
-  { busy, unstarted, delivery }: { busy: boolean; unstarted: boolean; delivery: Delivery },
+  { busy, choosesWorkspace, delivery }: { busy: boolean; choosesWorkspace: boolean; delivery: Delivery },
 ) => {
   if (busy) {
     return callPromise(delivery === "queue" ? "threads.queue" : "threads.steer", {
@@ -104,7 +104,7 @@ const deliver = (
     })
   }
   const workspace =
-    unstarted && sent.workspace
+    choosesWorkspace && sent.workspace
       ? { mode: sent.workspace.mode, target: toCheckoutTarget(sent.workspace.ref) }
       : undefined
   return trackSend(threadId, () =>
@@ -127,6 +127,8 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null && !isSidechat
   })
   const isChat = useIsChat(thread.projectId)
+  const inRepository = !AsyncResult.isFailure(useAtomValue(currentBranchAtom(thread.projectId)))
+  const choosesWorkspace = unstarted && !isChat && inRepository
   const environment = useThreadEnvironment(thread.id)
   const [error, setError] = useState<string | null>(null)
   const [isSending, startSending] = useTransition()
@@ -182,7 +184,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     startSending(async () => {
       const delivered =
         question === null
-          ? deliver(thread.id, prompt, sent, { busy, unstarted, delivery })
+          ? deliver(thread.id, prompt, sent, { busy, choosesWorkspace, delivery })
           : askSidechat(thread.id, question, sent.attachments)
       await delivered.catch((cause: unknown) => {
         useDrafts.getState().restore(thread.id, sent)
@@ -252,7 +254,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     },
   }
 
-  const canWarm = !busy && !isSidechat && !(unstarted && workspace !== null)
+  const canWarm = !busy && !isSidechat && !(choosesWorkspace && workspace !== null)
   const changeText = (next: string) => {
     if (text === "" && next !== "" && canWarm)
       callPromise("threads.warm", { threadId: thread.id }).catch(() => undefined)
@@ -366,7 +368,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
           commandsError !== null && <CommandsError message={commandsError} />
         )}
         {unstarted ? (
-          !isChat && <WorkspacePicker thread={thread} workspace={workspace} />
+          choosesWorkspace && <WorkspacePicker thread={thread} workspace={workspace} />
         ) : (
           <ComposerStatusLine thread={thread} folderMissing={folderMissing} />
         )}
