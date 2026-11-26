@@ -5,7 +5,7 @@ import { Result } from "effect"
 import { randomUUID } from "expo-crypto"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { useHeaderHeight } from "expo-router/react-navigation"
-import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react"
+import { type Ref, type RefObject, useEffect, useImperativeHandle, useRef, useState } from "react"
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -19,7 +19,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { useAction } from "@/components/request-cards"
-import { Button, IconButton, Notice, SegmentedControl } from "@/components/ui"
+import { Button, Notice, SegmentedControl } from "@/components/ui"
 import { VmScreenView, type VmScreenViewHandle } from "@/components/vm-screen-view"
 import { HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
@@ -82,19 +82,88 @@ function Message({ text }: { text: string | null }) {
 }
 
 function RunningScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
-  const theme = useTheme()
-  const user = vm.control === "user"
-  const request = vm.control === "user" ? vm.request : undefined
   const [fit, setFit] = useState<ScreenFit>("fit")
   const [session, setSession] = useState(0)
+  const screen = useRef<ScreenSessionHandle>(null)
+  return (
+    <View style={[styles.flex, styles.footerSpace]}>
+      <ControlBar threadId={threadId} vm={vm} />
+      <ScreenSession
+        key={session}
+        ref={screen}
+        threadId={threadId}
+        user={vm.control === "user"}
+        fit={fit}
+        onReconnect={() => setSession(session + 1)}
+      />
+      <View style={styles.toolbar}>
+        <SegmentedControl<ScreenFit>
+          segments={fitSegments}
+          value={fit}
+          onChange={setFit}
+          accessibilityLabel={copy("mobile_vm_zoom")}
+          style={styles.flex}
+        />
+      </View>
+      {vm.control === "user" && <VmKeyboard screen={screen} />}
+    </View>
+  )
+}
+
+type ControlState = "agent" | "user" | "waiting"
+
+const controlState = (vm: RunningVm): ControlState =>
+  vm.control === "agent" ? "agent" : vm.request === undefined ? "user" : "waiting"
+
+const controlLabels = {
+  agent: "vm_control_agent",
+  user: "vm_control_user",
+  waiting: "vm_hand_over_waiting",
+} as const satisfies Record<ControlState, string>
+
+function ControlBar({ threadId, vm }: { threadId: string; vm: RunningVm }) {
+  const theme = useTheme()
+  const control = useAction()
+  const state = controlState(vm)
+  const dot = { agent: theme.textMuted, user: theme.running, waiting: theme.attention }[state]
+  const next = vm.control === "user" ? "agent" : "user"
+  return (
+    <>
+      <View style={styles.bar}>
+        <View style={[styles.dot, { backgroundColor: dot }]} />
+        <Text
+          numberOfLines={1}
+          style={[styles.status, { color: state === "waiting" ? theme.attention : theme.text }]}
+        >
+          {copy(controlLabels[state])}
+        </Text>
+        <Button
+          testID="vm-control"
+          label={copy(next === "agent" ? "vm_hand_back" : "vm_take_control")}
+          variant={next === "agent" ? "secondary" : "primary"}
+          busy={control.busy}
+          onPress={() => void control.run(() => call("vm.control", { threadId, control: next }))}
+        />
+      </View>
+      {vm.control === "user" && vm.request !== undefined && (
+        <Text selectable style={[styles.request, { color: theme.text }]}>
+          {vm.request}
+        </Text>
+      )}
+      {control.error !== null && (
+        <View style={styles.padded}>
+          <Notice text={control.error} tone="danger" />
+        </View>
+      )}
+    </>
+  )
+}
+
+function VmKeyboard({ screen }: { screen: RefObject<ScreenSessionHandle | null> }) {
+  const theme = useTheme()
   const [ctrl, setCtrl] = useState(false)
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState("")
-  const control = useAction()
-  const screen = useRef<ScreenSessionHandle>(null)
-
-  const setControl = (next: "agent" | "user") =>
-    void control.run(() => call("vm.control", { threadId, control: next }))
 
   const pressKey = (key: ScreenKey) => {
     screen.current?.run({ type: "key", key, ctrl })
@@ -109,85 +178,34 @@ function RunningScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   }
 
   return (
-    <View style={[styles.flex, styles.footerSpace]}>
-      <View style={styles.bar}>
-        <View style={[styles.dot, { backgroundColor: request !== undefined ? theme.attention : user ? theme.running : theme.textMuted }]} />
-        <Text
-          numberOfLines={1}
-          style={[styles.status, { color: request !== undefined ? theme.attention : theme.text }]}
-        >
-          {request !== undefined ? copy("vm_hand_over_waiting") : copy(user ? "vm_control_user" : "vm_control_agent")}
-        </Text>
-        <Button
-          testID="vm-control"
-          label={copy(user ? "vm_hand_back" : "vm_take_control")}
-          variant={user ? "secondary" : "primary"}
-          busy={control.busy}
-          onPress={() => setControl(user ? "agent" : "user")}
+    <>
+      <ScrollView
+        horizontal
+        keyboardShouldPersistTaps="always"
+        showsHorizontalScrollIndicator={false}
+        style={styles.keyScroller}
+        contentContainerStyle={styles.keys}
+      >
+        <KeyCap
+          testID="vm-type-text"
+          label=""
+          icon="RiKeyboardBoxLine"
+          accessibilityLabel={copy("mobile_vm_type_text")}
+          selected={typing}
+          onPress={() => setTyping(!typing)}
         />
-      </View>
-      {request !== undefined && (
-        <Text selectable style={[styles.request, { color: theme.text }]}>
-          {request}
-        </Text>
-      )}
-      {control.error !== null && (
-        <View style={styles.padded}>
-          <Notice text={control.error} tone="danger" />
-        </View>
-      )}
-      <ScreenSession
-        key={session}
-        ref={screen}
-        threadId={threadId}
-        user={user}
-        fit={fit}
-        onReconnect={() => setSession(session + 1)}
-      />
-      <View style={styles.toolbar}>
-        <SegmentedControl<ScreenFit>
-          segments={fitSegments}
-          value={fit}
-          onChange={setFit}
-          accessibilityLabel={copy("mobile_vm_zoom")}
-          style={styles.flex}
-        />
-        {user && (
-          <IconButton
-            testID="vm-type-text"
-            icon="RiKeyboardBoxLine"
-            variant={typing ? "secondary" : "ghost"}
-            accessibilityLabel={copy("mobile_vm_type_text")}
-            accessibilityState={{ selected: typing }}
-            onPress={() => setTyping(!typing)}
-          />
-        )}
-      </View>
-      {user && (
-        <ScrollView
-          horizontal
-          keyboardShouldPersistTaps="always"
-          showsHorizontalScrollIndicator={false}
-          style={styles.keyScroller}
-          contentContainerStyle={styles.keys}
-        >
+        <KeyCap label={copy("mobile_vm_key_ctrl")} selected={ctrl} onPress={() => setCtrl(!ctrl)} />
+        {keys.map((item) => (
           <KeyCap
-            label={copy("mobile_vm_key_ctrl")}
-            selected={ctrl}
-            onPress={() => setCtrl(!ctrl)}
+            key={item.key}
+            label={item.label}
+            icon={item.icon}
+            accessibilityLabel={item.accessibilityLabel}
+            onPress={() => pressKey(item.key)}
           />
-          {keys.map((item) => (
-            <KeyCap
-              key={item.key}
-              label={item.label}
-              icon={item.icon}
-              accessibilityLabel={item.accessibilityLabel}
-              onPress={() => pressKey(item.key)}
-            />
-          ))}
-        </ScrollView>
-      )}
-      {user && typing && (
+        ))}
+      </ScrollView>
+      {typing && (
         <View style={styles.compose}>
           <TextInput
             testID="vm-text"
@@ -206,17 +224,19 @@ function RunningScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           <Button testID="vm-text-send" label={copy("mobile_vm_send_text")} variant="primary" onPress={typeText} />
         </View>
       )}
-    </View>
+    </>
   )
 }
 
 function KeyCap({
+  testID,
   label,
   icon,
   accessibilityLabel,
   selected = false,
   onPress,
 }: {
+  testID?: string
   label: string
   icon?: IconName | undefined
   accessibilityLabel?: string | undefined
@@ -226,6 +246,7 @@ function KeyCap({
   const theme = useTheme()
   return (
     <Pressable
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ selected }}
@@ -241,7 +262,7 @@ function KeyCap({
       {icon === undefined ? (
         <Text style={[styles.keyLabel, { color: selected ? theme.background : theme.text }]}>{label}</Text>
       ) : (
-        <Icon name={icon} size={16} color={theme.text} />
+        <Icon name={icon} size={16} color={selected ? theme.background : theme.text} />
       )}
     </Pressable>
   )
