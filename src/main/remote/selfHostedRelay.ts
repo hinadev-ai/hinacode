@@ -1,4 +1,4 @@
-import type { IncomingMessage } from "node:http"
+import type { ClientRequest, IncomingMessage } from "node:http"
 import { request as httpRequest } from "node:http"
 import { request as httpsRequest } from "node:https"
 import { connect, type Socket } from "node:net"
@@ -7,6 +7,7 @@ export const RELAY_UPGRADE_PROTOCOL = "hinacode-relay/1"
 
 const SIGNAL_PING = 0x00
 const SIGNAL_OPEN = 0x01
+const ATTACH_TIMEOUT_MS = 10_000
 const FIRST_RETRY_MS = 1000
 const LAST_RETRY_MS = 30_000
 
@@ -49,7 +50,7 @@ export const attachToRelay = (
   const request = attachment.url.protocol === "https:" ? httpsRequest : httpRequest
   const parked = new Set<Socket>()
   const sessions = new Set<Socket>()
-  let dialing = 0
+  const dialing = new Set<ClientRequest>()
   let closed = false
   let retryMs = FIRST_RETRY_MS
   let retry: NodeJS.Timeout | null = null
@@ -112,32 +113,29 @@ export const attachToRelay = (
   }
 
   const dial = () => {
-    dialing += 1
-    let settled = false
-    const settle = () => {
-      if (settled) return false
-      settled = true
-      dialing -= 1
-      return true
-    }
     const attach = request(attachment.url, {
       method: "GET",
       path: `/h/${attachment.hostId}/attach`,
       agent: false,
+      timeout: ATTACH_TIMEOUT_MS,
       headers: {
         authorization: `Bearer ${attachment.token}`,
         connection: "Upgrade",
         upgrade: RELAY_UPGRADE_PROTOCOL,
       },
     })
+    dialing.add(attach)
+    const settle = () => dialing.delete(attach)
     attach.once("upgrade", (_response: IncomingMessage, socket: Socket, head: Buffer) => {
       if (!settle() || closed) return void socket.destroy()
+      socket.setTimeout(0)
       park(socket, head)
     })
     attach.once("response", (response: IncomingMessage) => {
       response.resume()
       if (settle()) fail(describeRefusal(response.statusCode))
     })
+    attach.once("timeout", () => attach.destroy(new Error("the relay did not answer within 10 seconds")))
     attach.on("error", (error) => {
       if (settle()) fail(`Cannot reach the relay: ${error.message}`)
     })
@@ -146,7 +144,7 @@ export const attachToRelay = (
 
   const refill = () => {
     if (closed || retry !== null) return
-    while (parked.size + dialing < attachment.idle) dial()
+    while (parked.size + dialing.size < attachment.idle) dial()
   }
 
   report()
@@ -156,7 +154,9 @@ export const attachToRelay = (
     close: () => {
       closed = true
       if (retry !== null) clearTimeout(retry)
+      for (const pending of dialing) pending.destroy()
       for (const socket of [...parked, ...sessions]) socket.destroy()
+      dialing.clear()
       parked.clear()
       sessions.clear()
     },
