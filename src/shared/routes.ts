@@ -285,6 +285,7 @@ export const routes: Record<RpcMethod, Route> = {
 
   "artifacts.file": owner("artifact", "id"),
 
+  "vm.screen.read": owner("stream", "streamId"),
   "vm.screen.send": owner("stream", "streamId"),
   "vm.screen.close": owner("stream", "streamId"),
 }

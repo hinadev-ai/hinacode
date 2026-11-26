@@ -2935,7 +2935,6 @@
   "web_sign_in_unavailable": "Couldn't load sign-in.",
   "web_switch_account": "Use another account",
   "web_use_relay": "Use this relay",
-  "web_vm_screen_desktop_only": "The Tiny VM screen opens only in the desktop app.",
   "web_signed_out": "This browser was signed out. Sign in again.",
   "web_device_name": "HinaCode in a browser",
   "web_reload": "Reload",

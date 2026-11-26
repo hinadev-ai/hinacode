@@ -34,7 +34,27 @@ const push = (event: Parameters<Listener>[0]) => {
   for (const listener of listeners) listener(event)
 }
 
-const serve = (data: Uint8Array) => push({ type: "vm.screen.data", streamId: streams.at(-1) ?? "", data })
+const served: Array<Uint8Array> = []
+let awaitingRead: ((data: Uint8Array) => void) | undefined
+
+const serve = (data: Uint8Array) => {
+  const read = awaitingRead
+  awaitingRead = undefined
+  if (read === undefined) served.push(data)
+  else read(data)
+}
+
+const deliver = async (data: Uint8Array) => {
+  serve(data)
+  await expect.poll(() => awaitingRead !== undefined && served.length === 0).toBe(true)
+}
+
+const nextServed = () =>
+  new Promise<Uint8Array>((resolve) => {
+    const queued = served.shift()
+    if (queued === undefined) awaitingRead = resolve
+    else resolve(queued)
+  })
 
 const bridge: HinacodeBridge = {
   rpc: async (method, payload) => {
@@ -43,6 +63,9 @@ const bridge: HinacodeBridge = {
     if (method === "vm.screen.send") {
       const reply = replies.shift()
       if (reply !== undefined) queueMicrotask(() => serve(reply))
+    }
+    if (method === "vm.screen.read") {
+      return { result: { status: "open", data: btoa(String.fromCharCode(...(await nextServed()))) } }
     }
     if (method === "vm.screen.open" || method === "vm.screen.send" || method === "vm.screen.close") {
       return { result: undefined }
@@ -69,21 +92,21 @@ Object.defineProperty(navigator, "clipboard", {
 test("text copied in the VM reaches this machine's clipboard only while the user has control and focus", async () => {
   await render(<TinyVmView thread={thread} />)
   await expect.poll(() => streams.length).toBe(1)
-  serve(serverVersion)
+  await deliver(serverVersion)
   await expect.element(page.getByText("Connecting to the screen…")).not.toBeInTheDocument()
   await expect.element(page.getByText("Agent has control")).toBeVisible()
 
-  serve(serverCutText("written while the agent drives"))
+  await deliver(serverCutText("written while the agent drives"))
   expect(copied).toEqual([])
 
   push({ type: "vm.updated", threadId: thread.id, vm: vmWith("user") })
   await expect.element(page.getByText("You have control")).toBeVisible()
   const canvas = page.getByRole("region", { name: "Tiny VM screen" }).element().querySelector("canvas")
   canvas?.blur()
-  serve(serverCutText("written while the user works elsewhere"))
+  await deliver(serverCutText("written while the user works elsewhere"))
   expect(copied).toEqual([])
 
   canvas?.focus()
-  serve(serverCutText("copied in the vm"))
+  await deliver(serverCutText("copied in the vm"))
   await expect.poll(() => copied).toEqual(["copied in the vm"])
 })

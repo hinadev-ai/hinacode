@@ -63,7 +63,7 @@ import { Updates } from "./services/Updates.ts"
 import { SessionImports } from "./services/SessionImports.ts"
 import { randomName, Threads } from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
-import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
+import { TinyVm } from "./services/tinyVm/TinyVm.ts"
 import { Devices } from "./services/devices/Devices.ts"
 import { callHub } from "./services/devices/hub.ts"
 import { Worktrees } from "./services/Worktrees.ts"
@@ -135,7 +135,6 @@ export interface DesktopCalls {
   readonly exportArtifact: (request: ArtifactExportRequest) => Effect.Effect<string | null, HandlerError>
   readonly notificationPermission: Effect.Effect<NotificationPermission>
   readonly askNotificationPermission: (title: string, body: string) => Effect.Effect<PermissionRequestOutcome>
-  readonly screenOwner: ScreenOwner | null
 }
 
 type Handlers = {
@@ -602,12 +601,8 @@ const handlers: Handlers = {
   "vm.control": ({ threadId, control }) => TinyVm.use((vm) => vm.setControl(threadId, control)),
   "vm.host": () => TinyVm.use((vm) => vm.host),
   "vm.desktop.url": ({ threadId }) => TinyVm.use((vm) => vm.desktopUrl(threadId)).pipe(Effect.map((url) => ({ url }))),
-  "vm.screen.open": ({ threadId, streamId }, desktop) => {
-    const owner = desktop?.screenOwner
-    return owner
-      ? TinyVm.use((vm) => vm.openScreen(threadId, streamId, owner))
-      : new VmError({ message: "The VM screen is only available in the desktop window." })
-  },
+  "vm.screen.open": ({ threadId, streamId }) => TinyVm.use((vm) => vm.openScreen(threadId, streamId)),
+  "vm.screen.read": ({ streamId, offset }) => TinyVm.use((vm) => vm.readScreen(streamId, offset)),
   "vm.screen.send": ({ streamId, data }) => TinyVm.use((vm) => vm.sendScreen(streamId, data)),
   "vm.screen.close": ({ streamId }) => TinyVm.use((vm) => vm.closeScreen(streamId)),
   "vm.files.drop": ({ threadId, paths }) => TinyVm.use((vm) => vm.dropFiles(threadId, paths)),

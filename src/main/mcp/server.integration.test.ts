@@ -1,4 +1,3 @@
-import { EventEmitter } from "node:events"
 import * as SourceControl from "../services/SourceControl.ts"
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { readFile, stat } from "node:fs/promises"
@@ -52,7 +51,7 @@ import * as Terminals from "../services/Terminals.ts"
 import { decodeTar, encodeTar } from "../services/tinyVm/tar.ts"
 import { FAKE_PNG, FakeSbxServer, fakeSbxLayer } from "../services/tinyVm/testing.ts"
 import { unavailableDevicesLayer } from "../services/devices/unavailable.ts"
-import { HAND_BACK_GRACE, TinyVm, layer as tinyVmLayer } from "../services/tinyVm/TinyVm.ts"
+import { HAND_BACK_GRACE, SCREEN_LEASE, TinyVm, layer as tinyVmLayer } from "../services/tinyVm/TinyVm.ts"
 import { Threads, layer as threadsLayer } from "../services/Threads.ts"
 import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
@@ -1797,8 +1796,7 @@ layer(testLayer)("tiny vm tools", (it) => {
       const { a } = yield* Seeded
       yield* setTinyVm(true)
       yield* vm.start(a)
-      const owner = new EventEmitter()
-      yield* vm.openScreen(a, "stream-hand-over", owner)
+      yield* vm.openScreen(a, "stream-hand-over")
       const call = yield* Effect.forkChild(
         callAs(yield* mcp.connectionFor(a), "vm_hand_over", { request: "Solve the CAPTCHA" }),
       )
@@ -1809,14 +1807,7 @@ layer(testLayer)("tiny vm tools", (it) => {
             : Option.none(),
         ),
       )
-      owner.emit("destroyed")
-      yield* until(
-        Effect.sync(() =>
-          pushes.some((push) => push.type === "vm.screen.closed" && push.streamId === "stream-hand-over")
-            ? Option.some(true)
-            : Option.none(),
-        ),
-      )
+      yield* vm.closeScreen("stream-hand-over")
       yield* TestClock.withLive(Effect.sleep("20 millis"))
       yield* TestClock.adjust(HAND_BACK_GRACE)
       yield* TestClock.withLive(Effect.sleep("20 millis"))
@@ -1845,33 +1836,28 @@ layer(testLayer)("tiny vm tools", (it) => {
     }),
   )
 
-  it.effect("a screen stream relays the VNC server and hands control back when its window goes away", () =>
+  it.effect("a screen stream answers reads from its offset and hands control back once nobody reads it", () =>
     Effect.gen(function* () {
       const vm = yield* TinyVm
       const { a } = yield* Seeded
       yield* setTinyVm(true)
       yield* vm.start(a)
-      const owner = new EventEmitter()
-      pushes.length = 0
-      yield* vm.openScreen(a, "stream-1", owner)
-      const duplicate = yield* Effect.flip(vm.openScreen(a, "stream-1", owner))
+      yield* vm.openScreen(a, "stream-1")
+      const duplicate = yield* Effect.flip(vm.openScreen(a, "stream-1"))
       expect(duplicate.message).toContain("already open")
-      const greeting = yield* until(
-        Effect.sync(() =>
-          Option.fromNullishOr(pushes.find((push) => push.type === "vm.screen.data" && push.streamId === "stream-1")),
-        ),
-      )
-      expect(greeting.type === "vm.screen.data" && Buffer.from(greeting.data).toString()).toBe("RFB 003.008\n")
+
+      const greeting = yield* vm.readScreen("stream-1", 0)
+      expect(greeting.status === "open" && Buffer.from(greeting.data).toString()).toBe("RFB 003.008\n")
+      const repeated = yield* vm.readScreen("stream-1", 0)
+      expect(repeated).toStrictEqual(greeting)
+      const ahead = yield* Effect.flip(vm.readScreen("stream-1", 100))
+      expect(ahead.message).toContain("no bytes at 100")
 
       yield* vm.setControl(a, "user")
-      owner.emit("destroyed")
-      yield* until(
-        Effect.sync(() =>
-          pushes.some((push) => push.type === "vm.screen.closed" && push.streamId === "stream-1")
-            ? Option.some(true)
-            : Option.none(),
-        ),
-      )
+      yield* TestClock.withLive(Effect.sleep("20 millis"))
+      yield* TestClock.adjust(SCREEN_LEASE)
+      yield* TestClock.withLive(Effect.sleep("20 millis"))
+      expect(yield* vm.readScreen("stream-1", 12)).toStrictEqual({ status: "closed" })
       expect(yield* vm.get(a)).toMatchObject({ control: "user" })
       yield* advanceUntil(
         HAND_BACK_GRACE,

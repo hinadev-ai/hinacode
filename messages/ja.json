@@ -2826,7 +2826,6 @@
   "web_sign_in_unavailable": "サインインを読み込めませんでした。",
   "web_switch_account": "別のアカウントを使う",
   "web_use_relay": "この relay を使う",
-  "web_vm_screen_desktop_only": "Tiny VM の画面はデスクトップアプリでのみ開けます。",
   "web_signed_out": "このブラウザはサインアウトされました。もう一度サインインしてください。",
   "web_device_name": "ブラウザの HinaCode",
   "web_reload": "再読み込み",

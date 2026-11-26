@@ -77,7 +77,6 @@ const desktopCalls = (window: BrowserWindow | null, openPullRequestWindow: OpenP
     }),
   notificationPermission,
   askNotificationPermission,
-  screenOwner: window?.webContents ?? null,
 })
 
 const untrustedSender: RpcEnvelope<never> = {

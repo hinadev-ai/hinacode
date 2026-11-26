@@ -92,7 +92,7 @@ The pairing URL crosses from the renderer to main once, in `environments.add`, d
 
 - Moving a project or a thread to another machine. A project, its threads and worktrees stay where they were created; grouping only lists them together.
 - Grouping by anything but a GitHub `origin`, and a per-project switch to keep a repository's machines apart (T3 has one). They wait for someone who needs them.
-- Methods a cloud refuses as desktop-only: attachments, the live file explorer, the Tiny VM screen and the cloud's own pairing page answer `DesktopOnly` on a cloud's threads.
+- Methods a cloud refuses as desktop-only: attachments, the live file explorer and the cloud's own pairing page answer `DesktopOnly` on a cloud's threads.
 - Remembering a cloud's last state across a desktop restart, scoped tokens, and the relay (slice 3). Updating a cloud from the desktop is `2026-10-20-update-clouds.md`.
 
 ## Verification

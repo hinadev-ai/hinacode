@@ -44,22 +44,12 @@ interface VmScreenProps {
   readonly drop: VmDrop
 }
 
-function DesktopOnlyVmScreen() {
-  return (
-    <div className="flex aspect-video w-full items-center justify-center rounded-md bg-muted p-6 text-center">
-      <p className="max-w-80 text-sm text-muted-foreground">{m.web_vm_screen_desktop_only()}</p>
-    </div>
-  )
-}
-
-export const vmScreenKind = (vm: RunningVm) => (vm.provider === "boat" ? "boat" : inBrowser() ? "desktopOnly" : "noVnc")
+export const vmScreenKind = (vm: RunningVm) => (vm.provider === "boat" ? "boat" : "noVnc")
 
 export function VmScreen({ vm, ...rest }: VmScreenProps) {
   switch (vmScreenKind(vm)) {
     case "boat":
       return <BoatVmScreen control={vm.control} sandboxId={vm.sandboxId} {...rest} />
-    case "desktopOnly":
-      return <DesktopOnlyVmScreen />
     case "noVnc":
       return <TinyVmScreen control={vm.control} {...rest} />
   }
