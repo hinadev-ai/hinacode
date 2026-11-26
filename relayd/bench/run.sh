@@ -43,12 +43,12 @@ netem() {
 
 start() {
   docker run -d --name "$1" --hostname "${1#bench-}" --network "$network" --network-alias "${1#bench-}" \
-    --cap-add NET_ADMIN -v "$out:/bench:ro" -v "$repo:/repo:ro" -w /repo "$image" sleep infinity >/dev/null
+    --cpuset-cpus "$2" --cap-add NET_ADMIN -v "$out:/bench:ro" -v "$repo:/repo:ro" -w /repo "$image" sleep infinity >/dev/null
 }
 
-start bench-relay
-start bench-machine
-start bench-phone
+start bench-relay 8,9
+start bench-machine 10,11
+start bench-phone 6,7
 netem bench-relay "$RELAY_MS"
 netem bench-machine "$MACHINE_MS"
 netem bench-phone "$PHONE_MS"
@@ -76,3 +76,9 @@ for route in $ROUTES; do
     relay) bench -route relay -url "wss://relay:8443/h/$host_id/remote" ;;
   esac
 done
+if [ -n "${SHOW_CPU:-}" ]; then
+  cpu() { docker exec "$1" sh -c "awk '{print \"$2 cpu ms:\", (\$14+\$15)*10}' /proc/\$(pidof $2 | cut -d' ' -f1)/stat"; }
+  cpu bench-relay relayd
+  cpu bench-machine node
+  docker exec bench-machine sh -c 'p=$(pidof node | cut -d" " -f1); awk "{print \"node main thread cpu ms:\", (\$14+\$15)*10}" /proc/$p/task/$p/stat'
+fi
