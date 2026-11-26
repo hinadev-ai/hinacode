@@ -16,20 +16,22 @@ import {
 } from "../../shared/noise.ts"
 import { type ClientFrame, remoteWebSocketUrl, type ServerFrame } from "../../shared/remote.ts"
 
-export const unusedLoopbackPort = async (): Promise<number> => {
-  const reservation = createServer()
-  await new Promise<void>((resolve, reject) => {
-    reservation.once("error", reject)
-    reservation.listen(0, "127.0.0.1", resolve)
-  })
-  try {
-    const address = reservation.address()
-    if (address === null || typeof address === "string") throw new Error("No TCP address for the reserved port")
-    return address.port
-  } finally {
-    await new Promise<void>((resolve, reject) =>
-      reservation.close((error) => (error === undefined ? resolve() : reject(error))),
+const BELOW_EPHEMERAL_PORTS = { first: 20000, last: 32767 }
+
+const listensOn = (port: number) =>
+  new Promise<boolean>((resolve, reject) => {
+    const reservation = createServer()
+    reservation.once("error", (error: NodeJS.ErrnoException) =>
+      error.code === "EADDRINUSE" ? resolve(false) : reject(error),
     )
+    reservation.listen(port, "127.0.0.1", () => reservation.close(() => resolve(true)))
+  })
+
+export const unusedLoopbackPort = async (): Promise<number> => {
+  const { first, last } = BELOW_EPHEMERAL_PORTS
+  for (;;) {
+    const port = first + Math.floor(Math.random() * (last - first + 1))
+    if (await listensOn(port)) return port
   }
 }
 
