@@ -375,6 +375,7 @@ func (r *Relay) copyHalf(dst, src net.Conn, buffered *bufio.Reader) {
 	}
 	if half, ok := dst.(closeWriter); ok {
 		half.CloseWrite()
+		dst.SetReadDeadline(time.Now().Add(r.limits.DrainAfterClose))
 	} else {
 		dst.Close()
 	}
