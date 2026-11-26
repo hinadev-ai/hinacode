@@ -146,15 +146,9 @@ const serveGitHubAssets = (runtime: AppRuntime) =>
   protocol.handle(GITHUB_ASSET_PROTOCOL, async (request) => {
     const id = githubAssetId(request.url)
     if (id === null) return new Response(null, { status: 404 })
-    const token = await runtime.runPromise(Effect.flatMap(GitHub.GitHub, (github) => github.token)).catch(() => null)
-    if (token === null) return new Response(null, { status: 401 })
-    // FIXME: Electron's net.fetch throws on a manual redirect instead of returning it
-    const redirect = await fetch(`https://github.com/user-attachments/assets/${id}`, {
-      headers: { authorization: `Bearer ${token}` },
-      redirect: "manual",
-    })
-    const signed = externalUrl(redirect.headers.get("location") ?? "")
-    if (signed === null) return new Response(null, { status: redirect.status === 404 ? 404 : 502 })
+    const signed = await runtime.runPromise(GitHub.GitHub.use((github) => github.assetUrl(id))).catch(() => undefined)
+    if (signed === undefined) return new Response(null, { status: 502 })
+    if (signed === null) return new Response(null, { status: 404 })
     return net.fetch(signed, rangeOf(request))
   })
 
