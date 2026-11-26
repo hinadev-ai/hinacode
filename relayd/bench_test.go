@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"testing"
 )
 
@@ -137,6 +138,29 @@ func BenchmarkStream(b *testing.B) {
 	for b.Loop() {
 		if _, err := io.ReadFull(reader, sink); err != nil {
 			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkSessionMemory(b *testing.B) {
+	relay := startTLSRelay(b)
+	relay.keepMachineAttached(b, 8)
+	const sessions = 60
+	for b.Loop() {
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		conns := make([]net.Conn, 0, sessions)
+		for range sessions {
+			conn, _ := relay.open(b, clientHead)
+			conns = append(conns, conn)
+		}
+		runtime.GC()
+		runtime.ReadMemStats(&after)
+		b.ReportMetric(float64(after.HeapInuse-before.HeapInuse)/sessions, "heap-B/session")
+		for _, conn := range conns {
+			conn.Close()
 		}
 	}
 }

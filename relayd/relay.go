@@ -39,7 +39,7 @@ var DefaultLimits = Limits{
 	WaitForMachine: 5 * time.Second,
 	PingEvery:      15 * time.Second,
 	DeadAfter:      40 * time.Second,
-	CopyBuffer:     64 << 10,
+	CopyBuffer:     16 << 10,
 }
 
 var hostID = regexp.MustCompile(`^[A-Za-z0-9_-]{16,64}$`)
