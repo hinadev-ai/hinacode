@@ -49,7 +49,14 @@ This follows [Paseo](https://github.com/getpaseo/paseo-relay), whose relay also 
 | Through relayd        | 183.8 ms                    | 55.4 ms      | 79.7 MB/s   | 157 MB/s            |
 | Floor from the delays | 180 ms                      | 55 ms        |             |                     |
 
-The relay path sits within 4 ms of its floor on connect and 0.4 ms on RTT. It moves large frames faster than the direct path, because each leg is its own TCP connection with a shorter round trip, so congestion windows open sooner. Each hill-climb step, including the rejected ones, is logged in the PR.
+The relay path sits within 4 ms of its floor on connect and 0.4 ms on RTT. It moves large frames faster than the direct path, because each leg is its own TCP connection with a shorter round trip, so congestion windows open sooner.
+
+Two other profiles show where it costs something:
+
+- With 1% loss on every container, the relay still moves 16 MiB faster (60 MB/s against 51), but p99 RTT is 318 ms against 296, because a retransmit can happen on either leg.
+- With every container capped at 100 Mbit/s, one 16 MiB echo runs at the same speed (11.0 MB/s against 11.1), but four parallel echoes run at 10.8 MB/s against 13.3. The relay's uplink carries both directions of every session, so a relay needs as much upload bandwidth as all its sessions move in both directions together.
+
+Each hill-climb step, including the rejected ones, is logged in the PR.
 
 ## Out of scope
 
