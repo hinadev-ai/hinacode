@@ -183,11 +183,24 @@ describe("pairing URLs", () => {
     ["no key, as every pairing before encryption", "hinacode://connect?host=a&port=1&token=t"],
     ["a key that is not 32 bytes", `hinacode://connect?host=a&port=1&key=${KEY.slice(0, 40)}`],
     ["a padded key", `hinacode://connect?host=a&port=1&key=${KEY}%3D`],
-    ["a relay with a port", `hinacode://connect?relay=r.example.com%3A8443&host=a&port=1&key=${KEY}`],
-    ["a relay with a path", `hinacode://connect?relay=r.example.com%2Fx&host=a&port=1&key=${KEY}`],
+    [
+      "a relay with a path other than a machine's",
+      `hinacode://connect?relay=r.example.com%2Fx&host=a&port=1&key=${KEY}`,
+    ],
+    [
+      "a relay machine id that is too short",
+      `hinacode://connect?relay=r.example.com%2Fh%2Fabc&host=a&port=1&key=${KEY}`,
+    ],
     ["a relay that is not a domain name", `hinacode://connect?relay=localhost&host=a&port=1&key=${KEY}`],
   ])("refuses %s", (_, text) => {
     expect(parsePairingUrl(text)).toBeNull()
+  })
+
+  it("reaches a machine on a self-hosted relay by its port and path", () => {
+    const relay = "relay.example.com:8443/h/0f8e2c1a-5b7d-4e3f-9a6c-2d1b0e9f8a7c"
+    const target = parsePairingUrl(pairingUrl({ hosts: ["a"], port: 1, relay, key: KEY, secret: null }))
+    expect(target?.relay).toBe(relay)
+    expect(dialPlan(target!).at(-1)?.url).toBe(`wss://${relay}/remote`)
   })
 
   it("brackets an IPv6 host in the socket URL", () => {

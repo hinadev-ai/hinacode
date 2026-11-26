@@ -43,7 +43,7 @@ export interface RawFrame {
 const utf8 = new TextDecoder()
 
 export const remoteClient = (
-  port: number,
+  target: number | URL,
   hostKey: string,
   options: { readonly device?: KeyPair; readonly autoPong?: boolean } = {},
 ) => {
@@ -51,7 +51,8 @@ export const remoteClient = (
   const remoteStatic = decodeKey(hostKey)
   if (remoteStatic === null) throw new Error(`Not a host key: ${hostKey}`)
   const initiator = initiate({ prologue: REMOTE_PROLOGUE, local: device, remoteStatic, payload: new Uint8Array(0) })
-  const socket = new WebSocket(remoteWebSocketUrl({ host: "127.0.0.1", port }), {
+  const url = typeof target === "number" ? remoteWebSocketUrl({ host: "127.0.0.1", port: target }) : target
+  const socket = new WebSocket(url, {
     ...(options.autoPong !== undefined && { autoPong: options.autoPong }),
   })
   const raw: Array<RawFrame> = []

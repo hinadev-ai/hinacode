@@ -41,6 +41,7 @@ import { Switch } from "../ui/switch.tsx"
 import { AppConnectionsSettings } from "./AppConnectionsSettings.tsx"
 import { BindHostSelect, LOOPBACK } from "./BindHostSelect.tsx"
 import { CopyField } from "./CopyField.tsx"
+import { SelfHostedRelaySettings } from "./SelfHostedRelaySettings.tsx"
 import { SettingsGroup, settingsSurfaceClass } from "./SettingsSection.tsx"
 
 type RemoteSettingsValue = ReturnType<typeof useSettings>["remote"]
@@ -85,6 +86,7 @@ export function RemoteSettings() {
           <RelayStatusLine environment={environment} />
         </div>
         <ListenerSettings environment={environment} remote={remote} pending={pending} onSave={save} />
+        {onThisMachine && <SelfHostedRelaySettings />}
       </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
       {onThisMachine && remote.enabled && <PairPhone />}

@@ -12,6 +12,7 @@ export interface ServeConfig {
   readonly port?: number
   readonly resetPairing: boolean
   readonly relay?: "on" | "off"
+  readonly selfHostedRelay?: { readonly url: string; readonly token: string }
 }
 
 const envFlag = (env: NodeJS.ProcessEnv, name: string): boolean => {
@@ -68,6 +69,16 @@ export interface ServeFlags {
   readonly resetPairing: boolean
 }
 
+const selfHostedRelayFromEnv = (env: NodeJS.ProcessEnv) => {
+  const url = env["HINACODE_SERVE_SELF_HOSTED_RELAY"]
+  const token = env["HINACODE_SERVE_SELF_HOSTED_RELAY_TOKEN"]
+  if (url === undefined && token === undefined) return undefined
+  if (url === undefined || token === undefined) {
+    throw new Error("HINACODE_SERVE_SELF_HOSTED_RELAY and HINACODE_SERVE_SELF_HOSTED_RELAY_TOKEN go together")
+  }
+  return { url, token }
+}
+
 const relayFromEnv = (env: NodeJS.ProcessEnv) => {
   const relay = env["HINACODE_SERVE_RELAY"]
   if (relay === undefined || relay === "on" || relay === "off") return relay
@@ -90,11 +101,13 @@ export const serveConfig = (flags: ServeFlags, env: NodeJS.ProcessEnv): ServeCon
     )
   }
   const relay = flags.relay ?? relayFromEnv(env)
+  const selfHostedRelay = selfHostedRelayFromEnv(env)
 
   return {
     ...(bindHost !== undefined && { bindHost }),
     ...(port !== undefined && { port }),
     ...(relay !== undefined && { relay }),
+    ...(selfHostedRelay !== undefined && { selfHostedRelay }),
     resetPairing: flags.resetPairing || envFlag(env, "HINACODE_SERVE_RESET_PAIRING"),
   }
 }
@@ -122,6 +135,11 @@ export const applyServeRelay = (
     if ("hostname" in (yield* service.status)) return
     yield* service.setup({ onLink }).pipe(Effect.retry({ while: (error) => error.message === EXPIRED }))
   })
+
+export const applyServeSelfHostedRelay = (
+  selfHostedRelay: ServeConfig["selfHostedRelay"],
+): Effect.Effect<void, RelayError | PersistenceError, Relay> =>
+  selfHostedRelay === undefined ? Effect.void : Relay.use((relay) => relay.useSelfHosted(selfHostedRelay))
 
 export const browserCommand = (
   url: string,

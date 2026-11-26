@@ -180,6 +180,10 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Wait for apt
         run: until [ -s "$RUNNER_TEMP/apt.exit" ]; do sleep 1; done; cat "$RUNNER_TEMP/apt.log"; exit "$(cat "$RUNNER_TEMP/apt.exit")"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: relayd/go.mod
+          cache-dependency-path: relayd/go.sum
       - run: pnpm test --shard ${{ matrix.shard }}/3
 
   relayd:

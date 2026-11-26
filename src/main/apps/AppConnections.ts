@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto"
 import { Clock, Context, DateTime, Duration, Effect, FiberHandle, Layer, Option, Schema, Stream } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { AppConnection, type AppConnectionsStatus } from "../../shared/domain.ts"
-import { relayHostname, RemoteAccess } from "../remote/access.ts"
+import { appsRelayHostname, RemoteAccess } from "../remote/access.ts"
 import { Relay } from "../remote/relay.ts"
 import { nowIso } from "../services/clock.ts"
 import { type PersistenceError, persistence } from "../services/errors.ts"
@@ -97,7 +97,7 @@ const make = Effect.gen(function* () {
   })
 
   const issuer = Effect.map(access.status, ({ relay }) =>
-    Option.map(Option.fromNullishOr(relayHostname(relay)), (hostname) => `https://${hostname}`),
+    Option.map(Option.fromNullishOr(appsRelayHostname(relay)), (hostname) => `https://${hostname}`),
   )
 
   const status = Effect.gen(function* () {
@@ -244,7 +244,7 @@ export const followRelayLayer = Layer.effectDiscard(
     const relay = yield* Relay
     const connections = yield* AppConnections
     yield* relay.changes.pipe(
-      Stream.map(relayHostname),
+      Stream.map(appsRelayHostname),
       Stream.changes,
       Stream.drop(1),
       Stream.runForEach(() => connections.announce),

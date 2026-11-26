@@ -22,15 +22,17 @@ The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, 
 
 Options, flags first, then environment, then stored settings:
 
-| Flag                    | Environment                      | Meaning                                                                                             |
-| ----------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `--port <n>`            | `HINACODE_SERVE_PORT`            | Listener port, default 48081                                                                        |
-| `--host <host>`         | `HINACODE_SERVE_HOST`            | One bind address or `private`, the default                                                          |
-| `--reset-pairing`       | `HINACODE_SERVE_RESET_PAIRING=1` | Replace the cloud's key and pairing secret at boot, remove every device and disconnect every client |
-| `--relay`, `--no-relay` | `HINACODE_SERVE_RELAY`           | Link the cloud to the HinaCode relay, or unlink it                                                  |
-|                         | `HINACODE_SERVE_AUTO_UPDATE=0`   | Do not install new releases on its own when idle                                                    |
-|                         | `HINACODE_SERVE_LOG`             | File the service manager writes output to, kept under 10 MB                                         |
-|                         | `HINACODE_MEMORY_GUARD=0`        | Do not stop threads when the machine runs short of memory                                           |
+| Flag                    | Environment                              | Meaning                                                                                             |
+| ----------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `--port <n>`            | `HINACODE_SERVE_PORT`                    | Listener port, default 48081                                                                        |
+| `--host <host>`         | `HINACODE_SERVE_HOST`                    | One bind address or `private`, the default                                                          |
+| `--reset-pairing`       | `HINACODE_SERVE_RESET_PAIRING=1`         | Replace the cloud's key and pairing secret at boot, remove every device and disconnect every client |
+| `--relay`, `--no-relay` | `HINACODE_SERVE_RELAY`                   | Link the cloud to the HinaCode relay, or unlink it                                                  |
+|                         | `HINACODE_SERVE_SELF_HOSTED_RELAY`       | Attach to your own `hinacode-relayd` at this `https://` URL instead (`relayd/README.md`)            |
+|                         | `HINACODE_SERVE_SELF_HOSTED_RELAY_TOKEN` | The token that relay expects, required with the URL                                                 |
+|                         | `HINACODE_SERVE_AUTO_UPDATE=0`           | Do not install new releases on its own when idle                                                    |
+|                         | `HINACODE_SERVE_LOG`                     | File the service manager writes output to, kept under 10 MB                                         |
+|                         | `HINACODE_MEMORY_GUARD=0`                | Do not stop threads when the machine runs short of memory                                           |
 
 Nothing compiles at install: `node-pty` ships prebuilds for macOS, Linux and Windows on x64 and arm64.
 

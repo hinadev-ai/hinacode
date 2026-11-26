@@ -1,6 +1,7 @@
 import { Array as Arr, Schema } from "effect"
 import { isArrayNonEmpty, type NonEmptyReadonlyArray } from "effect/Array"
 import { PushEvent, type RpcMethod } from "./contract.ts"
+import { RELAY_AUTHORITY } from "./domain.ts"
 import { decodeKey } from "./noise.ts"
 
 export const REMOTE_PATH = "/remote"
@@ -199,7 +200,9 @@ export const dialPlan = (target: Pick<PairingTarget, "hosts" | "port" | "relay">
 const isAuthorityOnlyHost = (host: string) =>
   host !== "" && !/[\s/?#@[\]\\]/.test(host) && URL.parse(remoteWebSocketUrl({ host, port: 1 })) !== null
 
-const isRelayHostname = (relay: string) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(relay)
+const RELAY_ADDRESS = new RegExp(`^${RELAY_AUTHORITY.source}(/h/[A-Za-z0-9_-]{16,64})?$`, "i")
+
+const isRelayAddress = (relay: string) => RELAY_ADDRESS.test(relay)
 
 export const parsePairingUrl = (text: string): PairingTarget | null => {
   const word = text.split(/\s+/).find((part) => /^hinacode:\/\/connect\?/i.test(part))
@@ -212,7 +215,7 @@ export const parsePairingUrl = (text: string): PairingTarget | null => {
   const relay = url.searchParams.get("relay")
   if (!isArrayNonEmpty(hosts) || !hosts.every(isAuthorityOnlyHost)) return null
   if (key === null || decodeKey(key) === null || !Number.isInteger(port) || port < 1 || port > 65535) return null
-  if (relay !== null && !isRelayHostname(relay)) return null
+  if (relay !== null && !isRelayAddress(relay)) return null
   return { hosts, port, relay, key, secret }
 }
 

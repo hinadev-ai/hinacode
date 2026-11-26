@@ -400,6 +400,8 @@ const handlers: Handlers = {
   "relayAccount.machines": () => RelayAccount.use((account) => account.machines),
   "relayAccount.setShown": (input) => RelayAccount.use((account) => account.setShown(input)),
   "relayAccount.removeMachine": (input) => RelayAccount.use((account) => account.removeMachine(input)),
+  "relay.useSelfHosted": (input) => Relay.use((relay) => relay.useSelfHosted(input)),
+  "relay.stopSelfHosted": () => Relay.use((relay) => relay.stopSelfHosted),
   "appConnections.status": () => AppConnections.use((connections) => connections.status),
   "appConnections.start": () => AppConnections.use((connections) => connections.start),
   "appConnections.answer": (input) => AppConnections.use((connections) => connections.answer(input)),

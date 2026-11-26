@@ -19,17 +19,26 @@ import {
   SubscriptionRef,
 } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
-import { PRIVATE_NETWORKS, type RelayStatus, type Settings as SettingsValue } from "../../shared/domain.ts"
+import {
+  PRIVATE_NETWORKS,
+  type RelayStatus,
+  SelfHostedRelayUrl,
+  type Settings as SettingsValue,
+} from "../../shared/domain.ts"
 import { type PersistenceError, persistence } from "../services/errors.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { Settings } from "../services/Settings.ts"
 import { LOOPBACK, RemoteAccess } from "./access.ts"
 import { type CloudflaredAsset, installCloudflared, platformAsset } from "./cloudflared.ts"
 import { EXPIRED, type Fetch, type Link, RelayError, type RelayLink, relayService } from "./relayService.ts"
+import { type AttachmentState, attachToRelay, relayAddress } from "./selfHostedRelay.ts"
 
 const TUNNEL_KEY = "relay.tunnel"
 export const CREDENTIAL_SECRET = "relay.credential"
 export const CONNECTOR_TOKEN_SECRET = "relay.connectorToken"
+export const SELF_HOSTED_TOKEN_SECRET = "relay.selfHosted.token"
+const SELF_HOSTED_IDLE_CONNECTIONS = 2
+const SELF_HOSTED_TOKEN_MIN_LENGTH = 32
 
 export const DEFAULT_RELAY_SERVICE_URL = "https://relay.hinacode.app"
 
@@ -57,10 +66,23 @@ const cloudflaredArgs = (http2: boolean) => [
   "run",
 ]
 
+const originHost = (bindHost: string) => (bindHost === PRIVATE_NETWORKS ? LOOPBACK : bindHost)
+
 export const relayOrigin = ({ bindHost, port }: Pick<SettingsValue["remote"], "bindHost" | "port">) => {
-  const host = bindHost === PRIVATE_NETWORKS ? LOOPBACK : bindHost
+  const host = originHost(bindHost)
   return `http://${host.includes(":") ? `[${host}]` : host}:${port}`
 }
+
+const selfHostedRelayOrigin = (input: string) => {
+  const url = URL.parse(input.trim())
+  const bare = url !== null && url.pathname === "/" && url.search === "" && url.hash === "" && url.username === ""
+  return bare && url.password === "" ? Schema.decodeUnknownOption(SelfHostedRelayUrl)(url.origin) : Option.none()
+}
+
+const attachmentStatus = (attachment: AttachmentState, hostname: string): RelayStatus =>
+  attachment.state === "connected"
+    ? { state: "connected", hostname }
+    : { state: "connecting", hostname, error: attachment.error }
 
 type CloudflaredLine =
   | { readonly type: "connected"; readonly protocol: string | null }
@@ -105,6 +127,11 @@ export class Relay extends Context.Service<
       readonly onLink: (link: RelayLink) => Effect.Effect<void>
     }) => Effect.Effect<void, RelayError | PersistenceError>
     readonly remove: Effect.Effect<void, RelayError | PersistenceError>
+    readonly useSelfHosted: (input: {
+      readonly url: string
+      readonly token: string
+    }) => Effect.Effect<void, RelayError | PersistenceError>
+    readonly stopSelfHosted: Effect.Effect<void, PersistenceError>
     readonly status: Effect.Effect<RelayStatus>
     readonly changes: Stream.Stream<RelayStatus>
     readonly serviceUrl: string
@@ -155,7 +182,8 @@ const make = ({
     const status = yield* SubscriptionRef.make<RelayStatus>({ state: "off" })
 
     let tunnel = yield* storedTunnel
-    let remote = (yield* settings.get).remote
+    let { remote, selfHostedRelay } = yield* settings.get
+    const runFork = Effect.runForkWith(yield* Effect.context<never>())
 
     const publish = (next: RelayStatus) =>
       Effect.gen(function* () {
@@ -345,8 +373,41 @@ const make = ({
         }
       })
 
+    const attachSelfHosted = (url: string, hostname: string) =>
+      Effect.gen(function* () {
+        const token = yield* requireSecret(
+          SELF_HOSTED_TOKEN_SECRET,
+          "The token for your own relay is gone. Enter it again in Settings.",
+        )
+        yield* Effect.acquireRelease(
+          Effect.sync(() =>
+            attachToRelay(
+              {
+                url: new URL(url),
+                hostId: access.identity.id,
+                token,
+                origin: { host: originHost(remote.bindHost), port: remote.port },
+                idle: SELF_HOSTED_IDLE_CONNECTIONS,
+              },
+              (attachment) => void runFork(publish(attachmentStatus(attachment, hostname))),
+            ),
+          ),
+          (attachment) => Effect.sync(attachment.close),
+        )
+        return yield* Effect.never
+      }).pipe(
+        Effect.scoped,
+        Effect.catch((failure) => publish({ state: "connecting", hostname, error: failure.message })),
+      )
+
     const apply = Effect.gen(function* () {
       yield* FiberHandle.clear(connector)
+      if (selfHostedRelay !== null) {
+        const hostname = relayAddress({ url: new URL(selfHostedRelay), hostId: access.identity.id })
+        if (!remote.enabled) return yield* publish({ state: "paused", hostname })
+        yield* publish({ state: "connecting", hostname, error: null })
+        return yield* FiberHandle.run(connector, attachSelfHosted(selfHostedRelay, hostname))
+      }
       if (tunnel === null) return yield* publish({ state: "off" })
       yield* republish
       if (!remote.enabled) return yield* publish({ state: "paused", hostname: tunnel.hostname })
@@ -407,8 +468,10 @@ const make = ({
     yield* (yield* settings.changes).pipe(
       Stream.runForEach((next) => {
         const { enabled, bindHost, port } = next.remote
-        if (enabled === remote.enabled && bindHost === remote.bindHost && port === remote.port) return Effect.void
+        const sameRemote = enabled === remote.enabled && bindHost === remote.bindHost && port === remote.port
+        if (sameRemote && next.selfHostedRelay === selfHostedRelay) return Effect.void
         remote = next.remote
+        selfHostedRelay = next.selfHostedRelay
         return lock.withPermit(apply)
       }),
       Effect.forkScoped,
@@ -418,9 +481,40 @@ const make = ({
       Effect.forkScoped,
     )
 
+    const switchSelfHosted = (url: string | null) =>
+      lock.withPermit(
+        Effect.gen(function* () {
+          selfHostedRelay = url
+          yield* settings.set({ selfHostedRelay: url })
+          yield* apply
+        }),
+      )
+
+    const useSelfHosted = ({ url, token }: { readonly url: string; readonly token: string }) =>
+      Effect.gen(function* () {
+        const origin = selfHostedRelayOrigin(url)
+        if (Option.isNone(origin)) {
+          return yield* new RelayError({ message: "Enter the relay as https://host or https://host:port." })
+        }
+        if (token.trim().length < SELF_HOSTED_TOKEN_MIN_LENGTH) {
+          return yield* new RelayError({
+            message: `The relay token has at least ${SELF_HOSTED_TOKEN_MIN_LENGTH} characters.`,
+          })
+        }
+        yield* secrets.set(SELF_HOSTED_TOKEN_SECRET, token.trim())
+        yield* switchSelfHosted(origin.value)
+      })
+
+    const stopSelfHosted = Effect.gen(function* () {
+      yield* switchSelfHosted(null)
+      yield* secrets.clear(SELF_HOSTED_TOKEN_SECRET)
+    })
+
     return Relay.of({
       setup,
       remove,
+      useSelfHosted,
+      stopSelfHosted,
       status: SubscriptionRef.get(status),
       changes: SubscriptionRef.changes(status),
       serviceUrl,
