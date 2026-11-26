@@ -42,7 +42,7 @@ Then, on each machine, open Settings > Connections, choose **Use your own relay*
 There are two routes, both HTTP/1.1 upgrades on the same port.
 
 - `GET /h/<id>/attach` with `Authorization: Bearer <token>` and `Upgrade: hinacode-relay/1`. A machine keeps two of these open and idle. Past eight for one machine, the relay closes the oldest, so a machine that reconnects after a network change is never refused. `<id>` is the machine's environment id, 16 to 64 characters from `[A-Za-z0-9_-]`. While a connection is idle the relay sends `0x00` every 15 seconds and the machine echoes it. A connection silent for 40 seconds is closed. To hand it a client, the relay sends `0x01`, then the client's upgrade request rewritten to `GET /remote`, then the raw client bytes. The machine answers `0x01`, then the bytes of its own listener's response, and opens a replacement idle connection.
-- `GET /h/<id>/remote` with `Upgrade: websocket`, from a client. The relay takes the newest idle machine connection, waiting up to 5 seconds for one, and from then on copies bytes both ways without reading them. It never parses a WebSocket frame.
+- `GET /h/<id>/remote` with `Upgrade: websocket`, from a client. The relay takes the newest idle machine connection, waiting up to 5 seconds for one, and from then on copies bytes both ways without reading them. It never parses a WebSocket frame. When one side closes, the other gets 5 seconds to finish before the relay closes it too.
 
 Answers: 401 for a wrong token, 404 for a machine that never attached, 426 for a request that is not the expected upgrade, 502 when no idle connection frees up in time, and 503 past 64 sessions for one machine.
 
