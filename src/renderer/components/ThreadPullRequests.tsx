@@ -336,7 +336,7 @@ function LinkedPullRequestRow({ url, children }: { url: string; children: ReactN
 
   return (
     <li
-      className="animate-fade-in [animation-fill-mode:backwards] motion-reduce:animate-none"
+      className="flex animate-fade-in flex-col gap-0.5 [animation-fill-mode:backwards] motion-reduce:animate-none"
       style={{ animationDelay: `${(list.order.get(url) ?? 0) * ENTRANCE_STAGGER_MS}ms` }}
     >
       <button
