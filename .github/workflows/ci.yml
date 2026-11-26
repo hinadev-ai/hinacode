@@ -21,6 +21,7 @@ jobs:
       site: ${{ steps.site.outputs.site }}
       relay: ${{ steps.relay.outputs.relay }}
       resource-monitor: ${{ steps.resource-monitor.outputs.resource-monitor }}
+      relayd: ${{ steps.relayd.outputs.relayd }}
     steps:
       # paths-filter reads a pull request's files from the API
       - if: github.event_name != 'pull_request'
@@ -81,6 +82,13 @@ jobs:
           filters: |
             resource-monitor:
               - 'tools/resource-monitor/**'
+              - '.github/workflows/ci.yml'
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: relayd
+        with:
+          filters: |
+            relayd:
+              - 'relayd/**'
               - '.github/workflows/ci.yml'
 
   static:
@@ -174,9 +182,28 @@ jobs:
         run: until [ -s "$RUNNER_TEMP/apt.exit" ]; do sleep 1; done; cat "$RUNNER_TEMP/apt.log"; exit "$(cat "$RUNNER_TEMP/apt.exit")"
       - run: pnpm test --shard ${{ matrix.shard }}/3
 
+  relayd:
+    needs: changes
+    if: needs.changes.outputs.relayd == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: relayd
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: relayd/go.mod
+          cache-dependency-path: relayd/go.sum
+      - run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go vet ./... && go build -o /dev/null .
+        working-directory: relayd/bench/client
+
   # The main ruleset requires a check named "check", so this job reports the result of the jobs it replaced.
   check:
-    needs: [changes, static, web-build, test]
+    needs: [changes, static, web-build, test, relayd]
     if: always()
     runs-on: ubuntu-latest
     steps:

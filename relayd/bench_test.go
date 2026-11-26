@@ -1,0 +1,191 @@
+package main
+
+import (
+	"bufio"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
+	"io"
+	"log"
+	"log/slog"
+	"math/big"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"runtime"
+	"testing"
+	"time"
+)
+
+type tlsRelay struct {
+	address string
+	config  *tls.Config
+}
+
+func startTLSRelay(b *testing.B) tlsRelay {
+	b.Helper()
+	server := httptest.NewUnstartedServer(NewRelay(testToken, DefaultLimits, slog.New(slog.DiscardHandler)))
+	server.Config = newServer(config{}, server.Config.Handler)
+	server.Config.ErrorLog = log.New(io.Discard, "", 0)
+	server.TLS = server.Config.TLSConfig
+	server.TLS.Certificates = []tls.Certificate{ecdsaCertificate(b)}
+	server.StartTLS()
+	b.Cleanup(server.Close)
+	roots := x509.NewCertPool()
+	roots.AddCert(server.TLS.Certificates[0].Leaf)
+	config := &tls.Config{RootCAs: roots, ServerName: "example.com"}
+	return tlsRelay{address: server.Listener.Addr().String(), config: config}
+}
+
+func (r tlsRelay) dial(head string) (net.Conn, *bufio.Reader, error) {
+	conn, err := tls.Dial("tcp", r.address, r.config)
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := io.WriteString(conn, head); err != nil {
+		return nil, nil, err
+	}
+	reader := bufio.NewReaderSize(conn, 64<<10)
+	response, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	if response.StatusCode != http.StatusSwitchingProtocols {
+		return nil, nil, fmt.Errorf("answered %d", response.StatusCode)
+	}
+	return conn, reader, nil
+}
+
+func (r tlsRelay) open(b *testing.B, head string) (net.Conn, *bufio.Reader) {
+	conn, reader, err := r.dial(head)
+	if err != nil {
+		b.Fatal(err)
+	}
+	return conn, reader
+}
+
+func (r tlsRelay) keepMachineAttached(b *testing.B, idle int) {
+	for range idle {
+		r.parkEcho(b)
+	}
+}
+
+func (r tlsRelay) parkEcho(b *testing.B) {
+	go r.serveEcho(r.open(b, attachHead(testToken)))
+}
+
+func (r tlsRelay) replaceParked() {
+	if conn, reader, err := r.dial(attachHead(testToken)); err == nil {
+		r.serveEcho(conn, reader)
+	}
+}
+
+func (r tlsRelay) serveEcho(conn net.Conn, reader *bufio.Reader) {
+	for {
+		signal, err := reader.ReadByte()
+		if err != nil {
+			return
+		}
+		if signal == signalPing {
+			conn.Write([]byte{signalPing})
+			continue
+		}
+		go r.replaceParked()
+		conn.Write([]byte{signalOpen})
+		if _, err := http.ReadRequest(reader); err != nil {
+			return
+		}
+		io.WriteString(conn, "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n")
+		io.Copy(conn, reader)
+		conn.Close()
+		return
+	}
+}
+
+func BenchmarkConnect(b *testing.B) {
+	relay := startTLSRelay(b)
+	relay.keepMachineAttached(b, 2)
+	for b.Loop() {
+		conn, _ := relay.open(b, clientHead)
+		conn.Close()
+	}
+}
+
+func BenchmarkSmallEcho(b *testing.B) {
+	relay := startTLSRelay(b)
+	relay.keepMachineAttached(b, 1)
+	conn, reader := relay.open(b, clientHead)
+	defer conn.Close()
+	message := make([]byte, 64)
+	for b.Loop() {
+		conn.Write(message)
+		if _, err := io.ReadFull(reader, message); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkStream(b *testing.B) {
+	relay := startTLSRelay(b)
+	relay.keepMachineAttached(b, 1)
+	conn, reader := relay.open(b, clientHead)
+	defer conn.Close()
+	chunk := make([]byte, 1<<20)
+	b.SetBytes(int64(len(chunk)))
+	go func() {
+		for {
+			if _, err := conn.Write(chunk); err != nil {
+				return
+			}
+		}
+	}()
+	sink := make([]byte, len(chunk))
+	for b.Loop() {
+		if _, err := io.ReadFull(reader, sink); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkSessionMemory(b *testing.B) {
+	relay := startTLSRelay(b)
+	relay.keepMachineAttached(b, 8)
+	const sessions = 60
+	for b.Loop() {
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		conns := make([]net.Conn, 0, sessions)
+		for range sessions {
+			conn, _ := relay.open(b, clientHead)
+			conns = append(conns, conn)
+		}
+		runtime.GC()
+		runtime.ReadMemStats(&after)
+		b.ReportMetric(float64(after.HeapInuse-before.HeapInuse)/sessions, "heap-B/session")
+		for _, conn := range conns {
+			conn.Close()
+		}
+	}
+}
+
+func ecdsaCertificate(b *testing.B) tls.Certificate {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		b.Fatal(err)
+	}
+	template := x509.Certificate{SerialNumber: big.NewInt(1), DNSNames: []string{"example.com"}, NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		b.Fatal(err)
+	}
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		b.Fatal(err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key, Leaf: leaf}
+}
