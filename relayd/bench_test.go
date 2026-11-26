@@ -2,16 +2,22 @@ package main
 
 import (
 	"bufio"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"log"
 	"log/slog"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
 	"testing"
+	"time"
 )
 
 type tlsRelay struct {
@@ -25,10 +31,12 @@ func startTLSRelay(b *testing.B) tlsRelay {
 	server.Config = newServer(config{}, server.Config.Handler)
 	server.Config.ErrorLog = log.New(io.Discard, "", 0)
 	server.TLS = server.Config.TLSConfig
+	server.TLS.Certificates = []tls.Certificate{ecdsaCertificate(b)}
 	server.StartTLS()
 	b.Cleanup(server.Close)
-	config := server.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
-	config.ServerName = "example.com"
+	roots := x509.NewCertPool()
+	roots.AddCert(server.TLS.Certificates[0].Leaf)
+	config := &tls.Config{RootCAs: roots, ServerName: "example.com"}
 	return tlsRelay{address: server.Listener.Addr().String(), config: config}
 }
 
@@ -163,4 +171,21 @@ func BenchmarkSessionMemory(b *testing.B) {
 			conn.Close()
 		}
 	}
+}
+
+func ecdsaCertificate(b *testing.B) tls.Certificate {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		b.Fatal(err)
+	}
+	template := x509.Certificate{SerialNumber: big.NewInt(1), DNSNames: []string{"example.com"}, NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		b.Fatal(err)
+	}
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		b.Fatal(err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key, Leaf: leaf}
 }

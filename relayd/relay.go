@@ -136,6 +136,7 @@ func (r *Relay) hostFor(id string, create bool) *host {
 
 func (r *Relay) attach(w http.ResponseWriter, req *http.Request, id string) {
 	if !r.authorized(req) {
+		r.log.Warn("refused a machine token", "host", id, "from", req.RemoteAddr)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -162,6 +163,7 @@ func (r *Relay) attach(w http.ResponseWriter, req *http.Request, id string) {
 	p := &parked{conn: conn, reader: reader, client: make(chan net.Conn, 1), finished: make(chan struct{})}
 	p.lastPong.Store(time.Now().UnixNano())
 	h.parked <- p
+	r.log.Info("machine attached", "host", id, "from", req.RemoteAddr)
 	go r.watchParked(h, p)
 	go r.heartbeat(p)
 }
@@ -275,6 +277,7 @@ func (r *Relay) connectClient(w http.ResponseWriter, req *http.Request, id strin
 		return
 	}
 	machine.client <- client
+	r.log.Info("session opened", "host", id, "from", req.RemoteAddr)
 	if _, err := machine.conn.Write(openingBytes(req, clientReader)); err != nil {
 		client.Close()
 		machine.conn.Close()

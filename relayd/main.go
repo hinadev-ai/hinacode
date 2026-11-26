@@ -10,16 +10,21 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/acme"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 const minTokenLength = 32
 
 type config struct {
-	listen  string
-	cert    string
-	key     string
-	token   string
-	verbose bool
+	listen   string
+	cert     string
+	key      string
+	domain   string
+	cacheDir string
+	token    string
+	verbose  bool
 }
 
 func parseConfig(args []string, getenv func(string) string) (config, error) {
@@ -28,6 +33,8 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 	flags.StringVar(&c.listen, "listen", ":8443", "address to listen on")
 	flags.StringVar(&c.cert, "tls-cert", "", "TLS certificate file; serve plain HTTP behind a TLS proxy when empty")
 	flags.StringVar(&c.key, "tls-key", "", "TLS private key file")
+	flags.StringVar(&c.domain, "domain", "", "get a Let's Encrypt certificate for this domain over TLS-ALPN on -listen, which must be reachable on port 443")
+	flags.StringVar(&c.cacheDir, "cert-cache", "hinacode-relayd-certs", "directory that keeps -domain certificates across restarts")
 	tokenFile := flags.String("token-file", "", "file holding the token machines attach with, instead of HINACODE_RELAY_TOKEN")
 	flags.BoolVar(&c.verbose, "verbose", false, "log every attach and session")
 	if err := flags.Parse(args); err != nil {
@@ -46,6 +53,9 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 	}
 	if (c.cert == "") != (c.key == "") {
 		return c, errors.New("-tls-cert and -tls-key go together")
+	}
+	if c.domain != "" && c.cert != "" {
+		return c, errors.New("-domain gets its own certificate, so drop -tls-cert and -tls-key")
 	}
 	return c, nil
 }
@@ -80,10 +90,22 @@ func main() {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 	server := newServer(c, NewRelay(c.token, DefaultLimits, log))
-	log.Warn("hinacode-relayd listening", "address", c.listen, "tls", c.cert != "")
-	if c.cert != "" {
+	if c.domain != "" {
+		certificates := &autocert.Manager{
+			Prompt:     autocert.AcceptTOS,
+			HostPolicy: autocert.HostWhitelist(c.domain),
+			Cache:      autocert.DirCache(c.cacheDir),
+		}
+		server.TLSConfig.GetCertificate = certificates.GetCertificate
+		server.TLSConfig.NextProtos = append(server.TLSConfig.NextProtos, acme.ALPNProto)
+	}
+	log.Warn("hinacode-relayd listening", "address", c.listen, "tls", c.cert != "" || c.domain != "")
+	switch {
+	case c.domain != "":
+		err = server.ListenAndServeTLS("", "")
+	case c.cert != "":
 		err = server.ListenAndServeTLS(c.cert, c.key)
-	} else {
+	default:
 		err = server.ListenAndServe()
 	}
 	fmt.Fprintln(os.Stderr, err)
