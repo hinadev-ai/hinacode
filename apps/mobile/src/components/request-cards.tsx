@@ -1,6 +1,7 @@
 import type { ApprovalDecision, ApprovalRequest, Question, QuestionAnswers, QuestionRequest } from "@shared/agent.ts"
 import type { Thread } from "@shared/domain.ts"
 import type { UsageLimit } from "@shared/limits.ts"
+import { router } from "expo-router"
 import { type ReactNode, useState } from "react"
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { Icon } from "@/components/icon"
@@ -18,7 +19,7 @@ import { motion } from "@/lib/motion"
 import { relativeTime } from "@/lib/relative-time"
 import { useThreads } from "@/stores/threads"
 
-function useAction() {
+export function useAction() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const run = async (action: () => Promise<unknown>) => {
@@ -216,6 +217,34 @@ const formatResetTime = (at: string) => {
   const date = new Date(at)
   if (!Number.isFinite(date.getTime())) return null
   return date.toLocaleString(locale, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+}
+
+export function VmHandOverCard({ threadId, request }: { threadId: string; request: string }) {
+  const theme = useTheme()
+  return (
+    <Ticket testID="vm-hand-over" accessibilityRole="summary" ageBar={false}>
+      <View style={styles.cardHeading}>
+        <Icon name="Computer" size={16} color={theme.attention} />
+        <Text
+          accessibilityRole="header"
+          {...subheading}
+          style={[styles.headLabel, styles.shrink, { color: theme.attention }]}
+        >
+          {copy("vm_hand_over_waiting")}
+        </Text>
+      </View>
+      <Text selectable style={[styles.cardBody, { color: theme.text }]}>
+        {request}
+      </Text>
+      <Button
+        testID="vm-hand-over-open"
+        label={copy("mobile_vm_open")}
+        variant="primary"
+        onPress={() => router.push({ pathname: "/thread/[id]/vm", params: { id: threadId } })}
+        style={styles.pillButton}
+      />
+    </Ticket>
+  )
 }
 
 export function UsageLimitCallout({ thread, limit }: { thread: Thread; limit: UsageLimit }) {

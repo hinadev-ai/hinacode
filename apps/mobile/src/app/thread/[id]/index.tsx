@@ -28,6 +28,7 @@ import type { Thread, ThreadStatus } from "@shared/domain.ts"
 import { useMessages } from "@/stores/messages"
 import { useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
+import { useThreadVm } from "@/lib/vm"
 
 const HEADER_ITEMS_WIDTH = 72
 
@@ -46,6 +47,9 @@ export default function ThreadScreen() {
   const headerHeight = useHeaderHeight()
   const [tab, setTab] = useState<ThreadTab>("chat")
   const [opened, setOpened] = useState<ReadonlySet<ThreadTab>>(() => new Set(["chat"]))
+  const vm = useThreadVm(id)
+  const openVm =
+    vm?.status === "running" ? () => router.push({ pathname: "/thread/[id]/vm", params: { id } }) : undefined
 
   useFocusEffect(() => {
     useUnseen.getState().clear(id)
@@ -78,7 +82,9 @@ export default function ThreadScreen() {
             }}
           />
           {split && <SidebarToolbarButton />}
-          {thread !== undefined && <ThreadMenu thread={thread} onOpenTerminal={() => select("terminal")} />}
+          {thread !== undefined && (
+            <ThreadMenu thread={thread} onOpenTerminal={() => select("terminal")} onOpenVm={openVm} />
+          )}
         </>
       ) : (
         <Stack.Screen options={{ headerShown: false }} />
@@ -100,7 +106,7 @@ export default function ThreadScreen() {
           {thread === undefined ? (
             <View style={styles.headerSlot} />
           ) : (
-            <ThreadActionsButton thread={thread} onOpenTerminal={() => select("terminal")} />
+            <ThreadActionsButton thread={thread} onOpenTerminal={() => select("terminal")} onOpenVm={openVm} />
           )}
         </View>
       )}
@@ -160,7 +166,13 @@ function TabPanel({ shown, readable = false, children }: { shown: boolean; reada
   )
 }
 
-function ThreadMenu({ thread, onOpenTerminal }: { thread: Thread; onOpenTerminal: () => void }) {
+interface ThreadMenuProps {
+  readonly thread: Thread
+  readonly onOpenTerminal: () => void
+  readonly onOpenVm: (() => void) | undefined
+}
+
+function ThreadMenu({ thread, onOpenTerminal, onOpenVm }: ThreadMenuProps) {
   const state = useThreadActions(thread)
   return (
     <>
@@ -170,6 +182,11 @@ function ThreadMenu({ thread, onOpenTerminal }: { thread: Thread; onOpenTerminal
             <Stack.Toolbar.MenuAction icon="apple.terminal" onPress={onOpenTerminal}>
               {copy("mobile_thread_tab_terminal")}
             </Stack.Toolbar.MenuAction>
+            {onOpenVm !== undefined && (
+              <Stack.Toolbar.MenuAction icon="display" onPress={onOpenVm}>
+                {copy("mobile_vm_title")}
+              </Stack.Toolbar.MenuAction>
+            )}
           </Stack.Toolbar.Menu>
           {state.actions.map((action) => (
             <Stack.Toolbar.MenuAction
@@ -195,7 +212,7 @@ function ThreadMenu({ thread, onOpenTerminal }: { thread: Thread; onOpenTerminal
 
 const leave = () => (router.canGoBack() ? router.back() : router.replace("/"))
 
-function ThreadActionsButton({ thread, onOpenTerminal }: { thread: Thread; onOpenTerminal: () => void }) {
+function ThreadActionsButton({ thread, onOpenTerminal, onOpenVm }: ThreadMenuProps) {
   const theme = useTheme()
   const state = useThreadActions(thread)
   const [open, setOpen] = useState(false)
@@ -214,6 +231,7 @@ function ThreadActionsButton({ thread, onOpenTerminal }: { thread: Thread; onOpe
         onClose={() => setOpen(false)}
         state={state}
         onOpenTerminal={onOpenTerminal}
+        onOpenVm={onOpenVm}
       />
     </>
   )

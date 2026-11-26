@@ -1,5 +1,7 @@
 import type { AgentEvent } from "@shared/agent.ts"
+import type { ThreadVm } from "@shared/domain.ts"
 import { copy } from "@/lib/copy"
+import { handOverRequest } from "@/lib/vm"
 
 export type AlertKind = "completed" | "needsInput" | "failed"
 
@@ -26,4 +28,10 @@ export function threadAlert(event: AgentEvent): ThreadAlert | null {
     default:
       return null
   }
+}
+
+export function handOverAlert(previous: ThreadVm | undefined, next: ThreadVm): ThreadAlert | null {
+  const request = handOverRequest(next)
+  if (request === undefined || request === handOverRequest(previous ?? null)) return null
+  return { kind: "needsInput", body: copy("mobile_notify_vm", { request }) }
 }

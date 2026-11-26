@@ -1,6 +1,7 @@
 import { usePathname } from "expo-router"
 import type { AgentEvent } from "@shared/agent.ts"
 import { outcomeOf } from "@shared/threadStatus.ts"
+import type { ThreadVm } from "@shared/domain.ts"
 import { useEffect, useEffectEvent, useState } from "react"
 import { AppState, Platform } from "react-native"
 import { Banner, type BannerNotice } from "@/components/banner"
@@ -13,7 +14,7 @@ import {
   presentNotification,
   requestNotificationPermission,
 } from "@/lib/notifications"
-import { threadAlert } from "@/lib/thread-alerts"
+import { handOverAlert, threadAlert } from "@/lib/thread-alerts"
 import { usePreferences } from "@/stores/preferences"
 import { useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
@@ -52,6 +53,16 @@ export function Notifier() {
   const opened = useEffectEvent((threadId: string) => {
     if (paired) openThread(threadId)
   })
+
+  useEffect(() => {
+    const vms = new Map<string, ThreadVm>()
+    return onEvent((event) => {
+      if (event.type !== "vm.updated") return
+      const alert = handOverAlert(vms.get(event.threadId), event.vm)
+      vms.set(event.threadId, event.vm)
+      if (alert !== null) receive(event.threadId, alert)
+    })
+  }, [])
 
   useEffect(
     () =>
