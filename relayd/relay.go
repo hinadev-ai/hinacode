@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -55,9 +56,10 @@ type Relay struct {
 }
 
 type host struct {
-	parked      chan *parked
-	parkedCount atomic.Int32
-	active      atomic.Int32
+	mu      sync.Mutex
+	idle    []*parked
+	arrived chan struct{}
+	active  atomic.Int32
 }
 
 type parked struct {
@@ -128,7 +130,7 @@ func (r *Relay) hostFor(id string, create bool) *host {
 	defer r.mu.Unlock()
 	h := r.hosts[id]
 	if h == nil && create {
-		h = &host{parked: make(chan *parked, r.limits.ParkedPerHost)}
+		h = &host{arrived: make(chan struct{}, 1)}
 		r.hosts[id] = h
 	}
 	return h
@@ -144,25 +146,20 @@ func (r *Relay) attach(w http.ResponseWriter, req *http.Request, id string) {
 		http.Error(w, "expected Upgrade: "+upgradeProtocol, http.StatusUpgradeRequired)
 		return
 	}
-	h := r.hostFor(id, true)
-	if h.parkedCount.Add(1) > int32(r.limits.ParkedPerHost) {
-		h.parkedCount.Add(-1)
-		http.Error(w, "too many idle connections", http.StatusTooManyRequests)
-		return
-	}
 	conn, reader, err := hijack(w)
 	if err != nil {
-		h.parkedCount.Add(-1)
 		return
 	}
 	if _, err := io.WriteString(conn, "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: "+upgradeProtocol+"\r\n\r\n"); err != nil {
-		h.parkedCount.Add(-1)
 		conn.Close()
 		return
 	}
 	p := &parked{conn: conn, reader: reader, client: make(chan net.Conn, 1), finished: make(chan struct{})}
 	p.lastPong.Store(time.Now().UnixNano())
-	h.parked <- p
+	h := r.hostFor(id, true)
+	if evicted := h.park(p, r.limits.ParkedPerHost); evicted != nil {
+		evicted.discard()
+	}
 	r.log.Info("machine attached", "host", id, "from", req.RemoteAddr)
 	go r.watchParked(h, p)
 	go r.heartbeat(p)
@@ -177,7 +174,7 @@ func (r *Relay) watchParked(h *host, p *parked) {
 			continue
 		}
 		if !p.release() {
-			h.parkedCount.Add(-1)
+			h.remove(p)
 			p.conn.Close()
 			return
 		}
@@ -234,16 +231,65 @@ func (p *parked) claim() bool {
 	return true
 }
 
+func (p *parked) discard() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.claimed {
+		p.dead = true
+		p.conn.Close()
+	}
+}
+
+func (h *host) park(p *parked, limit int) (evicted *parked) {
+	h.mu.Lock()
+	if len(h.idle) >= limit {
+		evicted = h.idle[0]
+		h.idle = h.idle[1:]
+	}
+	h.idle = append(h.idle, p)
+	h.mu.Unlock()
+	h.signal()
+	return evicted
+}
+
+func (h *host) remove(p *parked) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.idle = slices.DeleteFunc(h.idle, func(other *parked) bool { return other == p })
+}
+
+func (h *host) signal() {
+	select {
+	case h.arrived <- struct{}{}:
+	default:
+	}
+}
+
+func (h *host) pop() *parked {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for len(h.idle) > 0 {
+		newest := h.idle[len(h.idle)-1]
+		h.idle = h.idle[:len(h.idle)-1]
+		if newest.claim() {
+			if len(h.idle) > 0 {
+				h.signal()
+			}
+			return newest
+		}
+	}
+	return nil
+}
+
 func (h *host) take(wait time.Duration) *parked {
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	for {
+		if p := h.pop(); p != nil {
+			return p
+		}
 		select {
-		case p := <-h.parked:
-			if p.claim() {
-				h.parkedCount.Add(-1)
-				return p
-			}
+		case <-h.arrived:
 		case <-timer.C:
 			return nil
 		}

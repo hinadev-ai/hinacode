@@ -27,9 +27,7 @@ export const relayAddress = ({ url, hostId }: Pick<RelayAttachment, "url" | "hos
 export const describeRefusal = (status: number | undefined) =>
   status === 401
     ? "The relay refused this machine's token."
-    : status === 429
-      ? "The relay already holds too many idle connections for this machine."
-      : `The relay answered ${status ?? "nothing"} instead of switching protocols.`
+    : `The relay answered ${status ?? "nothing"} instead of switching protocols.`
 
 const splice = (relay: Socket, local: Socket) => {
   relay.pipe(local)
