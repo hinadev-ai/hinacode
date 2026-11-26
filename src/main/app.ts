@@ -36,6 +36,7 @@ import * as Boat from "./services/boat/Boat.ts"
 import * as BoatMachines from "./services/boat/BoatMachines.ts"
 import * as Settle from "./services/Settle.ts"
 import * as Browser from "./services/Browser.ts"
+import * as Conversations from "./services/routines/Conversations.ts"
 import * as Routines from "./services/routines/Routines.ts"
 import * as Scheduler from "./services/Scheduler.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
@@ -238,6 +239,7 @@ export const makeAppLayer = ({
     peers,
     devices,
     linearLayer(process.env),
+    Conversations.layer,
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   const services = Layer.mergeAll(

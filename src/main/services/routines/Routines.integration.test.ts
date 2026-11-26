@@ -6,10 +6,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
-import { Cron, Effect, Layer, Stream } from "effect"
+import { Cron, Deferred, Effect, Layer, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import type { AgentEvent } from "../../../shared/agent.ts"
 import type { PushEvent } from "../../../shared/contract.ts"
+import type { RoutineTrigger } from "../../../shared/domain.ts"
 import { ClaudeProvider } from "../../agents/claude/index.ts"
 import { CodexProvider } from "../../agents/codex/index.ts"
 import { MagpieProvider } from "../../agents/magpie/index.ts"
@@ -38,7 +39,9 @@ import * as Terminals from "../Terminals.ts"
 import * as ThreadNaming from "../ThreadNaming.ts"
 import * as Threads from "../Threads.ts"
 import * as Worktrees from "../Worktrees.ts"
+import * as Conversations from "./Conversations.ts"
 import { MAX_ROUTINES, Routines, layer as routinesLayer, WEBHOOK_SECRET } from "./Routines.ts"
+import { type Arrival, FOLLOW_UP } from "./triggers.ts"
 
 const provider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
@@ -91,7 +94,7 @@ interface Harness {
   readonly jobs: Map<string, Job>
 }
 
-const makeLayer = ({ pushes, jobs }: Harness, port: number) => {
+const makeLayer = ({ pushes, jobs }: Harness, port: number, claude: AgentProvider) => {
   const dataDir = mkdtempSync(join(tmpdir(), "kk-routines-"))
   writeFileSync(join(dataDir, "settings.json"), JSON.stringify({ routines: { bindHost: "127.0.0.1", port } }))
   const secrets = Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))
@@ -109,6 +112,7 @@ const makeLayer = ({ pushes, jobs }: Harness, port: number) => {
     Attachments.layer(join(dataDir, "attachments")),
     Linear.layer.pipe(Layer.provide(secrets)),
     credentialsLayer,
+    Conversations.layer,
   )
   const agents = AgentRunner.layer.pipe(
     Layer.provideMerge(ThreadNaming.layer.pipe(Layer.provide(domain))),
@@ -127,7 +131,7 @@ const makeLayer = ({ pushes, jobs }: Harness, port: number) => {
       Layer.mergeAll(
         Git.layer,
         GitHub.layer,
-        Layer.succeed(ClaudeProvider, provider("claude")),
+        Layer.succeed(ClaudeProvider, claude),
         Layer.succeed(CodexProvider, provider("codex")),
         Layer.succeed(MuseProvider, provider("muse")),
         Layer.succeed(OpencodeProvider, provider("opencode")),
@@ -144,6 +148,7 @@ const makeLayer = ({ pushes, jobs }: Harness, port: number) => {
 
 const withApp = <A, E, R>(
   test: (context: { readonly projectId: string; readonly port: number } & Harness) => Effect.Effect<A, E, R>,
+  claude: AgentProvider = provider("claude"),
 ) =>
   Effect.gen(function* () {
     const port = yield* unusedPort
@@ -155,14 +160,19 @@ const withApp = <A, E, R>(
       yield* sql`INSERT INTO project ${sql.insert({ id: projectId, name: "demo", rootPath: repo, createdAt: now, updatedAt: now })}`
       yield* McpCredentials.use((credentials) => credentials.listening("http://127.0.0.1:1/mcp"))
       return yield* test({ projectId, port, ...harness })
-    }).pipe(Effect.provide(makeLayer(harness, port)))
+    }).pipe(Effect.provide(makeLayer(harness, port, claude)))
   })
 
 const hourly = { cron: "0 * * * *", timezone: "UTC" }
 
 const createRoutine = (
   projectId: string,
-  overrides: { enabled?: boolean; schedule?: typeof hourly | null; workspace?: "local" | "worktree" } = {},
+  overrides: {
+    enabled?: boolean
+    schedule?: typeof hourly | null
+    workspace?: "local" | "worktree"
+    trigger?: RoutineTrigger | null
+  } = {},
 ) =>
   Routines.use((routines) =>
     routines.create({
@@ -175,6 +185,7 @@ const createRoutine = (
       effort: null,
       workspace: overrides.workspace ?? "local",
       schedule: overrides.schedule === undefined ? hourly : overrides.schedule,
+      trigger: overrides.trigger ?? null,
     }),
   )
 
@@ -266,6 +277,7 @@ describe("routine scheduling", () => {
             effort: null,
             workspace: "local",
             schedule: null,
+            trigger: null,
           }),
         )
         expect(routine.model).toBe("")
@@ -389,6 +401,285 @@ describe("routine scheduling", () => {
   )
 })
 
+const onComments: RoutineTrigger = {
+  event: "github.issue_comment",
+  fromUsers: ["octocat"],
+  scopes: ["acme/api"],
+  contains: null,
+  continuation: "conversation",
+}
+
+const comment = (id: number, overrides: Partial<Arrival> = {}): Arrival => ({
+  event: "github.issue_comment",
+  key: `github:comment:${id}`,
+  sender: "octocat",
+  scope: "acme/api",
+  text: `Comment number ${id}`,
+  conversation: "github:acme/api#12",
+  destination: { source: "github", repo: "acme/api", number: 12, url: "https://github.com/acme/api/issues/12" },
+  context: { kind: "issue", title: "Broken", body: "It broke", author: "someone" },
+  ...overrides,
+})
+
+const arrive = (arrival: Arrival) => Routines.use((routines) => routines.arrive(arrival))
+
+const triggered = (projectId: string, trigger: Partial<RoutineTrigger> = {}, enabled = true) =>
+  createRoutine(projectId, { schedule: null, enabled, trigger: { ...onComments, ...trigger } })
+
+const userTexts = (threadId: string | null, count: number) =>
+  AgentRunner.AgentRunner.use((runner) => runner.transcript(threadId ?? "")).pipe(
+    Effect.map(({ messages }) =>
+      messages
+        .filter((message) => message.role === "user")
+        .map((message) => message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")),
+    ),
+    Effect.repeat({ until: (texts) => texts.length >= count }),
+  )
+
+const runOf = (routineId: string, runId: string, until: (status: string) => boolean) =>
+  runsOf(routineId).pipe(
+    Effect.map((runs) => runs.find((run) => run.id === runId)),
+    Effect.repeat({ until: (run) => run !== undefined && until(run.status) }),
+  )
+
+describe("routine triggers", () => {
+  it.effect("keeps a routine's trigger through create, update and get", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const routine = yield* triggered(projectId)
+        expect(routine.trigger).toStrictEqual(onComments)
+        const changed = { ...onComments, contains: "@hina", continuation: "new" as const }
+        yield* Routines.use((routines) => routines.update({ id: routine.id, trigger: changed }))
+        expect((yield* Routines.use((routines) => routines.get(routine.id))).trigger).toStrictEqual(changed)
+        yield* Routines.use((routines) => routines.update({ id: routine.id, trigger: null }))
+        expect((yield* Routines.use((routines) => routines.list))[0]?.trigger).toBeNull()
+      }),
+    ),
+  )
+
+  it.effect("starts one thread with the routine prompt and the quoted event, once per event", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const routine = yield* triggered(projectId)
+        const [run] = yield* arrive(comment(1))
+        expect(run).toMatchObject({ source: "event", status: "started" })
+        const [first] = yield* userTexts(run!.threadId, 1)
+        expect(first).toMatch(/^Triage the inbox\n\n```json\n/)
+        expect(first).toContain('"text": "Comment number 1"')
+        expect(first).toContain('"from": "octocat"')
+
+        const [again] = yield* arrive(comment(1))
+        expect(again).toMatchObject({ status: "skipped", threadId: null })
+        const runs = yield* runsOf(routine.id)
+        expect(runs.map((each) => each.status)).toStrictEqual(["skipped", "started"])
+        expect(yield* userTexts(run!.threadId, 1)).toHaveLength(1)
+      }),
+    ),
+  )
+
+  it.effect("ignores a stranger, another repository and text without the phrase", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const routine = yield* triggered(projectId, { contains: "@hina" })
+        expect(yield* arrive(comment(1, { sender: "stranger", text: "@hina go" }))).toStrictEqual([])
+        expect(yield* arrive(comment(2, { scope: "acme/web", text: "@hina go" }))).toStrictEqual([])
+        expect(yield* arrive(comment(3, { text: "go" }))).toStrictEqual([])
+        expect(yield* runsOf(routine.id)).toStrictEqual([])
+      }),
+    ),
+  )
+
+  it.effect("a disabled routine starts nothing", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const routine = yield* triggered(projectId, {}, false)
+        expect(yield* arrive(comment(1))).toStrictEqual([])
+        expect(yield* runsOf(routine.id)).toStrictEqual([])
+      }),
+    ),
+  )
+
+  it.effect("hands a later event in the same conversation to the same thread", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const routine = yield* triggered(projectId)
+        const [first] = yield* arrive(comment(1))
+        yield* finished(first!.threadId)
+        const [second] = yield* arrive(comment(2))
+        expect(second).toMatchObject({ source: "event", status: "started", threadId: first!.threadId })
+
+        const texts = yield* userTexts(first!.threadId, 2)
+        expect(texts[1]).toContain(FOLLOW_UP)
+        expect(texts[1]).toContain('"text": "Comment number 2"')
+        expect(texts[1]).not.toContain("Comment number 1")
+        expect(texts[1]).not.toContain("Triage the inbox")
+        const runs = yield* runsOf(routine.id)
+        expect(runs.map((run) => [run.status, run.threadId])).toStrictEqual([
+          ["started", first!.threadId],
+          ["started", first!.threadId],
+        ])
+      }),
+    ),
+  )
+
+  it.effect("keeps two events that arrive together in one conversation on one thread", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        yield* triggered(projectId)
+        const [[first], [second]] = yield* Effect.all([arrive(comment(1)), arrive(comment(2))], {
+          concurrency: "unbounded",
+        })
+
+        expect(first!.threadId).not.toBeNull()
+        expect(second!.threadId).toBe(first!.threadId)
+        expect(yield* userTexts(first!.threadId, 2)).toHaveLength(2)
+      }),
+    ),
+  )
+
+  it.effect("starts a new thread with the routine prompt after a conversation's thread failed to start", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const routine = yield* createRoutine(projectId, {
+          schedule: null,
+          workspace: "worktree",
+          trigger: onComments,
+        })
+        const blocker = join(mkdtempSync(join(tmpdir(), "kk-routines-blocker-")), "file")
+        writeFileSync(blocker, "")
+        yield* Settings.Settings.use((settings) => settings.set({ worktreeRoot: join(blocker, "worktrees") }))
+        const [first] = yield* arrive(comment(1))
+        yield* runOf(routine.id, first!.id, (status) => status === "failed")
+
+        yield* Settings.Settings.use((settings) => settings.set({ worktreeRoot: null }))
+        const [second] = yield* arrive(comment(2))
+        expect(second).toMatchObject({ status: "started" })
+        expect(second!.threadId).not.toBe(first!.threadId)
+        const [prompt] = yield* userTexts(second!.threadId, 1)
+        expect(prompt).toMatch(/^Triage the inbox/)
+        expect(prompt).toContain('"text": "Comment number 2"')
+      }),
+    ),
+  )
+
+  it.effect("does not count an event run as the previous scheduled run", () =>
+    withApp(({ projectId, jobs }) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const routine = yield* createRoutine(projectId, { trigger: onComments })
+        yield* fireDueSlot(jobs, routine.id)
+        const [scheduled] = yield* runsOf(routine.id)
+        yield* finished(scheduled!.threadId)
+        const [event] = yield* arrive(comment(1))
+        yield* finished(event!.threadId)
+        yield* sql`UPDATE thread SET status = 'running' WHERE id = ${scheduled!.threadId}`
+
+        yield* fireDueSlot(jobs, routine.id)
+        const [skipped] = yield* runsOf(routine.id)
+        expect(skipped).toMatchObject({ source: "schedule", status: "skipped", threadId: null })
+      }),
+    ),
+  )
+
+  it.effect("leaves an idle conversation's thread unsettled when a manual run starts", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const routine = yield* triggered(projectId)
+        const [event] = yield* arrive(comment(1))
+        const conversation = yield* finished(event!.threadId)
+        const run = () => Routines.use((routines) => routines.run(routine.id, "manual", null))
+        const earlier = yield* finished((yield* run()).threadId)
+        yield* finished((yield* run()).threadId)
+
+        expect(yield* settledAt(earlier.id)).not.toBeNull()
+        expect(yield* settledAt(conversation.id)).toBeNull()
+      }),
+    ),
+  )
+
+  it.effect("starts a thread per event when the routine asks for new threads", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        yield* triggered(projectId, { continuation: "new" })
+        const [first] = yield* arrive(comment(1))
+        yield* finished(first!.threadId)
+        const [second] = yield* arrive(comment(2))
+        expect(second!.threadId).not.toBeNull()
+        expect(second!.threadId).not.toBe(first!.threadId)
+        expect(yield* userTexts(second!.threadId, 1)).toHaveLength(1)
+      }),
+    ),
+  )
+
+  it.effect("starts a new thread once the conversation's thread is archived", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        yield* triggered(projectId)
+        const [first] = yield* arrive(comment(1))
+        yield* finished(first!.threadId)
+        yield* Threads.Threads.use((threads) => threads.archive(first!.threadId!))
+        const [second] = yield* arrive(comment(2))
+        expect(second).toMatchObject({ status: "started" })
+        expect(second!.threadId).not.toBe(first!.threadId)
+        const [prompt] = yield* userTexts(second!.threadId, 1)
+        expect(prompt).toMatch(/^Triage the inbox/)
+      }),
+    ),
+  )
+
+  it.effect("gives every matching routine its own thread", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const one = yield* triggered(projectId)
+        const two = yield* triggered(projectId)
+        const runs = yield* arrive(comment(1))
+        expect(runs.map((run) => [run.routineId, run.status]).toSorted()).toStrictEqual(
+          [
+            [one.id, "started"],
+            [two.id, "started"],
+          ].toSorted(),
+        )
+        expect(runs[0]!.threadId).not.toBe(runs[1]!.threadId)
+      }),
+    ),
+  )
+
+  const turnHeld = {
+    started: Deferred.makeUnsafe<void>(),
+    steered: Deferred.makeUnsafe<void>(),
+    release: Deferred.makeUnsafe<void>(),
+  }
+  const holdingProvider: AgentProvider = {
+    ...provider("claude"),
+    runTurn: () =>
+      Stream.fromEffect(
+        Deferred.succeed(turnHeld.started, undefined).pipe(Effect.andThen(Deferred.await(turnHeld.release))),
+      ).pipe(Stream.as<AgentEvent>({ type: "turn_completed" })),
+    steer: () => Deferred.succeed(turnHeld.steered, undefined).pipe(Effect.as(false)),
+  }
+
+  it.effect("skips a later event when the routine is disabled before the thread takes it", () =>
+    withApp(
+      ({ projectId }) =>
+        Effect.gen(function* () {
+          const routine = yield* triggered(projectId)
+          const [first] = yield* arrive(comment(1))
+          yield* Deferred.await(turnHeld.started)
+          const [second] = yield* arrive(comment(2))
+          yield* Deferred.await(turnHeld.steered)
+          yield* Routines.use((routines) => routines.update({ id: routine.id, enabled: false }))
+          yield* Deferred.succeed(turnHeld.release, undefined)
+
+          const skipped = yield* runOf(routine.id, second!.id, (status) => status !== "started")
+          expect(skipped).toMatchObject({ status: "skipped", error: "The thread did not take the event" })
+          yield* settled(first!.threadId)
+          expect(yield* userTexts(first!.threadId, 1)).toHaveLength(1)
+        }),
+      holdingProvider,
+    ),
+  )
+})
+
 const post = (port: number, id: string, init: { body?: string; headers?: Record<string, string> } = {}) =>
   Effect.tryPromise(() =>
     fetch(`http://127.0.0.1:${port}/hooks/routines/${id}`, { method: "POST", ...init }).then(async (response) => ({
@@ -398,6 +689,33 @@ const post = (port: number, id: string, init: { body?: string; headers?: Record<
   ).pipe(Effect.retry({ times: 100 }))
 
 const sign = (secret: string, body: string) => `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`
+
+const issueComment = JSON.stringify({
+  action: "created",
+  issue: {
+    id: 1,
+    number: 12,
+    title: "Broken",
+    body: "It broke",
+    html_url: "https://github.com/acme/api/issues/12",
+    user: { login: "someone" },
+  },
+  comment: { id: 77, body: "Please look" },
+  repository: { full_name: "acme/api" },
+  sender: { login: "octocat", type: "User" },
+})
+
+const postGitHub = (port: number, event: string, body: string, headers: Record<string, string> = {}) =>
+  Effect.tryPromise(() =>
+    fetch(`http://127.0.0.1:${port}/hooks/github`, {
+      method: "POST",
+      body,
+      headers: { "x-github-event": event, ...headers },
+    }).then(async (response) => ({
+      status: response.status,
+      body: (await response.json()) as Record<string, unknown>,
+    })),
+  ).pipe(Effect.retry({ times: 100 }))
 
 describe("routine webhook", () => {
   it.live("refuses a body over 1 MB without starting a run", () =>
@@ -467,6 +785,52 @@ describe("routine webhook", () => {
         expect(retry.status).toBe(200)
         expect(retry.body["skipped"]).toBe(true)
         expect((yield* runsOf(routine.id)).map((run) => run.status)).toStrictEqual(["skipped", "started"])
+      }),
+    ),
+  )
+
+  it.live("takes GitHub deliveries only with a valid signature", () =>
+    withApp(({ projectId, port }) =>
+      Effect.gen(function* () {
+        const routine = yield* triggered(projectId)
+        const github = yield* Routines.use((routines) => routines.webhook(routine.id))
+        expect(github.githubUrl).toBe(`http://127.0.0.1:${port}/hooks/github`)
+
+        const signed = { "x-hub-signature-256": sign("s3cret", issueComment) }
+        expect((yield* postGitHub(port, "issue_comment", issueComment, signed)).status).toBe(401)
+        yield* Secrets.Secrets.use((secrets) => secrets.set(WEBHOOK_SECRET, "s3cret"))
+        expect((yield* postGitHub(port, "issue_comment", issueComment)).status).toBe(401)
+        const wrong = { "x-hub-signature-256": sign("wrong", issueComment) }
+        expect((yield* postGitHub(port, "issue_comment", issueComment, wrong)).status).toBe(401)
+        const bearer = { authorization: "Bearer s3cret" }
+        expect((yield* postGitHub(port, "issue_comment", issueComment, bearer)).status).toBe(401)
+        const notJson = "not json"
+        expect(
+          (yield* postGitHub(port, "issue_comment", notJson, { "x-hub-signature-256": sign("s3cret", notJson) }))
+            .status,
+        ).toBe(400)
+        expect(yield* runsOf(routine.id)).toStrictEqual([])
+      }),
+    ),
+  )
+
+  it.live("answers a ping without starting anything and starts a run for a signed comment", () =>
+    withApp(({ projectId, port }) =>
+      Effect.gen(function* () {
+        yield* Secrets.Secrets.use((secrets) => secrets.set(WEBHOOK_SECRET, "s3cret"))
+        const routine = yield* triggered(projectId)
+        const ping = JSON.stringify({ zen: "Keep it logically awesome." })
+        const pong = yield* postGitHub(port, "ping", ping, { "x-hub-signature-256": sign("s3cret", ping) })
+        expect(pong).toStrictEqual({ status: 202, body: { runs: [] } })
+
+        const delivered = yield* postGitHub(port, "issue_comment", issueComment, {
+          "x-hub-signature-256": sign("s3cret", issueComment),
+        })
+        expect(delivered.status).toBe(202)
+        const [run] = yield* runsOf(routine.id)
+        expect(delivered.body).toStrictEqual({ runs: [{ runId: run!.id, threadId: run!.threadId, status: "started" }] })
+        const [prompt] = yield* userTexts(run!.threadId, 1)
+        expect(prompt).toContain('"text": "Please look"')
       }),
     ),
   )

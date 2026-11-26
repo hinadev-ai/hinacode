@@ -20,7 +20,7 @@ import {
   type RunTurnInput,
 } from "../../shared/agent.ts"
 import type { PushEvent } from "../../shared/contract.ts"
-import { defaultSettings } from "../../shared/domain.ts"
+import { defaultSettings, type ReplyDestination } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
@@ -61,6 +61,8 @@ import { readWhenIdle } from "./tools/threadViews.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
 import * as Scratch from "../services/Scratch.ts"
 import * as Search from "../services/Search.ts"
+import { Conversations, layer as conversationsLayer } from "../services/routines/Conversations.ts"
+import { REPLY_MARK } from "../services/routines/triggers.ts"
 
 const pushes: Array<PushEvent> = []
 const reversingKeyring = safeStorageKeyring(
@@ -223,6 +225,7 @@ const core = Layer.mergeAll(
   ArtifactInspector.unavailable,
   credentialsLayer,
   Search.layer,
+  conversationsLayer,
 )
 const vmProfileDir = mkdtempSync(join(tmpdir(), "kk-vm-profile-"))
 const tinyVm = Layer.unwrap(
@@ -240,10 +243,20 @@ const domain = Layer.mergeAll(
   RemoteAccessLayer.pipe(Layer.provide(core)),
 )
 const agents = runnerLayer.pipe(Layer.provideMerge(domain))
+const postedComments: Array<{ readonly url: string; readonly body: string }> = []
+const gitHub = Layer.effect(
+  GitHub.GitHub,
+  Effect.map(GitHub.GitHub, (real) =>
+    GitHub.GitHub.of({
+      ...real,
+      comment: (url, body) => Effect.sync(() => void postedComments.push({ url, body })),
+    }),
+  ),
+).pipe(Layer.provide(GitHub.layer.pipe(Layer.provide(stubs))))
 const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(Layer.mergeAll(agents, stubs))), agents, seeded).pipe(
   Layer.provideMerge(SourceControl.layer),
   Layer.provideMerge(Layer.mergeAll(stubs, Git.layer)),
-  Layer.provideMerge(GitHub.layer.pipe(Layer.provide(stubs))),
+  Layer.provideMerge(gitHub),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),
 )
@@ -1964,6 +1977,79 @@ layer(testLayer)("run_agent stopped-parent race", (it) => {
         result: { isError: true },
         childInputs: [],
       })
+    }),
+  )
+})
+
+const issue: ReplyDestination = {
+  source: "github",
+  repo: "acme/api",
+  number: 12,
+  url: "https://github.com/acme/api/issues/12",
+}
+
+const startedFrom = (threadId: string, destination: ReplyDestination) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const thread = yield* (yield* Threads).get(threadId)
+    const routineId = crypto.randomUUID()
+    const now = new Date(0).toISOString()
+    yield* sql`INSERT INTO routine ${sql.insert({
+      id: routineId,
+      projectId: thread.projectId,
+      name: "Answer issues",
+      enabled: 1,
+      prompt: "Answer",
+      provider: "claude",
+      model: "test-model",
+      workspace: "local",
+      createdAt: now,
+      updatedAt: now,
+    })}`
+    yield* Conversations.use((conversations) =>
+      conversations.put({
+        routineId,
+        key: `github:${destination.repo}#${destination.number}`,
+        threadId,
+        destination,
+      }),
+    )
+  })
+
+layer(testLayer)("reply", (it) => {
+  it.effect("refuses a thread that no outside event started", () =>
+    Effect.gen(function* () {
+      const { b } = yield* Seeded
+      expect(yield* callFrom(b, "reply", { text: "Done" })).toMatchObject({
+        isError: true,
+        text: "This thread did not start from an outside event, so there is nowhere to reply.",
+      })
+    }),
+  )
+
+  it.effect("posts to the conversation that started the thread and nowhere else", () =>
+    Effect.gen(function* () {
+      const { a, b } = yield* Seeded
+      yield* startedFrom(a, issue)
+      postedComments.length = 0
+
+      expect(yield* callFrom(a, "reply", { text: "  " })).toMatchObject({ isError: true, text: "The reply is empty." })
+      const tooLong = yield* callFrom(a, "reply", { text: "x".repeat(60_001) })
+      expect(tooLong).toMatchObject({
+        isError: true,
+        text: "A reply takes at most 60000 bytes and this one has 60001. Shorten it or split it.",
+      })
+      const tooManyBytes = yield* callFrom(a, "reply", { text: "修".repeat(20_001) })
+      expect(tooManyBytes).toMatchObject({
+        isError: true,
+        text: "A reply takes at most 60000 bytes and this one has 60003. Shorten it or split it.",
+      })
+      expect(yield* callFrom(a, "reply", { text: "Fixed in #13" })).toMatchObject({
+        isError: false,
+        text: `Posted to ${issue.url}`,
+      })
+      expect((yield* callFrom(b, "reply", { text: "Me too" })).isError).toBe(true)
+      expect(postedComments).toStrictEqual([{ url: issue.url, body: `Fixed in #13\n\n${REPLY_MARK}` }])
     }),
   )
 })

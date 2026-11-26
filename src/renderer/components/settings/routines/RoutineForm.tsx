@@ -9,6 +9,7 @@ import {
   isCronExpression,
   type Project,
   type Routine,
+  type RoutineTrigger,
   type RoutineWorkspace,
   startingProvider,
 } from "../../../../shared/domain.ts"
@@ -30,6 +31,8 @@ import { Switch } from "../../ui/switch.tsx"
 import { defaultScheduleDraft, fromCron, type ScheduleDraft, toCron } from "./schedule.ts"
 import { SchedulePicker } from "./SchedulePicker.tsx"
 import { localTimeZone } from "./shared.tsx"
+import { emptyTriggerDraft, fromTrigger, toTrigger, type TriggerDraft } from "./trigger.ts"
+import { TriggerPicker } from "./TriggerPicker.tsx"
 
 const ComposerInput = lazy(() =>
   import("../../ComposerInput.tsx").then((module) => ({ default: module.ComposerInput })),
@@ -47,6 +50,7 @@ interface Draft {
   readonly name: string
   readonly projectId: string
   readonly schedule: ScheduleDraft
+  readonly trigger: TriggerDraft
   readonly prompt: string
   readonly provider: ProviderId | null
   readonly model: string
@@ -59,6 +63,7 @@ const emptyDraft = (projectId: string): Draft => ({
   name: "",
   projectId,
   schedule: defaultScheduleDraft,
+  trigger: emptyTriggerDraft,
   prompt: "",
   provider: null,
   model: AGENT_DEFAULT_MODEL,
@@ -71,6 +76,7 @@ const draftFrom = (routine: Routine): Draft => ({
   name: routine.name,
   projectId: routine.projectId,
   schedule: fromCron(routine.schedule?.cron ?? null),
+  trigger: fromTrigger(routine.trigger),
   prompt: routine.prompt,
   provider: routine.provider,
   model: routine.model,
@@ -126,33 +132,40 @@ function RoutineForm({ state, projects, onDone }: RoutineFormProps) {
   const commands = AsyncResult.getOrElse(commandsResult, () => noCommands)
   const cron = toCron(draft.schedule)
   const invalidSchedule = cron !== null && !isCronExpression(cron, timezone)
+  const triggerResult = toTrigger(draft.trigger)
 
-  const [error, submit, isPending] = useActionState(async (_: string | null, input: Draft) => {
-    if (input.prompt.trim() === "") return m.routines_prompt_required()
-    const fields = {
-      name: input.name.trim(),
-      enabled: input.enabled,
-      prompt: input.prompt,
-      provider,
-      model: input.model.trim(),
-      effort: input.effort,
-      workspace: input.workspace,
-      schedule: cron === null ? null : { cron, timezone },
-    }
-    try {
-      if (editing) await callPromise("routines.update", { id: state.routine.id, ...fields })
-      else await callPromise("routines.create", { projectId: input.projectId, ...fields })
-      refreshList()
-      onDone()
-      return null
-    } catch (cause) {
-      return errorMessage(cause)
-    }
-  }, null)
+  const [error, submit, isPending] = useActionState(
+    async (_: string | null, { input, trigger }: { input: Draft; trigger: RoutineTrigger | null }) => {
+      if (input.prompt.trim() === "") return m.routines_prompt_required()
+      const fields = {
+        name: input.name.trim(),
+        enabled: input.enabled,
+        prompt: input.prompt,
+        provider,
+        model: input.model.trim(),
+        effort: input.effort,
+        workspace: input.workspace,
+        schedule: cron === null ? null : { cron, timezone },
+        trigger,
+      }
+      try {
+        if (editing) await callPromise("routines.update", { id: state.routine.id, ...fields })
+        else await callPromise("routines.create", { projectId: input.projectId, ...fields })
+        refreshList()
+        onDone()
+        return null
+      } catch (cause) {
+        return errorMessage(cause)
+      }
+    },
+    null,
+  )
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    startTransition(() => submit(draft))
+    if (!triggerResult.valid) return
+    const { trigger } = triggerResult
+    startTransition(() => submit({ input: draft, trigger }))
   }
 
   const projectItems = projects.map((candidate) => ({ value: candidate.id, label: candidate.name }))
@@ -188,6 +201,7 @@ function RoutineForm({ state, projects, onDone }: RoutineFormProps) {
         </Select>
       </div>
       <SchedulePicker value={draft.schedule} timezone={timezone} onChange={(schedule) => patch({ schedule })} />
+      <TriggerPicker value={draft.trigger} onChange={(trigger) => patch({ trigger })} />
       <div className="flex flex-col rounded-lg border border-input bg-transparent focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30 [&_.cm-content]:min-h-32!">
         <Suspense fallback={<div className="min-h-32" />}>
           <ComposerInput
@@ -236,7 +250,7 @@ function RoutineForm({ state, projects, onDone }: RoutineFormProps) {
           {m.routines_enabled_label()}
         </Label>
         <DialogClose render={<Button type="button" variant="outline" />}>{m.common_cancel()}</DialogClose>
-        <Button type="submit" disabled={isPending || invalidSchedule || project === undefined}>
+        <Button type="submit" disabled={isPending || invalidSchedule || !triggerResult.valid || project === undefined}>
           {editing ? m.settings_save() : m.routines_create()}
         </Button>
       </DialogFooter>

@@ -54,6 +54,7 @@ import piProvider from "./migrations/0052_pi_provider.ts"
 import threadInterrupted from "./migrations/0053_thread_interrupted.ts"
 import remoteDevice from "./migrations/0054_remote_device.ts"
 import environmentHostKey from "./migrations/0055_environment_host_key.ts"
+import routineTriggers from "./migrations/0056_routine_triggers.ts"
 
 const run = Migrator.make({})
 
@@ -113,6 +114,7 @@ export const runMigrations = run({
     "53_thread_interrupted": threadInterrupted,
     "54_remote_device": remoteDevice,
     "55_environment_host_key": environmentHostKey,
+    "56_routine_triggers": routineTriggers,
   }),
 }).pipe(
   Effect.tap((ran) =>

@@ -2,6 +2,7 @@
 # Usage: webhook.sh <webhook-url> <secret> '<json body>' [idempotency-key] [--hmac]
 # POSTs the body with `Authorization: Bearer <secret>`, or with --hmac signed as X-Hub-Signature-256: sha256=<hmac of raw body>.
 # The idempotency key makes a retry start nothing; without one every call starts a thread.
+# GITHUB_EVENT=issue_comment adds the X-GitHub-Event header that /hooks/github reads.
 # Prints the response body, then the HTTP status on its own line.
 set -euo pipefail
 url=${1:?webhook url from routines.webhook}
@@ -16,4 +17,5 @@ else
   args+=(-H "authorization: Bearer $secret")
 fi
 [[ -n "$key" ]] && args+=(-H "idempotency-key: $key")
+[[ -n "${GITHUB_EVENT:-}" ]] && args+=(-H "x-github-event: $GITHUB_EVENT")
 curl "${args[@]}" "$url"

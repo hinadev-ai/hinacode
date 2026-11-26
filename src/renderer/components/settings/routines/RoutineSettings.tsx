@@ -38,6 +38,7 @@ import { settingsGroupClass, SettingsPageAction, SettingsSection, settingsSurfac
 import { RoutineDetails } from "./RoutineDetails.tsx"
 import { RoutineDialog, type RoutineDialogState } from "./RoutineForm.tsx"
 import { describeCron } from "./schedule.ts"
+import { triggerEventLabel } from "./trigger.ts"
 
 const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
@@ -279,7 +280,9 @@ function RoutineRow({ routine, environment, machine, projectName, onEdit }: Rout
             </span>
             <span className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
               {projectName && <span className="truncate">{projectName}</span>}
-              <span>{routine.schedule ? scheduleLabel(routine.schedule) : m.routines_no_schedule()}</span>
+              {routine.schedule && <span>{scheduleLabel(routine.schedule)}</span>}
+              {routine.trigger && <span>{triggerEventLabel[routine.trigger.event]()}</span>}
+              {!routine.schedule && !routine.trigger && <span>{m.routines_no_schedule()}</span>}
               {routine.nextRunAt && (
                 <span className="tabular-nums">{m.routines_next_run({ time: formatTime(routine.nextRunAt) })}</span>
               )}

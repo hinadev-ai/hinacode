@@ -1116,7 +1116,36 @@ export type RoutineSchedule = typeof RoutineSchedule.Type
 export const RoutineWorkspace = Schema.Literals(["local", "worktree"])
 export type RoutineWorkspace = typeof RoutineWorkspace.Type
 
-export const RoutineRunSource = Schema.Literals(["schedule", "webhook", "manual"])
+export const TriggerEvent = Schema.Literals([
+  "github.issue_opened",
+  "github.pull_request_opened",
+  "github.issue_comment",
+  "github.pull_request_comment",
+])
+export type TriggerEvent = typeof TriggerEvent.Type
+
+const TriggerValue = Schema.String.check(Schema.isTrimmed(), Schema.isNonEmpty(), Schema.isMaxLength(200))
+
+export const RoutineTrigger = Schema.Struct({
+  event: TriggerEvent,
+  fromUsers: Schema.NonEmptyArray(TriggerValue),
+  scopes: Schema.Array(TriggerValue),
+  contains: Schema.NullOr(TriggerValue),
+  continuation: Schema.Literals(["conversation", "new"]),
+})
+export type RoutineTrigger = typeof RoutineTrigger.Type
+
+export const ReplyDestination = Schema.Union([
+  Schema.Struct({
+    source: Schema.Literal("github"),
+    repo: Schema.String,
+    number: Schema.Int,
+    url: Schema.String,
+  }),
+])
+export type ReplyDestination = typeof ReplyDestination.Type
+
+export const RoutineRunSource = Schema.Literals(["schedule", "webhook", "manual", "event"])
 export type RoutineRunSource = typeof RoutineRunSource.Type
 
 export const RoutineRunStatus = Schema.Literals(["started", "skipped", "failed"])
@@ -1144,6 +1173,7 @@ export const Routine = Schema.Struct({
   effort: Schema.NullOr(Schema.String),
   workspace: RoutineWorkspace,
   schedule: Schema.NullOr(RoutineSchedule),
+  trigger: Schema.NullOr(RoutineTrigger).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   nextRunAt: Schema.NullOr(Timestamp),
   lastRun: Schema.NullOr(RoutineRun),
   createdAt: Timestamp,

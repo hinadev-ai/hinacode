@@ -64,6 +64,7 @@ describe("runMigrations", () => {
       yield* sql`ALTER TABLE environment DROP COLUMN verified`
       for (const column of ["client_id", "client_name", "claimed_at", "thread_title"])
         yield* sql.unsafe(`ALTER TABLE thread_device DROP COLUMN ${column}`)
+      yield* sql`DROP TABLE routine_conversation`
       yield* restoreAutomationTables
       yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id >= 43`
 
@@ -83,6 +84,7 @@ describe("runMigrations", () => {
         [53, "thread_interrupted"],
         [54, "remote_device"],
         [55, "environment_host_key"],
+        [56, "routine_triggers"],
       ])
       expect(yield* columnsOf("pull_request_link")).not.toContain("observed_status")
       expect(yield* sql`SELECT name FROM effect_sql_migrations WHERE migration_id = 40`).toStrictEqual([
@@ -112,7 +114,7 @@ describe("runMigrations", () => {
 
       expect(upgraded.thread).toStrictEqual({ title: "t", provider: "claude" })
       expect(upgraded.ids.slice(0, 4)).toStrictEqual([1, 2, 3, 4])
-      expect(upgraded.ids.at(-1)).toBe(55)
+      expect(upgraded.ids.at(-1)).toBe(56)
       expect(upgraded.projectColumns).toContain("trusted")
     }),
   )
@@ -158,7 +160,7 @@ describe("runMigrations", () => {
           const sql = yield* SqlClient.SqlClient
           const seeded = yield* seedThread({ rootPath: "/repo" })
           yield* sql`ALTER TABLE thread ADD COLUMN from_the_future TEXT NOT NULL DEFAULT 'kept'`
-          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (56, 'from_the_future')`
+          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (57, 'from_the_future')`
           return seeded
         }),
       )
@@ -178,7 +180,7 @@ describe("runMigrations", () => {
         ran: [],
         thread: { title: "t", provider: "claude" },
         future: { fromTheFuture: "kept" },
-        ids: expect.arrayContaining([55, 56]),
+        ids: expect.arrayContaining([56, 57]),
       })
     }),
   )

@@ -21,6 +21,7 @@ A routine runs a prompt as a new thread on a cron schedule, from a webhook call,
 - `run-history` the newest 200 runs, 20 at a time behind `Show N more`; skip reasons are muted, failures red.
 - `cli` `hinacode routines ls | run | enable | disable` with an id or a 4+ character prefix.
 - `listener` the bind host and port of the webhook listener; a taken port shows the listen error.
+- `trigger` a routine with a GitHub trigger starts a thread from a signed delivery to `/hooks/github` by an allowed sender, and a later event on the same issue or pull request continues that thread.
 
 ## How to get to it (user POV)
 
@@ -39,9 +40,14 @@ Checks:
 
 - **Scheduled run.** `New routine`, fill `Name`, pick `Project` `demo`, `Repeat` `Custom`, `Cron expression` `* * * * *`, type `/` in `Prompt` and pick a skill from listbox `Commands`, pick a `Model`, `Create routine`. `$S/rpc.ts $PORT routines.runs '{"id":"<id>","limit":5}'` shows a `schedule` run with a `threadId` within a minute, and `threads.transcript` on it shows the prompt. Disable it afterwards, or it starts a thread every minute.
 - **Webhook.** Click the row, `Create secret`, read the secret from the dialog (`ab eval 'document.querySelector("[role=dialog]").innerText'`). `$S/webhook.sh "$URL" "$SECRET" '{"pr":42}' key-1` prints 202; the same command again prints 200 with `skipped`; add `--hmac` as the fifth argument to sign instead; a wrong secret prints 401 and a disabled routine 409.
+- **Trigger.** `New routine`, tab `No schedule`, combobox `Trigger` `GitHub issue comment`, fill `From`, `Repositories` and `Contains`, `Create routine`. `Create routine` stays disabled while `From` is empty. Read `githubUrl` from `$S/rpc.ts $PORT routines.webhook '{"id":"<id>"}'` and post an `issue_comment` payload with `GITHUB_EVENT=issue_comment $S/webhook.sh "$URL" "$SECRET" "$BODY" "" --hmac`. An allowed sender in an allowed repository with the phrase gets 202 with one `started` run, the same comment id again gets a `skipped` run, and a second comment id on the same issue gets a `started` run with the same `threadId`. A stranger, another repository, a comment without the phrase, a `ping` and a comment that holds `<!-- hinacode -->` all get 202 with `"runs":[]`. A wrong secret gets 401. `threads.transcript` shows the event quoted as JSON under the routine prompt.
 - **CLI.** `pnpm build:server`, then `node bin/hinacode.mjs --data $DATA routines ls`.
 
 ## Gotchas
+
+- Do not call the `reply` tool in a verification instance. It runs the real `gh` with your account. A `gh` stand-in on `PATH` does not help where the login shell puts its own `gh` first, because the app reads `PATH` from the login shell at startup. `mcp/server.integration.test.ts` covers the post.
+- With `HINACODE_MOCK_CLAUDE`, post a follow-up event only after the thread is idle. The simulated agent refuses every steer, so an event that lands on its running turn is recorded as a failed run with `No turn is running on this thread`. `Routines.integration.test.ts` covers two events that arrive together.
+- A hand-built `issue_comment` payload needs `issue.id`, `issue.number`, `issue.title`, `issue.html_url`, `issue.user.login`, `comment.id`, `comment.body`, `repository.full_name`, `sender.login` and `sender.type`. A payload that misses one gets 202 with `"runs":[]`, the same answer as an event nobody listens for.
 
 - A wrong secret gets 401 before the routine id is looked up, so an unknown id with a wrong secret is 401, not 404.
 - Effort shows only for models that report effort levels; the mock models report none.

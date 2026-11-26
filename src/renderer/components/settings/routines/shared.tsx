@@ -19,6 +19,7 @@ export const runSourceLabel = {
   schedule: m.routines_source_schedule,
   webhook: m.routines_source_webhook,
   manual: m.routines_source_manual,
+  event: m.routines_source_event,
 } satisfies Record<RoutineRunSource, () => string>
 
 export function RunStatusBadge({ status }: { status: RoutineRunStatus }) {
