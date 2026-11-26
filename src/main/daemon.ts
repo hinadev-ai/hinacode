@@ -17,6 +17,7 @@ import { layer as RemoteAccessLayer, RemoteAccess } from "./remote/access.ts"
 import { storedTunnel } from "./remote/relay.ts"
 import {
   applyServeRelay,
+  applyServeSelfHostedRelay,
   autoUpdate,
   boundServeLog,
   browserCommand,
@@ -185,6 +186,7 @@ export const serve = async (flags: ServeFlags, userData: string) => {
       ),
     )
     if (linking) process.stdout.write("Linked.\n")
+    await runtime.runPromise(applyServeSelfHostedRelay(config.selfHostedRelay))
   } catch (error) {
     await runtime.dispose()
     throw error

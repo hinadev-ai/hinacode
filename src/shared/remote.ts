@@ -199,7 +199,8 @@ export const dialPlan = (target: Pick<PairingTarget, "hosts" | "port" | "relay">
 const isAuthorityOnlyHost = (host: string) =>
   host !== "" && !/[\s/?#@[\]\\]/.test(host) && URL.parse(remoteWebSocketUrl({ host, port: 1 })) !== null
 
-const isRelayHostname = (relay: string) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(relay)
+const isRelayAddress = (relay: string) =>
+  /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d{1,5})?(\/h\/[A-Za-z0-9_-]{16,64})?$/i.test(relay)
 
 export const parsePairingUrl = (text: string): PairingTarget | null => {
   const word = text.split(/\s+/).find((part) => /^hinacode:\/\/connect\?/i.test(part))
@@ -212,7 +213,7 @@ export const parsePairingUrl = (text: string): PairingTarget | null => {
   const relay = url.searchParams.get("relay")
   if (!isArrayNonEmpty(hosts) || !hosts.every(isAuthorityOnlyHost)) return null
   if (key === null || decodeKey(key) === null || !Number.isInteger(port) || port < 1 || port > 65535) return null
-  if (relay !== null && !isRelayHostname(relay)) return null
+  if (relay !== null && !isRelayAddress(relay)) return null
   return { hosts, port, relay, key, secret }
 }
 

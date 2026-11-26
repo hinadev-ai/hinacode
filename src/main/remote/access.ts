@@ -61,6 +61,11 @@ export const advertisedHosts = (bindHost: string): NonEmptyReadonlyArray<string>
 
 export const relayHostname = (relay: RelayStatus) => ("hostname" in relay ? relay.hostname : null)
 
+export const appsRelayHostname = (relay: RelayStatus) => {
+  const hostname = relayHostname(relay)
+  return hostname === null || hostname.includes("/") ? null : hostname
+}
+
 export class RemoteAccess extends Context.Service<
   RemoteAccess,
   {

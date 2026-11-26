@@ -793,6 +793,8 @@ const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
 
 export const DEFAULT_BRANCH_NAMING_INSTRUCTIONS = "Start with hinacode/."
 
+export const SelfHostedRelayUrl = Schema.String.check(Schema.isPattern(/^https:\/\/[a-z0-9.-]+(:\d{1,5})?$/i))
+
 export const Settings = Schema.Struct({
   defaultProvider: ProviderId,
   providerEnabled: perProvider(Schema.Boolean, true),
@@ -815,6 +817,7 @@ export const Settings = Schema.Struct({
     Schema.withDecodingDefaultKey(Effect.succeed({ bindHost: "127.0.0.1", port: 48080 })),
   ),
   remote: Schema.Struct({ enabled: Schema.Boolean, bindHost: BindHost, port: ListenPort }),
+  selfHostedRelay: Schema.NullOr(SelfHostedRelayUrl),
   textGenerationModel: Schema.String,
   branchNamingInstructions: Schema.String.pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_BRANCH_NAMING_INSTRUCTIONS)),
@@ -881,6 +884,7 @@ export const defaultSettings: Settings = {
     tinyVmSetupScript: "",
   },
   worktreeRoot: null,
+  selfHostedRelay: null,
   actions: [],
   magpieEndpoint: null,
 }

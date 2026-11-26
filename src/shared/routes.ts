@@ -108,6 +108,8 @@ export const routes: Record<RpcMethod, Route> = {
   "relayAccount.machines": client,
   "relayAccount.setShown": client,
   "relayAccount.removeMachine": client,
+  "relay.useSelfHosted": client,
+  "relay.stopSelfHosted": client,
   "appConnections.status": client,
   "appConnections.start": client,
   "appConnections.answer": client,
