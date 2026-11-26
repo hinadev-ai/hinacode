@@ -45,6 +45,7 @@ import {
 } from "./errors.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import { Events } from "./Events.ts"
+import { folderFiles } from "./folderFiles.ts"
 import { slugifyBranch } from "./branchName.ts"
 import { type CommandError, Git } from "./Git.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
@@ -723,11 +724,15 @@ const make = Effect.gen(function* () {
   const listFiles = (id: string) =>
     Effect.gen(function* () {
       const { cwd } = yield* activeWorkspace(id)
-      const output = yield* git.run(cwd, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"])
-      return output
-        .split("\0")
-        .filter((path) => path !== "")
-        .slice(0, MAX_LISTED_FILES)
+      return yield* git.run(cwd, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]).pipe(
+        Effect.map((output) =>
+          output
+            .split("\0")
+            .filter((path) => path !== "")
+            .slice(0, MAX_LISTED_FILES),
+        ),
+        Effect.catch(() => Effect.promise(() => folderFiles(cwd, MAX_LISTED_FILES))),
+      )
     })
 
   const changes = (id: string, scope: ChangesScope) =>

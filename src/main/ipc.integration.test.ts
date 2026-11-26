@@ -812,6 +812,22 @@ describe("projects, threads and settings over rpc", () => {
     expect(files).not.toContain("secret.env")
   })
 
+  test("lists the files a thread can mention in a folder that is not a git repository", async () => {
+    const root = join(dir, "plain-folder")
+    mkdirSync(join(root, "app", "node_modules", "dep"), { recursive: true })
+    mkdirSync(join(root, "app", ".git"), { recursive: true })
+    writeFileSync(join(root, "README.md"), "hello")
+    writeFileSync(join(root, "app", "index.ts"), "")
+    writeFileSync(join(root, "app", "node_modules", "dep", "index.js"), "")
+    writeFileSync(join(root, "app", ".git", "HEAD"), "")
+    const project = result(await invoke("projects.create", { name: "plain", rootPath: root, setupScript: null }))
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+
+    const files = result(await invoke("files.list", { threadId: thread.id }))
+
+    expect(files.toSorted()).toStrictEqual(["README.md", "app/index.ts"])
+  })
+
   test("lists a folder only for the app frame, a known root, and a path inside it", async () => {
     const { rootPath } = result(await invoke("projects.list", undefined))[0]!
     mkdirSync(join(repo, "docs"), { recursive: true })
