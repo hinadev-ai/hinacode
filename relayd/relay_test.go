@@ -197,3 +197,40 @@ func TestReattachingMachineReplacesItsOldestIdleConnection(t *testing.T) {
 		t.Fatalf("client reached %s instead of the newest connection", forwarded.URL.Path)
 	}
 }
+
+func TestMachineClosingFreesTheSessionWhileTheClientStaysOpen(t *testing.T) {
+	limits := DefaultLimits
+	limits.ActivePerHost = 1
+	limits.DrainAfterClose = 50 * time.Millisecond
+	address := startRelay(t, limits)
+	closing := attachMachine(t, address)
+	handedOver := make(chan struct{})
+	go func() {
+		closing.reader.ReadByte()
+		closing.conn.Write([]byte{signalOpen})
+		http.ReadRequest(closing.reader)
+		closing.conn.Close()
+		close(handedOver)
+	}()
+	silent, err := net.Dial("tcp", address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer silent.Close()
+	io.WriteString(silent, clientHead)
+	<-handedOver
+
+	next := attachMachine(t, address)
+	go next.serveEcho()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		_, _, response := request(t, address, clientHead)
+		if response.StatusCode == http.StatusSwitchingProtocols {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("a client the machine hung up on still holds the session slot: %d", response.StatusCode)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

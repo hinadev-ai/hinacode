@@ -26,21 +26,23 @@ const (
 )
 
 type Limits struct {
-	ParkedPerHost  int
-	ActivePerHost  int
-	WaitForMachine time.Duration
-	PingEvery      time.Duration
-	DeadAfter      time.Duration
-	CopyBuffer     int
+	ParkedPerHost   int
+	ActivePerHost   int
+	WaitForMachine  time.Duration
+	PingEvery       time.Duration
+	DeadAfter       time.Duration
+	DrainAfterClose time.Duration
+	CopyBuffer      int
 }
 
 var DefaultLimits = Limits{
-	ParkedPerHost:  8,
-	ActivePerHost:  64,
-	WaitForMachine: 5 * time.Second,
-	PingEvery:      15 * time.Second,
-	DeadAfter:      40 * time.Second,
-	CopyBuffer:     16 << 10,
+	ParkedPerHost:   8,
+	ActivePerHost:   64,
+	WaitForMachine:  5 * time.Second,
+	PingEvery:       15 * time.Second,
+	DeadAfter:       40 * time.Second,
+	DrainAfterClose: 5 * time.Second,
+	CopyBuffer:      16 << 10,
 }
 
 var hostID = regexp.MustCompile(`^[A-Za-z0-9_-]{16,64}$`)
