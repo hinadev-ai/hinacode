@@ -152,6 +152,21 @@ test("a wrong token leaves the machine unreachable and says why", async () => {
   expect(refused).toMatchObject({ _tag: "Some", value: { error: "The relay refused this machine's token." } })
 })
 
+test.each([
+  ["a port out of range", "https://relay.example.com:99999"],
+  ["an address that is not an IP or a name", "https://999.999.999.999"],
+  ["a name that pairing URLs cannot carry", "https://relay:8443"],
+  ["a path", "https://relay.example.com/relay"],
+])("refuses a relay URL with %s and keeps the setting", async (_, url) => {
+  const before = await machine.runPromise(Settings.use((settings) => settings.get))
+  const refused = await machine.runPromise(
+    Relay.use((relay) => relay.useSelfHosted({ url, token: TOKEN })).pipe(Effect.flip),
+  )
+  expect(refused.message).toBe("Enter the relay as https://host or https://host:port.")
+  const after = await machine.runPromise(Settings.use((settings) => settings.get))
+  expect(after.selfHostedRelay).toBe(before.selfHostedRelay)
+})
+
 test("stopping the self-hosted relay turns the relay off again", async () => {
   await machine.runPromise(Relay.use((relay) => relay.stopSelfHosted))
   await relayStatus((status) => status.state === "off")
