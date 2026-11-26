@@ -793,7 +793,18 @@ const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
 
 export const DEFAULT_BRANCH_NAMING_INSTRUCTIONS = "Start with hinacode/."
 
-export const SelfHostedRelayUrl = Schema.String.check(Schema.isPattern(/^https:\/\/[a-z0-9.-]+(:\d{1,5})?$/i))
+export const RELAY_AUTHORITY = /[a-z0-9-]+(\.[a-z0-9-]+)+(:\d{1,5})?/i
+
+const WHOLE_RELAY_AUTHORITY = new RegExp(`^${RELAY_AUTHORITY.source}$`, "i")
+
+export const isSelfHostedRelayUrl = (text: string) => {
+  const url = URL.parse(text)
+  return url !== null && url.protocol === "https:" && url.origin === text && WHOLE_RELAY_AUTHORITY.test(url.host)
+}
+
+export const SelfHostedRelayUrl = Schema.String.check(
+  Schema.makeFilter((text) => isSelfHostedRelayUrl(text) || "an https:// relay with a dotted host name"),
+)
 
 export const Settings = Schema.Struct({
   defaultProvider: ProviderId,

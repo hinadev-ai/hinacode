@@ -73,6 +73,12 @@ export const relayOrigin = ({ bindHost, port }: Pick<SettingsValue["remote"], "b
   return `http://${host.includes(":") ? `[${host}]` : host}:${port}`
 }
 
+const selfHostedRelayOrigin = (input: string) => {
+  const url = URL.parse(input.trim())
+  const bare = url !== null && url.pathname === "/" && url.search === "" && url.hash === "" && url.username === ""
+  return bare && url.password === "" ? Schema.decodeUnknownOption(SelfHostedRelayUrl)(url.origin) : Option.none()
+}
+
 const attachmentStatus = (attachment: AttachmentState, hostname: string): RelayStatus =>
   attachment.state === "connected"
     ? { state: "connected", hostname }
@@ -486,7 +492,7 @@ const make = ({
 
     const useSelfHosted = ({ url, token }: { readonly url: string; readonly token: string }) =>
       Effect.gen(function* () {
-        const origin = Schema.decodeUnknownOption(SelfHostedRelayUrl)(url.trim().replace(/\/+$/, ""))
+        const origin = selfHostedRelayOrigin(url)
         if (Option.isNone(origin)) {
           return yield* new RelayError({ message: "Enter the relay as https://host or https://host:port." })
         }
