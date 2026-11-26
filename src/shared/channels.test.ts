@@ -1,13 +1,16 @@
+import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
 import {
   artifactUrl,
   attachmentUrl,
   desktopResourceUrl,
   externalImageUrl,
+  githubAssetIdOf,
   githubAssetUrl,
   projectFileUrl,
   webResourceUrl,
 } from "./channels.ts"
+import { RpcMethods } from "./contract.ts"
 
 const roundTrip = (url: string) => desktopResourceUrl(new URL(webResourceUrl(url), "https://code.test"))
 
@@ -39,5 +42,22 @@ describe("resource URLs on the web", () => {
   it("leaves every other URL alone", () => {
     expect(webResourceUrl("data:image/png;base64,AAAA")).toBe("data:image/png;base64,AAAA")
     expect(desktopResourceUrl(new URL("https://code.test/assets/app.js"))).toBeNull()
+  })
+})
+
+describe("GitHub image uploads", () => {
+  const id = "a7e137c9-6549-4b5b-bd04-5a2345e7d1ea"
+  const accepts = Schema.is(RpcMethods["github.assetUrl"].request)
+
+  it("asks the host to sign only an uploaded image's id", () => {
+    expect(githubAssetIdOf(`https://github.com/user-attachments/assets/${id}`)).toBe(id)
+    expect(accepts({ id })).toBe(true)
+  })
+
+  it("never sends the GitHub token to another path", () => {
+    expect(githubAssetIdOf(`https://example.com/user-attachments/assets/${id}`)).toBeNull()
+    expect(githubAssetIdOf(`https://github.com/user-attachments/assets/${id}/../../settings`)).toBeNull()
+    expect(accepts({ id: `${id}/../../settings` })).toBe(false)
+    expect(accepts({ id: "../../user/repos" })).toBe(false)
   })
 })

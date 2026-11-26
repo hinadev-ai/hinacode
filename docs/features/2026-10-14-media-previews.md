@@ -15,9 +15,10 @@ hinacode is built for private repositories, and their pull request descriptions 
 
 ## Design
 
-Main serves both kinds of content over two privileged schemes, so no rpc method carries bytes or the token.
+Main serves both kinds of content over two privileged schemes, so no rpc method carries bytes or the token. Both the scheme and the phone's rpc go through `GitHub.assetUrl`.
 
 - `hinacode-github-asset://asset/<uuid>` takes only an attachment id. Main runs `gh auth token`, asks `github.com/user-attachments/assets/<uuid>` for its redirect, and fetches the short-lived signed URL without the token, passing the Range header so video seeks. `Markdown.tsx` rewrites attachment image URLs to it, and embeds a paragraph that is only a bare attachment link.
+- The phone has no scheme to register, so it calls `github.assetUrl` with the attachment id and gets back only the signed URL, which expires in minutes and carries no token. `useHostedImages` swaps attachment images for it, table cells included. A missing attachment returns null and the image stays empty.
 - `hinacode-file://root/<encoded root>/<path>` resolves through `Files.resolve`, the same known-root and inside-root check as `fs.read`. The root is one path segment, so an HTML file's relative links resolve to siblings, and a link that climbs out names an unknown root.
 - Every `hinacode-file` response carries `Content-Security-Policy: sandbox allow-scripts`. HTML runs its scripts in an opaque origin, without popups, top navigation, storage, cookies, `window.hinacode` or the parent DOM, however it is embedded. `will-frame-navigate` lets a subframe load `hinacode-file` and nothing else, and keeps the top frame on the app.
 - Both schemes are registered on the default session only, so in-app browser pages, which run in `persist:browser`, cannot reach them.

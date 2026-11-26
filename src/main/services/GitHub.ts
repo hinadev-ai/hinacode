@@ -770,6 +770,7 @@ export class GitHub extends Context.Service<
     readonly installed: Effect.Effect<boolean>
     readonly auth: Effect.Effect<GitHubAuth, CommandError | GitHubRateLimitedError | Schema.SchemaError>
     readonly token: Effect.Effect<string, GitHubError>
+    readonly assetUrl: (id: string) => Effect.Effect<string | null, GitHubError>
     readonly run: (cwd: string, args: ReadonlyArray<string>) => Effect.Effect<string, GitHubError>
     readonly pullRequest: (
       url: string,
@@ -844,6 +845,7 @@ const FINISHED_PULL_REQUEST_TTL = "1 hour"
 const FRESH_READ_WINDOW = "10 seconds"
 const MERGEABLE_RECHECK = "2 seconds"
 const MERGEABLE_RECHECKS = 5
+const ASSET_TIMEOUT_MS = 15_000
 
 const make = Effect.gen(function* () {
   const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)
@@ -1198,12 +1200,35 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => null),
     )
 
+  const token = ghUnpaused(homedir(), ["auth", "token", "--hostname", "github.com"]).pipe(
+    Effect.map((stdout) => stdout.trim()),
+  )
+
+  const assetUrl = (id: string) =>
+    Effect.gen(function* () {
+      const authorization = `Bearer ${yield* token}`
+      const response = yield* Effect.tryPromise({
+        try: (signal) =>
+          fetch(`https://github.com/user-attachments/assets/${id}`, {
+            headers: { authorization },
+            redirect: "manual",
+            signal: AbortSignal.any([signal, AbortSignal.timeout(ASSET_TIMEOUT_MS)]),
+          }),
+        catch: () => new GitHubApiError({ detail: "Cannot reach GitHub for this image" }),
+      })
+      yield* Effect.promise(() => response.body?.cancel() ?? Promise.resolve())
+      if (response.status === 404) return null
+      const signed = URL.parse(response.headers.get("location") ?? "")
+      if (signed?.protocol !== "https:")
+        return yield* new GitHubApiError({ detail: `GitHub answered HTTP ${response.status} for this image` })
+      return signed.href
+    })
+
   return GitHub.of({
     installed: Effect.promise(() => findBinary("gh")).pipe(Effect.map((path) => path !== undefined)),
     auth,
-    token: ghUnpaused(homedir(), ["auth", "token", "--hostname", "github.com"]).pipe(
-      Effect.map((stdout) => stdout.trim()),
-    ),
+    token,
+    assetUrl,
     run: gh,
     pullRequest: (raw) => Effect.map(read(raw), toPullRequest),
     issue: (raw) => {

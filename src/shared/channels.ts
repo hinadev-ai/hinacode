@@ -10,11 +10,15 @@ export const attachmentUrl = (path: string, environment: string | null = null) =
 
 export const GITHUB_ASSET_PROTOCOL = "hinacode-github-asset"
 
+export const GITHUB_ASSET_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
+
 const GITHUB_ASSET = /^https:\/\/github\.com\/user-attachments\/assets\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/
 
+export const githubAssetIdOf = (url: string | undefined): string | null => GITHUB_ASSET.exec(url ?? "")?.[1] ?? null
+
 export const githubAssetUrl = (url: string | undefined): string | null => {
-  const id = GITHUB_ASSET.exec(url ?? "")?.[1]
-  return id === undefined ? null : `${GITHUB_ASSET_PROTOCOL}://asset/${id}`
+  const id = githubAssetIdOf(url)
+  return id === null ? null : `${GITHUB_ASSET_PROTOCOL}://asset/${id}`
 }
 
 export const EXTERNAL_IMAGE_PROTOCOL = "hinacode-image"
