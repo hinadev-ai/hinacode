@@ -1,24 +1,32 @@
 import { Lexer, type Token, type Tokens } from "marked"
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult, Atom } from "effect/reactivity"
+import { githubAssetIdOf } from "@shared/channels.ts"
 import { resolveImageSource } from "@/lib/markdown-paths"
 import { familyOf, rpcFamily } from "@/lib/remote"
 
 const previewRead = rpcFamily("fs.preview")
+const assetUrlRead = rpcFamily("github.assetUrl")
 
 const preview = familyOf((root: string, path: string) => previewRead({ root, path }).pipe(Atom.setIdleTTL("5 minutes")))
 
-const loadedPreviews = familyOf((images: readonly (readonly [root: string, path: string])[]) =>
-  Atom.make((get) =>
-    images.map(([root, path]) => AsyncResult.getOrElse(AsyncResult.map(get(preview(root, path)), (found) => found.dataUrl), () => undefined)),
-  ),
+const githubAsset = familyOf((id: string) => assetUrlRead({ id }).pipe(Atom.setIdleTTL("1 minute")))
+
+type HostedSource = { readonly kind: "file"; readonly root: string; readonly path: string } | { readonly kind: "githubAsset"; readonly id: string }
+
+const urlOf = (get: Atom.FnContext, source: HostedSource): string | undefined =>
+  source.kind === "file"
+    ? AsyncResult.getOrElse(AsyncResult.map(get(preview(source.root, source.path)), (found) => found.dataUrl), () => undefined)
+    : (AsyncResult.getOrElse(get(githubAsset(source.id)), () => null) ?? undefined)
+
+const loadedUrls = familyOf((sources: readonly HostedSource[]) =>
+  Atom.make((get) => sources.map((source) => urlOf(get, source))),
 )
 
-interface WorkspaceImage {
+interface HostedImage {
   readonly raw: string
   readonly alt: string
-  readonly root: string
-  readonly path: string
+  readonly source: HostedSource
 }
 
 function imageTokens(tokens: readonly Token[]): Tokens.Image[] {
@@ -34,22 +42,28 @@ function imageTokens(tokens: readonly Token[]): Tokens.Image[] {
   })
 }
 
-function workspaceImages(text: string, root: string | null, folder: string | undefined): WorkspaceImage[] {
-  if (root === null || !text.includes("![")) return []
+function sourceOf(href: string, root: string | null, folder: string | undefined): HostedSource | null {
+  const id = githubAssetIdOf(href)
+  if (id !== null) return { kind: "githubAsset", id }
+  const source = resolveImageSource(href, root, folder)
+  return source.kind === "file" ? source : null
+}
+
+function hostedImages(text: string, root: string | null, folder: string | undefined): HostedImage[] {
+  if (!text.includes("![") || (root === null && !text.includes("/user-attachments/assets/"))) return []
   return imageTokens(Lexer.lex(text, { gfm: true })).flatMap((image) => {
-    const source = resolveImageSource(image.href, root, folder)
-    if (source.kind !== "file") return []
-    return [{ raw: image.raw, alt: image.text, root: source.root, path: source.path }]
+    const source = sourceOf(image.href, root, folder)
+    return source === null ? [] : [{ raw: image.raw, alt: image.text, source }]
   })
 }
 
 const escapeAlt = (alt: string) => alt.replace(/[[\]\\]/g, "\\$&")
 
-export function useWorkspaceImages(text: string, root: string | null, folder: string | undefined): string {
-  const images = workspaceImages(text, root, folder)
-  const dataUrls = useAtomValue(loadedPreviews(images.map((image) => [image.root, image.path] as const)))
+export function useHostedImages(text: string, root: string | null, folder: string | undefined): string {
+  const images = hostedImages(text, root, folder)
+  const urls = useAtomValue(loadedUrls(images.map((image) => image.source)))
   return images.reduce((markdown, image, index) => {
-    const dataUrl = dataUrls[index]
-    return dataUrl === undefined ? markdown : markdown.split(image.raw).join(`![${escapeAlt(image.alt)}](${dataUrl})`)
+    const url = urls[index]
+    return url === undefined ? markdown : markdown.split(image.raw).join(`![${escapeAlt(image.alt)}](${url})`)
   }, text)
 }

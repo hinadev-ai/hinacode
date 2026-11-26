@@ -4,7 +4,7 @@ import { Image, Modal, Platform, Pressable, StyleSheet, type ViewStyle } from "r
 import { EnrichedMarkdownText, type MarkdownStyle } from "react-native-enriched-markdown"
 import { Colors, mono, type Palette, radius, SyntaxColors } from "@/constants/theme"
 import { type Scheme, useScheme } from "@/hooks/use-theme"
-import { useWorkspaceImages } from "@/hooks/use-workspace-images"
+import { useHostedImages } from "@/hooks/use-hosted-images"
 import { copy } from "@/lib/copy"
 import { rewriteMarkdownExtras } from "@/lib/markdown-extras"
 import { resolveFileLink } from "@/lib/markdown-paths"
@@ -146,7 +146,7 @@ export function Markdown({
   measure?: MarkdownMeasure
 }) {
   const scheme = useScheme()
-  const markdown = useWorkspaceImages(text, root, folder)
+  const markdown = useHostedImages(text, root, folder)
   const [openImage, setOpenImage] = useState<string | null>(null)
 
   const onLinkPress = ({ url }: { url: string }) => {

@@ -11,6 +11,7 @@ import {
   WhiteboardScene,
 } from "./artifact.ts"
 import { ArtifactTheme } from "./artifactTheme.ts"
+import { GITHUB_ASSET_ID } from "./channels.ts"
 import {
   AccountLimits,
   AccountProviderId,
@@ -713,6 +714,10 @@ export const RpcMethods = {
   "github.comment": rpc(Schema.Struct({ url: Schema.String, body: Schema.String }), Schema.Void),
   "github.pullRequestCandidates": rpc(Schema.Struct({ url: Schema.String }), PullRequestCandidates),
   "github.editPullRequest": rpc(Schema.Struct({ url: Schema.String, edit: PullRequestEdit }), Schema.Void),
+  "github.assetUrl": rpc(
+    Schema.Struct({ id: Schema.String.check(Schema.isPattern(GITHUB_ASSET_ID)) }),
+    Schema.NullOr(Schema.String),
+  ),
   "github.fileContent": rpc(
     Schema.Struct({ url: Schema.String, ref: GitRefName, path: RepositoryPath }),
     Schema.NullOr(Schema.String),
@@ -1083,6 +1088,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "github.comment": "mutation",
   "github.pullRequestCandidates": "read",
   "github.editPullRequest": "mutation",
+  "github.assetUrl": "read",
   "github.fileContent": "read",
   "github.reviewComment": "mutation",
   "pullRequestGuides.get": "read",
