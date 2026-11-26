@@ -27,7 +27,7 @@ export function BoatThreadDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{m.boat_thread_title()}</DialogTitle>
         </DialogHeader>

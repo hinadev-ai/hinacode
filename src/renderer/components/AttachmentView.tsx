@@ -67,7 +67,7 @@ function ImageAttachment({ attachment }: { attachment: Attachment }) {
       >
         <Preview attachment={attachment} onError={() => setMissing(true)} />
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] max-w-4xl">
+      <DialogContent className="max-w-4xl">
         <DialogTitle className={cn("truncate pr-8", picked !== null && "font-mono text-sm")}>{title}</DialogTitle>
         <img
           src={src}
