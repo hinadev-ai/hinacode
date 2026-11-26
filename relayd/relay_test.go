@@ -174,3 +174,26 @@ func TestRelayRejectsPlainRequestsToAMachine(t *testing.T) {
 		t.Fatalf("plain request answered %d", response.StatusCode)
 	}
 }
+
+func TestReattachingMachineReplacesItsOldestIdleConnection(t *testing.T) {
+	limits := DefaultLimits
+	limits.ParkedPerHost = 2
+	address := startRelay(t, limits)
+	stale := attachMachine(t, address)
+	attachMachine(t, address)
+
+	fresh := attachMachine(t, address)
+	go fresh.serveEcho()
+	stale.conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := io.Copy(io.Discard, stale.reader); err != nil {
+		t.Fatalf("relay kept the oldest idle connection: %v", err)
+	}
+
+	_, _, response := request(t, address, clientHead)
+	if response.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("client upgrade answered %d", response.StatusCode)
+	}
+	if forwarded := <-fresh.requests; forwarded.URL.Path != "/remote" {
+		t.Fatalf("client reached %s instead of the newest connection", forwarded.URL.Path)
+	}
+}
