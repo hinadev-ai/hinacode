@@ -1,7 +1,9 @@
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import type { ThreadVm } from "@shared/domain.ts"
 import { streamVmScreen, type VmScreenStream } from "@shared/vmScreenStream.ts"
 import { Base64 } from "effect/encoding"
-import { Result } from "effect"
+import { AsyncResult } from "effect/reactivity"
+import { Cause, Option, Result } from "effect"
 import { randomUUID } from "expo-crypto"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { useHeaderHeight } from "expo-router/react-navigation"
@@ -17,15 +19,18 @@ import {
   View,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
+import { Failure } from "@/components/files"
 import { Icon, type IconName } from "@/components/icon"
 import { useAction } from "@/components/request-cards"
 import { Button, Notice, SegmentedControl } from "@/components/ui"
 import { VmScreenView, type VmScreenViewHandle } from "@/components/vm-screen-view"
 import { HIT, radius } from "@/constants/theme"
+import { useVmScreenServed } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
-import { useThreadVm } from "@/lib/vm"
+import { errorText } from "@/lib/error-text"
+import { threadVm } from "@/lib/vm"
 import type { ScreenFit, ScreenKey, ScreenMessage } from "@/vm-screen/controller"
 
 type RunningVm = Extract<ThreadVm, { status: "running" }>
@@ -50,13 +55,23 @@ const keys: readonly { key: ScreenKey; label: string; icon?: IconName; accessibi
 export default function VmScreenRoute() {
   const theme = useTheme()
   const { id } = useLocalSearchParams<{ id: string }>()
-  const vm = useThreadVm(id)
+  const vmAtom = threadVm({ threadId: id })
+  const result = useAtomValue(vmAtom)
+  const retry = useAtomRefresh(vmAtom)
+  const vm = Option.getOrUndefined(AsyncResult.value(result))
+  const served = useVmScreenServed(id)
   const headerHeight = useHeaderHeight()
   return (
     <SafeAreaView edges={["bottom"]} style={[styles.flex, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ title: copy("mobile_vm_title") }} />
-      {vm?.status !== "running" ? (
-        <Message text={vm === null ? null : copy("mobile_vm_none")} />
+      {AsyncResult.isFailure(result) && !result.waiting ? (
+        <Failure message={errorText(Cause.squash(result.cause))} onRetry={retry} />
+      ) : vm === undefined ? (
+        <Message text={null} />
+      ) : !served ? (
+        <Message text={copy("mobile_vm_update_desktop")} />
+      ) : vm.status !== "running" ? (
+        <Message text={copy("mobile_vm_none")} />
       ) : vm.provider === "boat" ? (
         <Message text={copy("mobile_vm_boat")} />
       ) : (
