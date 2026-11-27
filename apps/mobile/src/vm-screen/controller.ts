@@ -35,12 +35,16 @@ const keysyms: Record<ScreenKey, number> = {
 const CONTROL_KEYSYM = 0xffe3
 const UNICODE_KEYSYM = 0x01000000
 
-export const keysymOf = (character: string) => {
-  if (character === "\n") return keysyms.Return
-  if (character === "\t") return keysyms.Tab
-  const codePoint = character.codePointAt(0) ?? 0
-  return codePoint < 0x100 ? codePoint : UNICODE_KEYSYM + codePoint
-}
+const isControl = (codePoint: number) => codePoint < 0x20 || (codePoint >= 0x7f && codePoint < 0xa0)
+
+const textKeysyms = (text: string) =>
+  [...text.replaceAll("\r\n", "\n")].flatMap((character) => {
+    if (character === "\n" || character === "\r") return [keysyms.Return]
+    if (character === "\t") return [keysyms.Tab]
+    const codePoint = character.codePointAt(0)!
+    if (isControl(codePoint)) return []
+    return [codePoint <= 0xff ? codePoint : UNICODE_KEYSYM + codePoint]
+  })
 
 const toBase64 = (bytes: Uint8Array) => {
   let binary = ""
@@ -127,12 +131,12 @@ export function mountScreen(Rfb: RfbClass, target: HTMLElement, post: (message: 
         return
       case "text":
         return withControl(command.ctrl, () => {
-          for (const character of command.text) rfb.sendKey(keysymOf(character), null)
+          for (const keysym of textKeysyms(command.text)) rfb.sendKey(keysym, null)
         })
       case "key":
         return withControl(command.ctrl, () => rfb.sendKey(keysyms[command.key], null))
     }
   }
 
-  return { run, unmount: () => rfb.disconnect() }
+  return run
 }

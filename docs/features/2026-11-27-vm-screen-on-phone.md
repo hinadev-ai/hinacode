@@ -43,10 +43,12 @@ A stream used to close when the Electron window that owned it was destroyed. A p
 
 ### Phone
 
-- `stores/vm.ts` keeps each thread's `ThreadVm` from `vm.get` and the `vm.updated` push, which already reaches every client.
+- `lib/vm.ts` keeps each thread's `ThreadVm` from `vm.get` and the `vm.updated` push, which already reaches every client.
+- A desktop that serves `vm.screen.read` advertises the `vm-screen` remote feature. Without it the card keeps the request but offers no Open screen, and the screen asks the developer to update the desktop.
 - The notifier raises a needs-input alert when a thread's VM gains a `request`.
 - `app/thread/[id]/vm.tsx` is the screen. It renders noVNC from one page that `scripts/build-vm-screen-html.mts` bundles from `src/vm-screen/`, like the terminal's page. Native loads it in a WebView and talks to it with `injectJavaScript` and `postMessage`. The web build loads it in an iframe sandboxed to scripts only and talks to it with `postMessage`. noVNC 1.7 uses top-level await, so the page is a module script, and Metro never bundles noVNC.
 - The page owns noVNC: fit mode, view-only, and typing. React Native owns the stream, and bytes cross between them as base64.
+- When the connection reconnects, for example after the app was in the background longer than the 10 second lease, a screen whose stream ended opens a new stream, the same way Reconnect does.
 - Text is typed as X keysyms: Latin-1 as itself and anything else as its Unicode keysym, which Xvnc adds to its keymap. That is how the agent's `vm_type` already types CJK.
 - The guest's clipboard is not copied to the phone.
 
