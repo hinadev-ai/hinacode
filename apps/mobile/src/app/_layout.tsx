@@ -75,6 +75,7 @@ function Routes() {
               <Stack.Screen name="thread/[id]/subagent" options={{ title: "" }} />
               <Stack.Screen name="thread/[id]/document" options={{ title: "" }} />
               <Stack.Screen name="thread/[id]/artifact" options={{ title: "" }} />
+              <Stack.Screen name="thread/[id]/vm" options={{ title: "" }} />
               <Stack.Screen name="find" options={{ title: copy("mobile_search_title") }} />
               <Stack.Screen
                 name="project/new"

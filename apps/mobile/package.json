@@ -51,8 +51,10 @@
     "zustand": "5.0.15"
   },
   "devDependencies": {
+    "@novnc/novnc": "1.7.0",
     "@types/node": "26.6.5",
     "@types/react": "~19.3.0",
+    "esbuild": "0.25.12",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -62,6 +64,7 @@
     "web": "expo start --web",
     "lint": "pnpm --dir ../.. exec oxlint apps/mobile",
     "build:terminal": "node ./scripts/build-terminal-html.mts",
+    "build:vm-screen": "node ./scripts/build-vm-screen-html.mts",
     "build:icons": "./scripts/build-app-icons.sh",
     "build:tab-icons": "node ./scripts/build-tab-icons.mts",
     "build:send-grain": "node ./scripts/build-send-grain.mts",

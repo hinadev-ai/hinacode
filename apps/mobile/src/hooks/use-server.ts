@@ -13,6 +13,12 @@ export function useThreadServer(threadId: string): Server | undefined {
   return useProjectServer(projectId)
 }
 
+export function useVmScreenServed(threadId: string) {
+  const server = useThreadServer(threadId)
+  const everyServer = useConnection((state) => state.features.has("vm-screen"))
+  return server === undefined ? everyServer : server.features.has("vm-screen")
+}
+
 export function useThreadConnection(threadId: string) {
   const server = useThreadServer(threadId)
   const any = useConnection((state) => state.status)

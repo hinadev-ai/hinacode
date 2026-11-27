@@ -116,6 +116,7 @@ The servers are stored in the secure store (`localStorage` on web) under `hinaco
 ## Scripts
 
 - `pnpm build:terminal` regenerates `src/terminal/terminal-page.ts`, the page the native terminal WebView loads, from the installed `@xterm/xterm`. Run it after upgrading xterm and commit the result.
+- `pnpm build:vm-screen` regenerates `src/vm-screen/vm-screen-page.ts`, the page the VM screen loads, by bundling `@novnc/novnc` with `src/vm-screen/`. Run it after changing either and commit the result.
 - `pnpm build:icons` renders the app icons from the desktop's `assets/icon.svg` with `rsvg-convert`. Run it when the mark changes and commit the result.
 - `pnpm build:tab-icons` renders the tab bar's icons from `@hinacode/icons` into template PNGs with `rsvg-convert`. Run it after `pnpm install` at the repository root when a tab icon changes and commit the result.
 - `pnpm build:send-grain` renders the send button's grain to `assets/images/send-grain.png`. Run it when the grain changes and commit the result.

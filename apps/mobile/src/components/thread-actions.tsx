@@ -238,12 +238,14 @@ export function ThreadActionsSheet({
   onClose,
   state,
   onOpenTerminal,
+  onOpenVm,
 }: {
   thread: Thread
   open: boolean
   onClose: () => void
   state: ReturnType<typeof useThreadActions>
   onOpenTerminal?: () => void
+  onOpenVm?: (() => void) | undefined
 }) {
   const theme = useTheme()
   const title = thread.title || copy("mobile_home_untitled")
@@ -296,6 +298,21 @@ export function ThreadActionsSheet({
                 <Text style={[styles.actionLabel, { color: theme.text }]}>{copy("mobile_thread_tab_terminal")}</Text>
                 <Icon name="Terminal" size={20} color={theme.text} />
               </Pressable>
+              {onOpenVm !== undefined && (
+                <Pressable
+                  testID="thread-action-vm"
+                  accessibilityRole="button"
+                  accessibilityLabel={copy("mobile_vm_title")}
+                  onPress={() => {
+                    onClose()
+                    onOpenVm()
+                  }}
+                  style={({ pressed }) => [sheetStyles.option, pressed && { backgroundColor: theme.sheetRaised }]}
+                >
+                  <Text style={[styles.actionLabel, { color: theme.text }]}>{copy("mobile_vm_title")}</Text>
+                  <Icon name="Computer" size={20} color={theme.text} />
+                </Pressable>
+              )}
             </GroupedCard>
           )}
           {actionGroups(state.actions).map((group) => (
