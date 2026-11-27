@@ -70,5 +70,5 @@ A stream used to close when the Electron window that owned it was destroyed. A p
   - From the card it opened the screen, tapped the username field, typed with the text field, tapped the password field, typed, and pressed Enter. The guest showed "Signed in as staging-bot".
   - Actual size showed the page at one pixel per point, and a one-finger drag panned it.
   - Hand back ended the agent's `vm_hand_over` call with "The user handed control back".
-  - With control taken and no hand-over, closing the phone's browser without closing the stream returned control to the agent about 13 seconds later, the lease plus the grace period. The desktop panel closing its stream returned it in about 4.
+  - With control taken and no hand-over, closing the phone's browser without closing the stream returned control to the agent about 13 seconds later, the lease plus the grace period. The desktop panel closing its stream returned it in about 2, the grace period alone.
 - Not covered: a real iPhone or Android WebView, and the alert on a device. The alert, the actions menu entry and the native WebView bridge typecheck and lint, but ran only in the web build.
