@@ -61,7 +61,7 @@ The cloud is the source of truth and the server is a pipe. See [ADR 0016](../adr
 `npx hinacode serve` replaces the Electron binary's serve mode, so a server needs Node and nothing else: no AppImage, no display flags, no `ELECTRON_RUN_AS_NODE` trap. The Electron serve mode is deleted rather than kept beside it.
 
 - `src/main/app.ts` builds the layer graph for both entries. The entry passes what differs: the `Keyring`, the `Updates` layer, the window push sink, and the serve address.
-- `src/main/rpc.ts` holds the handlers and `dispatch`. Window-only work (dialogs, focus, `shell.reveal`, notifications, the VM screen) is a `DesktopCalls` value that `ipc.ts` builds per call from the calling window; the remote listener passes none and refuses those methods as before.
+- `src/main/rpc.ts` holds the handlers and `dispatch`. Window-only work (dialogs, focus, `shell.reveal`, notifications) is a `DesktopCalls` value that `ipc.ts` builds per call from the calling window; the remote listener passes none and refuses those methods as before.
 - `Secrets` reads a `Keyring` service. The desktop provides `safeStorage`; the daemon provides none and stores plaintext, which is what a Linux cloud under Electron already did, since a headless Linux has no keyring.
 - `Attachments` takes its root as layer input; `Updates.ts` keeps the tag and the stub, and the `electron-updater` layer moves to `updater.ts`.
 - `src/main/daemon.ts` is a second main entry, built to `out/server/daemon.js` and run by `bin/hinacode.mjs`. It defaults `HINACODE_USER_DATA` to `~/.hinacode-cloud`, holds `daemon.pid` and refuses a directory whose Chromium `SingletonLock` names a live desktop app, waits for the listener, prints pairing URLs, and disposes on `SIGINT` or `SIGTERM` within 5 seconds.

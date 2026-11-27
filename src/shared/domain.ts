@@ -982,6 +982,14 @@ export const ThreadVm = Schema.Union([
 ])
 export type ThreadVm = typeof ThreadVm.Type
 
+export const VmScreenOffset = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+
+export const VmScreenChunk = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("open"), data: Schema.Uint8ArrayFromBase64 }),
+  Schema.Struct({ status: Schema.Literal("closed") }),
+])
+export type VmScreenChunk = typeof VmScreenChunk.Type
+
 export const VmTemplate = Schema.Struct({
   name: Schema.String,
   cpus: Schema.Number,

@@ -1,12 +1,12 @@
 import { execFileSync } from "node:child_process"
 import { EventEmitter } from "node:events"
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { type AddressInfo, createConnection, createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
-import { type Duration, Effect, Layer, ManagedRuntime, Queue, Stream } from "effect"
+import { type Duration, Effect, Exit, Layer, ManagedRuntime, Queue, Scope, Stream } from "effect"
 import { WebSocket } from "ws"
 import { TestClock } from "effect/testing"
 import type { AccountHome, AgentEvent, ApprovalDecision, Subagent, ThreadUsage } from "../shared/agent.ts"
@@ -49,6 +49,7 @@ import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
 import * as Worktrees from "./services/Worktrees.ts"
+import { startFakeSbx } from "./services/tinyVm/testing.ts"
 
 type IpcHandler = (event: { sender: object; senderFrame: Frame }, raw: unknown) => Promise<unknown>
 interface Frame {
@@ -2127,15 +2128,13 @@ describe("remote mode", () => {
     second.socket.close()
   })
 
-  test("a phone does not receive the VNC bytes and folder changes only the desktop window asked for", async () => {
+  test("a phone does not receive the folder changes only the desktop window asked for", async () => {
     const paired = await phone(port)
     await paired.ready()
 
     await runtime.runPromise(
       Events.use((events) =>
         Effect.all([
-          events.publish({ type: "vm.screen.data", streamId: "s1", data: new Uint8Array([1, 2, 3]) }),
-          events.publish({ type: "vm.screen.closed", streamId: "s1" }),
           events.publish({ type: "fs.changed", root: repo, path: "a.txt" }),
           events.publish({ type: "thread.removed", id: "marker" }),
         ]),
@@ -2143,10 +2142,39 @@ describe("remote mode", () => {
     )
     await paired.event((event) => event.type === "thread.removed" && event.id === "marker")
     const types = paired.frames.flatMap((frame) => (frame.type === "event" ? [(frame.event as PushEvent).type] : []))
-    expect(types).not.toContain("vm.screen.data")
-    expect(types).not.toContain("vm.screen.closed")
     expect(types).not.toContain("fs.changed")
     paired.socket.close()
+  })
+
+  test("a paired phone opens a VM screen, reads it from an offset and types into it", async () => {
+    const scope = Scope.makeUnsafe()
+    const fake = await Effect.runPromise(Scope.provide(startFakeSbx, scope))
+    mkdirSync(join(dir, "sbx"), { recursive: true })
+    copyFileSync(fake.configPath, join(dir, "sbx", "config.json"))
+    result(await invoke("settings.set", { experimental: { tinyVm: true, tinyVmProvider: "sbx" } }))
+    const project = result(await invoke("projects.list", undefined))[0] ?? (await createProject("vm-screen"))
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const paired = await phone(port)
+    try {
+      result(await paired.call("vm.start", { threadId: thread.id }))
+      result(await paired.call("vm.screen.open", { threadId: thread.id, streamId: "phone-screen" }))
+      const greeting = result(await paired.call("vm.screen.read", { streamId: "phone-screen", offset: 0 }))
+      expect(greeting).toStrictEqual({ status: "open", data: Buffer.from("RFB 003.008\n").toString("base64") })
+
+      result(await paired.call("vm.screen.send", { streamId: "phone-screen", data: btoa("RFB 003.008\n") }))
+      const security = result(await paired.call("vm.screen.read", { streamId: "phone-screen", offset: 12 }))
+      expect(security.status === "open" && security.data.length).toBeGreaterThan(0)
+
+      result(await paired.call("vm.screen.close", { streamId: "phone-screen" }))
+      expect(result(await paired.call("vm.screen.read", { streamId: "phone-screen", offset: 12 }))).toStrictEqual({
+        status: "closed",
+      })
+    } finally {
+      paired.socket.close()
+      await invoke("vm.stop", { threadId: thread.id })
+      await invoke("settings.set", { experimental: { tinyVm: false } })
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+    }
   })
 
   test("compacts live events only for a client requesting it in hello", async () => {

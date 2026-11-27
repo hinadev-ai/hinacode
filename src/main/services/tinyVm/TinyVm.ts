@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { createServer, type Server } from "node:http"
 import type { Socket } from "node:net"
 import { join } from "node:path"
-import { Context, Deferred, type Duration, Effect, Exit, Layer, Option, Schema, Semaphore, Stream } from "effect"
+import { Context, Deferred, type Duration, Effect, Exit, Fiber, Layer, Option, Schema, Semaphore, Stream } from "effect"
 import type { PushEvent } from "../../../shared/contract.ts"
 import {
   BoatVmSize,
@@ -13,6 +13,7 @@ import {
   type VmHostStatus,
   type VmProfile,
   type VmProvider,
+  type VmScreenChunk,
 } from "../../../shared/domain.ts"
 import { Boat, type BoatClient, BoatError, BoatSnapshotExpiredError, isBoatReady } from "../boat/Boat.ts"
 import { Events, PushBroadcast } from "../Events.ts"
@@ -53,10 +54,6 @@ interface SandboxClient {
 
 export class VmError extends Schema.TaggedError<VmError>()("VmError", { message: Schema.String }) {}
 
-export interface ScreenOwner {
-  readonly once: (event: "destroyed", listener: () => void) => unknown
-}
-
 interface VmExec {
   readonly command: string
   readonly timeoutSeconds: number
@@ -84,7 +81,8 @@ export class TinyVm extends Context.Service<
     readonly takeDropped: (threadId: string) => Effect.Effect<ReadonlyArray<string>>
     readonly pullFiles: (threadId: string, guestPath: string) => Effect.Effect<WrittenTree, VmError>
     readonly saveProfile: (threadId: string) => Effect.Effect<void, VmError>
-    readonly openScreen: (threadId: string, streamId: string, owner: ScreenOwner) => Effect.Effect<void, VmError>
+    readonly openScreen: (threadId: string, streamId: string) => Effect.Effect<void, VmError>
+    readonly readScreen: (streamId: string, offset: number) => Effect.Effect<VmScreenChunk, VmError>
     readonly sendScreen: (streamId: string, data: Uint8Array) => Effect.Effect<void>
     readonly closeScreen: (streamId: string) => Effect.Effect<void>
   }
@@ -152,8 +150,11 @@ const BOAT_PREPARE_SCRIPT = [
 const BOAT_PREPARE_TIMEOUT_SECONDS = 600
 const BoatSandboxMap = Schema.fromJsonString(Schema.Record(Schema.String, Schema.String))
 const isBoatSize = Schema.is(BoatVmSize)
-const FLUSH_INTERVAL_MS = 16
-const FLUSH_SIZE = 256 * 1024
+const SCREEN_BATCH_MS = 16
+const SCREEN_READ_MAX = 1024 * 1024
+const SCREEN_UNREAD_MAX = 2 * 1024 * 1024
+const SCREEN_READ_WAIT = "1 second"
+export const SCREEN_LEASE = "10 seconds"
 export const HAND_BACK_GRACE = "2 seconds"
 
 const NONE: ThreadVm = { status: "none" }
@@ -161,9 +162,48 @@ const NONE: ThreadVm = { status: "none" }
 interface Screen {
   readonly threadId: string
   readonly socket: Socket
-  pending: Array<Uint8Array>
-  pendingSize: number
-  timer: ReturnType<typeof setTimeout> | undefined
+  unread: Array<Uint8Array>
+  readFrom: number
+  unreadSize: number
+  ended: boolean
+  readers: number
+  wake: (() => void) | undefined
+  batch: ReturnType<typeof setTimeout> | undefined
+  lease: Fiber.Fiber<void> | undefined
+}
+
+const SCREEN_CLOSED: VmScreenChunk = { status: "closed" }
+
+const takeUnread = (screen: Screen) => {
+  const parts: Array<Uint8Array> = []
+  let size = 0
+  for (const chunk of screen.unread) {
+    const room = SCREEN_READ_MAX - size
+    if (room <= 0) break
+    const part = chunk.length > room ? chunk.subarray(0, room) : chunk
+    parts.push(part)
+    size += part.length
+  }
+  return Buffer.concat(parts, size)
+}
+
+const acknowledge = (screen: Screen, offset: number) => {
+  let drop = offset - screen.readFrom
+  if (drop < 0 || drop > screen.unreadSize) return false
+  screen.readFrom = offset
+  screen.unreadSize -= drop
+  while (drop > 0) {
+    const first = screen.unread[0]!
+    if (first.length <= drop) {
+      screen.unread.shift()
+      drop -= first.length
+    } else {
+      screen.unread[0] = first.subarray(drop)
+      drop = 0
+    }
+  }
+  if (screen.socket.isPaused() && screen.unreadSize < SCREEN_UNREAD_MAX / 2) screen.socket.resume()
+  return true
 }
 
 const toVmError = (error: { readonly message: string }) => new VmError({ message: error.message })
@@ -216,7 +256,6 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
     const handBacks = new Map<string, Deferred.Deferred<void>>()
     const screens = new Map<string, Screen>()
     const openingScreens = new Set<string>()
-    const ownedScreens = new WeakMap<ScreenOwner, Set<string>>()
     const experimental = yield* settings.get.pipe(
       Effect.map((value) => value.experimental),
       Effect.orElseSucceed(() => defaultSettings.experimental),
@@ -235,7 +274,6 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
     const current = (threadId: string) => vms.get(threadId) ?? NONE
 
     const runFork = Effect.runForkWith(yield* Effect.context<never>())
-    const publishUnsafe = (event: PushEvent) => runFork(events.publish(event))
 
     const setVm = (threadId: string, vm: ThreadVm) =>
       Effect.suspend(() => {
@@ -997,35 +1035,36 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
 
     const host: Effect.Effect<VmHostStatus> = Effect.suspend(() => (provider === "boat" ? boatHost : sbxHost))
 
-    const flush = (streamId: string, screen: Screen) => {
-      clearTimeout(screen.timer)
-      screen.timer = undefined
-      if (screen.pendingSize === 0) return
-      const data = Buffer.concat(screen.pending)
-      screen.pending = []
-      screen.pendingSize = 0
-      publishUnsafe({ type: "vm.screen.data", streamId, data })
+    const wakeReader = (screen: Screen) => {
+      clearTimeout(screen.batch)
+      screen.batch = undefined
+      const wake = screen.wake
+      screen.wake = undefined
+      wake?.()
     }
 
-    const buffer = (streamId: string, screen: Screen, data: Uint8Array) => {
+    const received = (screen: Screen, data: Uint8Array) => {
       if (data.length === 0) return
-      screen.pending.push(data)
-      screen.pendingSize += data.length
-      if (screen.pendingSize >= FLUSH_SIZE) flush(streamId, screen)
-      else screen.timer ??= setTimeout(() => flush(streamId, screen), FLUSH_INTERVAL_MS)
+      screen.unread.push(data)
+      screen.unreadSize += data.length
+      if (screen.unreadSize >= SCREEN_UNREAD_MAX) screen.socket.pause()
+      if (screen.unreadSize >= SCREEN_READ_MAX) wakeReader(screen)
+      else if (screen.wake !== undefined) screen.batch ??= setTimeout(() => wakeReader(screen), SCREEN_BATCH_MS)
     }
 
     const unwatchedByUser = (threadId: string) => {
       const vm = current(threadId)
-      const watched = [...screens.values()].some((other) => other.threadId === threadId)
+      const watched = [...screens.values()].some((other) => other.threadId === threadId && !other.ended)
       return !watched && vm.status === "running" && vm.control === "user" && vm.request === undefined
     }
 
-    const screenClosed = (streamId: string, screen: Screen, owner: ScreenOwner) => {
-      flush(streamId, screen)
+    const finishScreen = (streamId: string) => {
+      const screen = screens.get(streamId)
+      if (screen === undefined) return
       screens.delete(streamId)
-      ownedScreens.get(owner)?.delete(streamId)
-      publishUnsafe({ type: "vm.screen.closed", streamId })
+      screen.socket.destroy()
+      wakeReader(screen)
+      if (screen.lease !== undefined) runFork(Fiber.interrupt(screen.lease))
       if (!unwatchedByUser(screen.threadId)) return
       runFork(
         Effect.sleep(HAND_BACK_GRACE).pipe(
@@ -1038,17 +1077,21 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
       )
     }
 
-    const own = (owner: ScreenOwner, streamId: string) => {
-      let owned = ownedScreens.get(owner)
-      if (owned === undefined) {
-        const streams = new Set<string>()
-        ownedScreens.set(owner, (owned = streams))
-        owner.once("destroyed", () => streams.forEach((id) => screens.get(id)?.socket.destroy()))
-      }
-      owned.add(streamId)
+    const renewLease = (streamId: string, screen: Screen) => {
+      if (screen.lease !== undefined) runFork(Fiber.interrupt(screen.lease))
+      screen.lease = runFork(
+        Effect.sleep(SCREEN_LEASE).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              screen.lease = undefined
+              finishScreen(streamId)
+            }),
+          ),
+        ),
+      )
     }
 
-    const openScreen = (threadId: string, streamId: string, owner: ScreenOwner) =>
+    const openScreen = (threadId: string, streamId: string) =>
       Effect.gen(function* () {
         if (screens.has(streamId) || openingScreens.has(streamId)) {
           return yield* new VmError({ message: `Screen stream ${streamId} is already open.` })
@@ -1065,13 +1108,68 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
           ),
           Effect.mapError(toVmError),
         )
-        const screen: Screen = { threadId, socket, pending: [], pendingSize: 0, timer: undefined }
+        const screen: Screen = {
+          threadId,
+          socket,
+          unread: [],
+          readFrom: 0,
+          unreadSize: 0,
+          ended: false,
+          readers: 0,
+          wake: undefined,
+          batch: undefined,
+          lease: undefined,
+        }
         screens.set(streamId, screen)
-        own(owner, streamId)
-        buffer(streamId, screen, head)
-        socket.on("data", (data: Buffer) => buffer(streamId, screen, data))
-        socket.once("close", () => screenClosed(streamId, screen, owner))
+        renewLease(streamId, screen)
+        received(screen, head)
+        socket.on("data", (data: Buffer) => received(screen, data))
+        socket.once("close", () => {
+          screen.ended = true
+          wakeReader(screen)
+        })
       }).pipe(Effect.ensuring(Effect.sync(() => openingScreens.delete(streamId))))
+
+    const waitForBytes = (screen: Screen) =>
+      screen.unreadSize > 0 || screen.ended
+        ? Effect.void
+        : Effect.callback<void>((resume) => {
+            wakeReader(screen)
+            const wake = () => resume(Effect.void)
+            screen.wake = wake
+            return Effect.sync(() => {
+              if (screen.wake === wake) screen.wake = undefined
+            })
+          }).pipe(Effect.timeoutOption(SCREEN_READ_WAIT), Effect.asVoid)
+
+    const readScreen = (streamId: string, offset: number): Effect.Effect<VmScreenChunk, VmError> =>
+      Effect.suspend(() => {
+        const screen = screens.get(streamId)
+        if (screen === undefined) return Effect.succeed(SCREEN_CLOSED)
+        if (!acknowledge(screen, offset)) {
+          return Effect.fail(new VmError({ message: `Screen stream ${streamId} has no bytes at ${offset}.` }))
+        }
+        return Effect.acquireUseRelease(
+          Effect.sync(() => {
+            screen.readers++
+            if (screen.lease !== undefined) runFork(Fiber.interrupt(screen.lease))
+            screen.lease = undefined
+          }),
+          () =>
+            Effect.map(waitForBytes(screen), (): VmScreenChunk => {
+              if (screens.get(streamId) !== screen) return SCREEN_CLOSED
+              if (screen.unreadSize > 0) return { status: "open", data: takeUnread(screen) }
+              if (!screen.ended) return { status: "open", data: new Uint8Array() }
+              finishScreen(streamId)
+              return SCREEN_CLOSED
+            }),
+          () =>
+            Effect.sync(() => {
+              screen.readers--
+              if (screen.readers === 0 && screens.get(streamId) === screen) renewLease(streamId, screen)
+            }),
+        )
+      })
 
     const sendScreen = (streamId: string, data: Uint8Array) =>
       Effect.sync(() => {
@@ -1079,7 +1177,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         if (socket?.writable) socket.write(data)
       })
 
-    const closeScreen = (streamId: string) => Effect.sync(() => screens.get(streamId)?.socket.destroy())
+    const closeScreen = (streamId: string) => Effect.sync(() => finishScreen(streamId))
 
     const release = (threadId: string) =>
       Effect.tryPromise(() => rm(join(dataDir, PULLED_DIR, threadId), { recursive: true, force: true })).pipe(
@@ -1151,6 +1249,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
       pullFiles,
       saveProfile,
       openScreen,
+      readScreen,
       sendScreen,
       closeScreen,
     })

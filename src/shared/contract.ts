@@ -111,6 +111,8 @@ import {
   UpdateStatus,
   ThreadStatus,
   ThreadVm,
+  VmScreenChunk,
+  VmScreenOffset,
   VmControl,
   VmDesktopUrl,
   VmHostStatus,
@@ -756,7 +758,8 @@ export const RpcMethods = {
   "vm.host": rpc(Schema.Void, VmHostStatus),
   "vm.desktop.url": rpc(Schema.Struct({ threadId: Schema.String }), VmDesktopUrl),
   "vm.screen.open": rpc(Schema.Struct({ threadId: Schema.String, streamId: Schema.String }), Schema.Void),
-  "vm.screen.send": rpc(Schema.Struct({ streamId: Schema.String, data: Schema.Uint8Array }), Schema.Void),
+  "vm.screen.read": rpc(Schema.Struct({ streamId: Schema.String, offset: VmScreenOffset }), VmScreenChunk),
+  "vm.screen.send": rpc(Schema.Struct({ streamId: Schema.String, data: Schema.Uint8ArrayFromBase64 }), Schema.Void),
   "vm.screen.close": rpc(Schema.Struct({ streamId: Schema.String }), Schema.Void),
   "vm.files.drop": rpc(
     Schema.Struct({ threadId: Schema.String, paths: Schema.Array(Schema.String) }),
@@ -1106,6 +1109,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "vm.host": "read",
   "vm.desktop.url": "read",
   "vm.screen.open": "mutation",
+  "vm.screen.read": "read",
   "vm.screen.send": "mutation",
   "vm.screen.close": "mutation",
   "vm.files.drop": "mutation",
@@ -1178,7 +1182,6 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "notifications.permission",
   "notifications.askPermission",
   "fs.watch",
-  "vm.screen.open",
   "vm.files.drop",
   "remote.pairing",
   "remote.resetPairing",
@@ -1214,8 +1217,6 @@ export const machineOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
 ])
 export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEvent["type"]>([
   "remote.devices.changed",
-  "vm.screen.data",
-  "vm.screen.closed",
   "fs.changed",
   "environments.changed",
   "appConnections.changed",
@@ -1327,8 +1328,6 @@ export const PushEvent = Schema.Union([
     deviceId: DeviceId,
     action: AgentAction,
   }),
-  Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),
-  Schema.Struct({ type: Schema.Literal("vm.screen.closed"), streamId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("menu.command"), command: MenuCommand }),
 ])
 export type PushEvent = typeof PushEvent.Type

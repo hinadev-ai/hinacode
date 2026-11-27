@@ -33,11 +33,10 @@ function BrowserVmScreen() {
   return <VmScreen threadId="t-1" vm={tinyVm} onHandBack={() => undefined} onReconnect={() => undefined} drop={drop} />
 }
 
-test("a browser shows that the Tiny VM screen needs the desktop app instead of a dead stream", async () => {
+test("a browser shows the Tiny VM screen, as the desktop app does", async () => {
   runtime = { kind: "web" }
   await render(<BrowserVmScreen />)
-  await expect.element(page.getByText("The Tiny VM screen opens only in the desktop app.")).toBeVisible()
-  expect(page.getByRole("region", { name: "Tiny VM screen" }).elements()).toEqual([])
+  await expect.element(page.getByRole("region", { name: "Tiny VM screen" })).toBeVisible()
 })
 
 const renderHandBack = (vm: RunningVm) =>
@@ -62,8 +61,8 @@ test("the Boat hand-back button leaves out the chord its stream never receives",
   await expect.element(page.getByRole("button", { name: "Hand back", exact: true })).toBeVisible()
 })
 
-test("a browser's Tiny VM hand-back button leaves out the chord, because no screen is there to take it", async () => {
+test("a browser's Tiny VM hand-back button names the chord, because its screen takes it too", async () => {
   runtime = { kind: "web" }
   await renderHandBack(tinyVm)
-  await expect.element(page.getByRole("button", { name: "Hand back", exact: true })).toBeVisible()
+  await expect.element(page.getByRole("button", { name: /^Hand back .*Escape$/ })).toBeVisible()
 })

@@ -2908,7 +2908,6 @@
   "web_sign_in_unavailable": "无法加载登录界面。",
   "web_switch_account": "改用其他账号",
   "web_use_relay": "使用这个 relay",
-  "web_vm_screen_desktop_only": "Tiny VM 屏幕只能在桌面版应用中打开。",
   "web_signed_out": "这个浏览器已被登出，请重新登录。",
   "web_device_name": "浏览器中的 HinaCode",
   "web_reload": "重新加载",

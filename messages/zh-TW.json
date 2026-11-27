@@ -2862,7 +2862,6 @@
   "web_sign_in_unavailable": "無法載入登入畫面。",
   "web_switch_account": "改用其他帳號",
   "web_use_relay": "使用這個 relay",
-  "web_vm_screen_desktop_only": "Tiny VM 畫面只能在桌面版 App 中開啟。",
   "web_signed_out": "這個瀏覽器已被登出，請重新登入。",
   "web_device_name": "瀏覽器中的 HinaCode",
   "web_reload": "重新載入",
