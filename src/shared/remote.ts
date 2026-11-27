@@ -20,7 +20,7 @@ export const CLOSE_AUTH_TIMEOUT = 4004
 export const CLOSE_MALFORMED_FRAME = 4005
 export const CLOSE_HANDSHAKE_FAILED = 4006
 
-export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks", "watch"] as const
+export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks", "watch", "vm-screen"] as const
 export type RemoteFeature = (typeof RemoteFeature)[number]
 
 export const AskableMethod = Schema.Literals([
