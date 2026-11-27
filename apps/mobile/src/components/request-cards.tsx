@@ -10,6 +10,7 @@ import { Button } from "@/components/ui"
 import { duration, rise } from "@/constants/motion"
 import { HIT, mono, radius, subheading } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
+import { useVmScreenServed } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { approvalCommand } from "@/lib/approval-command"
 import { call } from "@/lib/connection"
@@ -221,6 +222,7 @@ const formatResetTime = (at: string) => {
 
 export function VmHandOverCard({ threadId, request }: { threadId: string; request: string }) {
   const theme = useTheme()
+  const served = useVmScreenServed(threadId)
   return (
     <Ticket testID="vm-hand-over" accessibilityRole="summary" ageBar={false}>
       <View style={styles.cardHeading}>
@@ -236,13 +238,17 @@ export function VmHandOverCard({ threadId, request }: { threadId: string; reques
       <Text selectable style={[styles.cardBody, { color: theme.text }]}>
         {request}
       </Text>
-      <Button
-        testID="vm-hand-over-open"
-        label={copy("mobile_vm_open")}
-        variant="primary"
-        onPress={() => router.push({ pathname: "/thread/[id]/vm", params: { id: threadId } })}
-        style={styles.pillButton}
-      />
+      {served ? (
+        <Button
+          testID="vm-hand-over-open"
+          label={copy("mobile_vm_open")}
+          variant="primary"
+          onPress={() => router.push({ pathname: "/thread/[id]/vm", params: { id: threadId } })}
+          style={styles.pillButton}
+        />
+      ) : (
+        <Text style={[styles.cardBody, { color: theme.textMuted }]}>{copy("mobile_vm_update_desktop")}</Text>
+      )}
     </Ticket>
   )
 }

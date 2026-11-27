@@ -1662,6 +1662,7 @@
   "mobile_vm_key_up": "上矢印",
   "mobile_vm_key_right": "右矢印",
   "mobile_vm_key_down": "下矢印",
+  "mobile_vm_update_desktop": "ここで VM の画面を見るには、デスクトップの HinaCode を更新してください。",
   "mobile_notify_failed": "失敗しました：{message}",
   "mobile_notify_limited": "利用上限に達したため停止しました",
   "mobile_notify_open": "開く",

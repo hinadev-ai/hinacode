@@ -1716,6 +1716,7 @@
   "mobile_vm_key_up": "Up arrow",
   "mobile_vm_key_right": "Right arrow",
   "mobile_vm_key_down": "Down arrow",
+  "mobile_vm_update_desktop": "Update HinaCode on the desktop to see the VM screen here.",
   "mobile_notify_failed": "Failed: {message}",
   "mobile_notify_limited": "Stopped at the usage limit",
   "mobile_notify_open": "Open",

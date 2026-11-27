@@ -15,7 +15,7 @@ import { threadActionSymbols } from "@/lib/thread-actions"
 import { type ThreadTab, threadTabs } from "@/lib/thread-tabs"
 import { SidebarButton, SidebarToolbarButton } from "@/components/thread-sidebar"
 import { IconButton, Notice } from "@/components/ui"
-import { useThreadConnection } from "@/hooks/use-server"
+import { useThreadConnection, useVmScreenServed } from "@/hooks/use-server"
 import { type Palette, radius, READABLE_WIDTH } from "@/constants/theme"
 import { threadStatusLabel } from "@/constants/thread-status"
 import { headerStatus } from "@/lib/header-status"
@@ -48,8 +48,11 @@ export default function ThreadScreen() {
   const [tab, setTab] = useState<ThreadTab>("chat")
   const [opened, setOpened] = useState<ReadonlySet<ThreadTab>>(() => new Set(["chat"]))
   const vm = useThreadVm(id)
+  const vmScreenServed = useVmScreenServed(id)
   const openVm =
-    vm?.status === "running" ? () => router.push({ pathname: "/thread/[id]/vm", params: { id } }) : undefined
+    vm?.status === "running" && vmScreenServed
+      ? () => router.push({ pathname: "/thread/[id]/vm", params: { id } })
+      : undefined
 
   useFocusEffect(() => {
     useUnseen.getState().clear(id)

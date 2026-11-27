@@ -1707,6 +1707,7 @@
   "mobile_vm_key_up": "上方向键",
   "mobile_vm_key_right": "右方向键",
   "mobile_vm_key_down": "下方向键",
+  "mobile_vm_update_desktop": "请更新桌面端的 HinaCode，才能在这里查看 VM 画面。",
   "mobile_notify_failed": "失败：{message}",
   "mobile_notify_limited": "已达用量上限而停止",
   "mobile_notify_open": "打开",

@@ -3,7 +3,7 @@ import type { ThreadVm } from "@shared/domain.ts"
 import { AsyncResult } from "effect/reactivity"
 import { rpcFamily } from "./remote"
 
-const threadVm = rpcFamily("vm.get", {
+export const threadVm = rpcFamily("vm.get", {
   refreshOn: (event, { threadId }) => event.type === "vm.updated" && event.threadId === threadId,
 })
 
