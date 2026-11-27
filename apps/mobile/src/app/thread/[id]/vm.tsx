@@ -58,31 +58,32 @@ const keys: readonly { key: ScreenKey; label: string; icon?: IconName; accessibi
 export default function VmScreenRoute() {
   const theme = useTheme()
   const { id } = useLocalSearchParams<{ id: string }>()
-  const vmAtom = threadVm({ threadId: id })
-  const result = useAtomValue(vmAtom)
-  const retry = useAtomRefresh(vmAtom)
-  const vm = Option.getOrUndefined(AsyncResult.value(result))
-  const served = useVmScreenServed(id)
-  const headerHeight = useHeaderHeight()
   return (
     <SafeAreaView edges={["bottom"]} style={[styles.flex, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ title: copy("mobile_vm_title") }} />
-      {AsyncResult.isFailure(result) && !result.waiting ? (
-        <Failure message={errorText(Cause.squash(result.cause))} onRetry={retry} />
-      ) : vm === undefined ? (
-        <Message text={null} />
-      ) : !served ? (
-        <Message text={copy("mobile_vm_update_desktop")} />
-      ) : vm.status !== "running" ? (
-        <Message text={copy("mobile_vm_none")} />
-      ) : vm.provider === "boat" ? (
-        <Message text={copy("mobile_vm_boat")} />
-      ) : (
-        <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
-          <RunningScreen threadId={id} vm={vm} />
-        </KeyboardAvoidingView>
-      )}
+      <VmScreenContent threadId={id} />
     </SafeAreaView>
+  )
+}
+
+function VmScreenContent({ threadId }: { threadId: string }) {
+  const vmAtom = threadVm({ threadId })
+  const result = useAtomValue(vmAtom)
+  const retry = useAtomRefresh(vmAtom)
+  const vm = Option.getOrUndefined(AsyncResult.value(result))
+  const served = useVmScreenServed(threadId)
+  const headerHeight = useHeaderHeight()
+  if (AsyncResult.isFailure(result) && !result.waiting) {
+    return <Failure message={errorText(Cause.squash(result.cause))} onRetry={retry} />
+  }
+  if (vm === undefined) return <Message text={null} />
+  if (!served) return <Message text={copy("mobile_vm_update_desktop")} />
+  if (vm.status !== "running") return <Message text={copy("mobile_vm_none")} />
+  if (vm.provider === "boat") return <Message text={copy("mobile_vm_boat")} />
+  return (
+    <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
+      <RunningScreen threadId={threadId} vm={vm} />
+    </KeyboardAvoidingView>
   )
 }
 
@@ -304,7 +305,6 @@ function ScreenSession({
   onReconnect: () => void
 }) {
   const theme = useTheme()
-  const generation = useConnection((state) => state.generation)
   const view = useRef<VmScreenViewHandle>(null)
   const stream = useRef<VmScreenStream | null>(null)
   const streamGeneration = useRef(0)
@@ -340,7 +340,13 @@ function ScreenSession({
   const reconnectIfLost = useEffectEvent((connectionGeneration: number) => {
     if (connection.status === "lost" && connectionGeneration !== streamGeneration.current) onReconnect()
   })
-  useEffect(() => reconnectIfLost(generation), [generation])
+  useEffect(
+    () =>
+      useConnection.subscribe((state, previous) => {
+        if (state.generation !== previous.generation) reconnectIfLost(state.generation)
+      }),
+    [],
+  )
 
   useEffect(() => {
     if (ready) view.current?.run({ type: "control", user })
