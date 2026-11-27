@@ -7,7 +7,7 @@ import { Cause, Option, Result } from "effect"
 import { randomUUID } from "expo-crypto"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { useHeaderHeight } from "expo-router/react-navigation"
-import { type Ref, type RefObject, useEffect, useImperativeHandle, useRef, useState } from "react"
+import { type Ref, type RefObject, useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react"
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -27,14 +27,17 @@ import { VmScreenView, type VmScreenViewHandle } from "@/components/vm-screen-vi
 import { HIT, radius } from "@/constants/theme"
 import { useVmScreenServed } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { call } from "@/lib/connection"
+import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { threadVm } from "@/lib/vm"
 import type { ScreenFit, ScreenKey, ScreenMessage } from "@/vm-screen/controller"
 
 type RunningVm = Extract<ThreadVm, { status: "running" }>
-type Connection = "connecting" | "connected" | "lost"
+type Connection =
+  | { readonly status: "connecting" }
+  | { readonly status: "connected" }
+  | { readonly status: "lost"; readonly reason: string | null }
 
 const fitSegments = [
   { value: "fit", label: copy("mobile_vm_fit") },
@@ -301,12 +304,43 @@ function ScreenSession({
   onReconnect: () => void
 }) {
   const theme = useTheme()
+  const generation = useConnection((state) => state.generation)
   const view = useRef<VmScreenViewHandle>(null)
   const stream = useRef<VmScreenStream | null>(null)
+  const streamGeneration = useRef(0)
+  const mounted = useRef(false)
   const [ready, setReady] = useState(false)
-  const [connection, setConnection] = useState<Connection>("connecting")
+  const [connection, setConnection] = useState<Connection>({ status: "connecting" })
 
-  useEffect(() => () => stream.current?.close(), [])
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      stream.current?.close()
+    }
+  }, [])
+
+  const lose = (failure?: unknown) => {
+    if (!mounted.current) return
+    if (stream.current !== null && useConnection.getState().generation !== streamGeneration.current) {
+      return onReconnect()
+    }
+    setConnection((current) =>
+      current.status === "lost"
+        ? current
+        : { status: "lost", reason: failure === undefined ? null : errorText(failure) },
+    )
+  }
+
+  const disconnect = () => {
+    stream.current?.close()
+    lose()
+  }
+
+  const reconnectIfLost = useEffectEvent((connectionGeneration: number) => {
+    if (connection.status === "lost" && connectionGeneration !== streamGeneration.current) onReconnect()
+  })
+  useEffect(() => reconnectIfLost(generation), [generation])
 
   useEffect(() => {
     if (ready) view.current?.run({ type: "control", user })
@@ -318,6 +352,7 @@ function ScreenSession({
 
   const start = () => {
     const streamId = randomUUID()
+    streamGeneration.current = useConnection.getState().generation
     stream.current = streamVmScreen(
       {
         open: () => call("vm.screen.open", { threadId, streamId }),
@@ -328,9 +363,9 @@ function ScreenSession({
       {
         onOpen: () => view.current?.run({ type: "open" }),
         onData: (data) => view.current?.run({ type: "data", data: Base64.encode(data) }),
-        onEnd: () => {
+        onEnd: (failure) => {
           view.current?.run({ type: "end" })
-          setConnection("lost")
+          lose(failure)
         },
       },
     )
@@ -347,9 +382,9 @@ function ScreenSession({
         return
       }
       case "connected":
-        return setConnection("connected")
+        return setConnection({ status: "connected" })
       case "disconnected":
-        return setConnection("lost")
+        return disconnect()
     }
   }
 
@@ -357,10 +392,10 @@ function ScreenSession({
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.surface }]}>
-      <VmScreenView ref={view} onMessage={received} onGone={() => setConnection("lost")} />
-      {connection !== "connected" && (
+      <VmScreenView ref={view} onMessage={received} onGone={disconnect} />
+      {connection.status !== "connected" && (
         <View style={[StyleSheet.absoluteFill, styles.overlay, { backgroundColor: theme.surface }]}>
-          {connection === "connecting" ? (
+          {connection.status === "connecting" ? (
             <>
               <ActivityIndicator color={theme.textMuted} />
               <Text style={[styles.messageText, { color: theme.textMuted }]}>{copy("vm_connecting")}</Text>
@@ -368,6 +403,11 @@ function ScreenSession({
           ) : (
             <>
               <Text style={[styles.messageText, { color: theme.text }]}>{copy("vm_disconnected")}</Text>
+              {connection.reason !== null && (
+                <Text selectable style={[styles.messageText, { color: theme.textMuted }]}>
+                  {connection.reason}
+                </Text>
+              )}
               <Button testID="vm-reconnect" label={copy("vm_reconnect")} onPress={onReconnect} />
             </>
           )}
